@@ -202,7 +202,6 @@ async function logTextSearchPages(pageCount: number, resultsCount: number): Prom
 
 let mapsLoadPromise: Promise<void> | null = null;
 let placesInitialized = false;
-let dedicatedPlacesService: google.maps.places.PlacesService | null = null;
 
 async function ensureGoogleMapsLoaded(): Promise<void> {
   if (typeof window !== 'undefined' && window.google?.maps?.places) {
@@ -229,32 +228,24 @@ async function ensureGoogleMapsLoaded(): Promise<void> {
 }
 
 /**
- * Get a dedicated PlacesService for merchant ingestion. Creates one
- * long-lived instance whose attribution div is attached to document.body
- * (hidden). Fresh instances with detached divs tend to return
- * INVALID_REQUEST under the post-March-2025 Maps SDK.
+ * Get the shared PlacesService instance — reused from
+ * googlePlacesSearchService because fresh instances are returning
+ * INVALID_REQUEST on textSearch under the current Maps SDK. The shared
+ * instance works reliably.
  */
 async function getMerchantPlacesService(): Promise<google.maps.places.PlacesService> {
-  await ensureGoogleMapsLoaded();
-  if (dedicatedPlacesService) return dedicatedPlacesService;
-  const div = document.createElement('div');
-  div.id = 'merchant-places-attribution';
-  div.style.display = 'none';
-  document.body.appendChild(div);
-  dedicatedPlacesService = new google.maps.places.PlacesService(div);
-  return dedicatedPlacesService;
+  await initMerchantIngestService();
+  return googlePlacesSearchService.getPlacesService();
 }
 
 export async function initMerchantIngestService(): Promise<void> {
   await ensureGoogleMapsLoaded();
-  await getMerchantPlacesService();
   if (!placesInitialized) {
-    // Also initialize the shared service's instance — nearbySearchWithGrid
-    // in Phase 3 is dispatched through it.
-    const offscreen = document.createElement('div');
-    offscreen.style.display = 'none';
-    document.body.appendChild(offscreen);
-    googlePlacesSearchService.initPlacesService(offscreen);
+    const div = document.createElement('div');
+    div.id = 'merchant-places-attribution';
+    div.style.display = 'none';
+    document.body.appendChild(div);
+    googlePlacesSearchService.initPlacesService(div);
     placesInitialized = true;
   }
 }

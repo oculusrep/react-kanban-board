@@ -128,6 +128,19 @@ class GooglePlacesSearchService {
     this.placesService = new google.maps.places.PlacesService(mapOrDiv);
   }
 
+  /**
+   * Return the initialized PlacesService (or throw if not yet initialized).
+   * Exposed so other services (e.g. merchantIngestService) can reuse the
+   * same instance — fresh PlacesService instances have been observed to
+   * return INVALID_REQUEST on textSearch under the post-March-2025 SDK.
+   */
+  getPlacesService(): google.maps.places.PlacesService {
+    if (!this.placesService) {
+      throw new Error('PlacesService not initialized. Call initPlacesService first.');
+    }
+    return this.placesService;
+  }
+
   // --------------------------------------------------------------------------
   // Budget & Usage Tracking
   // --------------------------------------------------------------------------
