@@ -12,7 +12,8 @@
     "dropbox:test": "node scripts/testDropbox.js",
     "migrate:dropbox": "node scripts/migrateDropboxMappings.js",
     "backup:db": "./scripts/backup-database.sh",
-    "restore:db": "./scripts/restore-database.sh"
+    "restore:db": "./scripts/restore-database.sh",
+    "brandfetch:resolve": "bun scripts/resolveBrandfetchDomains.ts"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.10",
