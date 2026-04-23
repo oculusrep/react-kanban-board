@@ -63,7 +63,7 @@ interface Brand {
 
 interface ResolutionResult {
   brand: Brand;
-  status: 'matched' | 'unclaimed' | 'no_match' | 'error';
+  status: 'matched' | 'unclaimed' | 'rejected' | 'no_match' | 'error';
   domain?: string;
   logoUrl?: string;
   note?: string;
@@ -71,8 +71,49 @@ interface ResolutionResult {
 
 // ---------- Brandfetch API ----------
 
+/**
+ * Clean brand name for Brandfetch search.
+ * '&' is the main culprit — "A&W" URL-encoded to "A%26W" returns garbage.
+ * Replacing '&' with ' and ' recovers sensible results for "Barnes & Noble"
+ * etc. Other punctuation passes through (apostrophes, hyphens, periods
+ * are generally handled fine by Brandfetch).
+ */
+function cleanSearchQuery(brandName: string): string {
+  return brandName
+    .replace(/&/g, ' and ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Plausibility check: does the matched domain share any 4+ character
+ * substring with the normalized brand name? Catches catastrophic mismatches
+ * like "A&W -> whatsapp.com" and "Ace Hardware -> karstensace.com" (a local
+ * dealer that claimed their own Brandfetch profile).
+ *
+ * For very short brand names (<4 chars after normalization, e.g. "AT&T"),
+ * we instead require the domain to START with the brand's letters.
+ */
+function isPlausibleMatch(brandName: string, domain: string): boolean {
+  const brandNorm = brandName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const domainCore = domain.toLowerCase().split('.')[0].replace(/[^a-z0-9]/g, '');
+
+  if (brandNorm.length < 4) {
+    return domainCore.startsWith(brandNorm);
+  }
+
+  for (let start = 0; start + 4 <= brandNorm.length; start++) {
+    if (domainCore.includes(brandNorm.substring(start, start + 4))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function searchBrandfetch(brandName: string): Promise<BrandfetchSearchResult[]> {
-  const url = `https://api.brandfetch.io/v2/search/${encodeURIComponent(brandName)}?c=${brandfetchClientId}`;
+  const cleaned = cleanSearchQuery(brandName);
+  const url = `https://api.brandfetch.io/v2/search/${encodeURIComponent(cleaned)}?c=${brandfetchClientId}`;
   const response = await fetch(url);
   if (response.status === 429) {
     throw new Error('RATE_LIMIT');
@@ -167,6 +208,16 @@ async function processOne(brand: Brand): Promise<ResolutionResult> {
       return { brand, status: 'no_match' };
     }
 
+    // Reject matches that fail the plausibility check (catastrophic mismatches).
+    if (!isPlausibleMatch(brand.name, best.domain)) {
+      return {
+        brand,
+        status: 'rejected',
+        domain: best.domain,
+        note: `Implausible: "${brand.name}" vs "${best.domain}". Consider admin override.`,
+      };
+    }
+
     const logoUrl = buildLogoUrl(best.domain);
     await updateBrand(brand.id, best.domain, logoUrl);
 
@@ -220,6 +271,7 @@ async function main() {
     const icon = {
       matched: '✓',
       unclaimed: '?',
+      rejected: '✗',
       no_match: '-',
       error: '!',
     }[result.status];
@@ -227,6 +279,8 @@ async function main() {
     const extra =
       result.status === 'matched' || result.status === 'unclaimed'
         ? ` -> ${result.domain}`
+        : result.status === 'rejected'
+        ? ` (rejected: suggested "${result.domain}")`
         : result.status === 'error'
         ? `  ERROR: ${result.note}`
         : '';
@@ -245,6 +299,7 @@ async function main() {
   // Summary
   const matched = results.filter((r) => r.status === 'matched').length;
   const unclaimed = results.filter((r) => r.status === 'unclaimed').length;
+  const rejected = results.filter((r) => r.status === 'rejected').length;
   const noMatch = results.filter((r) => r.status === 'no_match').length;
   const errors = results.filter((r) => r.status === 'error').length;
 
@@ -252,25 +307,28 @@ async function main() {
   console.log('Summary');
   console.log('='.repeat(60));
   console.log(`  Matched (claimed):     ${matched}`);
-  console.log(`  Matched (unclaimed):   ${unclaimed}    <- review in admin before trusting`);
+  console.log(`  Matched (unclaimed):   ${unclaimed}    <- review logo in admin`);
+  console.log(`  Rejected (implausible):${rejected}    <- needs manual brandfetch_domain`);
   console.log(`  No match:              ${noMatch}    <- needs manual brandfetch_domain`);
   console.log(`  Errors:                ${errors}`);
   console.log('');
 
-  const needsReview = results.filter((r) => r.status === 'unclaimed');
-  if (needsReview.length > 0) {
-    console.log('Unclaimed brands to review:');
-    needsReview.forEach((r) => console.log(`  - ${r.brand.name} -> ${r.domain}`));
-    console.log('');
-  }
-
-  const failed = results.filter((r) => r.status === 'no_match' || r.status === 'error');
-  if (failed.length > 0) {
+  const needsManual = results.filter(
+    (r) => r.status === 'rejected' || r.status === 'no_match' || r.status === 'error',
+  );
+  if (needsManual.length > 0) {
     console.log('Brands needing manual domain assignment:');
-    failed.forEach((r) => {
-      const reason = r.status === 'error' ? `(error: ${r.note})` : '(no Brandfetch match)';
+    needsManual.forEach((r) => {
+      let reason = '';
+      if (r.status === 'rejected') reason = `(suggested "${r.domain}" rejected as implausible)`;
+      else if (r.status === 'no_match') reason = '(no Brandfetch results)';
+      else if (r.status === 'error') reason = `(error: ${r.note})`;
       console.log(`  - ${r.brand.name} ${reason}`);
     });
+    console.log('');
+    console.log('To fix these: use the admin Brands page when built, or run SQL');
+    console.log('setting brandfetch_domain AND logo_url together. Note: re-running');
+    console.log('this script with --force would overwrite manual fixes, so don\'t.');
     console.log('');
   }
 }
