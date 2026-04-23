@@ -85,6 +85,10 @@ CREATE TABLE merchant_brand (
   -- Brandfetch resolution (see §5)
   brandfetch_domain   TEXT,                          -- "starbucks.com" — required for logo rendering; overrides auto-match
   logo_url            TEXT,                          -- Brandfetch CDN URL (hotlinked at render time, not a local file)
+  logo_variant        TEXT NOT NULL DEFAULT 'auto'
+                        CHECK (logo_variant IN ('auto','icon','logo','symbol')),
+                                                     -- Admin override of Brandfetch asset variant
+                                                     -- (added migration 20260425 — see §6 of ADMIN_ROADMAP)
   logo_fetched_at     TIMESTAMPTZ,                   -- Last successful Brandfetch API call; refreshed monthly to maintain license
   -- Places search tuning
   places_search_query TEXT,                          -- Override for text search (default = name)
@@ -174,41 +178,94 @@ CREATE TABLE merchant_closure_alert (
 
 ## 4. Google Places Integration
 
-### 4.1 Ingestion job (admin-triggered, per brand or per category)
+### 4.0 API choice — Places API (New), not legacy PlacesService
 
-**Input:** a `merchant_brand.id` (or loop over brands in a category).
+Implementation uses **`google.maps.places.Place.searchByText`** (the 2025 Places API), NOT `google.maps.places.PlacesService.textSearch` (legacy).
 
-**Steps:**
-1. Build a Text Search query. Default: `{brand.name} in Georgia`. Override with `places_search_query` if set.
-2. Call Google Places Text Search API. Filter by `places_type_filter` if set (e.g., `cafe` for Starbucks to suppress "Starbucks catering" noise).
-3. Paginate via `next_page_token` (up to 60 results per search; one token is free but requires a short delay before use).
-4. **If 60+ results:** fall back to **metro-area partitioning** — re-run the search scoped to each of GA's major metros (Atlanta, Augusta, Savannah, Columbus, Macon, Athens) using `location` + `radius` params, dedupe by `place_id`.
-5. For each result:
-   - Upsert into `merchant_location` on `google_place_id` conflict.
-   - Set `last_fetched_at = now()`.
-   - If `business_status = OPERATIONAL`, set `last_verified_at = now()` as well.
-   - If `business_status` changed from a prior non-null value, populate `previous_status` + `status_changed_at`, and insert a `merchant_closure_alert` row.
-6. Log ingestion run (brand, requests made, rows inserted/updated) for cost tracking.
+**Why we migrated during v1 build:**
 
-**API fields requested (basic-data tier to minimize cost — $0.017/request):**
-`name, place_id, geometry/location, formatted_address, business_status, formatted_phone_number, website, types`
+The legacy PlacesService API is deprecated for new customers as of March 2025 and Google has publicly stated:
 
-Skip: ratings, reviews, photos, price_level, opening_hours — not needed for v1 pin display.
+> "Existing bugs in PlacesService will not be addressed."
 
-### 4.2 Refresh job (monthly cron per category, nightly scheduler)
+We hit two of those bugs during build:
 
-**Frequency:** per-category `refresh_frequency_days` (default 30). Configured by admin.
+1. **Pagination discards pages 2-3.** PlacesService's `textSearch(callback)` fires its callback once per page (up to 3 pages × 20 = 60 results). The Promise wrapping pattern only resolves on page 1; pagination's subsequent callback invocations land on an already-resolved Promise and are discarded. Effective cap: 20 results, not the advertised 60.
+2. **Fresh PlacesService instances return `INVALID_REQUEST`.** Creating a new `PlacesService(div)` inside the same app where an existing instance works returns INVALID_REQUEST on every textSearch call. No workaround reliably defeats it.
+
+`Place.searchByText` is Promise-based, has strict `locationRestriction` (vs legacy's loose `locationBias`), and requires no DOM-attached attribution div. Trade-off: it caps at **20 results per call** (vs legacy's advertised 60). We compensate with more aggressive geographic partitioning (§4.2).
+
+The existing `ClosedBusinessSearchPanel` feature still uses legacy PlacesService and continues to work; migration of that code to the new API is a separate future project.
+
+### 4.1 Google Cloud setup (one-time per project)
+
+Before the first ingestion can run, the OVIS Google Cloud project needs:
+
+1. **Places API (New) enabled** — enable at `https://console.developers.google.com/apis/api/places.googleapis.com/overview?project=<PROJECT_NUMBER>`. This is a SEPARATE product from the legacy "Places API" (also kept enabled for `ClosedBusinessSearchPanel`).
+2. **API key allowlist updated** — the Maps API key used by the browser (`VITE_GOOGLE_MAPS_API_KEY`) must have **Places API (New)** in its "API restrictions" list (if the key is in restricted mode). Unrestricted keys don't need this change.
+3. **Billing enabled** — the same Google Cloud project's billing account covers Places API (New). Pricing parity with legacy: ~$17/1000 Text Search requests. The monthly $200 Maps Platform credit applies.
+
+### 4.2 Three-phase ingestion flow
+
+**Input:** a `merchant_brand` row (or iterate a list).
+
+**Phase 1 — statewide search**
+Call `Place.searchByText({textQuery: "{brand} in Georgia", locationRestriction: <GA bbox>, maxResultCount: 20, ...})`. Returns up to 20 GA-only locations.
+
+**Phase 2 — per-metro search (only if Phase 1 hit 20)**
+For each of 6 GA metro bboxes (Atlanta, Savannah, Augusta, Columbus, Macon, Athens), repeat the search with `locationRestriction` set to that metro. Up to 20 per metro = 120 additional possible. Results unioned by `place_id`.
+
+**Phase 3 — 4×4 metro subdivision (only if a metro in Phase 2 hit 20)**
+For any metro that also capped at 20, split its bbox into a 4×4 = 16 sub-cells and search each. Up to 20 per cell = 320 additional per dense metro. Unioned into the same result map.
+
+**Metro bounding boxes (hardcoded in [src/services/merchantIngestService.ts](../src/services/merchantIngestService.ts))** — loosely cover the metro + inner suburbs. Chosen conservatively wide so Phase 3 subdivision catches outer-ring stores too.
+
+**Fields requested on each call:**
+`id, displayName, formattedAddress, location, businessStatus, nationalPhoneNumber, websiteURI, types`
+
+Skip: ratings, reviews, photos, opening hours — not needed for v1 pin display.
+
+**Upsert per result:**
+- Find by `google_place_id`.
+- If exists: update all fields, bump `last_fetched_at`, bump `last_verified_at` if OPERATIONAL. On status change, populate `previous_status` + `status_changed_at` AND insert a `merchant_closure_alert` row.
+- If new: insert.
+
+**Log each Place.searchByText call** as one row in `google_places_api_log` at 2¢ per request, consistent with the existing cost-tracking infra used by ClosedBusinessSearchPanel.
+
+**Cost model (Georgia, full 401-brand run):**
+
+| Brand class | Count | Cost per brand | Subtotal |
+|---|---:|---:|---:|
+| Simple (Phase 1 only) | ~350 | $0.02 | ~$7 |
+| Medium density (Phase 2) | ~30 | $0.14 | ~$4 |
+| Dense (Phase 3 on one metro) | ~15 | ~$0.50 | ~$8 |
+| Super-dense (Phase 3 on multiple metros, e.g. Starbucks) | ~5 | ~$1.40 | ~$7 |
+| **Total** | **401** | avg ~$0.07 | **~$26** |
+
+Validated 2026-04-23: Starbucks test returned 293 GA locations at $1.42.
+
+### 4.3 Current vs planned architecture
+
+**Today (Phase 1 of feature):** ingestion runs **browser-side** via the admin Ingestion tab. Admin clicks "Ingest all 401 brands" → browser tab executes all API calls → upserts via Supabase client. Progress tracked in a React state panel with cancel support.
+
+**Deferred to Phase 2:** a Supabase Edge Function (`merchant-places-ingest`) that does the same work server-side, so it can be invoked by `pg_cron` for monthly refresh without a browser session. Same three-phase logic, same `google_places_api_log` cost tracking. The client-side flow stays for admin-triggered runs.
+
+### 4.4 Monthly refresh (still pending — Edge Function work)
+
+**Frequency:** per-category `refresh_frequency_days` (default 30). Admin-configurable in the Categories admin tab.
 
 **Two parallel tasks per brand:**
 
 **Task 1 — Verify existing locations (closure detection):**
-For each `merchant_location` where `brand_id = X`, call Place Details with just `business_status` field.
+For each `merchant_location` under the brand, call `Place` fetchFields API with just `businessStatus`.
 - Update `last_fetched_at = now()`.
 - If `OPERATIONAL`, also update `last_verified_at = now()`.
 - If status changed, populate `previous_status`, `status_changed_at`, and insert `merchant_closure_alert`.
 
 **Task 2 — Detect new locations:**
-Re-run the same Text Search as §4.1. Any `place_id` not already in `merchant_location` is a newly-opened (or newly-listed) store — insert it.
+Re-run the same three-phase search as §4.2. Any `place_id` not already in `merchant_location` is newly-opened (or newly-listed) — insert it.
+
+Runs as a Supabase Edge Function triggered by `pg_cron` (see §10). Not yet built.
 
 ---
 
@@ -228,15 +285,22 @@ These constraints **replace** the local-cache approach of earlier drafts. The re
    - If `brandfetch_domain` is set, use it.
    - Otherwise, call Brandfetch's domain-search endpoint with `name`. Take the top match.
    - No confident match → leave `brandfetch_domain = NULL`. Fallback pin (§5.3) will be used at render time.
-3. System builds the Brandfetch CDN URL from the resolved domain and stores it in `merchant_brand.logo_url`. URL pattern:
+3. System builds the Brandfetch CDN URL from the resolved domain and stores it in `merchant_brand.logo_url`. URL patterns:
    ```
-   https://cdn.brandfetch.io/{brandfetch_domain}/w/64/h/64?c={BRANDFETCH_CLIENT_ID}
+   # Auto (default): Brandfetch picks the best asset for this brand
+   https://cdn.brandfetch.io/{brandfetch_domain}/w/128/h/128?c={BRANDFETCH_CLIENT_ID}
+
+   # Explicit variant override (admin-selected in Brands tab)
+   https://cdn.brandfetch.io/{brandfetch_domain}/{variant}/w/128/h/128?c={BRANDFETCH_CLIENT_ID}
+   # where variant is 'icon', 'logo', or 'symbol'
    ```
    (Width/height sized generously — actual render size is controlled by CSS, §8.)
-4. Persist `logo_url`, `brandfetch_domain`, `logo_fetched_at`. We do **not** download the image; `logo_url` is a Brandfetch CDN URL that browsers fetch directly at render time.
+4. Persist `logo_url`, `brandfetch_domain`, `logo_variant`, `logo_fetched_at`. We do **not** download the image; `logo_url` is a Brandfetch CDN URL that browsers fetch directly at render time.
 5. Track resolution in a dedicated audit table if useful for debugging (not v1-critical).
 
-**No Supabase Storage**. The `merchant-logos/` bucket from earlier drafts is removed from this spec. The `logo_variant` column from earlier drafts is also removed — the Brandfetch CDN picks the best asset per-request.
+**No Supabase Storage**. The `merchant-logos/` bucket from earlier drafts is removed from this spec.
+
+**`logo_variant` column**: added in migration `20260425` for the admin variant-selector feature. Addresses brands whose auto-selected logo is unreadable at pin size (wordmarks like DUNKIN', SUBWAY). See MERCHANTS_ADMIN_ROADMAP.md §6 for the three-layer readability mitigation strategy.
 
 ### 5.2 Monthly metadata refresh (MANDATORY per Brandfetch ToS)
 
@@ -599,22 +663,31 @@ All estimates assume Google Places Basic-data tier ($0.017/request).
 
 ---
 
-## 16. Implementation Order (Suggested)
+## 16. Implementation Order (Progress tracked)
 
-1. **DB migrations** (§3) — all six tables + indexes.
-2. **Seed CSV import** (§12) — cleanup + bulk load of 420 brands. Runs once.
-3. **Brandfetch integration** (§5) — domain resolution + CDN URL generation. No Supabase Storage. Run over seed list.
-4. **Admin page tabs 1 & 2** (Brands, Categories, §7) — CRUD UI + manual "Refresh Places" button.
-5. **Places ingestion job** (§4) — reusable module called by admin button and by cron.
-6. **Map drawer UI** (§6) — floating drawer, category tree, search, per-user selection persistence.
-7. **Merchant pin rendering** (§8) — advanced markers, clustering, zoom-sized logos, halo CSS.
-8. **Popup** (§9) — InfoWindow on click.
-9. **Favorites** (§6.3–6.5) — create/share/apply favorites.
-10. **Background jobs** (§10) — monthly refresh cron, logo weekly cron.
-11. **Closure alerts** (§11) — alerts table population, badges, admin Alerts tab, optional digest email.
-12. **Admin page tab 3** (Closure Alerts, §7.2).
+| # | Step | Status | Notes |
+|---|------|--------|-------|
+| 1 | **DB migrations** (§3) — 7 tables + indexes + RLS + helpers | ✅ | Migration `20260422_merchants_map_layer_tables.sql` |
+| 2 | **Seed CSV import** (§12) — 35 categories + 401 brands | ✅ | Migration `20260423_merchants_seed_brands.sql`, corrections in `20260424` |
+| 3 | **Brandfetch integration** (§5) — domain resolution + CDN URL | ✅ | [scripts/resolveBrandfetchDomains.ts](../scripts/resolveBrandfetchDomains.ts); hotlinked per ToS |
+| 3b | **Logo variant selector** (§5) | ✅ | Migration `20260425_merchants_logo_variant.sql`; Brands tab dropdown |
+| 4 | **Admin page — Brands tab** | ✅ | Logo verification with inline domain edit + variant override |
+| 4 | **Admin page — Categories tab** | ✅ | CRUD, reorder, per-category refresh_frequency_days |
+| 4 | **Admin page — Ingestion tab** | ✅ | "Ingest All" + per-brand Test + live progress + Places API activity log |
+| 4 | **Admin page — Closure Alerts tab** | ✅ | Empty-state-ready; acknowledge action |
+| 5 | **Places ingestion — browser-side** (§4.2) | ✅ | Three-phase search using new Places API (Place.searchByText) |
+| 5 | **Places ingestion — Edge Function for cron** (§4.3) | ⏳ | Deferred to Phase 2. Needed for monthly refresh. |
+| 6 | **Map drawer UI** (§6) — floating drawer, categories, favorites | ⏳ | Not started |
+| 7 | **Merchant pin rendering** (§8) — logos with halo, clustering | ⏳ | Not started |
+| 8 | **Popup** (§9) — InfoWindow on click | ⏳ | Not started |
+| 9 | **Favorites** (§6.3–6.5) — create/share/apply | ⏳ | Schema + RLS done; UI not started |
+| 10 | **Background jobs** (§10) — monthly refresh cron, logo daily cron | ⏳ | Not started |
+| 11 | **Closure alerts wiring** (§11) — populated by the refresh cron | ⏳ | Tab UI done; waiting on cron to populate rows |
+| 12 | **Admin page Ingestion Activity tab** (§7.2) | 🤷 | Consolidated into the Ingestion tab's "Recent Places API activity" panel |
 
-Each step is independently testable. Steps 1–4 deliver value to the admin before any user-facing UI exists, which derisks the ingestion and logo pipeline early.
+**Currently missing to make the feature user-visible on the map:** steps 6, 7, 8. Once those land, brokers see merchant pins.
+
+**Currently missing for ongoing health:** step 10 (cron) so closures auto-detect without admin clicking "ingest" every month.
 
 ---
 
@@ -625,6 +698,10 @@ Each step is independently testable. Steps 1–4 deliver value to the admin befo
 - [advancedMarkers.ts](../src/components/mapping/utils/advancedMarkers.ts) — existing marker utility; new merchant markers should either reuse or extend the same `importLibrary('marker')` pattern to avoid race conditions.
 - [RestaurantLayer.tsx](../src/components/mapping/layers/RestaurantLayer.tsx) — closest analog for the new layer; look here for clustering config and marker lifecycle patterns.
 - [LayerPanel.tsx](../src/components/mapping/LayerPanel.tsx) / [LayerManager](../src/components/mapping/layers/LayerManager.tsx) — existing layer-state system the Merchants layer will register with.
-- Google Places API — Text Search: https://developers.google.com/maps/documentation/places/web-service/search-text
-- Google Places API — Place Details: https://developers.google.com/maps/documentation/places/web-service/details
+- Google Places API (New) — Text Search: https://developers.google.com/maps/documentation/javascript/place-search-by-text
+- Google Places API (New) — Place class: https://developers.google.com/maps/documentation/javascript/places-overview
+- Google Places API (legacy, being phased out) — Text Search: https://developers.google.com/maps/documentation/places/web-service/search-text
+- Google Maps Places migration guide (legacy → new): https://developers.google.com/maps/documentation/javascript/places-migration-overview
 - Brandfetch API docs: https://docs.brandfetch.com/
+- [merchantIngestService.ts](../src/services/merchantIngestService.ts) — our three-phase ingestion implementation
+- [googlePlacesSearchService.ts](../src/services/googlePlacesSearchService.ts) — legacy PlacesService wrapper still used by ClosedBusinessSearchPanel
