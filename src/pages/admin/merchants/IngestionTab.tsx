@@ -35,8 +35,16 @@ interface ApiLogEntry {
   created_at: string;
 }
 
+type FullBrandRow = MerchantBrandRow & {
+  last_ingested_at: string | null;
+  brandfetch_domain: string | null;
+};
+
+const SKIP_RECENT_HOURS = 48;
+
 export default function IngestionTab() {
-  const [brands, setBrands] = useState<MerchantBrandRow[]>([]);
+  const [brands, setBrands] = useState<FullBrandRow[]>([]);
+  const [skipRecent, setSkipRecent] = useState(true);
   const [stats, setStats] = useState<BrandStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,10 +67,6 @@ export default function IngestionTab() {
     try {
       // Load all brands (paginate to be safe)
       const PAGE = 1000;
-      type FullBrandRow = MerchantBrandRow & {
-        last_ingested_at: string | null;
-        brandfetch_domain: string | null;
-      };
       let allBrands: FullBrandRow[] = [];
       let offset = 0;
       let hasMore = true;
@@ -87,10 +91,24 @@ export default function IngestionTab() {
         .from('merchant_location')
         .select('id', { count: 'exact', head: true });
 
-      const { data: locBrandIds } = await supabase
-        .from('merchant_location')
-        .select('brand_id');
-      const brandsWithLocations = new Set((locBrandIds ?? []).map((r) => r.brand_id)).size;
+      // Count unique brand_ids that have at least one merchant_location row.
+      // Paginate — a naive .select('brand_id') is capped at 1000 rows by
+      // Supabase's default limit, so for >1000 locations the unique-brand
+      // count came out wildly low (bug observed 2026-04-23).
+      const uniqueBrandsWithLocations = new Set<string>();
+      let locOffset = 0;
+      let locHasMore = true;
+      while (locHasMore) {
+        const { data } = await supabase
+          .from('merchant_location')
+          .select('brand_id')
+          .range(locOffset, locOffset + PAGE - 1);
+        if (!data) break;
+        data.forEach((r) => uniqueBrandsWithLocations.add(r.brand_id));
+        locHasMore = data.length === PAGE;
+        locOffset += PAGE;
+      }
+      const brandsWithLocations = uniqueBrandsWithLocations.size;
 
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const brandsStale = allBrands.filter(
@@ -133,9 +151,23 @@ export default function IngestionTab() {
     });
   }, []);
 
+  // Brands that will actually run through ingestion, based on the
+  // skip-recent toggle. Used for button labels, cost, and the confirm modal.
+  const brandsToIngest = useMemo(() => {
+    if (!skipRecent) return brands;
+    const cutoff = new Date(
+      Date.now() - SKIP_RECENT_HOURS * 60 * 60 * 1000,
+    ).toISOString();
+    return brands.filter(
+      (b) => !b.last_ingested_at || b.last_ingested_at < cutoff,
+    );
+  }, [brands, skipRecent]);
+
+  const skippedCount = brands.length - brandsToIngest.length;
+
   const estimatedCostCents = useMemo(
-    () => estimateIngestCostCents(brands.length),
-    [brands.length],
+    () => estimateIngestCostCents(brandsToIngest.length),
+    [brandsToIngest.length],
   );
 
   const startIngestAll = async () => {
@@ -144,7 +176,11 @@ export default function IngestionTab() {
     cancelRef.current = { cancelled: false };
     setProgress(null);
     try {
-      await ingestBrands(brands, (p) => setProgress({ ...p }), cancelRef.current);
+      await ingestBrands(
+        brandsToIngest,
+        (p) => setProgress({ ...p }),
+        cancelRef.current,
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Ingestion failed');
     } finally {
@@ -304,14 +340,43 @@ export default function IngestionTab() {
         )}
 
         {!loading && !error && !running && !progress && (
-          <button
-            onClick={() => setConfirmOpen(true)}
-            disabled={brands.length === 0}
-            className="px-5 py-3 text-sm font-medium text-white rounded hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: BRAND_COLOR_DARK }}
-          >
-            Ingest all {brands.length.toLocaleString()} brands — est. {formatDollars(estimatedCostCents)}
-          </button>
+          <div className="space-y-4">
+            <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={skipRecent}
+                onChange={(e) => setSkipRecent(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-medium" style={{ color: BRAND_COLOR_DARK }}>
+                  Skip brands ingested in the last {SKIP_RECENT_HOURS} hours
+                </span>
+                <span className="text-gray-500">
+                  {' '}— use this to resume an interrupted run without re-paying for brands already
+                  done. Uncheck to force a full re-ingestion of all {brands.length.toLocaleString()}{' '}
+                  brands.
+                </span>
+              </span>
+            </label>
+
+            <button
+              onClick={() => setConfirmOpen(true)}
+              disabled={brandsToIngest.length === 0}
+              className="px-5 py-3 text-sm font-medium text-white rounded hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: BRAND_COLOR_DARK }}
+            >
+              {skipRecent && skippedCount > 0
+                ? `Ingest ${brandsToIngest.length.toLocaleString()} brands (${skippedCount.toLocaleString()} skipped) — est. ${formatDollars(estimatedCostCents)}`
+                : `Ingest all ${brandsToIngest.length.toLocaleString()} brands — est. ${formatDollars(estimatedCostCents)}`}
+            </button>
+            {brandsToIngest.length === 0 && (
+              <p className="text-xs text-gray-500 italic">
+                All brands were ingested within the last {SKIP_RECENT_HOURS} hours. Uncheck the
+                box above to force a re-ingestion.
+              </p>
+            )}
+          </div>
         )}
 
         {progress && (
@@ -376,7 +441,8 @@ export default function IngestionTab() {
       {/* Confirmation modal */}
       {confirmOpen && (
         <ConfirmModal
-          brandCount={brands.length}
+          brandCount={brandsToIngest.length}
+          skippedCount={skipRecent ? skippedCount : 0}
           estimatedCostCents={estimatedCostCents}
           onCancel={() => setConfirmOpen(false)}
           onConfirm={startIngestAll}
@@ -486,11 +552,13 @@ function ProgressPanel({
 
 function ConfirmModal({
   brandCount,
+  skippedCount,
   estimatedCostCents,
   onCancel,
   onConfirm,
 }: {
   brandCount: number;
+  skippedCount: number;
   estimatedCostCents: number;
   onCancel: () => void;
   onConfirm: () => void;
@@ -499,12 +567,20 @@ function ConfirmModal({
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
         <h3 className="text-lg font-semibold mb-2" style={{ color: BRAND_COLOR_DARK }}>
-          Ingest all merchant brands?
+          {skippedCount > 0 ? 'Resume ingestion?' : 'Ingest all merchant brands?'}
         </h3>
         <p className="text-sm text-gray-600 mb-4">
-          This will run a Google Places Text Search for each of{' '}
-          <strong>{brandCount.toLocaleString()}</strong> active brands and upsert their GA
-          locations into the map. Existing rows update; duplicates are not created.
+          This will run a Google Places Text Search for{' '}
+          <strong>{brandCount.toLocaleString()}</strong> active brand
+          {brandCount === 1 ? '' : 's'} and upsert their GA locations into the map. Existing rows
+          update; duplicates are not created.
+          {skippedCount > 0 && (
+            <>
+              {' '}
+              <strong>{skippedCount.toLocaleString()}</strong> brand
+              {skippedCount === 1 ? '' : 's'} ingested in the last 48 hours will be skipped.
+            </>
+          )}
         </p>
         <div className="text-sm mb-4 space-y-1">
           <div>
