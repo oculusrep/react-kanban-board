@@ -3,12 +3,13 @@ import { useSearchParams } from 'react-router-dom';
 import BrandsTab from './merchants/BrandsTab';
 import CategoriesTab from './merchants/CategoriesTab';
 import ClosureAlertsTab from './merchants/ClosureAlertsTab';
+import IngestionTab from './merchants/IngestionTab';
 import { BRAND_COLOR_DARK, BRAND_COLOR_LIGHT } from './merchants/shared';
 
 // Spec: docs/MERCHANTS_LAYER_SPEC.md §7
 // Roadmap: docs/MERCHANTS_ADMIN_ROADMAP.md
 
-type TabKey = 'brands' | 'categories' | 'alerts';
+type TabKey = 'brands' | 'categories' | 'ingest' | 'alerts';
 
 interface TabDef {
   key: TabKey;
@@ -30,6 +31,12 @@ const TABS: TabDef[] = [
       'Admin-managed taxonomy that groups brands in the Merchants map drawer. Controls per-category refresh cadence against Google Places.',
   },
   {
+    key: 'ingest',
+    label: 'Ingestion',
+    subtitle:
+      "Populate the merchant map layer with Google Places locations. Run ingestion for all brands, or refresh specific ones.",
+  },
+  {
     key: 'alerts',
     label: 'Closure Alerts',
     subtitle:
@@ -40,7 +47,8 @@ const TABS: TabDef[] = [
 const DEFAULT_TAB: TabKey = 'brands';
 
 function parseTab(value: string | null): TabKey {
-  if (value === 'brands' || value === 'categories' || value === 'alerts') return value;
+  if (value === 'brands' || value === 'categories' || value === 'ingest' || value === 'alerts')
+    return value;
   return DEFAULT_TAB;
 }
 
@@ -98,6 +106,7 @@ export default function MerchantAdminPage() {
         <div>
           {activeTab === 'brands' && <BrandsTab />}
           {activeTab === 'categories' && <CategoriesTab />}
+          {activeTab === 'ingest' && <IngestionTab />}
           {activeTab === 'alerts' && <ClosureAlertsTab />}
         </div>
       </div>
