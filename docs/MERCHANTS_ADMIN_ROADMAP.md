@@ -94,6 +94,7 @@ Once the shell exists, add features the single-page version didn't have room for
 - **Bulk edit CSV import** — spec §7.3. Upload a CSV of brand → domain overrides in one shot. Low priority once inline edit works.
 - **"Review Unclaimed" filter** — show only brands whose `logo_url` came from an unclaimed Brandfetch match (the ones worth eyeballing). Requires tracking that in the DB (new column `logo_source` with values like `'claimed' | 'unclaimed' | 'manual' | 'none'`) — small schema change.
 - **Show `logo_fetched_at` age** — column or tooltip. Useful for spotting stale rows once monthly refresh starts running.
+- **Logo variant selector** — for brands where the auto-selected logo is unreadable at pin size (wordmarks especially: DUNKIN', SUBWAY, STAPLES), let the admin pick a Brandfetch asset variant. See the "Logo readability" section below for the full approach — this is the piece that lives on the Brands tab.
 
 ### 5. Wire up ingestion / refresh admin actions
 
@@ -112,7 +113,66 @@ Concretely, for Phase 2 you'll need:
 
 Buttons on admin page (Brands tab, Categories tab) call these functions via HTTP POST with `service_role` Authorization header (read from Vault). The Edge Function body validates the caller's `user.ovis_role = 'admin'` before doing anything.
 
-### 6. Permissions polish
+### 6. Logo readability at small pin sizes
+
+**The problem.** Some brand logos render poorly at 32px pin size:
+- **Wordmarks** (DUNKIN', SUBWAY, STAPLES) — text gets compressed to illegible squiggles.
+- **Detailed marks** (Cracker Barrel's keystone, Buffalo Wild Wings full logo) — lose detail; become visual noise.
+- **Thin-stroke logos** — disappear against busy map/satellite backgrounds.
+
+This is cosmetic, not functional — the DB is correct; the CDN URL works; the map renders something. But the "something" may not be recognizable enough to be useful to the broker glancing at a map.
+
+**Three-layer mitigation, each tackled at the right time:**
+
+#### Layer 1 — Zoom-based pin sizing (owned by the map-layer work, spec §8)
+
+Per the parent spec, pins scale with zoom level:
+- zoom 13 → 24px
+- zoom 15 → 32px
+- zoom 17+ → 40px
+
+So at the zoom levels brokers care about (close-in inspection of a site), logos are large enough to read. This solves ~70% of the readability complaints automatically — you just don't try to read a DUNKIN' wordmark when you're looking at all of Georgia.
+
+**Status:** not yet built. Part of spec §8 (pin rendering), which follows the admin shell.
+
+#### Layer 2 — Brandfetch asset-variant selection (owned by the admin tool — add in Brands tab)
+
+Brandfetch's CDN URL supports requesting specific asset types:
+```
+https://cdn.brandfetch.io/{domain}/icon/?c={client_id}    ← icon/mark only (square, small-optimized)
+https://cdn.brandfetch.io/{domain}/logo/?c={client_id}    ← full logo with text
+```
+
+Most major brands have **both** variants in Brandfetch. Some are way better as icons at pin size:
+- ✅ **Icon wins:** Starbucks (mermaid), McDonald's (arches), Target (bullseye), Wendy's (face), Walmart (spark)
+- ✅ **Logo wins:** DUNKIN' (the D alone is unrecognizable), Arby's (hat + wordmark together)
+- 🤷 **Auto is fine:** everything else
+
+**Implementation (~2 hours):**
+1. Schema: add `logo_variant TEXT CHECK (logo_variant IN ('auto', 'icon', 'logo', 'symbol'))` to `merchant_brand`, default `'auto'`. Tiny migration.
+2. Admin Brands tab: dropdown in the row next to the Edit Domain button. Options: Auto / Icon / Logo / Symbol. On change, rebuild `logo_url` with the variant path segment.
+3. For `'auto'` (default), use the current URL format — Brandfetch picks.
+4. For explicit variants, construct `https://cdn.brandfetch.io/{domain}/{variant}/?c={client_id}`.
+5. Also bump the image preview on the admin page to show the chosen variant immediately.
+
+This would cover maybe 20–30 of the ~400 brands that the admin actually wants to manually optimize.
+
+#### Layer 3 — Custom-hosted logos (escape hatch, rarely needed)
+
+For the handful (~5–10) of brands where *neither* Brandfetch variant is readable — perhaps very niche regional brands or brands with terrible Brandfetch profiles — let the admin upload a custom simplified pin-optimized PNG or SVG to Supabase Storage.
+
+**Trade-off vs Brandfetch ToS:** Brandfetch's ToS forbids caching *Brandfetch-provided* logos locally. But hosting a **custom logo we uploaded ourselves** isn't covered by that restriction — we own the asset.
+
+**Implementation:** Add an optional `custom_logo_url` column. When set, it overrides `logo_url` in pin rendering. Admin page gets an Upload button per brand. Defer until we actually hit the need in practice.
+
+---
+
+**Summary for tomorrow:**
+- Don't build Layer 1 (it's part of the map work, not admin)
+- **Do build Layer 2** as part of the Brands tab refinements if you have time (the variant selector is a 2-hour add that materially improves the map)
+- Skip Layer 3 unless a specific brand complaint forces it
+
+### 7. Permissions polish
 
 Current gating is a blunt `userRole === 'admin'`. Consider:
 
