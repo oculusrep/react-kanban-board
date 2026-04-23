@@ -116,12 +116,7 @@ async function textSearchFullPagination(
   query: string,
   bounds?: google.maps.LatLngBounds,
 ): Promise<PlacesSearchResult[]> {
-  await initMerchantIngestService();
-
-  // Use a detached div to back the PlacesService. This is safe to do per
-  // call; PlacesService instances are lightweight and Google doesn't bill
-  // by instance.
-  const service = new google.maps.places.PlacesService(document.createElement('div'));
+  const service = await getMerchantPlacesService();
 
   const rawResults: google.maps.places.PlaceResult[] = [];
   let pageCount = 0;
@@ -207,6 +202,7 @@ async function logTextSearchPages(pageCount: number, resultsCount: number): Prom
 
 let mapsLoadPromise: Promise<void> | null = null;
 let placesInitialized = false;
+let dedicatedPlacesService: google.maps.places.PlacesService | null = null;
 
 async function ensureGoogleMapsLoaded(): Promise<void> {
   if (typeof window !== 'undefined' && window.google?.maps?.places) {
@@ -232,10 +228,32 @@ async function ensureGoogleMapsLoaded(): Promise<void> {
   return mapsLoadPromise;
 }
 
+/**
+ * Get a dedicated PlacesService for merchant ingestion. Creates one
+ * long-lived instance whose attribution div is attached to document.body
+ * (hidden). Fresh instances with detached divs tend to return
+ * INVALID_REQUEST under the post-March-2025 Maps SDK.
+ */
+async function getMerchantPlacesService(): Promise<google.maps.places.PlacesService> {
+  await ensureGoogleMapsLoaded();
+  if (dedicatedPlacesService) return dedicatedPlacesService;
+  const div = document.createElement('div');
+  div.id = 'merchant-places-attribution';
+  div.style.display = 'none';
+  document.body.appendChild(div);
+  dedicatedPlacesService = new google.maps.places.PlacesService(div);
+  return dedicatedPlacesService;
+}
+
 export async function initMerchantIngestService(): Promise<void> {
   await ensureGoogleMapsLoaded();
+  await getMerchantPlacesService();
   if (!placesInitialized) {
+    // Also initialize the shared service's instance — nearbySearchWithGrid
+    // in Phase 3 is dispatched through it.
     const offscreen = document.createElement('div');
+    offscreen.style.display = 'none';
+    document.body.appendChild(offscreen);
     googlePlacesSearchService.initPlacesService(offscreen);
     placesInitialized = true;
   }
