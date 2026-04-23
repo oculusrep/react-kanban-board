@@ -3,8 +3,10 @@ import { supabase } from '../../../lib/supabaseClient';
 import {
   CancelToken,
   IngestAllProgress,
+  IngestBrandResult,
   MerchantBrandRow,
   estimateIngestCostCents,
+  ingestBrand,
   ingestBrands,
   initMerchantIngestService,
 } from '../../../services/merchantIngestService';
@@ -44,6 +46,12 @@ export default function IngestionTab() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<IngestAllProgress | null>(null);
   const cancelRef = useRef<CancelToken>({ cancelled: false });
+
+  // Single-brand test panel
+  const [testBrandName, setTestBrandName] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<IngestBrandResult | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   const loadAll = async () => {
     setLoading(true);
@@ -149,6 +157,31 @@ export default function IngestionTab() {
     cancelRef.current.cancelled = true;
   };
 
+  const runTestBrand = async () => {
+    const trimmed = testBrandName.trim();
+    if (!trimmed) return;
+    setTestError(null);
+    setTestResult(null);
+    setTesting(true);
+    try {
+      // Find the brand row by case-insensitive name match.
+      const match = brands.find((b) => b.name.toLowerCase() === trimmed.toLowerCase());
+      if (!match) {
+        setTestError(
+          `No active brand named "${trimmed}" found. Check the Brands tab for the exact name.`,
+        );
+        return;
+      }
+      const r = await ingestBrand(match);
+      setTestResult(r);
+      await loadAll();
+    } catch (e: unknown) {
+      setTestError(e instanceof Error ? e.message : 'Test failed');
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Stats */}
@@ -183,6 +216,73 @@ export default function IngestionTab() {
           accent={BRAND_COLOR_DARK}
           asCurrency
         />
+      </div>
+
+      {/* Single-brand test panel */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold mb-1" style={{ color: BRAND_COLOR_DARK }}>
+          Test a single brand
+        </h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Run ingestion for one brand before committing to the full run. Good for verifying
+          coverage (e.g. "Starbucks" should return 200+ GA locations when statewide + metro
+          partitioning kicks in). Cost is ~2¢ for a typical brand, up to ~14¢ if the statewide
+          search hits the 60-result cap and metro phase runs.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={testBrandName}
+            onChange={(e) => setTestBrandName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !testing) runTestBrand();
+            }}
+            placeholder="Brand name (e.g. Starbucks)"
+            disabled={testing || running}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+          <button
+            onClick={runTestBrand}
+            disabled={testing || running || !testBrandName.trim()}
+            className="px-4 py-2 text-sm font-medium text-white rounded hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: BRAND_COLOR_MED }}
+          >
+            {testing ? 'Testing…' : 'Test'}
+          </button>
+        </div>
+        {testError && (
+          <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">
+            {testError}
+          </div>
+        )}
+        {testResult && !testResult.error && (
+          <div className="mt-4 text-sm border rounded p-3" style={{ borderColor: BRAND_COLOR_LIGHT }}>
+            <div className="font-medium" style={{ color: BRAND_COLOR_DARK }}>
+              {testResult.brandName}
+            </div>
+            <div className="text-gray-600 mt-1 space-y-0.5 text-xs">
+              <div>
+                <strong>{testResult.locationsFound}</strong> GA locations returned by Places
+              </div>
+              <div>
+                <strong>{testResult.newLocations}</strong> new + <strong>{testResult.updatedLocations}</strong>{' '}
+                updated in merchant_location
+              </div>
+              {testResult.statusChanges > 0 && (
+                <div>
+                  <strong>{testResult.statusChanges}</strong> status changes → closure alerts
+                  raised
+                </div>
+              )}
+              <div>Cost: {formatDollars(testResult.costCents)}</div>
+            </div>
+          </div>
+        )}
+        {testResult?.error && (
+          <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">
+            {testResult.brandName}: {testResult.error}
+          </div>
+        )}
       </div>
 
       {/* Control panel */}

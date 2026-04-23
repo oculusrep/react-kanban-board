@@ -50,12 +50,53 @@ export interface CancelToken {
 }
 
 // Cost model: Places Text Search is 2¢/request (per google_places_api_log).
-// Each brand ingest fires at most 3 pages = 6¢. Typical brand hits 1-2 pages.
-const AVG_PAGES_PER_BRAND = 2;
+// A statewide search fires up to 3 pages (6¢). A brand that hits the 60-cap
+// also runs per-metro searches (6 metros × up to 3 pages = 18 more requests)
+// but in practice metros return 1-2 pages each. Budget at ~4¢ average (mix
+// of sub-cap and at-cap brands).
+const AVG_REQUESTS_PER_BRAND = 2;
 export const COST_PER_REQUEST_CENTS = 2;
 
 export function estimateIngestCostCents(brandCount: number): number {
-  return brandCount * AVG_PAGES_PER_BRAND * COST_PER_REQUEST_CENTS;
+  return brandCount * AVG_REQUESTS_PER_BRAND * COST_PER_REQUEST_CENTS;
+}
+
+// ---------- Geographic bounds for multi-phase search ----------
+
+/**
+ * GA metro bounding boxes. Used when a statewide textSearch hits the 60-
+ * result cap — we re-run the search per metro to capture additional
+ * locations. Bounds are generous (metro + inner suburbs + outer ring) so
+ * density is well covered; post-filter by bbox keeps noise out.
+ *
+ * These are approximate — they're for locationBias, not strict restriction.
+ */
+interface MetroBounds {
+  name: string;
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+const GA_METROS: MetroBounds[] = [
+  { name: 'Atlanta',  north: 34.35, south: 33.25, east: -83.80, west: -85.05 },
+  { name: 'Savannah', north: 32.30, south: 31.80, east: -80.95, west: -81.50 },
+  { name: 'Augusta',  north: 33.75, south: 33.15, east: -81.70, west: -82.40 },
+  { name: 'Columbus', north: 32.80, south: 32.30, east: -84.55, west: -85.20 },
+  { name: 'Macon',    north: 33.05, south: 32.45, east: -83.35, west: -83.90 },
+  { name: 'Athens',   north: 34.15, south: 33.70, east: -83.15, west: -83.60 },
+];
+
+function googleBoundsFor(m: MetroBounds): google.maps.LatLngBounds {
+  return new google.maps.LatLngBounds(
+    new google.maps.LatLng(m.south, m.west),
+    new google.maps.LatLng(m.north, m.east),
+  );
+}
+
+function inBbox(lat: number, lng: number, m: MetroBounds): boolean {
+  return lat >= m.south && lat <= m.north && lng >= m.west && lng <= m.east;
 }
 
 // ---------- SDK + service initialization ----------
@@ -99,10 +140,18 @@ export async function initMerchantIngestService(): Promise<void> {
 // ---------- Ingestion ----------
 
 /**
- * Run a text search for one brand and upsert results into merchant_location.
+ * Run Places Text Search for one brand and upsert results into
+ * merchant_location.
  *
- * The result object reflects new/updated counts, status changes, and an
- * estimated cost based on how many pages were fetched.
+ * Two-phase search to get past the 60-result cap Google imposes on
+ * textSearch:
+ *   1. Statewide: "{brand} in Georgia" (up to 60 results)
+ *   2. If Phase 1 returned exactly 60 (cap hit → likely more exist),
+ *      re-run per-metro with locationBias bounds, union by place_id.
+ *
+ * Each returned place is post-filtered to guarantee a GA address (Places
+ * textSearch with bounds uses locationBias, not locationRestriction, so
+ * results can leak across state lines).
  */
 export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandResult> {
   const result: IngestBrandResult = {
@@ -119,26 +168,75 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
   try {
     await initMerchantIngestService();
 
-    // Admin can override the search text per-brand; default includes the
-    // state for geographic scoping. Status filter 'all' includes OPERATIONAL,
-    // CLOSED_TEMPORARILY, and CLOSED_PERMANENTLY — we want closures too so
-    // closure alerts can be raised on status changes.
-    const query = brand.places_search_query?.trim() || `${brand.name} in Georgia`;
-    const places = await googlePlacesSearchService.textSearch(query, 'all');
-    result.locationsFound = places.length;
+    const brandQuery = brand.places_search_query?.trim() || brand.name;
 
-    // Brandfetch's places service returns up to 60 results across 3 pages.
-    // Estimate cost based on pages actually fetched.
-    const pagesUsed = Math.min(3, Math.ceil(places.length / 20)) || 1;
-    result.costCents = pagesUsed * COST_PER_REQUEST_CENTS;
+    // --- Phase 1: statewide search ---
+    const statewideResults = await googlePlacesSearchService.textSearch(
+      `${brandQuery} in Georgia`,
+      'all',
+    );
+    const statewidePages = Math.min(3, Math.ceil(statewideResults.length / 20)) || 1;
+    result.costCents += statewidePages * COST_PER_REQUEST_CENTS;
 
-    // Places' textSearch sometimes returns out-of-state results. Filter to GA.
-    const gaPlaces = places.filter((p) => {
+    // Map by place_id for dedup across phases
+    const byId = new Map<string, PlacesSearchResult>();
+    for (const p of statewideResults) byId.set(p.place_id, p);
+
+    // --- Phase 2: metro partition, only if Phase 1 hit the cap ---
+    // Google's cap is 60 (3 pages × 20). If we got 60 back, there are
+    // probably more; re-run per metro with location bias to discover them.
+    const hitCap = statewideResults.length >= 60;
+    if (hitCap) {
+      for (const metro of GA_METROS) {
+        const bounds = googleBoundsFor(metro);
+        const metroResults = await googlePlacesSearchService.textSearch(
+          brandQuery,
+          bounds,
+        );
+        const metroPages = Math.min(3, Math.ceil(metroResults.length / 20)) || 1;
+        result.costCents += metroPages * COST_PER_REQUEST_CENTS;
+
+        // Post-filter: with locationBias (not locationRestriction) Places may
+        // return nearby out-of-metro / out-of-state results. Keep only those
+        // whose coords fall inside the metro bbox. Union into main bag.
+        for (const p of metroResults) {
+          if (inBbox(p.latitude, p.longitude, metro)) {
+            byId.set(p.place_id, p);
+          }
+        }
+
+        // --- Phase 3: grid nearbySearch, only if this metro ALSO hit cap ---
+        // Triggers for super-dense metro+brand combinations (e.g., Starbucks
+        // in Atlanta has 300+ stores). 15km cells across metro Atlanta =
+        // ~40 grid cells. Each is one nearbySearch request.
+        if (metroResults.length >= 60) {
+          const gridResults = await googlePlacesSearchService.nearbySearchWithGrid(
+            brandQuery,
+            bounds,
+            15000, // 15km grid cells — small enough that cells rarely cap
+            'all',
+          );
+          const gridCellCount = Math.max(1, Math.ceil(gridResults.length / 20));
+          // Best-effort cost estimate — the service logs its own actual cost,
+          // but we want the UI to show a progress-time figure.
+          result.costCents += gridCellCount * COST_PER_REQUEST_CENTS;
+          for (const p of gridResults) {
+            if (inBbox(p.latitude, p.longitude, metro)) {
+              byId.set(p.place_id, p);
+            }
+          }
+        }
+      }
+    }
+
+    // Final dedup'd list, GA-only by address (belt-and-suspenders vs bbox).
+    const allPlaces = Array.from(byId.values()).filter((p) => {
       const addr = p.formatted_address ?? '';
       return addr.includes(', GA') || /\bGeorgia\b/.test(addr);
     });
+    result.locationsFound = allPlaces.length;
 
-    for (const place of gaPlaces) {
+    for (const place of allPlaces) {
       await upsertMerchantLocation(brand.id, place, result);
     }
 
