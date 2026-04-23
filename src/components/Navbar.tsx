@@ -499,6 +499,17 @@ export default function Navbar() {
                       👥 User Management
                     </button>
                   )}
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => {
+                        navigate('/admin/merchants');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      🏪 Merchants (Logos)
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       navigate('/kpi-dashboard');
@@ -1089,6 +1100,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     👥 User Management
+                  </button>
+                )}
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => {
+                      navigate('/admin/merchants');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    🏪 Merchants (Logos)
                   </button>
                 )}
                 <button
