@@ -9,10 +9,7 @@
 
 import { Loader } from '@googlemaps/js-api-loader';
 import { supabase } from '../lib/supabaseClient';
-import {
-  googlePlacesSearchService,
-  PlacesSearchResult,
-} from './googlePlacesSearchService';
+import { PlacesSearchResult } from './googlePlacesSearchService';
 
 export interface MerchantBrandRow {
   id: string;
@@ -79,6 +76,16 @@ interface MetroBounds {
   west: number;
 }
 
+// Georgia state bounding box — used as Phase 1 locationRestriction so
+// Places can only return in-state results.
+const GA_STATE_BOUNDS: MetroBounds = {
+  name: 'Georgia',
+  north: 35.01,
+  south: 30.35,
+  east: -80.75,
+  west: -85.61,
+};
+
 const GA_METROS: MetroBounds[] = [
   { name: 'Atlanta',  north: 34.35, south: 33.25, east: -83.80, west: -85.05 },
   { name: 'Savannah', north: 32.30, south: 31.80, east: -80.95, west: -81.50 },
@@ -88,88 +95,113 @@ const GA_METROS: MetroBounds[] = [
   { name: 'Athens',   north: 34.15, south: 33.70, east: -83.15, west: -83.60 },
 ];
 
-function googleBoundsFor(m: MetroBounds): google.maps.LatLngBounds {
-  return new google.maps.LatLngBounds(
-    new google.maps.LatLng(m.south, m.west),
-    new google.maps.LatLng(m.north, m.east),
-  );
-}
-
-function inBbox(lat: number, lng: number, m: MetroBounds): boolean {
-  return lat >= m.south && lat <= m.north && lng >= m.west && lng <= m.east;
-}
-
-// ---------- Pagination-correct textSearch ----------
+// ---------- New Places API (Place.searchByText) ----------
 
 /**
- * The shared googlePlacesSearchService.textSearch has a latent pagination
- * bug: it resolves its Promise on page 1, so pages 2 and 3 are discarded
- * by the time the callback fires for them. That limits every text search
- * to 20 results (one page) instead of Google's 60-cap.
+ * Wraps google.maps.places.Place.searchByText (the 2025 Places API).
  *
- * We bypass that here by calling PlacesService.textSearch directly with
- * a single Promise that doesn't resolve until pagination completes.
- * Also writes one google_places_api_log row per page so cost tracking
- * stays consistent with the shared infra.
+ * Why we use the new API instead of PlacesService.textSearch:
+ *   - The legacy PlacesService.textSearch has a pagination bug (returns
+ *     20 instead of 60) AND started returning INVALID_REQUEST under some
+ *     conditions post-March-2025. Google has stated they won't fix it.
+ *   - Place.searchByText is Promise-based, has strict locationRestriction
+ *     (not just locationBias), and cleanly maps to our PlacesSearchResult.
+ *
+ * Trade-off: Place.searchByText caps at 20 results per call (vs legacy's
+ * 60). We rely more on metro + grid partitioning for dense brands.
  */
-async function textSearchFullPagination(
+
+type NewPlaceClass = {
+  searchByText(request: {
+    textQuery: string;
+    fields: string[];
+    maxResultCount?: number;
+    locationRestriction?: { west: number; east: number; north: number; south: number };
+    locationBias?: unknown;
+    includedType?: string;
+    region?: string;
+  }): Promise<{
+    places: Array<{
+      id: string;
+      displayName?: string;
+      formattedAddress?: string;
+      location?: { lat(): number; lng(): number };
+      businessStatus?: string;
+      nationalPhoneNumber?: string;
+      websiteURI?: string;
+      types?: string[];
+    }>;
+  }>;
+};
+
+let placeClass: NewPlaceClass | null = null;
+
+async function ensurePlaceClass(): Promise<NewPlaceClass> {
+  if (placeClass) return placeClass;
+  await ensureGoogleMapsLoaded();
+  const lib = (await google.maps.importLibrary('places')) as { Place: NewPlaceClass };
+  placeClass = lib.Place;
+  return placeClass;
+}
+
+const PLACE_FIELDS = [
+  'id',
+  'displayName',
+  'formattedAddress',
+  'location',
+  'businessStatus',
+  'nationalPhoneNumber',
+  'websiteURI',
+  'types',
+];
+
+async function searchPlaces(
   query: string,
-  bounds?: google.maps.LatLngBounds,
+  restriction?: MetroBounds,
 ): Promise<PlacesSearchResult[]> {
-  const service = await getMerchantPlacesService();
+  const Place = await ensurePlaceClass();
 
-  const rawResults: google.maps.places.PlaceResult[] = [];
-  let pageCount = 0;
+  const request: Parameters<NewPlaceClass['searchByText']>[0] = {
+    textQuery: query,
+    fields: PLACE_FIELDS,
+    maxResultCount: 20,
+    region: 'us',
+  };
+  if (restriction) {
+    request.locationRestriction = {
+      north: restriction.north,
+      south: restriction.south,
+      east: restriction.east,
+      west: restriction.west,
+    };
+  }
 
-  await new Promise<void>((resolve, reject) => {
-    const request: google.maps.places.TextSearchRequest = { query };
-    if (bounds) request.bounds = bounds;
+  let places: Awaited<ReturnType<NewPlaceClass['searchByText']>>['places'];
+  try {
+    const result = await Place.searchByText(request);
+    places = result.places ?? [];
+  } catch (e) {
+    throw new Error(
+      `Place.searchByText failed for "${query}": ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 
-    service.textSearch(request, function handle(results, status, pagination) {
-      if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-        resolve();
-        return;
-      }
-      if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
-        reject(new Error(`Places textSearch error: ${status}`));
-        return;
-      }
+  await logPlaceSearch(places.length);
 
-      pageCount++;
-      rawResults.push(...results);
-
-      if (pagination?.hasNextPage && pageCount < 3) {
-        // Google requires a short delay before calling nextPage — their
-        // example uses ~2s. This invokes the same callback with the next
-        // page's results; resolve() fires when pagination is exhausted.
-        setTimeout(() => pagination.nextPage(), 2100);
-      } else {
-        resolve();
-      }
-    });
-  });
-
-  // Log each page as one API request, matching the shared log conventions.
-  await logTextSearchPages(pageCount, rawResults.length);
-
-  // Convert Places API results to our internal type.
   const out: PlacesSearchResult[] = [];
-  for (const p of rawResults) {
-    if (!p.place_id || !p.geometry?.location) continue;
+  for (const p of places) {
+    if (!p.id || !p.location) continue;
     out.push({
-      place_id: p.place_id,
-      name: p.name ?? '',
-      formatted_address: p.formatted_address ?? '',
-      latitude: p.geometry.location.lat(),
-      longitude: p.geometry.location.lng(),
+      place_id: p.id,
+      name: p.displayName ?? '',
+      formatted_address: p.formattedAddress ?? '',
+      latitude: p.location.lat(),
+      longitude: p.location.lng(),
       business_status:
-        (p.business_status as PlacesSearchResult['business_status']) ?? 'OPERATIONAL',
+        (p.businessStatus as PlacesSearchResult['business_status']) ?? 'OPERATIONAL',
       types: p.types ?? [],
-      rating: p.rating,
-      user_ratings_total: p.user_ratings_total,
-      phone_number: p.formatted_phone_number,
-      website: p.website,
-      raw_data: p,
+      phone_number: p.nationalPhoneNumber,
+      website: p.websiteURI,
     });
   }
   return dedupByPlaceId(out);
@@ -186,13 +218,12 @@ function dedupByPlaceId(results: PlacesSearchResult[]): PlacesSearchResult[] {
   return out;
 }
 
-async function logTextSearchPages(pageCount: number, resultsCount: number): Promise<void> {
-  if (pageCount === 0) return;
+async function logPlaceSearch(resultsCount: number): Promise<void> {
   await supabase.from('google_places_api_log').insert({
-    request_type: 'text_search',
-    api_endpoint: 'textSearch',
-    request_count: pageCount,
-    estimated_cost_cents: pageCount * COST_PER_REQUEST_CENTS,
+    request_type: 'place_search_by_text',
+    api_endpoint: 'Place.searchByText',
+    request_count: 1,
+    estimated_cost_cents: COST_PER_REQUEST_CENTS,
     results_count: resultsCount,
     response_status: 'OK',
   });
@@ -201,7 +232,6 @@ async function logTextSearchPages(pageCount: number, resultsCount: number): Prom
 // ---------- SDK + service initialization ----------
 
 let mapsLoadPromise: Promise<void> | null = null;
-let placesInitialized = false;
 
 async function ensureGoogleMapsLoaded(): Promise<void> {
   if (typeof window !== 'undefined' && window.google?.maps?.places) {
@@ -227,27 +257,9 @@ async function ensureGoogleMapsLoaded(): Promise<void> {
   return mapsLoadPromise;
 }
 
-/**
- * Get the shared PlacesService instance — reused from
- * googlePlacesSearchService because fresh instances are returning
- * INVALID_REQUEST on textSearch under the current Maps SDK. The shared
- * instance works reliably.
- */
-async function getMerchantPlacesService(): Promise<google.maps.places.PlacesService> {
-  await initMerchantIngestService();
-  return googlePlacesSearchService.getPlacesService();
-}
-
 export async function initMerchantIngestService(): Promise<void> {
   await ensureGoogleMapsLoaded();
-  if (!placesInitialized) {
-    const div = document.createElement('div');
-    div.id = 'merchant-places-attribution';
-    div.style.display = 'none';
-    document.body.appendChild(div);
-    googlePlacesSearchService.initPlacesService(div);
-    placesInitialized = true;
-  }
+  await ensurePlaceClass();
 }
 
 // ---------- Ingestion ----------
@@ -284,59 +296,35 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
     const brandQuery = brand.places_search_query?.trim() || brand.name;
 
     // --- Phase 1: statewide search ---
-    const statewideResults = await textSearchFullPagination(`${brandQuery} in Georgia`);
-    const statewidePages = Math.min(3, Math.ceil(statewideResults.length / 20)) || 1;
-    result.costCents += statewidePages * COST_PER_REQUEST_CENTS;
+    // Using Place.searchByText (2025 API) with a GA-wide locationRestriction.
+    // Returns up to 20 results per call.
+    const statewideResults = await searchPlaces(brandQuery, GA_STATE_BOUNDS);
+    result.costCents += COST_PER_REQUEST_CENTS;
 
-    // Map by place_id for dedup across phases
     const byId = new Map<string, PlacesSearchResult>();
     for (const p of statewideResults) byId.set(p.place_id, p);
 
-    // --- Phase 2: metro partition, only if Phase 1 hit the cap ---
-    // Google's cap is 60 (3 pages × 20). If we got 60 back, there are
-    // probably more; re-run per metro with location bias to discover them.
-    const hitCap = statewideResults.length >= 60;
+    // --- Phase 2: metro partition, only if Phase 1 hit the 20-cap ---
+    const hitCap = statewideResults.length >= 20;
     if (hitCap) {
       for (const metro of GA_METROS) {
-        const bounds = googleBoundsFor(metro);
-        const metroResults = await textSearchFullPagination(brandQuery, bounds);
-        const metroPages = Math.min(3, Math.ceil(metroResults.length / 20)) || 1;
-        result.costCents += metroPages * COST_PER_REQUEST_CENTS;
+        const metroResults = await searchPlaces(brandQuery, metro);
+        result.costCents += COST_PER_REQUEST_CENTS;
+        for (const p of metroResults) byId.set(p.place_id, p);
 
-        // Post-filter: with locationBias (not locationRestriction) Places may
-        // return nearby out-of-metro / out-of-state results. Keep only those
-        // whose coords fall inside the metro bbox. Union into main bag.
-        for (const p of metroResults) {
-          if (inBbox(p.latitude, p.longitude, metro)) {
-            byId.set(p.place_id, p);
-          }
-        }
-
-        // --- Phase 3: grid nearbySearch, only if this metro ALSO hit cap ---
-        // Triggers for super-dense metro+brand combinations (e.g., Starbucks
-        // in Atlanta has 300+ stores). 15km cells across metro Atlanta =
-        // ~40 grid cells. Each is one nearbySearch request.
-        if (metroResults.length >= 60) {
-          const gridResults = await googlePlacesSearchService.nearbySearchWithGrid(
-            brandQuery,
-            bounds,
-            15000, // 15km grid cells — small enough that cells rarely cap
-            'all',
-          );
-          const gridCellCount = Math.max(1, Math.ceil(gridResults.length / 20));
-          // Best-effort cost estimate — the service logs its own actual cost,
-          // but we want the UI to show a progress-time figure.
-          result.costCents += gridCellCount * COST_PER_REQUEST_CENTS;
-          for (const p of gridResults) {
-            if (inBbox(p.latitude, p.longitude, metro)) {
-              byId.set(p.place_id, p);
-            }
+        // --- Phase 3: grid, only if this metro ALSO hit cap ---
+        if (metroResults.length >= 20) {
+          const cells = subdivideMetro(metro, 4); // 4×4 = 16 sub-cells
+          for (const cell of cells) {
+            const cellResults = await searchPlaces(brandQuery, cell);
+            result.costCents += COST_PER_REQUEST_CENTS;
+            for (const p of cellResults) byId.set(p.place_id, p);
           }
         }
       }
     }
 
-    // Final dedup'd list, GA-only by address (belt-and-suspenders vs bbox).
+    // Final dedup'd list, GA-only by address.
     const allPlaces = Array.from(byId.values()).filter((p) => {
       const addr = p.formatted_address ?? '';
       return addr.includes(', GA') || /\bGeorgia\b/.test(addr);
@@ -359,6 +347,25 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
   }
 
   return result;
+}
+
+/** Split a metro's bbox into an N×N grid of smaller bboxes. */
+function subdivideMetro(m: MetroBounds, n: number): MetroBounds[] {
+  const latStep = (m.north - m.south) / n;
+  const lngStep = (m.east - m.west) / n;
+  const cells: MetroBounds[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      cells.push({
+        name: `${m.name} ${i},${j}`,
+        south: m.south + i * latStep,
+        north: m.south + (i + 1) * latStep,
+        west: m.west + j * lngStep,
+        east: m.west + (j + 1) * lngStep,
+      });
+    }
+  }
+  return cells;
 }
 
 async function upsertMerchantLocation(
