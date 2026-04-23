@@ -75,7 +75,7 @@ import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 import PortalEmailSettingsPage from "./pages/PortalEmailSettingsPage";
 import PortalAnalyticsPage from "./pages/admin/PortalAnalyticsPage";
 import FinanceSettingsPage from "./pages/admin/FinanceSettingsPage";
-import MerchantAdminBrandsPage from "./pages/admin/MerchantAdminBrandsPage";
+import MerchantAdminPage from "./pages/admin/MerchantAdminPage";
 import LayerManagementPage from "./pages/LayerManagementPage";
 import ArtyDrawReportPage from "./pages/ArtyDrawReportPage";
 import MikeIsOwedReportPage from "./pages/MikeIsOwedReportPage";
@@ -199,7 +199,7 @@ function App() {
           <Route path="admin/portal-email-settings" element={<AdminRoute><PortalEmailSettingsPage /></AdminRoute>} />
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />
           <Route path="admin/layers" element={<AdminRoute><LayerManagementPage /></AdminRoute>} />
-          <Route path="admin/merchants" element={<AdminRoute><MerchantAdminBrandsPage /></AdminRoute>} />
+          <Route path="admin/merchants" element={<AdminRoute><MerchantAdminPage /></AdminRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />
