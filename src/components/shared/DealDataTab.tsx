@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { SiteSubmitData } from './SiteSubmitSidebar';
+import DemographicsSection from './DemographicsSection';
 
 interface DealData {
   id: string;
@@ -515,6 +516,13 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
           </>
         )}
       </FieldGroup>
+
+      {/* Demographics (includes client-specific enrichment) */}
+      <DemographicsSection
+        siteSubmit={siteSubmit}
+        isEditable={isEditable}
+        onUpdate={onUpdate}
+      />
 
       {/* Original Property Values - Collapsible */}
       <FieldGroup
