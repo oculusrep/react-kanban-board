@@ -15,7 +15,7 @@ interface UseDropboxFilesReturn {
   error: string | null;
   refreshFiles: (silent?: boolean) => Promise<void>;
   uploadFiles: (fileList: UploadableFiles, subPath?: string) => Promise<void>;
-  createFolder: (folderName: string) => Promise<void>;
+  createFolder: (folderName: string, parentSubPath?: string) => Promise<void>;
   deleteItem: (path: string) => Promise<void>;
   moveItem: (sourcePath: string, destinationFolderPath: string) => Promise<void>;
   downloadFile: (path: string, fileName: string) => Promise<void>;
@@ -477,7 +477,7 @@ export function useDropboxFiles(
    * @param folderName - Name of the folder to create
    */
   const createFolder = useCallback(
-    async (folderName: string) => {
+    async (folderName: string, parentSubPath?: string) => {
       if (!dropboxService) {
         throw new Error('Dropbox service not initialized');
       }
@@ -489,10 +489,13 @@ export function useDropboxFiles(
       setError(null);
 
       try {
-        const newFolderPath = `${folderPath}/${folderName}`;
+        const trimmedSub = parentSubPath
+          ? parentSubPath.replace(/^\/+|\/+$/g, '')
+          : '';
+        const parentFullPath = trimmedSub ? `${folderPath}/${trimmedSub}` : folderPath;
+        const newFolderPath = `${parentFullPath}/${folderName}`;
         await dropboxService.createFolder(newFolderPath);
 
-        // Refresh file list after folder creation
         await refreshFiles();
       } catch (err: any) {
         console.error('Error creating folder:', err);

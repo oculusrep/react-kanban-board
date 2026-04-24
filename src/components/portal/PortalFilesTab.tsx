@@ -66,6 +66,37 @@ export default function PortalFilesTab({
   const propertyFileInputRef = useRef<HTMLInputElement>(null);
   const dealFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Create folder state (shared — only one section creates at a time)
+  const [creatingFolderFor, setCreatingFolderFor] = useState<'property' | 'deal' | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
+
+  const handleCreateFolder = async (entityType: 'property' | 'deal') => {
+    const trimmed = newFolderName.trim();
+    if (!trimmed) return;
+    const hook = entityType === 'property' ? propertyFiles : dealFiles;
+    const currentPath = entityType === 'property' ? propertyCurrentPath : dealCurrentPath;
+    setCreatingFolder(true);
+    setCreateFolderError(null);
+    try {
+      await hook.createFolder(trimmed, currentPath || undefined);
+      setCreatingFolderFor(null);
+      setNewFolderName('');
+    } catch (err: any) {
+      console.error('Error creating folder:', err);
+      setCreateFolderError(err?.message || 'Failed to create folder');
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  const cancelCreateFolder = () => {
+    setCreatingFolderFor(null);
+    setNewFolderName('');
+    setCreateFolderError(null);
+  };
+
   // Fetch visibility overrides
   useEffect(() => {
     const fetchVisibilityOverrides = async () => {
@@ -610,6 +641,21 @@ export default function PortalFilesTab({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
                 </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCreatingFolderFor(entityType);
+                    setNewFolderName('');
+                    setCreateFolderError(null);
+                    if (collapsed) setCollapsed(false);
+                  }}
+                  className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-white rounded transition-colors"
+                  title="New folder"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m-3-3h6m5 8H6a2 2 0 01-2-2V6a2 2 0 012-2h5l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2z" />
+                  </svg>
+                </button>
               </>
             )}
             <button
@@ -648,6 +694,49 @@ export default function PortalFilesTab({
         {/* Section Content */}
         {!collapsed && (
           <div className="bg-white">
+            {/* Create folder inline input */}
+            {creatingFolderFor === entityType && (
+              <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder="Folder name"
+                    autoFocus
+                    disabled={creatingFolder}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCreateFolder(entityType);
+                      if (e.key === 'Escape') cancelCreateFolder();
+                    }}
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  />
+                  <button
+                    onClick={() => handleCreateFolder(entityType)}
+                    disabled={creatingFolder || !newFolderName.trim()}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creatingFolder ? 'Creating…' : 'Create'}
+                  </button>
+                  <button
+                    onClick={cancelCreateFolder}
+                    disabled={creatingFolder}
+                    className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {currentPath && !createFolderError && (
+                  <p className="text-xs text-blue-700 mt-1.5">
+                    Will be created in /{currentPath}
+                  </p>
+                )}
+                {createFolderError && (
+                  <p className="text-xs text-red-600 mt-1.5">{createFolderError}</p>
+                )}
+              </div>
+            )}
+
             {/* Loading */}
             {filesHook.loading ? (
               <div className="flex items-center justify-center py-8">
