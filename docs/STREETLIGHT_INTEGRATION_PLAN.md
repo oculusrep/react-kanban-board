@@ -1,9 +1,49 @@
 # StreetLight Advanced Traffic Counts (SATC) API — Integration Plan
 
-**Status:** Planning — ready for review before implementation
+**Status:** Planning complete — ready to begin Phase 1 implementation
 **Last Updated:** 2026-04-23
 **Owner:** mike@oculusrep.com
 **Scope:** Integrate StreetLight SATC API into the OVIS mapping tool with strict quota guardrails, permanent caching, per-segment user-opt-in for every spend, usage monitoring, and a permission-gated rollout (admin-only during testing).
+
+---
+
+## 🔖 Resume Here (session handoff — 2026-04-23)
+
+**When you come back and say "let's pick up where we left off on streetlights," this is where you are:**
+
+### Where the work lives
+- **Branch:** `feature/streetlight-integration` — **local is ahead of `origin/feature/streetlight-integration`** by 2 commits (origin only has the first commit; the tightened spend flow + this handoff are local-only until you push).
+- **Plan doc:** this file — [docs/STREETLIGHT_INTEGRATION_PLAN.md](docs/STREETLIGHT_INTEGRATION_PLAN.md). All docs-only so far — no code written yet.
+- **Commits on the branch:**
+  - `d33d12e8` — initial plan (on origin)
+  - `533ffc16` — tightened spend flow: three-bucket model, per-segment opt-in, race re-verification, `update_reason` audit (local only)
+  - this commit — handoff / resume-here section (local only)
+
+### What's decided
+The full plan below is current. Key decisions locked in:
+1. Permanent per-segment Postgres cache keyed on `(segment_id, year_month, day_type, day_part)` — never pay twice for the same (segment, spec). See §4.
+2. Two-phase server flow: free `classify` action drives the modal; billable `metrics` action runs only after explicit per-segment user opt-in. See §5.2.
+3. Spend modal lists every candidate segment with its own checkbox, all default **unchecked**. Grouped into three buckets: up-to-date (free), stale (refresh, $0.50), never-queried ($0.50). See §8.2a.
+4. Server-side race re-verification before every `/metrics` call — final spend can only shrink from what the user saw.
+5. Admin-only for Phase 1 testing. Three new permission keys: `can_view_traffic_data`, `can_consume_traffic_quota`, `can_admin_traffic_quota`.
+6. Full audit log with per-segment `update_reason` ∈ {`new`, `refresh`, `different_daypart`} so the dashboard can split spend new-vs-refresh.
+
+### What's NOT decided — open questions (verify before Phase 1)
+See §11. Short version: confirm the exact auth header (`x-api-key` vs `Authorization: Bearer`), confirm `/geometry` and `/date_ranges` are truly $0, pick the canonical date spec string, check published rate limits. Most of these need the authenticated StreetLight docs you have access to.
+
+### Next action when resuming
+Start **Phase 1** (§10). Recommended order:
+1. Migrations for the five tables in §4 (start with `streetlight_segment`, `streetlight_segment_metrics`, `streetlight_usage_log`, `streetlight_usage_log_segment`, `streetlight_user_limit`, `streetlight_quota_config`).
+2. Edge function `supabase/functions/streetlight/index.ts` following the [supabase/functions/esri-geoenrich/index.ts](supabase/functions/esri-geoenrich/index.ts) pattern.
+3. Permission registry additions in [src/types/permissions.ts](src/types/permissions.ts).
+4. Client hook and map layer component.
+5. Spend modal last — it's the most UI work, and stubs can be replaced once the server actions are proven.
+
+### Known housekeeping
+- **Stash `stash@{0}`** (`On feature/streetlight-integration: streetlight doc work-in-progress 2026-04-23`) is obsolete — it contained piecemeal edits that were superseded by the full rewrite in `533ffc16`. Safe to drop with `git stash drop stash@{0}` when convenient.
+- No code has been written yet. Phase 1 is greenfield from a code standpoint.
+
+---
 
 **What changed 2026-04-23 (vs. initial draft):**
 - Spend flow is now **per-segment opt-in**. The confirmation modal lists each candidate segment with its own checkbox; all default **unchecked**. No "fetch everything in this polygon" shortcut. (§8.2a)
