@@ -238,7 +238,7 @@ export default function DemographicsSection({
           Demographics
         </h3>
         <div className="flex items-center gap-2">
-          {hasEnrichmentData && (
+          {(hasEnrichmentData || hasClientDemographics) && (
             <button
               onClick={() => setShowDemographicsModal(true)}
               className="text-xs font-medium hover:underline transition-colors"
