@@ -30,7 +30,7 @@ import SearchTestPage from "./components/SearchTestPage";
 import SearchDebugPage from "./components/SearchDebugPage";
 import NotesDebugPage from "./pages/NotesDebugPage";
 import MappingPage from "./pages/MappingPage";
-import MappingPageNew from "./pages/MappingPageNew";
+import MappingWorkspace from "./pages/MappingWorkspace";
 import ReportsPage from "./pages/ReportsPage";
 import DealReconciliationPage from "./pages/DealReconciliationPage";
 import PaymentReconciliationPage from "./pages/PaymentReconciliationPage";
@@ -159,7 +159,7 @@ function App() {
           <Route path="search-test" element={<CoachRoute><SearchTestPage /></CoachRoute>} />
           <Route path="search-debug" element={<CoachRoute><SearchDebugPage /></CoachRoute>} />
           <Route path="notes-debug" element={<CoachRoute><NotesDebugPage /></CoachRoute>} />
-          <Route path="mapping" element={<CoachRoute><MappingPageNew /></CoachRoute>} />
+          <Route path="mapping" element={<CoachRoute><MappingWorkspace /></CoachRoute>} />
           <Route path="mapping-old" element={<CoachRoute><MappingPage /></CoachRoute>} />
           <Route path="reports" element={<CoachRoute><ReportsPage /></CoachRoute>} />
           <Route path="reports/deal-reconciliation" element={<CoachRoute><DealReconciliationPage /></CoachRoute>} />
