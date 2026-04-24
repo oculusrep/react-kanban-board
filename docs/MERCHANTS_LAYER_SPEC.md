@@ -232,17 +232,22 @@ Skip: ratings, reviews, photos, opening hours — not needed for v1 pin display.
 
 **Log each Place.searchByText call** as one row in `google_places_api_log` at 2¢ per request, consistent with the existing cost-tracking infra used by ClosedBusinessSearchPanel.
 
-**Cost model (Georgia, full 401-brand run):**
+**Cost model (measured on 2026-04-23 full-run — see [GOOGLE_PLACES_API_STATUS.md](GOOGLE_PLACES_API_STATUS.md)):**
 
-| Brand class | Count | Cost per brand | Subtotal |
+| Brand class | Approx. count | Avg. cost/brand | Subtotal |
 |---|---:|---:|---:|
-| Simple (Phase 1 only) | ~350 | $0.02 | ~$7 |
-| Medium density (Phase 2) | ~30 | $0.14 | ~$4 |
-| Dense (Phase 3 on one metro) | ~15 | ~$0.50 | ~$8 |
-| Super-dense (Phase 3 on multiple metros, e.g. Starbucks) | ~5 | ~$1.40 | ~$7 |
-| **Total** | **401** | avg ~$0.07 | **~$26** |
+| Sparse (Phase 1 only) | ~150 | $0.02 | ~$3 |
+| Mid (Phase 2 triggered) | ~180 | $0.14 | ~$25 |
+| Dense (Phase 3 on one metro) | ~50 | $0.50–0.80 | ~$35 |
+| Super-dense (Phase 3 multiple metros) | ~20 | $1.00–1.50 | ~$25 |
+| Legacy textSearch attempts pre-migration | 3 req | — | $0.06 |
+| **Total — measured April 2026 initial ingestion** | **401** | avg ~$0.31 | **$124.58** |
 
-Validated 2026-04-23: Starbucks test returned 293 GA locations at $1.42.
+Starbucks validated: 293 GA locations at $1.42 (Phase 3 fired on Atlanta + a couple smaller metros).
+
+Historical spec estimate was ~$25 (based on pre-migration expectations with legacy 60-cap API). Reality was ~5× higher because the new API's 20-per-call cap triggers Phase 2/3 on almost any chain. The $200/month Google Cloud Maps Platform credit absorbs this; ongoing monthly refresh burn is expected to be $10–20 (not a fresh full ingestion each month).
+
+Options for cost reduction on future runs are documented in [GOOGLE_PLACES_API_STATUS.md §8](GOOGLE_PLACES_API_STATUS.md#8-cost-cutting-options-for-future-merchant-refresh-runs).
 
 ### 4.3 Current vs planned architecture
 

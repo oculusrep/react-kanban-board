@@ -227,9 +227,17 @@ class GooglePlacesSearchService {
   // --------------------------------------------------------------------------
 
   /**
-   * Perform a Text Search for a business name within bounds (optional)
-   * Best for searching chain names like "Del Taco"
-   * Can also be called with statusFilter for closed business searches
+   * Perform a Text Search for a business name within bounds (optional).
+   * Best for searching chain names like "Del Taco".
+   * Can also be called with statusFilter for closed business searches.
+   *
+   * Pagination: Google returns up to 3 pages × 20 results = 60 total. The
+   * legacy callback-based API fires the same callback once per page as you
+   * call pagination.nextPage(). Critical that the Promise NOT resolve until
+   * the last page has been received — earlier versions of this code
+   * resolved on page 1, silently discarding pages 2–3 and capping every
+   * search at 20 results. Fix landed 2026-04-23; see
+   * docs/GOOGLE_PLACES_API_STATUS.md §2.1 for the full story.
    */
   async textSearch(
     query: string,
@@ -249,79 +257,65 @@ class GooglePlacesSearchService {
       throw new Error('PlacesService not initialized. Call initPlacesService first.');
     }
 
-    const allResults: PlacesSearchResult[] = [];
-    let pageToken: string | undefined;
-    let requestCount = 0;
+    await this.waitForRateLimit();
 
-    do {
-      await this.waitForRateLimit();
-      requestCount++;
+    const rawResults: google.maps.places.PlaceResult[] = [];
+    let pageCount = 0;
 
-      const results = await new Promise<{
-        results: google.maps.places.PlaceResult[];
-        nextPageToken?: string;
-      }>((resolve, reject) => {
-        const request: google.maps.places.TextSearchRequest = {
-          query: query,
-        };
-        // Only add bounds if provided
-        if (bounds) {
-          request.bounds = bounds;
+    await new Promise<void>((resolve, reject) => {
+      const request: google.maps.places.TextSearchRequest = { query };
+      if (bounds) request.bounds = bounds;
+
+      // Single long-lived callback that fires once per page.
+      // pagination.nextPage() re-invokes this same function with the next
+      // page's results. We resolve the outer Promise only when pagination
+      // signals hasNextPage === false or we hit the 3-page cap.
+      this.placesService!.textSearch(request, function handle(results, status, pagination) {
+        if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+          resolve();
+          return;
+        }
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
+          reject(new Error(`Places API error: ${status}`));
+          return;
         }
 
-        this.placesService!.textSearch(request, (results, status, pagination) => {
-          if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-            resolve({
-              results,
-              nextPageToken: pagination?.hasNextPage ? 'has_more' : undefined,
-            });
-            // Store pagination for next page fetch
-            if (pagination?.hasNextPage) {
-              pageToken = 'pending';
-              // Wait a bit then fetch next page
-              setTimeout(() => {
-                pagination.nextPage();
-              }, 2000);
-            } else {
-              pageToken = undefined;
-            }
-          } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-            resolve({ results: [] });
-          } else {
-            reject(new Error(`Places API error: ${status}`));
-          }
-        });
+        pageCount++;
+        rawResults.push(...results);
+
+        if (pagination?.hasNextPage && pageCount < 3) {
+          // Google requires a short delay before calling nextPage(); their
+          // example uses ~2s. nextPage() re-invokes this same callback with
+          // the next page's results.
+          setTimeout(() => pagination.nextPage(), 2100);
+        } else {
+          resolve();
+        }
       });
+    });
 
-      // Convert to our format
-      for (const place of results.results) {
-        if (place.place_id && place.geometry?.location) {
-          allResults.push(this.convertPlaceResult(place));
-        }
+    // Convert to our internal type, dedupe, optionally status-filter.
+    const allResults: PlacesSearchResult[] = [];
+    for (const place of rawResults) {
+      if (place.place_id && place.geometry?.location) {
+        allResults.push(this.convertPlaceResult(place));
       }
+    }
 
-      // Only continue if we had a next page token
-      if (!results.nextPageToken) {
-        pageToken = undefined;
-      }
-    } while (pageToken && requestCount < 3); // Max 3 pages (60 results)
-
-    // Log API usage
+    // Log API usage — one entry per page actually fetched, matching actual spend.
     await this.logApiUsage(
       'text_search',
       'textSearch',
-      requestCount,
+      Math.max(pageCount, 1),
       allResults.length,
       'OK',
       queryId
     );
 
-    // Filter by status if provided
     let filteredResults = this.deduplicateResults(allResults);
     if (statusFilter) {
       filteredResults = this.filterByStatus(filteredResults, statusFilter);
     }
-
     return filteredResults;
   }
 
