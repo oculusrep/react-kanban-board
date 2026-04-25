@@ -18,6 +18,11 @@ export default function MappingWorkspace() {
   const [view, setView] = useState<'map' | 'pipeline'>('map');
   const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
 
+  // Currently-open site submit, shared across map and pipeline views so the
+  // sidebar, pin highlight, and pipeline row highlight all stay in sync when
+  // the user toggles views.
+  const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(null);
+
   // Property slideout state (only used from the pipeline view).
   // The map view has its own property slideout inside MappingPageNew.
   const [pipelinePropertyData, setPipelinePropertyData] = useState<any>(null);
@@ -27,6 +32,12 @@ export default function MappingWorkspace() {
   useEffect(() => {
     if (!selectedClient && view === 'pipeline') setView('map');
   }, [selectedClient, view]);
+
+  // Clear cross-view selection when the client changes — site submits are
+  // scoped per client, so the previous selection is no longer in the list.
+  useEffect(() => {
+    setSelectedSiteSubmitId(null);
+  }, [selectedClient?.id]);
 
   const handleViewPropertyFromPipeline = useCallback(async (propertyId: string) => {
     try {
@@ -55,6 +66,8 @@ export default function MappingWorkspace() {
           selectedClient={selectedClient}
           onSelectedClientChange={setSelectedClient}
           onSwitchToPipeline={() => setView('pipeline')}
+          controlledSelectedSiteSubmitId={selectedSiteSubmitId}
+          onSelectedSiteSubmitChange={setSelectedSiteSubmitId}
         />
       </div>
 
@@ -76,6 +89,8 @@ export default function MappingWorkspace() {
             }
             onViewProperty={handleViewPropertyFromPipeline}
             siteSubmitSidebarRightOffset={pipelinePropertyOpen ? 500 : 0}
+            selectedSiteSubmitId={selectedSiteSubmitId}
+            onSelectSiteSubmit={setSelectedSiteSubmitId}
           />
           <PinDetailsSlideout
             isOpen={pipelinePropertyOpen}

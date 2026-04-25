@@ -57,6 +57,10 @@ interface MappingPageProps {
   onSelectedClientChange?: (client: ClientSearchResult | null) => void;
   /** When provided, a "Switch to pipeline view" button is rendered next to the client selector. */
   onSwitchToPipeline?: () => void;
+  /** Externally-controlled "currently open site submit". When set, the site submit sidebar opens, the pin highlights, and the map re-centers. */
+  controlledSelectedSiteSubmitId?: string | null;
+  /** Notifies the parent when the user clicks a site submit pin or closes its sidebar, so cross-view selection can stay in sync. */
+  onSelectedSiteSubmitChange?: (id: string | null) => void;
 }
 
 // Inner component that uses the LayerManager context
@@ -64,6 +68,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   selectedClient: controlledSelectedClient,
   onSelectedClientChange,
   onSwitchToPipeline,
+  controlledSelectedSiteSubmitId,
+  onSelectedSiteSubmitChange,
 }) => {
   const { userRole } = useAuth();
   const { hasPermission } = usePermissions();
@@ -220,6 +226,34 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Site submit verification state
   const [verifyingSiteSubmitId, setVerifyingSiteSubmitId] = useState<string | null>(null);
   const [verifyingSiteSubmit, setVerifyingSiteSubmit] = useState<any>(null);
+
+  // Sync to externally-controlled site submit selection (from the pipeline view).
+  // When the parent sets a new ID, open the sidebar and let SiteSubmitLayer
+  // highlight the pin + report its position via onSelectedSiteSubmitPosition.
+  // When it clears to null, close the sidebar (only if it was a site submit).
+  useEffect(() => {
+    if (controlledSelectedSiteSubmitId === undefined) return;
+    const currentId =
+      selectedPinType === 'site_submit' && selectedPinData ? selectedPinData.id : null;
+    if (controlledSelectedSiteSubmitId === currentId) return;
+
+    if (controlledSelectedSiteSubmitId === null) {
+      if (selectedPinType === 'site_submit') {
+        setIsPinDetailsOpen(false);
+        setSelectedPinData(null);
+        setSelectedPinType(null);
+        setPinDetailsInitialTab(undefined);
+      }
+      return;
+    }
+
+    // Open the site submit sidebar with a minimal stub; SiteSubmitSidebar
+    // fetches its own data from the ID, and SiteSubmitLayer renders the
+    // selected-pin highlight from selectedSiteSubmitId.
+    setSelectedPinData({ id: controlledSelectedSiteSubmitId });
+    setSelectedPinType('site_submit');
+    setIsPinDetailsOpen(true);
+  }, [controlledSelectedSiteSubmitId]);
 
   // Flag to prevent property context menu when site submit was just clicked
   const [suppressPropertyContextMenu, setSuppressPropertyContextMenu] = useState<boolean>(false);
@@ -1202,9 +1236,21 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     setSelectedPinData(data);
     setSelectedPinType(type);
     setIsPinDetailsOpen(true);
+
+    // Mirror site submit selection up to the workspace so the pipeline view
+    // sees the same selection when the user toggles views.
+    if (type === 'site_submit' && data?.id) {
+      onSelectedSiteSubmitChange?.(data.id);
+    }
   };
 
   const handlePinDetailsClose = () => {
+    // Clear the cross-view site submit selection if we're closing a site
+    // submit sidebar — keeps the pipeline row in sync.
+    if (selectedPinType === 'site_submit') {
+      onSelectedSiteSubmitChange?.(null);
+    }
+
     setIsPinDetailsOpen(false);
     setSelectedPinData(null);
     setSelectedPinType(null);
@@ -2634,6 +2680,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               verifyingSiteSubmit={verifyingSiteSubmit}
               onLocationVerified={handleSiteSubmitLocationVerified}
               selectedSiteSubmitId={selectedPinType === 'site_submit' && selectedPinData ? selectedPinData.id : null}
+              onSelectedSiteSubmitPosition={(lat, lng) => {
+                if (mapInstance) mapInstance.setCenter({ lat, lng });
+              }}
             />
 
             {/* Restaurant Layer - Connected to Layer Manager */}
