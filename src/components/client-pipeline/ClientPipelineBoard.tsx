@@ -13,6 +13,7 @@ import {
 } from './pipelineConfig';
 import SiteSubmitSidebar from '../shared/SiteSubmitSidebar';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
+import RecentChangesTab from '../portal/RecentChangesTab';
 
 export interface ClientPipelineBoardProps {
   /** IDs of clients whose site submits to show. Empty array → empty state. */
@@ -129,6 +130,11 @@ export default function ClientPipelineBoard({
     }
     if (initialStageName === 'signed') {
       setSelectedStageId('signed');
+      setInitialStageApplied(true);
+      return;
+    }
+    if (initialStageName === 'recent_changes') {
+      setSelectedStageId('recent_changes');
       setInitialStageApplied(true);
       return;
     }
@@ -464,6 +470,18 @@ export default function ClientPipelineBoard({
                 {siteSubmits.length}
               </span>
             </button>
+
+            <button
+              onClick={() => handleStageChange('recent_changes')}
+              className={`px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all border ${
+                selectedStageId === 'recent_changes'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300'
+              }`}
+              title="Activity from the last 7 days"
+            >
+              Recent Changes
+            </button>
           </div>
 
           {showOtherStagesDropdown && otherStages.length > 0 && (
@@ -591,7 +609,12 @@ export default function ClientPipelineBoard({
 
       {/* Table */}
       <div className="flex-1 overflow-auto">
-        {loading ? (
+        {selectedStageId === 'recent_changes' ? (
+          <RecentChangesTab
+            clientIds={clientIds}
+            onSelectSiteSubmit={(id) => setSelectedSiteSubmitId(id)}
+          />
+        ) : loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           </div>

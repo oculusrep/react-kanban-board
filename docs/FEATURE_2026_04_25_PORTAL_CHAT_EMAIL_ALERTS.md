@@ -1,8 +1,55 @@
 # Portal Chat Email Alerts & Daily Digest — Implementation Plan
 
 **Date:** 2026-04-25
-**Status:** Plan / pre-implementation
+**Status:** Phase 1 implemented (pending DB migration apply + edge function deploy + cron schedule)
 **Owner:** Mike
+
+## Phase 1 implementation status (as of 2026-04-25)
+
+All seven Phase 1 items are coded. **Not yet applied to any environment** — needs:
+
+1. Apply migrations:
+   - `supabase/migrations/20260425_portal_email_alerts_schema.sql`
+   - `supabase/migrations/20260425_portal_email_alerts_triggers.sql`
+2. Deploy edge functions:
+   - `send-portal-comment-alert` (Resend cron drainer)
+   - `send-portal-digest` (Gmail, broker-triggered)
+3. Schedule a cron in Supabase to invoke `send-portal-comment-alert` every ~5 min.
+4. Set env vars:
+   - `RESEND_API_KEY`, `RESEND_FROM_EMAIL` (default `notifications@oculusrep.com`)
+   - `PORTAL_BASE_URL` (default `https://app.oculusrep.com`)
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` already exist for Gmail
+5. Decisions still open from this doc:
+   - File capture interpretation chosen during build → **option C**: trigger fires on `portal_file_visibility` flips into visible AND `site_submit_id IS NOT NULL`. activity_type = `'file_shared'`.
+   - Broker association → **option B**: new `client_broker` junction table (not retrofitting `deal_team`).
+   - Site submit stage history → **option A**: new `site_submit_stage_history` table mirroring `deal_stage_history`.
+   - Deal↔site_submit stage sync → deferred to follow-up doc [PLAN_2026_04_25_DEAL_SITE_SUBMIT_STAGE_SYNC.md](PLAN_2026_04_25_DEAL_SITE_SUBMIT_STAGE_SYNC.md).
+
+### Files added in this implementation
+
+Schema / triggers:
+- `supabase/migrations/20260425_portal_email_alerts_schema.sql`
+- `supabase/migrations/20260425_portal_email_alerts_triggers.sql`
+
+Edge functions:
+- `supabase/functions/send-portal-comment-alert/index.ts`
+- `supabase/functions/send-portal-digest/index.ts`
+- `supabase/functions/_shared/portalEmailTemplates.ts`
+
+UI:
+- `src/components/portal/ClientBrokersSection.tsx` (new client setup section)
+- `src/components/portal/DigestComposeModal.tsx` (new compose modal)
+- `src/components/portal/RecentChangesTab.tsx` (new pipeline tab content)
+- `src/components/ClientOverviewTab.tsx` (added `<ClientBrokersSection />`)
+- `src/pages/SiteSubmitDetailsPage.tsx` (added bell icon + modal mount)
+- `src/components/client-pipeline/ClientPipelineBoard.tsx` (added "Recent Changes" tab button + conditional render)
+
+### Phase 1 deferred to a later pass
+
+- **Read-state on Recent Changes rows** (Phase 2 item 8 below) — bold/dot indicators using `portal_site_submit_view`.
+- **Map legend "Recent Changes" toggle** + "Show on Map" button (Phase 2 item 9).
+- **Audit log view for portal admins** (Phase 2 item 10).
+- **Unsubscribe link wiring** (Phase 2 item 11).
 
 ## Goal
 

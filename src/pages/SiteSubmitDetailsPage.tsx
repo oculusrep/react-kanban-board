@@ -20,6 +20,9 @@ import AutosaveIndicator from '../components/AutosaveIndicator';
 import { useSiteSubmitEmail } from '../hooks/useSiteSubmitEmail';
 import RecordMetadata from '../components/RecordMetadata';
 import ConvertSiteSubmitToDealModal from '../components/ConvertSiteSubmitToDealModal';
+import DigestComposeModal from '../components/portal/DigestComposeModal';
+import { Bell } from 'lucide-react';
+import { CLIENT_VISIBLE_STAGES } from '../components/client-pipeline/pipelineConfig';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -88,6 +91,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const [dealName, setDealName] = useState<string | null>(null);
   const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
   const [showConvertToDealModal, setShowConvertToDealModal] = useState(false);
+  const [showDigestModal, setShowDigestModal] = useState(false);
   const [siteSubmitCode, setSiteSubmitCode] = useState<string>('');
   const [submitStages, setSubmitStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -653,6 +657,27 @@ const SiteSubmitDetailsPage: React.FC = () => {
                         </>
                       )}
                     </button>
+                    {(() => {
+                      const currentStageName = submitStages.find((s) => s.id === formData.submit_stage_id)?.name || null;
+                      const isClientVisibleStage = currentStageName ? CLIENT_VISIBLE_STAGES.includes(currentStageName) : false;
+                      const disabledReason = !formData.client_id
+                        ? 'Assign a client to send portal updates'
+                        : !isClientVisibleStage
+                        ? 'Choose a client-visible stage to notify the client'
+                        : null;
+                      return (
+                        <button
+                          onClick={() => setShowDigestModal(true)}
+                          disabled={loading || !!disabledReason}
+                          title={disabledReason || 'Send update to client portal'}
+                          className="px-3 py-1.5 text-xs font-medium border rounded flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ color: '#002147', borderColor: '#8FA9C8', backgroundColor: '#FFFFFF' }}
+                        >
+                          <Bell className="h-3 w-3" />
+                          Notify Client
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={handleSendEmail}
                       disabled={sendingEmail || loading}
@@ -1197,6 +1222,18 @@ const SiteSubmitDetailsPage: React.FC = () => {
               navigate(`/deal/${dealId}`);
             }
           }}
+        />
+      )}
+
+      {/* Digest Compose Modal */}
+      {!isNewSiteSubmit && formData.client_id && siteSubmitId && (
+        <DigestComposeModal
+          isOpen={showDigestModal}
+          onClose={() => setShowDigestModal(false)}
+          siteSubmitId={siteSubmitId}
+          siteSubmitName={formData.site_submit_name || null}
+          clientId={formData.client_id}
+          clientName={selectedClient?.client_name || null}
         />
       )}
     </div>

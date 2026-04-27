@@ -21,6 +21,8 @@ import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
 import { useSiteSubmitEmail } from '../../hooks/useSiteSubmitEmail';
 import EmailComposerModal from '../EmailComposerModal';
 import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
+import DigestComposeModal from '../portal/DigestComposeModal';
+import { CLIENT_VISIBLE_STAGES } from '../client-pipeline/pipelineConfig';
 
 export interface SiteSubmitData {
   id: string;
@@ -219,6 +221,7 @@ export default function SiteSubmitSidebar({
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [preparingEmail, setPreparingEmail] = useState(false);
   const [showConvertToDealModal, setShowConvertToDealModal] = useState(false);
+  const [showDigestModal, setShowDigestModal] = useState(false);
   const [pendingLoiStageChange, setPendingLoiStageChange] = useState<{ stageId: string; stageName: string } | null>(null);
   const [showLoiConversionPrompt, setShowLoiConversionPrompt] = useState(false);
   const [createFormKey, setCreateFormKey] = useState(0);
@@ -710,6 +713,33 @@ export default function SiteSubmitSidebar({
               </button>
             )}
 
+            {/* Notify Client button (bell) - sends portal digest */}
+            {isEditable && siteSubmit && (() => {
+              const currentStageName: string | null = siteSubmit.submit_stage?.name || null;
+              const isClientVisibleStage = currentStageName ? CLIENT_VISIBLE_STAGES.includes(currentStageName) : false;
+              const disabledReason = !siteSubmit.client_id
+                ? 'A client must be assigned to notify the portal'
+                : !isClientVisibleStage
+                ? 'Choose a client-visible stage to notify the client'
+                : null;
+              return (
+                <button
+                  onClick={() => setShowDigestModal(true)}
+                  disabled={!!disabledReason}
+                  className={`p-2 rounded-lg transition-colors ${
+                    disabledReason
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-amber-500 hover:bg-amber-600'
+                  }`}
+                  title={disabledReason || 'Send update to client portal'}
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                </button>
+              );
+            })()}
+
             {/* Convert to Deal button (dollar sign) - only show when no deal exists */}
             {isEditable && siteSubmit && !siteSubmit.deal_id && siteSubmit.client_id && (
               <button
@@ -1045,6 +1075,18 @@ export default function SiteSubmitSidebar({
           propertyName={siteSubmit.property?.property_name || null}
           propertyUnitId={siteSubmit.property_unit_id}
           onSuccess={handleDealConversionSuccess}
+        />
+      )}
+
+      {/* Digest Compose Modal */}
+      {siteSubmit && siteSubmit.client_id && (
+        <DigestComposeModal
+          isOpen={showDigestModal}
+          onClose={() => setShowDigestModal(false)}
+          siteSubmitId={siteSubmit.id}
+          siteSubmitName={siteSubmit.site_submit_name || null}
+          clientId={siteSubmit.client_id}
+          clientName={siteSubmit.client?.client_name || null}
         />
       )}
     </div>
