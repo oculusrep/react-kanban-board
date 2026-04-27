@@ -49,8 +49,15 @@ export function PortalProvider({ children }: PortalProviderProps) {
   const { user, userRole } = useAuth();
   const [accessibleClients, setAccessibleClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientIdState] = useState<string | null>(() => {
-    // Initialize from sessionStorage for persistence across refreshes
+    // Initialize from URL param first (deep links from alert emails use ?client=<uuid>),
+    // then fall back to sessionStorage for persistence across refreshes. Persist a URL
+    // hit to sessionStorage so the choice sticks after the param is stripped from the URL.
     if (typeof window !== 'undefined') {
+      const urlClient = new URLSearchParams(window.location.search).get('client');
+      if (urlClient) {
+        sessionStorage.setItem(PORTAL_SELECTED_CLIENT_KEY, urlClient);
+        return urlClient;
+      }
       return sessionStorage.getItem(PORTAL_SELECTED_CLIENT_KEY);
     }
     return null;

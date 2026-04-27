@@ -74,6 +74,7 @@ export default function PortalPipelinePage() {
     let changed = false;
     if (newParams.get('stage')) { newParams.delete('stage'); changed = true; }
     if (newParams.get('tab')) { newParams.delete('tab'); changed = true; }
+    if (newParams.get('client')) { newParams.delete('client'); changed = true; }
     if (changed) setSearchParams(newParams, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

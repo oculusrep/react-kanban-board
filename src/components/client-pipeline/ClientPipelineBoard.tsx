@@ -615,6 +615,7 @@ export default function ClientPipelineBoard({
         {selectedStageId === 'recent_changes' ? (
           <RecentChangesTab
             clientIds={clientIds}
+            visibleStageNames={visibleStageNames}
             onSelectSiteSubmit={(id) => setSelectedSiteSubmitId(id)}
           />
         ) : loading ? (

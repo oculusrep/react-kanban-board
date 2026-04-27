@@ -162,7 +162,9 @@ async function processQueueRow(
   // Broker-facing link: opens the portal pipeline (brokers/internal users have access),
   // lands on Recent Changes, pre-selects the site submit, focuses the Chat tab so the
   // broker sees the comment that triggered this alert without extra clicks.
-  const portalLink = `${portalBaseUrl}/portal/pipeline?stage=recent_changes&selected=${site_submit_id}&tab=chat`;
+  // ?client= forces the portal client switcher to this client so brokers don't land
+  // on whichever client was last in their sessionStorage.
+  const portalLink = `${portalBaseUrl}/portal/pipeline?client=${client_id}&stage=recent_changes&selected=${site_submit_id}&tab=chat`;
 
   const { subject, html, text } = renderCommentAlertEmail({
     clientName: client.client_name || 'Client',

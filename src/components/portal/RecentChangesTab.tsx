@@ -3,6 +3,9 @@ import { supabase } from '../../lib/supabaseClient';
 
 interface RecentChangesTabProps {
   clientIds: string[];
+  // When set, restrict results to site submits whose current stage is in this list
+  // (client view filter). Undefined = no stage filter (broker view sees everything).
+  visibleStageNames?: string[];
   onSelectSiteSubmit?: (id: string) => void;
 }
 
@@ -19,6 +22,7 @@ interface SiteSubmitRow {
   id: string;
   site_submit_name: string | null;
   client_id: string | null;
+  submit_stage: { name: string | null } | null;
 }
 
 interface SiteSubmitWithActivity {
@@ -27,18 +31,20 @@ interface SiteSubmitWithActivity {
   lastChangeAt: string;
 }
 
-export default function RecentChangesTab({ clientIds, onSelectSiteSubmit }: RecentChangesTabProps) {
+export default function RecentChangesTab({ clientIds, visibleStageNames, onSelectSiteSubmit }: RecentChangesTabProps) {
   const [grouped, setGrouped] = useState<SiteSubmitWithActivity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const stageFilterKey = visibleStageNames ? visibleStageNames.join(',') : '';
   useEffect(() => {
     if (clientIds.length === 0) {
       setGrouped([]);
       return;
     }
     load();
-  }, [JSON.stringify(clientIds)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(clientIds), stageFilterKey]);
 
   async function load() {
     setLoading(true);
@@ -65,13 +71,22 @@ export default function RecentChangesTab({ clientIds, onSelectSiteSubmit }: Rece
       const ssIds = Array.from(new Set(rows.map((r) => r.site_submit_id)));
       const { data: siteSubmits, error: ssError } = await supabase
         .from('site_submit')
-        .select('id, site_submit_name, client_id')
+        .select('id, site_submit_name, client_id, submit_stage:submit_stage_id (name)')
         .in('id', ssIds);
 
       if (ssError) throw ssError;
 
       const ssById = new Map<string, SiteSubmitRow>();
-      for (const ss of (siteSubmits || []) as SiteSubmitRow[]) ssById.set(ss.id, ss);
+      for (const ss of (siteSubmits || []) as unknown as SiteSubmitRow[]) {
+        // Drop site submits whose stage is not client-visible (client view only).
+        // Without this, a client could see activity rows for "Pursuing Ownership" and
+        // other internal stages even though the submit itself is hidden from the kanban.
+        if (visibleStageNames) {
+          const stageName = ss.submit_stage?.name;
+          if (!stageName || !visibleStageNames.includes(stageName)) continue;
+        }
+        ssById.set(ss.id, ss);
+      }
 
       const groupedMap = new Map<string, SiteSubmitWithActivity>();
       for (const row of rows) {
