@@ -61,12 +61,20 @@ export default function PortalPipelinePage() {
     const stageParam = searchParams.get('stage');
     return stageParam ?? 'Submitted-Reviewing';
   });
+
+  // URL param: initial sidebar tab from ?tab=chat (used by alert-email deep links).
+  const [initialSidebarTab] = useState<'data' | 'chat' | 'files' | 'contacts' | undefined>(() => {
+    const t = searchParams.get('tab');
+    if (t === 'data' || t === 'chat' || t === 'files' || t === 'contacts') return t;
+    return undefined;
+  });
+
   useEffect(() => {
-    if (searchParams.get('stage')) {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('stage');
-      setSearchParams(newParams, { replace: true });
-    }
+    const newParams = new URLSearchParams(searchParams);
+    let changed = false;
+    if (newParams.get('stage')) { newParams.delete('stage'); changed = true; }
+    if (newParams.get('tab')) { newParams.delete('tab'); changed = true; }
+    if (changed) setSearchParams(newParams, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -101,6 +109,7 @@ export default function PortalPipelinePage() {
       selectedSiteSubmitId={selectedSiteSubmitId}
       onSelectSiteSubmit={handleSelectSiteSubmit}
       initialStageName={initialStageName}
+      initialSidebarTab={initialSidebarTab}
       onCopyForReviewLink={handleCopyForReviewLink}
     />
   );

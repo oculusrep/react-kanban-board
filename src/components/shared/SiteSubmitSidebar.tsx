@@ -167,6 +167,8 @@ interface SiteSubmitSidebarProps {
   siteSubmitRefreshTrigger?: number;
   // For creating new site submits
   initialData?: InitialSiteSubmitData;
+  // Tab to focus when sidebar opens (e.g. from a deep link in an alert email)
+  initialTab?: TabType;
 }
 
 // Client-visible stages (for filtering in client view)
@@ -205,6 +207,7 @@ export default function SiteSubmitSidebar({
   accessibleClients = [],
   siteSubmitRefreshTrigger,
   initialData,
+  initialTab,
 }: SiteSubmitSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -212,7 +215,14 @@ export default function SiteSubmitSidebar({
   // Determine if editable - map context is always editable, portal depends on prop
   const isEditable = context === 'map' ? true : (isEditableProp ?? false);
 
-  const [activeTab, setActiveTab] = useState<TabType>('data');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab || 'data');
+
+  // When the sidebar is opened/reopened with a different initialTab (e.g. via a
+  // fresh deep link), apply it. We only reset the tab when initialTab is set
+  // explicitly so user clicks during the session aren't overwritten.
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab, siteSubmitId]);
   const [siteSubmit, setSiteSubmit] = useState<SiteSubmitData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

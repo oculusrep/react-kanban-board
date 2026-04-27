@@ -159,8 +159,10 @@ async function processQueueRow(
     if (authContact?.email) replyToEmail = authContact.email;
   }
 
-  // Broker-facing link: opens the OVIS site submit edit page (not a portal route).
-  const portalLink = `${portalBaseUrl}/site-submit/${site_submit_id}`;
+  // Broker-facing link: opens the portal pipeline (brokers/internal users have access),
+  // lands on Recent Changes, pre-selects the site submit, focuses the Chat tab so the
+  // broker sees the comment that triggered this alert without extra clicks.
+  const portalLink = `${portalBaseUrl}/portal/pipeline?stage=recent_changes&selected=${site_submit_id}&tab=chat`;
 
   const { subject, html, text } = renderCommentAlertEmail({
     clientName: client.client_name || 'Client',

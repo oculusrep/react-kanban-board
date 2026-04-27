@@ -48,6 +48,8 @@ export interface ClientPipelineBoardProps {
   onViewProperty?: (propertyId: string) => void;
   /** Right offset (px) to apply to the site submit sidebar. Used when a secondary slideout is stacked to its right. */
   siteSubmitSidebarRightOffset?: number;
+  /** Tab to focus when the sidebar opens (e.g. from a deep link in an alert email). */
+  initialSidebarTab?: 'data' | 'chat' | 'files' | 'contacts';
 }
 
 export default function ClientPipelineBoard({
@@ -67,6 +69,7 @@ export default function ClientPipelineBoard({
   headerActions,
   onViewProperty,
   siteSubmitSidebarRightOffset = 0,
+  initialSidebarTab,
 }: ClientPipelineBoardProps) {
   const { user } = useAuth();
   const { siteSubmits, stages, loading, error, applyStatusChange } = useClientPipelineData({
@@ -770,6 +773,7 @@ export default function ClientPipelineBoard({
         siteSubmitRefreshTrigger={refreshTrigger}
         onViewProperty={onViewProperty}
         rightOffset={siteSubmitSidebarRightOffset}
+        initialTab={initialSidebarTab}
       />
     </div>
   );
