@@ -4,3 +4,9 @@
 # because it's called by QuickBooks redirect (no apikey header possible)
 [functions.quickbooks-callback]
 verify_jwt = false
+
+# Cron-driven queue drainer. Takes no parameters, has no side effects beyond
+# sending already-queued portal-comment alerts. Skipping JWT verification
+# avoids needing a vault-stored service_role_key for the pg_cron job.
+[functions.send-portal-comment-alert]
+verify_jwt = false
