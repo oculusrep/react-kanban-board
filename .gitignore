@@ -81,3 +81,4 @@ scripts/setUserPassword.js
 
 # Claude startup script
 start-claude.sh
+.mcp.json
