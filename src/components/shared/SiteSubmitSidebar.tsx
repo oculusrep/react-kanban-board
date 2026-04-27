@@ -171,21 +171,6 @@ interface SiteSubmitSidebarProps {
   initialTab?: TabType;
 }
 
-// Client-visible stages (for filtering in client view)
-const CLIENT_VISIBLE_STAGES = [
-  'Submitted-Reviewing',
-  'Pass',
-  'Use Declined',
-  'Use Conflict',
-  'Not Available',
-  'Lost / Killed',
-  'LOI',
-  'At Lease/PSA',
-  'Under Contract/Contingent',
-  'Store Opened',
-  'Unassigned Territory'
-];
-
 // Pipeline tab stages
 const PIPELINE_TAB_STAGES = ['LOI', 'Submitted-Reviewing', 'At Lease/PSA'];
 const SIGNED_STAGES = ['Under Contract/Contingent', 'Booked', 'Executed Payable'];
