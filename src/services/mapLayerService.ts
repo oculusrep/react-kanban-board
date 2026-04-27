@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { union, simplify } from '@turf/turf';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
+import type { PointIconConfig } from '../components/mapping/utils/pointLayerIcons';
 
 // Simplification tolerance in degrees (roughly 0.001 = ~100m at equator)
 // This gives a good balance between reducing points and maintaining shape accuracy
@@ -19,6 +20,7 @@ export interface MapLayer {
   default_stroke_color: string;
   default_opacity: number;
   default_stroke_width: number;
+  icon_config: PointIconConfig | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -28,11 +30,13 @@ export interface MapLayer {
   client_shares?: MapLayerClientShare[];
 }
 
+export type ShapeType = 'polygon' | 'circle' | 'polyline' | 'rectangle' | 'point';
+
 export interface MapLayerShape {
   id: string;
   layer_id: string;
   name: string | null;
-  shape_type: 'polygon' | 'circle' | 'polyline' | 'rectangle';
+  shape_type: ShapeType;
   geometry: GeoJSONGeometry;
   color: string;
   stroke_color: string;
@@ -40,6 +44,7 @@ export interface MapLayerShape {
   stroke_width: number;
   description: string | null;
   sort_order: number;
+  attributes: Record<string, any> | null;
   created_at: string;
   updated_at: string;
   created_by_id: string | null;
@@ -68,7 +73,8 @@ export type GeoJSONGeometry =
   | { type: 'polygon'; coordinates: [number, number][] }
   | { type: 'rectangle'; coordinates: [number, number][] }
   | { type: 'circle'; center: [number, number]; radius: number }
-  | { type: 'polyline'; coordinates: [number, number][] };
+  | { type: 'polyline'; coordinates: [number, number][] }
+  | { type: 'point'; coordinates: [number, number] };
 
 // Input types for creating/updating
 export interface CreateLayerInput {
@@ -79,6 +85,7 @@ export interface CreateLayerInput {
   default_stroke_color?: string;
   default_opacity?: number;
   default_stroke_width?: number;
+  icon_config?: PointIconConfig;
 }
 
 export interface UpdateLayerInput {
@@ -88,13 +95,14 @@ export interface UpdateLayerInput {
   default_stroke_color?: string;
   default_opacity?: number;
   default_stroke_width?: number;
+  icon_config?: PointIconConfig | null;
   is_active?: boolean;
 }
 
 export interface CreateShapeInput {
   layer_id: string;
   name?: string;
-  shape_type: 'polygon' | 'circle' | 'polyline' | 'rectangle';
+  shape_type: ShapeType;
   geometry: GeoJSONGeometry;
   color?: string;
   stroke_color?: string;
@@ -102,6 +110,7 @@ export interface CreateShapeInput {
   stroke_width?: number;
   description?: string;
   sort_order?: number;
+  attributes?: Record<string, any>;
 }
 
 export interface UpdateShapeInput {
@@ -137,6 +146,7 @@ class MapLayerService {
         default_color: data.default_color || '#3b82f6',
         default_opacity: data.default_opacity ?? 0.35,
         default_stroke_width: data.default_stroke_width ?? 2,
+        icon_config: data.icon_config ?? null,
         created_by_id: userId,
         updated_by_id: userId,
       })
@@ -280,6 +290,7 @@ class MapLayerService {
         stroke_width: strokeWidth ?? 2,
         description: data.description || null,
         sort_order: data.sort_order ?? 0,
+        attributes: data.attributes ?? null,
         created_by_id: userId,
         updated_by_id: userId,
       })
@@ -544,7 +555,7 @@ class MapLayerService {
       if (!feature.geometry) continue;
 
       const { type, coordinates } = feature.geometry;
-      let shapeType: 'polygon' | 'polyline' | 'rectangle' = 'polygon';
+      let shapeType: ShapeType = 'polygon';
       let geometry: GeoJSONGeometry;
 
       if (type === 'Polygon') {
@@ -558,12 +569,8 @@ class MapLayerService {
         geometry = { type: 'polyline', coordinates: coords };
         shapeType = 'polyline';
       } else if (type === 'Point') {
-        // Convert point to a small circle
-        geometry = {
-          type: 'circle',
-          center: [coordinates[1], coordinates[0]],
-          radius: 100 // Default 100m radius
-        };
+        geometry = { type: 'point', coordinates: [coordinates[1], coordinates[0]] };
+        shapeType = 'point';
       } else {
         console.warn(`Unsupported geometry type: ${type}`);
         continue;
@@ -580,6 +587,67 @@ class MapLayerService {
         shape_type: shapeType,
         geometry,
         description: feature.properties?.description || null,
+        attributes: shapeType === 'point' && feature.properties ? feature.properties : undefined,
+      });
+
+      shapes.push(shape);
+    }
+
+    return shapes;
+  }
+
+  /**
+   * Import a CSV file as a point layer.
+   *
+   * @param layerId        Target layer (must exist).
+   * @param fileContent    Raw CSV text.
+   * @param columnMap      { lat, lng, name? } — column header names that hold
+   *                       the lat/long and optionally the per-point label.
+   *                       All other columns are stored verbatim in `attributes`.
+   *
+   * Skips rows whose lat or lng don't parse as finite numbers.
+   */
+  async importCSV(
+    layerId: string,
+    fileContent: string,
+    columnMap: { lat: string; lng: string; name?: string }
+  ): Promise<MapLayerShape[]> {
+    const rows = parseCSV(fileContent);
+    if (rows.length < 2) return [];
+
+    const header = rows[0];
+    const latIdx = header.indexOf(columnMap.lat);
+    const lngIdx = header.indexOf(columnMap.lng);
+    const nameIdx = columnMap.name ? header.indexOf(columnMap.name) : -1;
+
+    if (latIdx === -1 || lngIdx === -1) {
+      throw new Error(
+        `CSV is missing required columns. Looked for lat="${columnMap.lat}", lng="${columnMap.lng}". Header: ${header.join(', ')}`
+      );
+    }
+
+    const shapes: MapLayerShape[] = [];
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (row.length === 0 || (row.length === 1 && row[0] === '')) continue;
+
+      const lat = parseFloat(row[latIdx]);
+      const lng = parseFloat(row[lngIdx]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+      const attributes: Record<string, string> = {};
+      header.forEach((col, i) => {
+        if (i === latIdx || i === lngIdx) return;
+        attributes[col] = row[i] ?? '';
+      });
+
+      const shape = await this.createShape({
+        layer_id: layerId,
+        name: nameIdx >= 0 ? row[nameIdx] || null : null,
+        shape_type: 'point',
+        geometry: { type: 'point', coordinates: [lat, lng] },
+        attributes,
       });
 
       shapes.push(shape);
@@ -642,8 +710,8 @@ class MapLayerService {
           const shape = await this.createShape({
             layer_id: layerId,
             name,
-            shape_type: 'polygon', // Represent point as small circle
-            geometry: { type: 'circle', center: coords[0], radius: 100 },
+            shape_type: 'point',
+            geometry: { type: 'point', coordinates: coords[0] },
             description,
           });
           shapes.push(shape);
@@ -844,6 +912,63 @@ class MapLayerService {
       geometry: { type: 'polygon', coordinates: simplifiedCoords },
     });
   }
+}
+
+// ============================================================================
+// CSV Parsing
+// ============================================================================
+
+// Minimal RFC-4180-ish CSV parser. Handles quoted fields, embedded commas,
+// embedded newlines, and "" escapes inside quoted fields. Trims a trailing
+// newline. No external deps.
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let i = 0;
+  let inQuotes = false;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += ch;
+      i++;
+      continue;
+    }
+
+    if (ch === '"') { inQuotes = true; i++; continue; }
+    if (ch === ',') { row.push(field); field = ''; i++; continue; }
+    if (ch === '\r') { i++; continue; }
+    if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      i++;
+      continue;
+    }
+    field += ch;
+    i++;
+  }
+
+  // Flush the last field/row if the file didn't end with a newline.
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
 }
 
 // Export singleton instance

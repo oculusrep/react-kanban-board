@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { mapLayerService, MapLayerShape, GeoJSONGeometry } from '../../../services/mapLayerService';
 import { supabase } from '../../../lib/supabaseClient';
+import { useLayerManager } from './LayerManager';
+import { buildPointIcon, resolveIconConfig, PointIconConfig } from '../utils/pointLayerIcons';
 
 interface CustomLayerLayerProps {
   map: google.maps.Map | null;
@@ -13,11 +15,13 @@ interface CustomLayerLayerProps {
   refreshTrigger?: number; // Increment to trigger a refresh of shapes
 }
 
-type GoogleShape = google.maps.Polygon | google.maps.Circle | google.maps.Polyline;
+type GoogleShape = google.maps.Polygon | google.maps.Circle | google.maps.Polyline | google.maps.Marker;
 
 interface ShapeRef {
   shape: MapLayerShape;
   googleShape: GoogleShape;
+  // Set for point shapes; closed when the shape is removed.
+  cleanup?: () => void;
 }
 
 const CustomLayerLayer: React.FC<CustomLayerLayerProps> = ({
@@ -34,6 +38,12 @@ const CustomLayerLayer: React.FC<CustomLayerLayerProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const shapeRefs = useRef<Map<string, ShapeRef>>(new Map());
   const previousSelectedId = useRef<string | null>(null);
+
+  // Layer-level icon_config drives how point shapes render (color, inner icon, label).
+  // We pull it from LayerManager's already-fetched custom layers to avoid a second query.
+  const { customLayers } = useLayerManager();
+  const layerIconConfig: PointIconConfig | null =
+    customLayers.find(l => l.id === layerId)?.icon_config ?? null;
 
   // Use refs for callbacks to avoid recreating shapes on every render
   const onShapeClickRef = useRef(onShapeClick);
@@ -114,7 +124,8 @@ const CustomLayerLayer: React.FC<CustomLayerLayerProps> = ({
     if (!map) return;
 
     // Clear existing shapes
-    shapeRefs.current.forEach(({ googleShape }) => {
+    shapeRefs.current.forEach(({ googleShape, cleanup }) => {
+      cleanup?.();
       googleShape.setMap(null);
     });
     shapeRefs.current.clear();
@@ -125,7 +136,7 @@ const CustomLayerLayer: React.FC<CustomLayerLayerProps> = ({
 
     // Create shapes - use wrapper functions that call refs
     shapes.forEach(shape => {
-      const googleShape = createGoogleShape(
+      const result = createGoogleShape(
         map,
         shape,
         editMode,
@@ -137,21 +148,23 @@ const CustomLayerLayer: React.FC<CustomLayerLayerProps> = ({
         // Wrapper for onUpdated that uses ref
         (updatedShape) => {
           onShapeUpdatedRef.current?.(updatedShape);
-        }
+        },
+        layerIconConfig,
       );
-      if (googleShape) {
-        shapeRefs.current.set(shape.id, { shape, googleShape });
+      if (result) {
+        shapeRefs.current.set(shape.id, result);
       }
     });
 
     // Cleanup on unmount
     return () => {
-      shapeRefs.current.forEach(({ googleShape }) => {
+      shapeRefs.current.forEach(({ googleShape, cleanup }) => {
+        cleanup?.();
         googleShape.setMap(null);
       });
       shapeRefs.current.clear();
     };
-  }, [map, shapes, isVisible, editMode, layerId]); // Removed callback deps - using refs instead
+  }, [map, shapes, isVisible, editMode, layerId, layerIconConfig]); // Removed callback deps - using refs instead
 
   // Handle visibility changes
   useEffect(() => {
@@ -190,13 +203,54 @@ function createGoogleShape(
   shape: MapLayerShape,
   editable: boolean,
   onClick?: (shape: MapLayerShape) => void,
-  onUpdated?: (shape: MapLayerShape) => void
-): GoogleShape | null {
+  onUpdated?: (shape: MapLayerShape) => void,
+  iconConfig?: PointIconConfig | null,
+): { shape: MapLayerShape; googleShape: GoogleShape; cleanup?: () => void } | null {
   const geometry = shape.geometry as GeoJSONGeometry;
 
   let googleShape: GoogleShape | null = null;
+  let cleanup: (() => void) | undefined;
 
   switch (geometry.type) {
+    case 'point': {
+      const [lat, lng] = geometry.coordinates;
+      const cfg = resolveIconConfig(iconConfig);
+      const marker = new google.maps.Marker({
+        position: { lat, lng },
+        map,
+        icon: buildPointIcon(iconConfig),
+        clickable: true,
+        zIndex: 100,
+      });
+      googleShape = marker;
+
+      // Hover label: small InfoWindow with the configured label field +
+      // any address-ish attributes. Falls back to the shape name.
+      const infoWindow = new google.maps.InfoWindow({
+        content: buildPointTooltip(shape, cfg.labelField),
+        disableAutoPan: true,
+      });
+      const enterListener = google.maps.event.addListener(marker, 'mouseover', () => {
+        infoWindow.open({ map, anchor: marker, shouldFocus: false });
+      });
+      const leaveListener = google.maps.event.addListener(marker, 'mouseout', () => {
+        infoWindow.close();
+      });
+      const clickListener = onClick
+        ? google.maps.event.addListener(marker, 'click', () => onClick(shape))
+        : null;
+
+      cleanup = () => {
+        google.maps.event.removeListener(enterListener);
+        google.maps.event.removeListener(leaveListener);
+        if (clickListener) google.maps.event.removeListener(clickListener);
+        infoWindow.close();
+      };
+      // Returned early since point markers don't share the polygon/circle
+      // edit-listener machinery below.
+      return { shape, googleShape, cleanup };
+    }
+
     case 'polygon':
     case 'rectangle': {
       const path = geometry.coordinates.map(([lat, lng]) => ({ lat, lng }));
@@ -380,7 +434,38 @@ function createGoogleShape(
     }
   }
 
-  return googleShape;
+  return { shape, googleShape, cleanup };
+}
+
+// Build the small InfoWindow body shown when hovering a point marker.
+// Picks a primary line (configured labelField → name → address) and shows
+// any address-ish attributes underneath in a muted line.
+function buildPointTooltip(shape: MapLayerShape, labelField?: string): string {
+  const attrs = shape.attributes || {};
+  const escape = (s: unknown) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const labelValue = labelField ? attrs[labelField] : undefined;
+  const primary = labelValue
+    ? `Market Point: ${labelValue}`
+    : shape.name || attrs.address || 'Point';
+
+  const addressParts = [
+    attrs.address,
+    [attrs.city, attrs.state].filter(Boolean).join(', '),
+    attrs.zip || attrs['zip code'] || attrs['Zip Code'],
+  ]
+    .filter(Boolean)
+    .join(' • ');
+
+  const body = addressParts
+    ? `<div style="color:#4A6B94;font-size:12px;margin-top:2px;">${escape(addressParts)}</div>`
+    : '';
+
+  return `<div style="font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;color:#002147;"><div style="font-weight:600;">${escape(primary)}</div>${body}</div>`;
 }
 
 // Extract coordinates from a polygon
