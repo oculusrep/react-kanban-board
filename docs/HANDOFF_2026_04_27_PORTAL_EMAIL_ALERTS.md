@@ -19,7 +19,7 @@ The full Phase 1 feature is **built, deployed, and partially tested**. The clien
 
 | Path | Status | How to test |
 |---|---|---|
-| Deep-link in fresh alert email | Deployed in commit `4008127e`. Old emails point at the OLD broken URL. | Re-arm the queue (SQL below), wait for cron, click the link. Should land on portal pipeline → Recent Changes → sidebar → Chat tab. |
+| Deep-link in fresh alert email | Deployed (`4008127e`) and re-deployed with `?client=<uuid>` (`52bf790f`, edge function v5). End-to-end fire confirmed via MCP — audit log shows the new URL format. **User has not yet clicked the link in inbox.** | Re-arm the queue (SQL below), wait for cron or curl the function, click the link. Should land on portal pipeline → correct client pre-selected → Recent Changes → sidebar → Chat tab. |
 | Broker→client digest (Gmail bell) | Deployed. Test client's site submits are in "Pursuing Ownership" — bell will be **disabled** with tooltip "Choose a client-visible stage to notify the client." | Move a test site submit to LOI or At Lease/PSA, click the amber bell, fill modal, send. |
 | Bell stage-gating tooltip | Deployed in commit `ea3182a8` | Hover bell on a "Pursuing Ownership" submit — tooltip should appear. |
 | File-shared activity capture | Deployed | Toggle a file visible on a site submit, then `SELECT * FROM site_submit_activity WHERE activity_type = 'file_shared' ORDER BY created_at DESC LIMIT 3;` |
@@ -72,32 +72,21 @@ Click the link in the resulting email — confirm new behavior.
 ### Cron
 - Job `portal-comment-alert-drain` exists at jobid 8, schedule `*/5 * * * *`, active = true.
 
-### MCP (in progress when paused)
-- File: `.mcp.json` at repo root, gitignored.
-- Config:
-  ```json
-  {
-    "mcpServers": {
-      "supabase": {
-        "command": "npx",
-        "args": ["-y", "@supabase/mcp-server-supabase@latest", "--project-ref=rqbvcvwbziilnycqtmnc"],
-        "env": { "SUPABASE_ACCESS_TOKEN": "sbp_..." }
-      }
-    }
-  }
-  ```
-- **Mike pasted his real PAT into the file** before pausing.
-- **Claude Code restart required** to load the MCP server. Has not yet been done.
+### MCP (live and confirmed working)
+- File: `.mcp.json` at repo root, gitignored. Auto-loads when Claude Code starts in this repo.
+- Project pinned via `--project-ref=rqbvcvwbziilnycqtmnc` in args.
+- PAT (`sbp_...`) set via `SUPABASE_ACCESS_TOKEN` env var.
+- Confirmed working in 2026-04-27 session: ran ad-hoc SQL, redeployed `send-portal-comment-alert` (v5), verified audit log — all via MCP without any copy-paste.
+- Caveat: `apply_migration` writes to remote `supabase_migrations.schema_migrations` but does NOT create a file in `supabase/migrations/`. To stay synced, prefer drafting migration files locally and running `supabase db push --linked`.
 
-### Connection-URI workflow (abandoned but file may still exist)
-- `~/.config/ovis-db.env` was created with a placeholder URL. Password was wrong (Mike pasted the dashboard's `[YOUR-PASSWORD]` placeholder instead of his real password). File still has `chmod 600` and the wrong creds. Can be deleted; we're using MCP now.
+### Connection-URI workflow (abandoned, file removed)
+- `~/.config/ovis-db.env` was created with a placeholder URL and wrong creds (Mike pasted the dashboard's `[YOUR-PASSWORD]` placeholder instead of his real password). **Deleted 2026-04-27** — we're using MCP now.
 
 ## 🚀 First steps in the next session
 
-1. **Smoke-test the MCP server** — list tables or run `SELECT 1` to confirm the Supabase MCP tools are loaded after the restart.
-2. **Run the queue-arming SQL** (above) via MCP — Mike's been waiting for this to verify the email deep-link.
-3. **Click the link** in the resulting email — confirm it lands on the portal pipeline with Recent Changes / sidebar / Chat tab focused.
-4. **Then continue with the untested paths** in the "Live but never exercised" table above.
+1. **Click the link** in the most recent test email — confirm it lands on the portal pipeline with the correct client pre-selected, Recent Changes / sidebar / Chat tab focused.
+2. **Continue with the untested paths** in the "Live but never exercised" table above (broker→client digest, file-shared activity capture, stage-change capture, ClientBrokersSection UI, bell stage-gating tooltip).
+3. **Investigate the 406 errors** on `/rest/v1/user?...` for portal user logins (separate RLS issue).
 
 ## 📁 Files touched during this session
 
@@ -130,6 +119,8 @@ Click the link in the resulting email — confirm new behavior.
 - `ea3182a8` — feat(portal): Email alerts, digest, and Recent Changes tab
 - `88a9fa56` — fix(portal-alerts): Disable JWT verification on send-portal-comment-alert
 - `4008127e` — fix(portal-alerts): Deep-link comment alerts to portal pipeline + Chat tab
+- `74ca8ab1` — docs: Add session handoff for portal email alerts and gitignore .mcp.json
+- `52bf790f` — fix(portal): Pass client to alert deep links + filter Recent Changes by stage
 
 ## 🔐 Security reminder
 
