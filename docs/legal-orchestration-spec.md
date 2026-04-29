@@ -65,10 +65,10 @@ Run with `dry_run: true` first to inspect Opus's extraction; if quality looks go
 
 ---
 
-## Next up — Week 3
+## Next up — Week 3 (cont.)
 
-- **Tracked-changes counter-redline generator** — given a `legal_loi_round` of inbound + its `legal_loi_decision` rows (with `final_text` populated by the reasoning layer), emit a `.docx` with native `<w:ins>` / `<w:del>` / `<w:commentReference>` markup against the inbound baseline. The genuinely hard part of V1.
-- **Reasoning layer** — Edge Function that reads each pending `legal_loi_decision`, queries the playbook for that clause type, and asks Claude to pick a position rank (Sonnet by default, Opus escalation when confidence is low or clause is HIGH-stakes). Writes `ai_position_rank`, `ai_rationale`, `final_text`.
+- **Reasoning layer (`legal-decide-positions`) — DEPLOYED**. For a given inbound round, walks each pending decision, queries the playbook, and asks Claude to pick a position rank. Sonnet 4.6 default; Opus 4.7 escalation when the clause is HIGH-stakes or prior confidence is low. Includes recent override history as context (Q8 C). Writes back `ai_position_rank`, `ai_rationale`, `ai_confidence`, `ai_model`, `final_text`, `final_comment_text`, and `status` (`auto_applied` / `pending` / `escalated`). `is_floor` and `requires_approval` positions auto-flag for review. Supports `dry_run`.
+- **Tracked-changes counter-redline generator** — given a `legal_loi_round` of inbound + its `legal_loi_decision` rows (with `final_text` populated by the reasoning layer), emit a `.docx` with native `<w:ins>` / `<w:del>` / `<w:commentReference>` markup against the inbound baseline. The genuinely hard part of V1; up next.
 
 ---
 
