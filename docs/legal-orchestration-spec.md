@@ -1,7 +1,35 @@
 # OVIS Legal Orchestration Module — V1 Spec
 
-**Status:** Design interview complete. Ready for implementation kickoff.
+**Status:** Implementation kicked off. Schema migration drafted, **not yet applied** (paused mid-step due to claude.ai outage on 2026-04-28).
 **V1 Scope:** Starbucks LOIs only. Other clients in V2.
+
+---
+
+## ⏸ Resume here after the outage
+
+**Branch:** `feat/legal-orchestration-v1` (already pushed to origin).
+**Last completed:** Schema migration drafted at [supabase/migrations/20260428_legal_orchestration_schema.sql](../supabase/migrations/20260428_legal_orchestration_schema.sql) and committed to the branch.
+**Next action when resumed:** Apply the migration via Supabase MCP (`mcp__supabase__apply_migration`).
+
+### ⚠️ Critical safety context for whoever resumes
+
+**Mike's Supabase database is the same for production and dev.** There is no separate dev environment. Applying the migration writes to production. Re-confirm this with Mike before running `apply_migration`.
+
+The migration is purely additive (no DROPs, no column type changes, no destructive operations on existing data) so risk is low — but production-grade caution still applies. Run during a quiet window, watch the result.
+
+### Open questions to surface on resume
+
+1. **`deal.landlord_entity_id` vs `deal.landlord_name`?** Migration as drafted uses `landlord_name TEXT` (V1 simplification). Spec called for `landlord_entity_id` FK but didn't pin down what it FK'd to. Mike to confirm whether to keep TEXT for V1 or add a structured `landlord` table now.
+2. **Migration review.** Mike hadn't reviewed the schema before the outage interrupted. Walk him through the review notes (in the kickoff message that's in the conversation history) before applying.
+
+### After the migration applies
+
+Per the 6-week roadmap (in this doc, "Implementation roadmap" section):
+
+- **Week 1 (continued):** Build `supabase/functions/_shared/claude.ts` (mirroring `gemini.ts` pattern). Then build the **handbook ingestion script** — a one-time Edge Function call using Opus 4.7 that reads the LOI Handbook PDF and populates `clause_type` + `legal_playbook` + `legal_playbook_position` rows for `client_id = Starbucks`. This is the highest-value Week 1 deliverable.
+- **Week 2:** Clause-boundary parser. Inbound clause matching (heading → fuzzy → semantic).
+- **Week 3:** Tracked-changes XML generator (the genuinely hard part).
+- Continue per roadmap.
 
 ---
 
