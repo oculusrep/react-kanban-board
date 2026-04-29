@@ -1,35 +1,58 @@
 # OVIS Legal Orchestration Module — V1 Spec
 
-**Status:** Implementation kicked off. Schema migration drafted, **not yet applied** (paused mid-step due to claude.ai outage on 2026-04-28).
+**Status:** Week 1 deliverables complete (schema, AI module, playbook bootstrap, ingestion function). Ready to start Week 2 (clause matching + redline parser).
 **V1 Scope:** Starbucks LOIs only. Other clients in V2.
 
 ---
 
-## ⏸ Resume here after the outage
+## ✅ Build progress (as of 2026-04-29)
 
-**Branch:** `feat/legal-orchestration-v1` (already pushed to origin).
-**Last completed:** Schema migration drafted at [supabase/migrations/20260428_legal_orchestration_schema.sql](../supabase/migrations/20260428_legal_orchestration_schema.sql) and committed to the branch.
-**Next action when resumed:** Apply the migration via Supabase MCP (`mcp__supabase__apply_migration`).
+### Schema — applied to production
+- [supabase/migrations/20260428_legal_orchestration_schema.sql](../supabase/migrations/20260428_legal_orchestration_schema.sql) — 9 new tables, 9 additive `deal` columns, indexes, permissive RLS.
+- [supabase/migrations/20260429_legal_orchestration_fk_indexes.sql](../supabase/migrations/20260429_legal_orchestration_fk_indexes.sql) — supplementary FK indexes addressing Supabase performance advisor warnings.
+- **Departure from spec:** `deal.landlord_name TEXT` instead of the spec'd `landlord_entity_id` FK. V1 simplification; can graduate to structured FK in V2.
 
-### ⚠️ Critical safety context for whoever resumes
+### Universal clause taxonomy — seeded (35 rows)
+- [supabase/migrations/20260429_clause_type_taxonomy_seed.sql](../supabase/migrations/20260429_clause_type_taxonomy_seed.sql) — every standard LOI clause from the handbook table of contents, with confidence tiers (HIGH/MEDIUM/LOW).
 
-**Mike's Supabase database is the same for production and dev.** There is no separate dev environment. Applying the migration writes to production. Re-confirm this with Mike before running `apply_migration`.
+### Starbucks playbook — top 10 clauses seeded with full text
+- [supabase/migrations/20260429_starbucks_playbook_seed_v1.sql](../supabase/migrations/20260429_starbucks_playbook_seed_v1.sql) — 10 highest-stakes clauses × 28 ranked positions, each with full clause text, rationale, default comment text, and approval requirements lifted from the handbook.
+- Clauses seeded: Term, Rent, Percentage Rent, Rent Commencement, Use, Exclusive Use, Early Termination, Continuous Operations, Initial Co-Tenancy, Landlord Work and Contribution.
 
-The migration is purely additive (no DROPs, no column type changes, no destructive operations on existing data) so risk is low — but production-grade caution still applies. Run during a quiet window, watch the result.
+### Claude shared module
+- [supabase/functions/_shared/claude.ts](../supabase/functions/_shared/claude.ts) — Sonnet 4.6 default + Opus 4.7 escalation, prompt caching, retry-with-backoff, streaming, `pickModel()` helper. Mirrors the existing `gemini.ts` pattern. SDK pinned at `0.32.1` to match other OVIS Edge Functions.
 
-### Open questions to surface on resume
+### Handbook ingestion Edge Function — deployed
+- [supabase/functions/legal-ingest-handbook/index.ts](../supabase/functions/legal-ingest-handbook/index.ts) — generic, reusable for any client. Calls Opus 4.7 with adaptive thinking + high effort, parses structured JSON, upserts `legal_playbook` + `legal_playbook_position` rows. Supports `dry_run` for previewing extraction quality before writing.
+- Deployed to Supabase as `legal-ingest-handbook` (verify_jwt=true). Available but not yet invoked.
 
-1. **`deal.landlord_entity_id` vs `deal.landlord_name`?** Migration as drafted uses `landlord_name TEXT` (V1 simplification). Spec called for `landlord_entity_id` FK but didn't pin down what it FK'd to. Mike to confirm whether to keep TEXT for V1 or add a structured `landlord` table now.
-2. **Migration review.** Mike hadn't reviewed the schema before the outage interrupted. Walk him through the review notes (in the kickoff message that's in the conversation history) before applying.
+### Invoking the handbook ingester (for the long tail)
 
-### After the migration applies
+To populate the remaining ~25 clauses for Starbucks:
 
-Per the 6-week roadmap (in this doc, "Implementation roadmap" section):
+```bash
+HANDBOOK_TEXT=$(pdftotext -layout "Screen Shots/LOI Handbook.pdf" - | jq -Rs .)
 
-- **Week 1 (continued):** Build `supabase/functions/_shared/claude.ts` (mirroring `gemini.ts` pattern). Then build the **handbook ingestion script** — a one-time Edge Function call using Opus 4.7 that reads the LOI Handbook PDF and populates `clause_type` + `legal_playbook` + `legal_playbook_position` rows for `client_id = Starbucks`. This is the highest-value Week 1 deliverable.
-- **Week 2:** Clause-boundary parser. Inbound clause matching (heading → fuzzy → semantic).
-- **Week 3:** Tracked-changes XML generator (the genuinely hard part).
-- Continue per roadmap.
+curl -X POST "$SUPABASE_URL/functions/v1/legal-ingest-handbook" \
+  -H "Authorization: Bearer $YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"client_id\": \"39933b5b-3e8c-438d-be2f-e48cd9228c00\",
+    \"source_label\": \"LOI Handbook.pdf (Revised October 8, 2024)\",
+    \"handbook_text\": $HANDBOOK_TEXT,
+    \"dry_run\": true
+  }"
+```
+
+Run with `dry_run: true` first to inspect Opus's extraction; if quality looks good, set `dry_run: false`. Existing playbook entries (the 10 already seeded) get UPDATEd in place; the rest get INSERTed.
+
+---
+
+## Next up — Week 2
+
+- **Clause-boundary parser** — given a `.docx`, identify where each clause section starts and ends.
+- **Inbound clause matching** — heading match (regex) → fuzzy match → Claude semantic classification → "new content" bucket. Ties incoming landlord redlines to playbook entries.
+- **Silent-acceptance detector** — diff incoming landlord doc against the prior outbound to flag places where landlord accepted prior changes without tracked-change markers.
 
 ---
 
@@ -114,10 +137,10 @@ OOXML spec is well-bounded. ~3-5 days of focused work.
 
 ## Schema migration plan
 
-### Tier 1 (must-add for V1)
+### Tier 1 (must-add for V1) — APPLIED
 
 **On `deal` table:**
-- `landlord_entity_id` — FK to a landlord entity (today `property.landlord` is text-only)
+- `landlord_name` — TEXT (V1 simplification of spec'd `landlord_entity_id` FK)
 - `lease_initial_term_years` — numeric
 - `rent_type` — enum (`fixed_annual` / `per_sqft` / `hybrid`)
 - `tia_amount` — numeric (mirrors `site_submit.ti` for clarity)
@@ -126,7 +149,7 @@ OOXML spec is well-bounded. ~3-5 days of focused work.
 - `landlord_lease_status` — enum (`fee_owner` / `ground_lessee` / `under_contract`)
 
 **New tables:**
-- `clause_type` — universal taxonomy (`Term`, `Rent`, `Use`, …)
+- `clause_type` — universal taxonomy (`Term`, `Rent`, `Use`, …) — 35 rows seeded
 - `legal_playbook` — `client_id` × `clause_type_id` × metadata (`display_heading`, `rationale`, `guidelines`, `confidence_tier`)
 - `legal_playbook_position` — ranked positions per playbook entry (`position_rank`, `clause_text`, `default_comment_text`, `requires_approval`)
 - `legal_loi_session` — one per deal × LOI thread (`client_id`, `deal_id`, `created_by`, `status`)
@@ -144,14 +167,14 @@ OOXML spec is well-bounded. ~3-5 days of focused work.
 
 ## Implementation roadmap (~6 weeks)
 
-| Week | Deliverable |
-|---|---|
-| 1 | Schema migration (Tier 1) + `claude.ts` shared module + handbook ingestion script (Opus 4.7, one-time, populates `legal_playbook` + `legal_playbook_position`) |
-| 2 | Clause-boundary parser. Section identification on inbound docs (heading match → fuzzy → semantic). |
-| 3 | Tracked-changes XML generator (the hard part). Comments injection. Round-trip fidelity tests against the master `.docx`. |
-| 4 | Reasoning layer (decide-position Edge Function with Sonnet/Opus routing). Override logging. Citation Q&A. |
-| 5 | Function B wizard (two-phase). Field extraction for inbound LOI → deal sync. |
-| 6 | UI polish, OVIS nav integration, end-to-end test with a real Starbucks LOI redline. |
+| Week | Deliverable | Status |
+|---|---|---|
+| 1 | Schema migration (Tier 1) + `claude.ts` shared module + handbook ingestion script (Opus 4.7) | ✅ DONE |
+| 2 | Clause-boundary parser. Section identification on inbound docs (heading match → fuzzy → semantic). | ⏭ NEXT |
+| 3 | Tracked-changes XML generator (the hard part). Comments injection. Round-trip fidelity tests against the master `.docx`. | |
+| 4 | Reasoning layer (decide-position Edge Function with Sonnet/Opus routing). Override logging. Citation Q&A. | |
+| 5 | Function B wizard (two-phase). Field extraction for inbound LOI → deal sync. | |
+| 6 | UI polish, OVIS nav integration, end-to-end test with a real Starbucks LOI redline. | |
 
 ---
 
@@ -161,3 +184,4 @@ OOXML spec is well-bounded. ~3-5 days of focused work.
 - Director of Real Estate is offline escalation (no system feature in V1).
 - Multi-client is on the roadmap. Schema must anticipate it (`client_id` on playbook tables — already designed in).
 - Always paginate Supabase queries that may return >1000 rows (per CLAUDE.md).
+- **Production database = dev database.** Run migrations during quiet windows; verify additively-only before applying.
