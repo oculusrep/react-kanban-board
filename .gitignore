@@ -82,3 +82,6 @@ scripts/setUserPassword.js
 # Claude startup script
 start-claude.sh
 .mcp.json
+
+# Deno (from local testing; Edge Functions resolve imports at deploy time)
+deno.lock

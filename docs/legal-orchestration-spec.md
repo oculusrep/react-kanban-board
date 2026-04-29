@@ -1,6 +1,6 @@
 # OVIS Legal Orchestration Module — V1 Spec
 
-**Status:** Week 1 deliverables complete (schema, AI module, playbook bootstrap, ingestion function). Ready to start Week 2 (clause matching + redline parser).
+**Status:** Weeks 1 + 2 deliverables complete. Inbound LOI processing pipeline (parse → identify clauses → match → silent-acceptance → persist) is end-to-end and deployed. Ready for Week 3 (tracked-changes counter-redline generator).
 **V1 Scope:** Starbucks LOIs only. Other clients in V2.
 
 ---
@@ -26,6 +26,23 @@
 - [supabase/functions/legal-ingest-handbook/index.ts](../supabase/functions/legal-ingest-handbook/index.ts) — generic, reusable for any client. Calls Opus 4.7 with adaptive thinking + high effort, parses structured JSON, upserts `legal_playbook` + `legal_playbook_position` rows. Supports `dry_run` for previewing extraction quality before writing.
 - Deployed to Supabase as `legal-ingest-handbook` (verify_jwt=true). Available but not yet invoked.
 
+### Week 2: Inbound LOI processing pipeline — deployed
+
+- [supabase/functions/_shared/docx-parser.ts](../supabase/functions/_shared/docx-parser.ts) — Reads `.docx` zip + `word/document.xml`, walks paragraphs, extracts text/tracked-changes/comments. Validated locally against the Starbucks master LOI: parses 401 paragraphs, identifies all tracked-change runs, recovers comment anchors. Uses `npm:jszip` + `npm:fast-xml-parser` via esm.sh.
+- [supabase/functions/_shared/clause-parser.ts](../supabase/functions/_shared/clause-parser.ts) — Detects clause boundaries via heading regex (`^[A-Z][A-Z0-9 &/'()-]+:`); groups subsequent paragraphs into clause bodies until the next heading. Captures heading-paragraph + body-paragraphs + insertions/deletions per clause.
+- [supabase/functions/_shared/clause-matcher.ts](../supabase/functions/_shared/clause-matcher.ts) — Three-tier match: exact heading → fuzzy heading (Jaccard token overlap) → Claude Sonnet semantic classification. Returns `clause_type_name`, `legal_playbook_id` (if a playbook entry exists), confidence, and matcher tier.
+- [supabase/functions/_shared/silent-acceptance.ts](../supabase/functions/_shared/silent-acceptance.ts) — Per-paragraph comparison of prior outbound vs. current inbound. Flags paragraphs where the landlord's baseline differs from your prior outgoing (`fully_accepted` if matches your visible_text; `partial_or_edited` if neither prior view matches).
+- [supabase/functions/legal-ingest-loi/index.ts](../supabase/functions/legal-ingest-loi/index.ts) — Edge Function orchestrating the above. Inputs: `{session_id, attachment_id, prior_round_id?, dry_run?}`. Downloads inbound `.docx` from Storage, parses, identifies clauses, matches to playbook, optionally runs silent-acceptance against prior round, persists as `legal_loi_round` + `legal_loi_decision` rows. Deployed as `legal-ingest-loi` (verify_jwt=true).
+
+### Validated end-to-end (local test driver)
+
+Ran the parser + clause boundary identification against the actual Starbucks master LOI (`Screen Shots/8.18.25 SDRC and Mike P Edits - Starbucks Letter of Intent - MASTER.docx`):
+- 401 paragraphs parsed
+- 58 clause boundaries identified (master template has multiple variants per clause: U0/U1/U2 for Use, EU0/EU1/EU2 for Exclusive Use, etc. — duplicates collapse into single clauses for a real landlord redline)
+- Tracked changes correctly captured: e.g., the term clause shows both the original "four (4)" and the inserted "six (6)" options.
+
+Real landlord redlines (Type 1+2 per Q11) are expected to have one heading per clause, so the duplicates seen in the master template will not appear in normal usage.
+
 ### Invoking the handbook ingester (for the long tail)
 
 To populate the remaining ~25 clauses for Starbucks:
@@ -48,11 +65,10 @@ Run with `dry_run: true` first to inspect Opus's extraction; if quality looks go
 
 ---
 
-## Next up — Week 2
+## Next up — Week 3
 
-- **Clause-boundary parser** — given a `.docx`, identify where each clause section starts and ends.
-- **Inbound clause matching** — heading match (regex) → fuzzy match → Claude semantic classification → "new content" bucket. Ties incoming landlord redlines to playbook entries.
-- **Silent-acceptance detector** — diff incoming landlord doc against the prior outbound to flag places where landlord accepted prior changes without tracked-change markers.
+- **Tracked-changes counter-redline generator** — given a `legal_loi_round` of inbound + its `legal_loi_decision` rows (with `final_text` populated by the reasoning layer), emit a `.docx` with native `<w:ins>` / `<w:del>` / `<w:commentReference>` markup against the inbound baseline. The genuinely hard part of V1.
+- **Reasoning layer** — Edge Function that reads each pending `legal_loi_decision`, queries the playbook for that clause type, and asks Claude to pick a position rank (Sonnet by default, Opus escalation when confidence is low or clause is HIGH-stakes). Writes `ai_position_rank`, `ai_rationale`, `final_text`.
 
 ---
 
@@ -170,9 +186,9 @@ OOXML spec is well-bounded. ~3-5 days of focused work.
 | Week | Deliverable | Status |
 |---|---|---|
 | 1 | Schema migration (Tier 1) + `claude.ts` shared module + handbook ingestion script (Opus 4.7) | ✅ DONE |
-| 2 | Clause-boundary parser. Section identification on inbound docs (heading match → fuzzy → semantic). | ⏭ NEXT |
-| 3 | Tracked-changes XML generator (the hard part). Comments injection. Round-trip fidelity tests against the master `.docx`. | |
-| 4 | Reasoning layer (decide-position Edge Function with Sonnet/Opus routing). Override logging. Citation Q&A. | |
+| 2 | Clause-boundary parser. Section identification on inbound docs (heading match → fuzzy → semantic). Silent-acceptance detector. `legal-ingest-loi` Edge Function. | ✅ DONE |
+| 3 | Tracked-changes XML generator (the hard part). Comments injection. Round-trip fidelity tests against the master `.docx`. Reasoning layer (decide-position). | ⏭ NEXT |
+| 4 | Override logging. Citation Q&A. Approval routing. | |
 | 5 | Function B wizard (two-phase). Field extraction for inbound LOI → deal sync. | |
 | 6 | UI polish, OVIS nav integration, end-to-end test with a real Starbucks LOI redline. | |
 
