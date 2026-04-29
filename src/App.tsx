@@ -32,6 +32,7 @@ import NotesDebugPage from "./pages/NotesDebugPage";
 import MappingPage from "./pages/MappingPage";
 import MappingWorkspace from "./pages/MappingWorkspace";
 import ReportsPage from "./pages/ReportsPage";
+import LegalTestPage from "./pages/LegalTestPage";
 import DealReconciliationPage from "./pages/DealReconciliationPage";
 import PaymentReconciliationPage from "./pages/PaymentReconciliationPage";
 import DealCompareReportPage from "./pages/DealCompareReportPage";
@@ -162,6 +163,7 @@ function App() {
           <Route path="mapping" element={<CoachRoute><MappingWorkspace /></CoachRoute>} />
           <Route path="mapping-old" element={<CoachRoute><MappingPage /></CoachRoute>} />
           <Route path="reports" element={<CoachRoute><ReportsPage /></CoachRoute>} />
+          <Route path="legal/test" element={<CoachRoute><LegalTestPage /></CoachRoute>} />
           <Route path="reports/deal-reconciliation" element={<CoachRoute><DealReconciliationPage /></CoachRoute>} />
           <Route path="reports/payment-reconciliation" element={<CoachRoute><PaymentReconciliationPage /></CoachRoute>} />
           <Route path="reports/deal-compare" element={<CoachRoute><DealCompareReportPage /></CoachRoute>} />

@@ -1,6 +1,6 @@
 # OVIS Legal Orchestration Module — V1 Spec
 
-**Status:** Weeks 1 + 2 deliverables complete. Inbound LOI processing pipeline (parse → identify clauses → match → silent-acceptance → persist) is end-to-end and deployed. Ready for Week 3 (tracked-changes counter-redline generator).
+**Status:** Weeks 1 + 2 + 3 deliverables complete. Full V1 pipeline (upload → ingest → AI position picks → counter-redline `.docx` with native Word tracked changes) is end-to-end and deployed, with a `/legal/test` page driving it from the OVIS UI. Ready for Week 4–6 polish.
 **V1 Scope:** Starbucks LOIs only. Other clients in V2.
 
 ---
@@ -65,10 +65,16 @@ Run with `dry_run: true` first to inspect Opus's extraction; if quality looks go
 
 ---
 
-## Next up — Week 3 (cont.)
+## Week 3 — DEPLOYED
 
-- **Reasoning layer (`legal-decide-positions`) — DEPLOYED**. For a given inbound round, walks each pending decision, queries the playbook, and asks Claude to pick a position rank. Sonnet 4.6 default; Opus 4.7 escalation when the clause is HIGH-stakes or prior confidence is low. Includes recent override history as context (Q8 C). Writes back `ai_position_rank`, `ai_rationale`, `ai_confidence`, `ai_model`, `final_text`, `final_comment_text`, and `status` (`auto_applied` / `pending` / `escalated`). `is_floor` and `requires_approval` positions auto-flag for review. Supports `dry_run`.
-- **Tracked-changes counter-redline generator** — given a `legal_loi_round` of inbound + its `legal_loi_decision` rows (with `final_text` populated by the reasoning layer), emit a `.docx` with native `<w:ins>` / `<w:del>` / `<w:commentReference>` markup against the inbound baseline. The genuinely hard part of V1; up next.
+- **Reasoning layer (`legal-decide-positions`)** — for a given inbound round, walks each pending decision, queries the playbook, and asks Claude to pick a position rank. Sonnet 4.6 default; Opus 4.7 escalation when the clause is HIGH-stakes or prior confidence is low. Includes recent override history as context (Q8 C). Writes back `ai_position_rank`, `ai_rationale`, `ai_confidence`, `ai_model`, `final_text`, `final_comment_text`, and `status`. `is_floor` and `requires_approval` positions auto-flag for review.
+- **`_shared/docx-writer.ts` + `legal-generate-counter` Edge Function** — V1 is append-only: for each decision with `final_text`, splices a new tracked-insertion paragraph (`<w:ins author="OVIS Tenant Counter" date="…">`) after the affected clause's body, and adds a Word comment on the heading carrying the rationale. Writes/repairs `word/comments.xml`, `word/_rels/document.xml.rels`, and `[Content_Types].xml` as needed. Output uploads to Storage and creates a new outbound `legal_loi_round` + `attachment` row.
+- **Local round-trip test passed** — applied 3 synthetic decisions (TERM, USE, EARLY TERMINATION) to the master LOI, wrote the result, re-parsed the output: 6 inserted-counter paragraphs found, "OVIS Tenant Counter" appears in tracked-change authors alongside the original "Palmer Bayless," `word/comments.xml` is valid, all relationships and content-types correctly updated.
+- **`/legal/test` page in OVIS** — a scrappy test driver that lets Mike walk the full pipeline (pick deal → upload `.docx` → ingest → decide positions → generate counter → download) without touching curl or Supabase Studio. The proper Legal module UI (deal-page tab, full review screen, citations) is Week 5–6.
+
+### V1 limitation — append-only
+
+The V1 counter-redline shows Mike's preferred clause text **inserted alongside** the landlord's existing text, not **replacing** it. This is intentional: append-only mutations cannot corrupt the inbound `.docx`, and Mike can finalize landlord-deletion decisions manually in Word's standard tracked-changes UX before sending. V2 polish will add full counter-redline semantics (reject landlord's pending tracked changes within the affected clauses + wholesale-replace the body with a single tracked deletion + insertion).
 
 ---
 
@@ -187,10 +193,10 @@ OOXML spec is well-bounded. ~3-5 days of focused work.
 |---|---|---|
 | 1 | Schema migration (Tier 1) + `claude.ts` shared module + handbook ingestion script (Opus 4.7) | ✅ DONE |
 | 2 | Clause-boundary parser. Section identification on inbound docs (heading match → fuzzy → semantic). Silent-acceptance detector. `legal-ingest-loi` Edge Function. | ✅ DONE |
-| 3 | Tracked-changes XML generator (the hard part). Comments injection. Round-trip fidelity tests against the master `.docx`. Reasoning layer (decide-position). | ⏭ NEXT |
-| 4 | Override logging. Citation Q&A. Approval routing. | |
-| 5 | Function B wizard (two-phase). Field extraction for inbound LOI → deal sync. | |
-| 6 | UI polish, OVIS nav integration, end-to-end test with a real Starbucks LOI redline. | |
+| 3 | Reasoning layer (`legal-decide-positions`). Tracked-changes XML generator (`_shared/docx-writer.ts` + `legal-generate-counter`). `/legal/test` page driving end-to-end. | ✅ DONE |
+| 4 | Override capture into `negotiation_logs`. Citation Q&A on suggestion cards. V2-style full counter-redline (reject + replace) on the writer. | ⏭ NEXT |
+| 5 | Function B wizard (two-phase outbound LOI generator). Field extraction for inbound LOI → deal sync. | |
+| 6 | UI polish, proper "Legal" nav placement + deal-page tab, full review screen with status groups + severity dots, end-to-end test with a real Starbucks LOI redline. | |
 
 ---
 
