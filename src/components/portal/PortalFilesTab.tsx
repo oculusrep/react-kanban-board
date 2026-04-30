@@ -800,7 +800,7 @@ export default function PortalFilesTab({
                     )}
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto" style={{ minHeight: '40px' }}>
+                  <div className="divide-y divide-gray-100" style={{ minHeight: '40px' }}>
                     {/* Debug: Log file rendering */}
                     {console.log(`📁 [${entityType}] Rendering ${folders.length} folders and ${regularFiles.length} files:`, { folders, regularFiles })}
                     {/* Debug marker to verify this section is rendering */}
