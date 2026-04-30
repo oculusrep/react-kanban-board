@@ -1046,7 +1046,7 @@ export default function PortalFilesTab({
   }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-4">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto overscroll-contain p-4">
       {/* Property Files Section */}
       {renderFileSection(
         'Property Files',
