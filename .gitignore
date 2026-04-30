@@ -85,3 +85,6 @@ start-claude.sh
 
 # Deno (from local testing; Edge Functions resolve imports at deploy time)
 deno.lock
+
+# Word lockfiles (ephemeral, created when a .docx is open)
+~$*.docx

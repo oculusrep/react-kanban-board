@@ -1,7 +1,36 @@
 # OVIS Legal Orchestration Module — V1 Spec
 
-**Status:** Weeks 1 + 2 + 3 deliverables complete. Full V1 pipeline (upload → ingest → AI position picks → counter-redline `.docx` with native Word tracked changes) is end-to-end and deployed, with a `/legal/test` page driving it from the OVIS UI. Ready for Week 4–6 polish.
+**Status:** Weeks 1 + 2 + 3 deliverables complete. Full V1 pipeline (upload → ingest → AI position picks → counter-redline `.docx` with native Word tracked changes) is end-to-end and deployed, with a `/legal/test` page driving it from the OVIS UI. **Mike is in user testing.** Ready for Week 4–6 polish once test feedback comes in.
 **V1 Scope:** Starbucks LOIs only. Other clients in V2.
+
+---
+
+## ▶ Resume here
+
+**Branch:** `feat/legal-orchestration-v1` — pushed to origin, working tree clean.
+
+**Test in progress:** Mike is running the [V1 test plan](legal-orchestration-test-plan.md) against a real Starbucks LOI. The plan ends with a "what to bring back" checklist (numbers, mismatches, rendering quality, smell-test failures) — that's the input that drives the next iteration.
+
+**To resume after testing:**
+1. Read this section + the test plan to understand current state.
+2. Ask Mike for his test results in the format the plan suggests.
+3. Pick the next deliverable from the priority list at the bottom of this doc (look for **"Suggested next sessions"** in the spec content below — also reproduced here):
+   1. Polish based on test feedback (fix matcher/reasoning bugs surfaced by real LOI data)
+   2. Override capture + citation Q&A (Q8 B+C learning loop)
+   3. Full counter-redline V2 writer (reject-and-replace semantics) — benefits from real-world feedback first
+   4. Function B wizard (outbound LOI generator)
+   5. Proper Legal module UI — deal-page tab, full review screen, retire `/legal/test`
+
+**Critical context — don't forget:**
+- Mike's Supabase database is the **same for prod and dev**. All migrations to date have been additive-only.
+- V1 counter-redline is **append-only** (insertions alongside landlord text, not replacing it). Mike finalizes landlord deletions manually in Word. V2 will add reject-and-replace.
+- Mike wants autonomous work — make progress without asking permission for each step. Flag genuinely risky actions; otherwise proceed.
+
+**Live in production right now:**
+- 9 new tables, 9 additive `deal` columns
+- 35-row universal `clause_type` taxonomy + 10-clause Starbucks playbook (28 positions)
+- 4 deployed Edge Functions: `legal-ingest-handbook`, `legal-ingest-loi`, `legal-decide-positions`, `legal-generate-counter`
+- React `/legal/test` page (CoachRoute)
 
 ---
 
