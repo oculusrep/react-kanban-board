@@ -14,6 +14,80 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_budget: {
+        Row: {
+          apr: number | null
+          aug: number | null
+          created_at: string | null
+          created_by: string | null
+          dec: number | null
+          feb: number | null
+          id: string
+          jan: number | null
+          jul: number | null
+          jun: number | null
+          mar: number | null
+          may: number | null
+          notes: string | null
+          nov: number | null
+          oct: number | null
+          qb_account_id: string
+          sep: number | null
+          updated_at: string | null
+          year: number
+        }
+        Insert: {
+          apr?: number | null
+          aug?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          dec?: number | null
+          feb?: number | null
+          id?: string
+          jan?: number | null
+          jul?: number | null
+          jun?: number | null
+          mar?: number | null
+          may?: number | null
+          notes?: string | null
+          nov?: number | null
+          oct?: number | null
+          qb_account_id: string
+          sep?: number | null
+          updated_at?: string | null
+          year: number
+        }
+        Update: {
+          apr?: number | null
+          aug?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          dec?: number | null
+          feb?: number | null
+          id?: string
+          jan?: number | null
+          jul?: number | null
+          jun?: number | null
+          mar?: number | null
+          may?: number | null
+          notes?: string | null
+          nov?: number | null
+          oct?: number | null
+          qb_account_id?: string
+          sep?: number | null
+          updated_at?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_budget_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity: {
         Row: {
           activity_date: string | null
@@ -37,6 +111,7 @@ export type Database = {
           id: string
           is_high_priority: boolean | null
           is_property_prospecting_call: boolean | null
+          is_prospecting: boolean | null
           is_prospecting_call: boolean | null
           meeting_held: boolean | null
           owner_id: string | null
@@ -59,6 +134,7 @@ export type Database = {
           site_submit_id: string | null
           status_id: string | null
           subject: string | null
+          target_id: string | null
           updated_at: string | null
           updated_by: string | null
           updated_by_id: string | null
@@ -86,6 +162,7 @@ export type Database = {
           id?: string
           is_high_priority?: boolean | null
           is_property_prospecting_call?: boolean | null
+          is_prospecting?: boolean | null
           is_prospecting_call?: boolean | null
           meeting_held?: boolean | null
           owner_id?: string | null
@@ -108,6 +185,7 @@ export type Database = {
           site_submit_id?: string | null
           status_id?: string | null
           subject?: string | null
+          target_id?: string | null
           updated_at?: string | null
           updated_by?: string | null
           updated_by_id?: string | null
@@ -135,6 +213,7 @@ export type Database = {
           id?: string
           is_high_priority?: boolean | null
           is_property_prospecting_call?: boolean | null
+          is_prospecting?: boolean | null
           is_prospecting_call?: boolean | null
           meeting_held?: boolean | null
           owner_id?: string | null
@@ -157,6 +236,7 @@ export type Database = {
           site_submit_id?: string | null
           status_id?: string | null
           subject?: string | null
+          target_id?: string | null
           updated_at?: string | null
           updated_by?: string | null
           updated_by_id?: string | null
@@ -195,6 +275,13 @@ export type Database = {
             foreignKeyName: "activity_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -223,6 +310,13 @@ export type Database = {
             foreignKeyName: "activity_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -246,6 +340,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "activity_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "activity_deal_id_fkey"
@@ -325,6 +433,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "activity_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "target"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_dashboard"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_outreach_queue"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "activity_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "activity_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "activity_updated_by_id_fkey"
             columns: ["updated_by_id"]
             isOneToOne: false
@@ -351,6 +501,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
           },
           {
             foreignKeyName: "fk_activity_client_id"
@@ -384,6 +541,13 @@ export type Database = {
             foreignKeyName: "fk_activity_contact_id"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "fk_activity_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -400,6 +564,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "fk_activity_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "fk_activity_deal_id"
@@ -852,6 +1030,38 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string | null
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assignment: {
         Row: {
           assignment_name: string | null
@@ -978,6 +1188,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assignment_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "assignment_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "assignment_deal_id_fkey"
@@ -1139,6 +1363,42 @@ export type Database = {
           },
         ]
       }
+      clause_type: {
+        Row: {
+          created_at: string
+          default_confidence_tier: string
+          description: string | null
+          display_name: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_confidence_tier: string
+          description?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_confidence_tier?: string
+          description?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       client: {
         Row: {
           billing_city: string | null
@@ -1178,6 +1438,8 @@ export type Database = {
           updated_at: string | null
           updated_by_id: string | null
           updated_by_sf_id: string | null
+          velocity_lease_psa_days_override: number | null
+          velocity_loi_days_override: number | null
           website: string | null
         }
         Insert: {
@@ -1218,6 +1480,8 @@ export type Database = {
           updated_at?: string | null
           updated_by_id?: string | null
           updated_by_sf_id?: string | null
+          velocity_lease_psa_days_override?: number | null
+          velocity_loi_days_override?: number | null
           website?: string | null
         }
         Update: {
@@ -1258,6 +1522,8 @@ export type Database = {
           updated_at?: string | null
           updated_by_id?: string | null
           updated_by_sf_id?: string | null
+          velocity_lease_psa_days_override?: number | null
+          velocity_loi_days_override?: number | null
           website?: string | null
         }
         Relationships: [
@@ -1293,6 +1559,13 @@ export type Database = {
             foreignKeyName: "client_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "client_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -1319,6 +1592,79 @@ export type Database = {
           },
         ]
       }
+      client_broker: {
+        Row: {
+          added_by_id: string | null
+          client_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_by_id?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_by_id?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_broker_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_broker_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "client_broker_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "client_broker_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "client_broker_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "client_broker_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_type: {
         Row: {
           id: string
@@ -1333,6 +1679,85 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      comment_templates: {
+        Row: {
+          clause_type_id: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          label: string | null
+          template_text: string
+          updated_at: string
+        }
+        Insert: {
+          clause_type_id?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          template_text: string
+          updated_at?: string
+        }
+        Update: {
+          clause_type_id?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          template_text?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_templates_clause_type_id_fkey"
+            columns: ["clause_type_id"]
+            isOneToOne: false
+            referencedRelation: "clause_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "comment_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "comment_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "comment_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+        ]
       }
       commission_split: {
         Row: {
@@ -1511,6 +1936,20 @@ export type Database = {
             foreignKeyName: "commission_split_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "commission_split_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "commission_split_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
             referencedRelation: "deal_with_stage"
             referencedColumns: ["id"]
           },
@@ -1545,11 +1984,12 @@ export type Database = {
           created_at: string | null
           created_by_id: string | null
           email: string | null
+          email_alerts_opt_in: boolean
           fax: string | null
           first_name: string | null
-          hunter_lead_id: string | null
           icsc_profile_link: string | null
           id: string
+          is_primary_contact: boolean | null
           is_site_selector: boolean | null
           last_name: string | null
           lead_status_id: string | null
@@ -1566,6 +2006,8 @@ export type Database = {
           personal_email: string | null
           phone: string | null
           portal_access_enabled: boolean | null
+          portal_auth_user_id: string | null
+          portal_invite_accepted_at: string | null
           portal_invite_expires_at: string | null
           portal_invite_sent_at: string | null
           portal_invite_status: string | null
@@ -1593,6 +2035,7 @@ export type Database = {
           sf_photo_url: string | null
           sf_tenant_rep_id: string | null
           source_type: string
+          target_id: string | null
           tenant_rep_contact_id: string | null
           tenant_repped: boolean | null
           title: string | null
@@ -1600,6 +2043,10 @@ export type Database = {
           updated_by_id: string | null
           updated_by_sf_id: string | null
           website: string | null
+          zoominfo_data: Json | null
+          zoominfo_last_enriched_at: string | null
+          zoominfo_person_id: string | null
+          zoominfo_profile_url: string | null
         }
         Insert: {
           client_id?: string | null
@@ -1608,11 +2055,12 @@ export type Database = {
           created_at?: string | null
           created_by_id?: string | null
           email?: string | null
+          email_alerts_opt_in?: boolean
           fax?: string | null
           first_name?: string | null
-          hunter_lead_id?: string | null
           icsc_profile_link?: string | null
           id?: string
+          is_primary_contact?: boolean | null
           is_site_selector?: boolean | null
           last_name?: string | null
           lead_status_id?: string | null
@@ -1629,6 +2077,8 @@ export type Database = {
           personal_email?: string | null
           phone?: string | null
           portal_access_enabled?: boolean | null
+          portal_auth_user_id?: string | null
+          portal_invite_accepted_at?: string | null
           portal_invite_expires_at?: string | null
           portal_invite_sent_at?: string | null
           portal_invite_status?: string | null
@@ -1656,6 +2106,7 @@ export type Database = {
           sf_photo_url?: string | null
           sf_tenant_rep_id?: string | null
           source_type?: string
+          target_id?: string | null
           tenant_rep_contact_id?: string | null
           tenant_repped?: boolean | null
           title?: string | null
@@ -1663,6 +2114,10 @@ export type Database = {
           updated_by_id?: string | null
           updated_by_sf_id?: string | null
           website?: string | null
+          zoominfo_data?: Json | null
+          zoominfo_last_enriched_at?: string | null
+          zoominfo_person_id?: string | null
+          zoominfo_profile_url?: string | null
         }
         Update: {
           client_id?: string | null
@@ -1671,11 +2126,12 @@ export type Database = {
           created_at?: string | null
           created_by_id?: string | null
           email?: string | null
+          email_alerts_opt_in?: boolean
           fax?: string | null
           first_name?: string | null
-          hunter_lead_id?: string | null
           icsc_profile_link?: string | null
           id?: string
+          is_primary_contact?: boolean | null
           is_site_selector?: boolean | null
           last_name?: string | null
           lead_status_id?: string | null
@@ -1692,6 +2148,8 @@ export type Database = {
           personal_email?: string | null
           phone?: string | null
           portal_access_enabled?: boolean | null
+          portal_auth_user_id?: string | null
+          portal_invite_accepted_at?: string | null
           portal_invite_expires_at?: string | null
           portal_invite_sent_at?: string | null
           portal_invite_status?: string | null
@@ -1719,6 +2177,7 @@ export type Database = {
           sf_photo_url?: string | null
           sf_tenant_rep_id?: string | null
           source_type?: string
+          target_id?: string | null
           tenant_rep_contact_id?: string | null
           tenant_repped?: boolean | null
           title?: string | null
@@ -1726,6 +2185,10 @@ export type Database = {
           updated_by_id?: string | null
           updated_by_sf_id?: string | null
           website?: string | null
+          zoominfo_data?: Json | null
+          zoominfo_last_enriched_at?: string | null
+          zoominfo_person_id?: string | null
+          zoominfo_profile_url?: string | null
         }
         Relationships: [
           {
@@ -1737,31 +2200,45 @@ export type Database = {
           },
           {
             foreignKeyName: "contact_hunter_lead_id_fkey"
-            columns: ["hunter_lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
-            referencedRelation: "hunter_lead"
+            referencedRelation: "target"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "contact_hunter_lead_id_fkey"
-            columns: ["hunter_lead_id"]
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_hunter_lead_id_fkey"
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_dashboard"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "contact_hunter_lead_id_fkey"
-            columns: ["hunter_lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_outreach_queue"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
           },
           {
             foreignKeyName: "contact_hunter_lead_id_fkey"
-            columns: ["hunter_lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "contact_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "contact_lead_status_id_fkey"
@@ -1783,6 +2260,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tenant_rep_contact_id_fkey"
+            columns: ["tenant_rep_contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "contact_tenant_rep_contact_id_fkey"
@@ -1811,6 +2295,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_contact_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
           },
           {
             foreignKeyName: "fk_contact_client_id"
@@ -1890,6 +2381,13 @@ export type Database = {
             foreignKeyName: "contact_client_relation_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "contact_client_relation_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -1913,6 +2411,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_relation_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "contact_client_relation_contact_id_fkey"
@@ -1993,6 +2498,13 @@ export type Database = {
             foreignKeyName: "contact_client_role_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -2016,6 +2528,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "contact_client_role_contact_id_fkey"
@@ -2159,6 +2678,13 @@ export type Database = {
             foreignKeyName: "contact_deal_role_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_deal_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -2182,6 +2708,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_deal_role_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "contact_deal_role_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "contact_deal_role_deal_id_fkey"
@@ -2290,6 +2830,109 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_tag: {
+        Row: {
+          contact_id: string
+          created_at: string | null
+          created_by_id: string | null
+          id: string
+          notes: string | null
+          tag_id: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          notes?: string | null
+          tag_id: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          notes?: string | null
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_tag_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tag_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "contact_tag_type"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_tag_type: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          sort_order: number | null
+          tag_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          sort_order?: number | null
+          tag_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          sort_order?: number | null
+          tag_name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       contact_type: {
         Row: {
           active: boolean | null
@@ -2391,6 +3034,20 @@ export type Database = {
             foreignKeyName: "critical_date_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "critical_date_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "critical_date_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
             referencedRelation: "deal_with_stage"
             referencedColumns: ["id"]
           },
@@ -2429,18 +3086,35 @@ export type Database = {
           calculated_fee: number | null
           client_id: string | null
           closed_date: string | null
+          closing_deadline_days: number | null
           commission_percent: number | null
           contact_id: string | null
+          contingency_period_days: number | null
           contract_signed_date: string | null
-          created_at: string | null
+          created_at: string
           created_by_id: string | null
           created_by_sf_id: string | null
+          current_handoff_date: string | null
+          current_handoff_document: string | null
+          current_handoff_holder: string | null
+          deal_acres: number | null
+          deal_all_in_rent: number | null
+          deal_asking_ground_lease_price: number | null
+          deal_asking_lease_price: number | null
+          deal_asking_purchase_price: number | null
+          deal_available_sqft: number | null
+          deal_building_sqft: number | null
           deal_name: string | null
+          deal_nnn: number | null
+          deal_nnn_psf: number | null
           deal_percent: number | null
+          deal_rent_psf: number | null
           deal_team_id: string | null
           deal_type_id: string | null
           deal_usd: number | null
           deal_value: number | null
+          due_diligence_days: number | null
+          estimated_execution_date: string | null
           fee: number | null
           flat_fee_override: number | null
           gci: number | null
@@ -2448,10 +3122,16 @@ export type Database = {
           house_percent: number | null
           house_usd: number | null
           id: string
+          is_behind_schedule: boolean | null
           kanban_position: number | null
+          landlord_lease_status: string | null
+          landlord_name: string | null
           last_stage_change_at: string | null
           lead_source: string | null
+          lease_initial_term_years: number | null
+          loi_date: string | null
           loi_signed_date: string | null
+          loi_written_date: string | null
           loss_reason: string | null
           number_of_payments: number | null
           oculus_net: number | null
@@ -2465,6 +3145,9 @@ export type Database = {
           referral_fee_percent: number | null
           referral_fee_usd: number | null
           referral_payee_client_id: string | null
+          rent_commencement_days: number | null
+          rent_commencement_type: string | null
+          rent_type: string | null
           representation_id: string | null
           sf_account_id: string | null
           sf_address: string | null
@@ -2503,10 +3186,14 @@ export type Database = {
           size_sqft: number | null
           stage_id: string | null
           target_close_date: string | null
+          tia_amount: number | null
           transaction_type_id: string | null
           updated_at: string | null
           updated_by_id: string | null
           updated_by_sf_id: string | null
+          use_clause_notes: string | null
+          use_clause_type: string | null
+          weeks_behind: number | null
           weighted_fee: number | null
         }
         Insert: {
@@ -2527,18 +3214,35 @@ export type Database = {
           calculated_fee?: number | null
           client_id?: string | null
           closed_date?: string | null
+          closing_deadline_days?: number | null
           commission_percent?: number | null
           contact_id?: string | null
+          contingency_period_days?: number | null
           contract_signed_date?: string | null
-          created_at?: string | null
+          created_at?: string
           created_by_id?: string | null
           created_by_sf_id?: string | null
+          current_handoff_date?: string | null
+          current_handoff_document?: string | null
+          current_handoff_holder?: string | null
+          deal_acres?: number | null
+          deal_all_in_rent?: number | null
+          deal_asking_ground_lease_price?: number | null
+          deal_asking_lease_price?: number | null
+          deal_asking_purchase_price?: number | null
+          deal_available_sqft?: number | null
+          deal_building_sqft?: number | null
           deal_name?: string | null
+          deal_nnn?: number | null
+          deal_nnn_psf?: number | null
           deal_percent?: number | null
+          deal_rent_psf?: number | null
           deal_team_id?: string | null
           deal_type_id?: string | null
           deal_usd?: number | null
           deal_value?: number | null
+          due_diligence_days?: number | null
+          estimated_execution_date?: string | null
           fee?: number | null
           flat_fee_override?: number | null
           gci?: number | null
@@ -2546,10 +3250,16 @@ export type Database = {
           house_percent?: number | null
           house_usd?: number | null
           id?: string
+          is_behind_schedule?: boolean | null
           kanban_position?: number | null
+          landlord_lease_status?: string | null
+          landlord_name?: string | null
           last_stage_change_at?: string | null
           lead_source?: string | null
+          lease_initial_term_years?: number | null
+          loi_date?: string | null
           loi_signed_date?: string | null
+          loi_written_date?: string | null
           loss_reason?: string | null
           number_of_payments?: number | null
           oculus_net?: number | null
@@ -2563,6 +3273,9 @@ export type Database = {
           referral_fee_percent?: number | null
           referral_fee_usd?: number | null
           referral_payee_client_id?: string | null
+          rent_commencement_days?: number | null
+          rent_commencement_type?: string | null
+          rent_type?: string | null
           representation_id?: string | null
           sf_account_id?: string | null
           sf_address?: string | null
@@ -2601,10 +3314,14 @@ export type Database = {
           size_sqft?: number | null
           stage_id?: string | null
           target_close_date?: string | null
+          tia_amount?: number | null
           transaction_type_id?: string | null
           updated_at?: string | null
           updated_by_id?: string | null
           updated_by_sf_id?: string | null
+          use_clause_notes?: string | null
+          use_clause_type?: string | null
+          weeks_behind?: number | null
           weighted_fee?: number | null
         }
         Update: {
@@ -2625,18 +3342,35 @@ export type Database = {
           calculated_fee?: number | null
           client_id?: string | null
           closed_date?: string | null
+          closing_deadline_days?: number | null
           commission_percent?: number | null
           contact_id?: string | null
+          contingency_period_days?: number | null
           contract_signed_date?: string | null
-          created_at?: string | null
+          created_at?: string
           created_by_id?: string | null
           created_by_sf_id?: string | null
+          current_handoff_date?: string | null
+          current_handoff_document?: string | null
+          current_handoff_holder?: string | null
+          deal_acres?: number | null
+          deal_all_in_rent?: number | null
+          deal_asking_ground_lease_price?: number | null
+          deal_asking_lease_price?: number | null
+          deal_asking_purchase_price?: number | null
+          deal_available_sqft?: number | null
+          deal_building_sqft?: number | null
           deal_name?: string | null
+          deal_nnn?: number | null
+          deal_nnn_psf?: number | null
           deal_percent?: number | null
+          deal_rent_psf?: number | null
           deal_team_id?: string | null
           deal_type_id?: string | null
           deal_usd?: number | null
           deal_value?: number | null
+          due_diligence_days?: number | null
+          estimated_execution_date?: string | null
           fee?: number | null
           flat_fee_override?: number | null
           gci?: number | null
@@ -2644,10 +3378,16 @@ export type Database = {
           house_percent?: number | null
           house_usd?: number | null
           id?: string
+          is_behind_schedule?: boolean | null
           kanban_position?: number | null
+          landlord_lease_status?: string | null
+          landlord_name?: string | null
           last_stage_change_at?: string | null
           lead_source?: string | null
+          lease_initial_term_years?: number | null
+          loi_date?: string | null
           loi_signed_date?: string | null
+          loi_written_date?: string | null
           loss_reason?: string | null
           number_of_payments?: number | null
           oculus_net?: number | null
@@ -2661,6 +3401,9 @@ export type Database = {
           referral_fee_percent?: number | null
           referral_fee_usd?: number | null
           referral_payee_client_id?: string | null
+          rent_commencement_days?: number | null
+          rent_commencement_type?: string | null
+          rent_type?: string | null
           representation_id?: string | null
           sf_account_id?: string | null
           sf_address?: string | null
@@ -2699,10 +3442,14 @@ export type Database = {
           size_sqft?: number | null
           stage_id?: string | null
           target_close_date?: string | null
+          tia_amount?: number | null
           transaction_type_id?: string | null
           updated_at?: string | null
           updated_by_id?: string | null
           updated_by_sf_id?: string | null
+          use_clause_notes?: string | null
+          use_clause_type?: string | null
+          weeks_behind?: number | null
           weighted_fee?: number | null
         }
         Relationships: [
@@ -2752,6 +3499,13 @@ export type Database = {
             foreignKeyName: "deal_referral_payee_client_id_fkey"
             columns: ["referral_payee_client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "deal_referral_payee_client_id_fkey"
+            columns: ["referral_payee_client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -2796,6 +3550,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
           },
           {
             foreignKeyName: "fk_deal_client_id"
@@ -2888,6 +3649,13 @@ export type Database = {
             foreignKeyName: "deal_contact_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "deal_contact_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -2911,6 +3679,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_contact_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "deal_contact_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "deal_contact_deal_id_fkey"
@@ -2965,6 +3747,87 @@ export type Database = {
           sort_order?: number | null
         }
         Relationships: []
+      }
+      deal_rent_schedule: {
+        Row: {
+          annual_amount: number | null
+          created_at: string
+          deal_id: string
+          id: string
+          is_option_period: boolean
+          monthly_amount: number | null
+          notes: string | null
+          per_sqft_amount: number | null
+          step_num: number
+          updated_at: string
+          year_end: number
+          year_start: number
+        }
+        Insert: {
+          annual_amount?: number | null
+          created_at?: string
+          deal_id: string
+          id?: string
+          is_option_period?: boolean
+          monthly_amount?: number | null
+          notes?: string | null
+          per_sqft_amount?: number | null
+          step_num: number
+          updated_at?: string
+          year_end: number
+          year_start: number
+        }
+        Update: {
+          annual_amount?: number | null
+          created_at?: string
+          deal_id?: string
+          id?: string
+          is_option_period?: boolean
+          monthly_amount?: number | null
+          notes?: string | null
+          per_sqft_amount?: number | null
+          step_num?: number
+          updated_at?: string
+          year_end?: number
+          year_start?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_rent_schedule_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_rent_schedule_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "deal_rent_schedule_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "deal_rent_schedule_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_rent_schedule_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["deal_id"]
+          },
+        ]
       }
       deal_representation: {
         Row: {
@@ -3038,6 +3901,133 @@ export type Database = {
         }
         Relationships: []
       }
+      deal_stage_history: {
+        Row: {
+          changed_at: string
+          client_id: string | null
+          corrected_date: string | null
+          created_at: string
+          date_source: string | null
+          deal_id: string
+          deal_owner_id: string | null
+          duration_seconds: number | null
+          from_stage_id: string | null
+          id: string
+          to_stage_id: string
+        }
+        Insert: {
+          changed_at?: string
+          client_id?: string | null
+          corrected_date?: string | null
+          created_at?: string
+          date_source?: string | null
+          deal_id: string
+          deal_owner_id?: string | null
+          duration_seconds?: number | null
+          from_stage_id?: string | null
+          id?: string
+          to_stage_id: string
+        }
+        Update: {
+          changed_at?: string
+          client_id?: string | null
+          corrected_date?: string | null
+          created_at?: string
+          date_source?: string | null
+          deal_id?: string
+          deal_owner_id?: string | null
+          duration_seconds?: number | null
+          from_stage_id?: string | null
+          id?: string
+          to_stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "deal_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_stage_history_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "deal_stage"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deal_synopsis: {
         Row: {
           alert_level: string | null
@@ -3091,6 +4081,20 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_synopsis_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: true
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "deal_synopsis_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: true
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "deal_synopsis_deal_id_fkey"
@@ -3155,6 +4159,75 @@ export type Database = {
           sort_order?: number | null
         }
         Relationships: []
+      }
+      document_handoff: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          created_at: string | null
+          deal_id: string
+          document_type: string
+          holder: string
+          id: string
+          original_changed_at: string | null
+        }
+        Insert: {
+          changed_at: string
+          changed_by?: string | null
+          created_at?: string | null
+          deal_id: string
+          document_type: string
+          holder: string
+          id?: string
+          original_changed_at?: string | null
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          created_at?: string | null
+          deal_id?: string
+          document_type?: string
+          holder?: string
+          id?: string
+          original_changed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["deal_id"]
+          },
+        ]
       }
       dropbox_mapping: {
         Row: {
@@ -3349,6 +4422,45 @@ export type Database = {
           },
         ]
       }
+      email_template: {
+        Row: {
+          body: string
+          category: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          is_shared: boolean | null
+          name: string
+          subject: string
+          updated_at: string | null
+        }
+        Insert: {
+          body: string
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_shared?: boolean | null
+          name: string
+          subject: string
+          updated_at?: string | null
+        }
+        Update: {
+          body?: string
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_shared?: boolean | null
+          name?: string
+          subject?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       email_visibility: {
         Row: {
           created_at: string | null
@@ -3464,6 +4576,45 @@ export type Database = {
           snippet?: string | null
           subject?: string | null
           thread_id?: string | null
+        }
+        Relationships: []
+      }
+      esri_data_vintage: {
+        Row: {
+          checked_at: string
+          created_at: string
+          data_vintage: string | null
+          id: string
+          notification_sent: boolean | null
+          notification_sent_at: string | null
+          raw_response: Json | null
+          sample_latitude: number
+          sample_longitude: number
+          sample_population: number | null
+        }
+        Insert: {
+          checked_at?: string
+          created_at?: string
+          data_vintage?: string | null
+          id?: string
+          notification_sent?: boolean | null
+          notification_sent_at?: string | null
+          raw_response?: Json | null
+          sample_latitude: number
+          sample_longitude: number
+          sample_population?: number | null
+        }
+        Update: {
+          checked_at?: string
+          created_at?: string
+          data_vintage?: string | null
+          id?: string
+          notification_sent?: boolean | null
+          notification_sent_at?: string | null
+          raw_response?: Json | null
+          sample_latitude?: number
+          sample_longitude?: number
+          sample_population?: number | null
         }
         Relationships: []
       }
@@ -3610,6 +4761,221 @@ export type Database = {
         }
         Relationships: []
       }
+      google_places_api_log: {
+        Row: {
+          api_endpoint: string
+          created_at: string | null
+          created_by_id: string | null
+          estimated_cost_cents: number | null
+          id: string
+          query_id: string | null
+          request_count: number | null
+          request_type: string
+          response_status: string | null
+          results_count: number | null
+        }
+        Insert: {
+          api_endpoint: string
+          created_at?: string | null
+          created_by_id?: string | null
+          estimated_cost_cents?: number | null
+          id?: string
+          query_id?: string | null
+          request_count?: number | null
+          request_type: string
+          response_status?: string | null
+          results_count?: number | null
+        }
+        Update: {
+          api_endpoint?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          estimated_cost_cents?: number | null
+          id?: string
+          query_id?: string | null
+          request_count?: number | null
+          request_type?: string
+          response_status?: string | null
+          results_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_places_api_log_query_id_fkey"
+            columns: ["query_id"]
+            isOneToOne: false
+            referencedRelation: "google_places_saved_query"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_places_result: {
+        Row: {
+          business_status: string
+          created_at: string | null
+          first_seen_at: string | null
+          formatted_address: string | null
+          id: string
+          last_seen_at: string | null
+          latitude: number
+          layer_id: string | null
+          longitude: number
+          name: string
+          phone_number: string | null
+          place_id: string
+          property_id: string | null
+          query_id: string | null
+          rating: number | null
+          raw_data: Json | null
+          types: string[] | null
+          user_ratings_total: number | null
+          website: string | null
+        }
+        Insert: {
+          business_status: string
+          created_at?: string | null
+          first_seen_at?: string | null
+          formatted_address?: string | null
+          id?: string
+          last_seen_at?: string | null
+          latitude: number
+          layer_id?: string | null
+          longitude: number
+          name: string
+          phone_number?: string | null
+          place_id: string
+          property_id?: string | null
+          query_id?: string | null
+          rating?: number | null
+          raw_data?: Json | null
+          types?: string[] | null
+          user_ratings_total?: number | null
+          website?: string | null
+        }
+        Update: {
+          business_status?: string
+          created_at?: string | null
+          first_seen_at?: string | null
+          formatted_address?: string | null
+          id?: string
+          last_seen_at?: string | null
+          latitude?: number
+          layer_id?: string | null
+          longitude?: number
+          name?: string
+          phone_number?: string | null
+          place_id?: string
+          property_id?: string | null
+          query_id?: string | null
+          rating?: number | null
+          raw_data?: Json | null
+          types?: string[] | null
+          user_ratings_total?: number | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_places_result_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "map_layer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_places_result_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_places_result_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_places_result_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_places_result_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_places_result_query_id_fkey"
+            columns: ["query_id"]
+            isOneToOne: false
+            referencedRelation: "google_places_saved_query"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_places_saved_query: {
+        Row: {
+          created_at: string | null
+          created_by_id: string | null
+          geography_data: Json
+          geography_type: string
+          grid_size_meters: number | null
+          id: string
+          last_run_at: string | null
+          layer_id: string | null
+          name: string
+          query_type: string
+          result_count: number | null
+          search_term: string
+          status_filter: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by_id?: string | null
+          geography_data: Json
+          geography_type: string
+          grid_size_meters?: number | null
+          id?: string
+          last_run_at?: string | null
+          layer_id?: string | null
+          name: string
+          query_type?: string
+          result_count?: number | null
+          search_term: string
+          status_filter?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by_id?: string | null
+          geography_data?: Json
+          geography_type?: string
+          grid_size_meters?: number | null
+          id?: string
+          last_run_at?: string | null
+          layer_id?: string | null
+          name?: string
+          query_type?: string
+          result_count?: number | null
+          search_term?: string
+          status_filter?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_places_saved_query_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "map_layer"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hunter_contact_enrichment: {
         Row: {
           confidence_score: number | null
@@ -3619,11 +4985,11 @@ export type Database = {
           id: string
           is_primary: boolean | null
           is_verified: boolean | null
-          lead_id: string | null
           linkedin_url: string | null
           person_name: string
           phone: string | null
           source_url: string | null
+          target_id: string | null
           title: string | null
           updated_at: string | null
         }
@@ -3635,11 +5001,11 @@ export type Database = {
           id?: string
           is_primary?: boolean | null
           is_verified?: boolean | null
-          lead_id?: string | null
           linkedin_url?: string | null
           person_name: string
           phone?: string | null
           source_url?: string | null
+          target_id?: string | null
           title?: string | null
           updated_at?: string | null
         }
@@ -3651,42 +5017,56 @@ export type Database = {
           id?: string
           is_primary?: boolean | null
           is_verified?: boolean | null
-          lead_id?: string | null
           linkedin_url?: string | null
           person_name?: string
           phone?: string | null
           source_url?: string | null
+          target_id?: string | null
           title?: string | null
           updated_at?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "hunter_contact_enrichment_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
-            referencedRelation: "hunter_lead"
+            referencedRelation: "target"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hunter_contact_enrichment_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_contact_enrichment_lead_id_fkey"
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_dashboard"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hunter_contact_enrichment_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_outreach_queue"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
           },
           {
             foreignKeyName: "hunter_contact_enrichment_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "hunter_contact_enrichment_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3699,11 +5079,11 @@ export type Database = {
           feedback_note: string | null
           feedback_type: string
           id: string
-          lead_id: string | null
           original_value: string | null
           outreach_draft_id: string | null
           sender_domain: string | null
           signal_id: string | null
+          target_id: string | null
         }
         Insert: {
           concept_name?: string | null
@@ -3713,11 +5093,11 @@ export type Database = {
           feedback_note?: string | null
           feedback_type: string
           id?: string
-          lead_id?: string | null
           original_value?: string | null
           outreach_draft_id?: string | null
           sender_domain?: string | null
           signal_id?: string | null
+          target_id?: string | null
         }
         Update: {
           concept_name?: string | null
@@ -3727,11 +5107,11 @@ export type Database = {
           feedback_note?: string | null
           feedback_type?: string
           id?: string
-          lead_id?: string | null
           original_value?: string | null
           outreach_draft_id?: string | null
           sender_domain?: string | null
           signal_id?: string | null
+          target_id?: string | null
         }
         Relationships: [
           {
@@ -3743,31 +5123,45 @@ export type Database = {
           },
           {
             foreignKeyName: "hunter_feedback_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
-            referencedRelation: "hunter_lead"
+            referencedRelation: "target"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hunter_feedback_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_feedback_lead_id_fkey"
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_dashboard"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hunter_feedback_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_outreach_queue"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
           },
           {
             foreignKeyName: "hunter_feedback_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "hunter_feedback_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hunter_feedback_outreach_draft_id_fkey"
@@ -3792,188 +5186,6 @@ export type Database = {
           },
         ]
       }
-      hunter_lead: {
-        Row: {
-          concept_name: string
-          created_at: string | null
-          existing_client_id: string | null
-          existing_contact_id: string | null
-          first_seen_at: string | null
-          geo_relevance: string | null
-          id: string
-          industry_segment: string | null
-          key_person_name: string | null
-          key_person_title: string | null
-          last_signal_at: string | null
-          news_only: boolean | null
-          normalized_name: string
-          score_reasoning: string | null
-          signal_strength: string
-          status: string | null
-          target_geography: string[] | null
-          updated_at: string | null
-          website: string | null
-        }
-        Insert: {
-          concept_name: string
-          created_at?: string | null
-          existing_client_id?: string | null
-          existing_contact_id?: string | null
-          first_seen_at?: string | null
-          geo_relevance?: string | null
-          id?: string
-          industry_segment?: string | null
-          key_person_name?: string | null
-          key_person_title?: string | null
-          last_signal_at?: string | null
-          news_only?: boolean | null
-          normalized_name: string
-          score_reasoning?: string | null
-          signal_strength: string
-          status?: string | null
-          target_geography?: string[] | null
-          updated_at?: string | null
-          website?: string | null
-        }
-        Update: {
-          concept_name?: string
-          created_at?: string | null
-          existing_client_id?: string | null
-          existing_contact_id?: string | null
-          first_seen_at?: string | null
-          geo_relevance?: string | null
-          id?: string
-          industry_segment?: string | null
-          key_person_name?: string | null
-          key_person_title?: string | null
-          last_signal_at?: string | null
-          news_only?: boolean | null
-          normalized_name?: string
-          score_reasoning?: string | null
-          signal_strength?: string
-          status?: string | null
-          target_geography?: string[] | null
-          updated_at?: string | null
-          website?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "hunter_lead_existing_client_id_fkey"
-            columns: ["existing_client_id"]
-            isOneToOne: false
-            referencedRelation: "client"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_existing_client_id_fkey"
-            columns: ["existing_client_id"]
-            isOneToOne: false
-            referencedRelation: "invoice_aging"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_existing_client_id_fkey"
-            columns: ["existing_client_id"]
-            isOneToOne: false
-            referencedRelation: "v_hunter_reconnect"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_existing_client_id_fkey"
-            columns: ["existing_client_id"]
-            isOneToOne: false
-            referencedRelation: "v_site_selectors_by_client"
-            referencedColumns: ["client_id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
-            columns: ["existing_contact_id"]
-            isOneToOne: false
-            referencedRelation: "contact"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
-            columns: ["existing_contact_id"]
-            isOneToOne: false
-            referencedRelation: "v_hunter_reconnect"
-            referencedColumns: ["contact_id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
-            columns: ["existing_contact_id"]
-            isOneToOne: false
-            referencedRelation: "v_site_selectors_by_client"
-            referencedColumns: ["contact_id"]
-          },
-        ]
-      }
-      hunter_lead_signal: {
-        Row: {
-          created_at: string | null
-          extracted_summary: string | null
-          id: string
-          lead_id: string | null
-          mentioned_geography: string[] | null
-          mentioned_person: string | null
-          signal_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          extracted_summary?: string | null
-          id?: string
-          lead_id?: string | null
-          mentioned_geography?: string[] | null
-          mentioned_person?: string | null
-          signal_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          extracted_summary?: string | null
-          id?: string
-          lead_id?: string | null
-          mentioned_geography?: string[] | null
-          mentioned_person?: string | null
-          signal_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "hunter_lead"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "v_hunter_dashboard"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "v_hunter_outreach_queue"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "v_hunter_reconnect"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "hunter_lead_signal_signal_id_fkey"
-            columns: ["signal_id"]
-            isOneToOne: false
-            referencedRelation: "hunter_signal"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       hunter_outreach_draft: {
         Row: {
           ai_reasoning: string | null
@@ -3987,7 +5199,6 @@ export type Database = {
           gmail_message_id: string | null
           gmail_thread_id: string | null
           id: string
-          lead_id: string | null
           outreach_type: string
           sent_at: string | null
           sent_by_user_email: string | null
@@ -3996,6 +5207,7 @@ export type Database = {
           source_url: string | null
           status: string | null
           subject: string | null
+          target_id: string | null
           updated_at: string | null
           user_edited_body: string | null
           user_edited_subject: string | null
@@ -4012,7 +5224,6 @@ export type Database = {
           gmail_message_id?: string | null
           gmail_thread_id?: string | null
           id?: string
-          lead_id?: string | null
           outreach_type: string
           sent_at?: string | null
           sent_by_user_email?: string | null
@@ -4021,6 +5232,7 @@ export type Database = {
           source_url?: string | null
           status?: string | null
           subject?: string | null
+          target_id?: string | null
           updated_at?: string | null
           user_edited_body?: string | null
           user_edited_subject?: string | null
@@ -4037,7 +5249,6 @@ export type Database = {
           gmail_message_id?: string | null
           gmail_thread_id?: string | null
           id?: string
-          lead_id?: string | null
           outreach_type?: string
           sent_at?: string | null
           sent_by_user_email?: string | null
@@ -4046,6 +5257,7 @@ export type Database = {
           source_url?: string | null
           status?: string | null
           subject?: string | null
+          target_id?: string | null
           updated_at?: string | null
           user_edited_body?: string | null
           user_edited_subject?: string | null
@@ -4060,31 +5272,45 @@ export type Database = {
           },
           {
             foreignKeyName: "hunter_outreach_draft_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
-            referencedRelation: "hunter_lead"
+            referencedRelation: "target"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hunter_outreach_draft_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_outreach_draft_lead_id_fkey"
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_dashboard"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hunter_outreach_draft_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_outreach_queue"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
           },
           {
             foreignKeyName: "hunter_outreach_draft_lead_id_fkey"
-            columns: ["lead_id"]
+            columns: ["target_id"]
             isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
-            referencedColumns: ["lead_id"]
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "hunter_outreach_draft_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -4203,6 +5429,7 @@ export type Database = {
           name: string
           requires_auth: boolean | null
           scrape_config: Json | null
+          scrape_locally_only: boolean | null
           slug: string
           source_type: string
           updated_at: string | null
@@ -4220,6 +5447,7 @@ export type Database = {
           name: string
           requires_auth?: boolean | null
           scrape_config?: Json | null
+          scrape_locally_only?: boolean | null
           slug: string
           source_type: string
           updated_at?: string | null
@@ -4237,6 +5465,7 @@ export type Database = {
           name?: string
           requires_auth?: boolean | null
           scrape_config?: Json | null
+          scrape_locally_only?: boolean | null
           slug?: string
           source_type?: string
           updated_at?: string | null
@@ -4296,6 +5525,1039 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      legal_loi_decision: {
+        Row: {
+          ai_confidence: number | null
+          ai_model: string | null
+          ai_position_rank: number | null
+          ai_rationale: string | null
+          clause_type_id: string | null
+          created_at: string
+          doc_anchor: string | null
+          final_comment_text: string | null
+          final_position_rank: number | null
+          final_text: string | null
+          id: string
+          landlord_text_excerpt: string | null
+          override_source: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          round_id: string
+          severity: string | null
+          status: string
+          updated_at: string
+          was_override: boolean
+        }
+        Insert: {
+          ai_confidence?: number | null
+          ai_model?: string | null
+          ai_position_rank?: number | null
+          ai_rationale?: string | null
+          clause_type_id?: string | null
+          created_at?: string
+          doc_anchor?: string | null
+          final_comment_text?: string | null
+          final_position_rank?: number | null
+          final_text?: string | null
+          id?: string
+          landlord_text_excerpt?: string | null
+          override_source?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          round_id: string
+          severity?: string | null
+          status?: string
+          updated_at?: string
+          was_override?: boolean
+        }
+        Update: {
+          ai_confidence?: number | null
+          ai_model?: string | null
+          ai_position_rank?: number | null
+          ai_rationale?: string | null
+          clause_type_id?: string | null
+          created_at?: string
+          doc_anchor?: string | null
+          final_comment_text?: string | null
+          final_position_rank?: number | null
+          final_text?: string | null
+          id?: string
+          landlord_text_excerpt?: string | null
+          override_source?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          round_id?: string
+          severity?: string | null
+          status?: string
+          updated_at?: string
+          was_override?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_loi_decision_clause_type_id_fkey"
+            columns: ["clause_type_id"]
+            isOneToOne: false
+            referencedRelation: "clause_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_loi_decision_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "legal_loi_round"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_loi_round: {
+        Row: {
+          attachment_id: string | null
+          created_at: string
+          created_by: string | null
+          direction: string
+          generated_at: string | null
+          id: string
+          notes: string | null
+          round_num: number
+          session_id: string
+          source_round_id: string | null
+        }
+        Insert: {
+          attachment_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction: string
+          generated_at?: string | null
+          id?: string
+          notes?: string | null
+          round_num: number
+          session_id: string
+          source_round_id?: string | null
+        }
+        Update: {
+          attachment_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          generated_at?: string | null
+          id?: string
+          notes?: string | null
+          round_num?: number
+          session_id?: string
+          source_round_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_loi_round_attachment_id_fkey"
+            columns: ["attachment_id"]
+            isOneToOne: false
+            referencedRelation: "attachment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_loi_round_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "legal_loi_session"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_loi_round_source_round_id_fkey"
+            columns: ["source_round_id"]
+            isOneToOne: false
+            referencedRelation: "legal_loi_round"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_loi_session: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          deal_id: string | null
+          id: string
+          is_loose: boolean
+          status: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          deal_id?: string | null
+          id?: string
+          is_loose?: boolean
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          deal_id?: string | null
+          id?: string
+          is_loose?: boolean
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_loi_session_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_loi_session_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["deal_id"]
+          },
+        ]
+      }
+      legal_playbook: {
+        Row: {
+          clause_type_id: string
+          client_id: string
+          confidence_tier: string | null
+          created_at: string
+          display_heading: string
+          guidelines: string | null
+          id: string
+          is_active: boolean
+          rationale: string | null
+          source_document: string | null
+          updated_at: string
+        }
+        Insert: {
+          clause_type_id: string
+          client_id: string
+          confidence_tier?: string | null
+          created_at?: string
+          display_heading: string
+          guidelines?: string | null
+          id?: string
+          is_active?: boolean
+          rationale?: string | null
+          source_document?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clause_type_id?: string
+          client_id?: string
+          confidence_tier?: string | null
+          created_at?: string
+          display_heading?: string
+          guidelines?: string | null
+          id?: string
+          is_active?: boolean
+          rationale?: string | null
+          source_document?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_playbook_clause_type_id_fkey"
+            columns: ["clause_type_id"]
+            isOneToOne: false
+            referencedRelation: "clause_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_playbook_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_playbook_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "legal_playbook_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "legal_playbook_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "legal_playbook_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      legal_playbook_position: {
+        Row: {
+          clause_text: string
+          created_at: string
+          default_comment_text: string | null
+          id: string
+          is_active: boolean
+          is_floor: boolean
+          legal_playbook_id: string
+          position_label: string | null
+          position_rank: number
+          requires_approval: string | null
+          updated_at: string
+        }
+        Insert: {
+          clause_text: string
+          created_at?: string
+          default_comment_text?: string | null
+          id?: string
+          is_active?: boolean
+          is_floor?: boolean
+          legal_playbook_id: string
+          position_label?: string | null
+          position_rank: number
+          requires_approval?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clause_text?: string
+          created_at?: string
+          default_comment_text?: string | null
+          id?: string
+          is_active?: boolean
+          is_floor?: boolean
+          legal_playbook_id?: string
+          position_label?: string | null
+          position_rank?: number
+          requires_approval?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_playbook_position_legal_playbook_id_fkey"
+            columns: ["legal_playbook_id"]
+            isOneToOne: false
+            referencedRelation: "legal_playbook"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      map_layer: {
+        Row: {
+          created_at: string | null
+          created_by_id: string | null
+          default_color: string
+          default_opacity: number
+          default_stroke_color: string | null
+          default_stroke_width: number
+          description: string | null
+          icon_config: Json | null
+          id: string
+          is_active: boolean
+          layer_type: string
+          name: string
+          updated_at: string | null
+          updated_by_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by_id?: string | null
+          default_color?: string
+          default_opacity?: number
+          default_stroke_color?: string | null
+          default_stroke_width?: number
+          description?: string | null
+          icon_config?: Json | null
+          id?: string
+          is_active?: boolean
+          layer_type?: string
+          name: string
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by_id?: string | null
+          default_color?: string
+          default_opacity?: number
+          default_stroke_color?: string | null
+          default_stroke_width?: number
+          description?: string | null
+          icon_config?: Json | null
+          id?: string
+          is_active?: boolean
+          layer_type?: string
+          name?: string
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Relationships: []
+      }
+      map_layer_client_share: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          id: string
+          is_visible_by_default: boolean
+          layer_id: string | null
+          share_type: string
+          shared_at: string | null
+          shared_by_id: string | null
+          source_layer_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          id?: string
+          is_visible_by_default?: boolean
+          layer_id?: string | null
+          share_type?: string
+          shared_at?: string | null
+          shared_by_id?: string | null
+          source_layer_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          id?: string
+          is_visible_by_default?: boolean
+          layer_id?: string | null
+          share_type?: string
+          shared_at?: string | null
+          shared_by_id?: string | null
+          source_layer_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_layer_client_share_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "map_layer_client_share_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "map_layer_client_share_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "map_layer_client_share_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "map_layer_client_share_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "map_layer_client_share_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "map_layer"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "map_layer_client_share_source_layer_id_fkey"
+            columns: ["source_layer_id"]
+            isOneToOne: false
+            referencedRelation: "map_layer"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      map_layer_shape: {
+        Row: {
+          attributes: Json | null
+          color: string
+          created_at: string | null
+          created_by_id: string | null
+          description: string | null
+          fill_opacity: number
+          geometry: Json
+          id: string
+          layer_id: string
+          name: string | null
+          shape_type: string
+          sort_order: number | null
+          stroke_color: string | null
+          stroke_width: number
+          updated_at: string | null
+          updated_by_id: string | null
+        }
+        Insert: {
+          attributes?: Json | null
+          color?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          description?: string | null
+          fill_opacity?: number
+          geometry: Json
+          id?: string
+          layer_id: string
+          name?: string | null
+          shape_type: string
+          sort_order?: number | null
+          stroke_color?: string | null
+          stroke_width?: number
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Update: {
+          attributes?: Json | null
+          color?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          description?: string | null
+          fill_opacity?: number
+          geometry?: Json
+          id?: string
+          layer_id?: string
+          name?: string | null
+          shape_type?: string
+          sort_order?: number | null
+          stroke_color?: string | null
+          stroke_width?: number
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_layer_shape_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "map_layer"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_brand: {
+        Row: {
+          brandfetch_domain: string | null
+          category_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          last_ingested_at: string | null
+          last_verified_at: string | null
+          logo_fetched_at: string | null
+          logo_url: string | null
+          logo_variant: string
+          name: string
+          normalized_name: string
+          places_search_query: string | null
+          places_type_filter: string | null
+          updated_at: string
+        }
+        Insert: {
+          brandfetch_domain?: string | null
+          category_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_ingested_at?: string | null
+          last_verified_at?: string | null
+          logo_fetched_at?: string | null
+          logo_url?: string | null
+          logo_variant?: string
+          name: string
+          normalized_name: string
+          places_search_query?: string | null
+          places_type_filter?: string | null
+          updated_at?: string
+        }
+        Update: {
+          brandfetch_domain?: string | null
+          category_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_ingested_at?: string | null
+          last_verified_at?: string | null
+          logo_fetched_at?: string | null
+          logo_url?: string | null
+          logo_variant?: string
+          name?: string
+          normalized_name?: string
+          places_search_query?: string | null
+          places_type_filter?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_brand_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "merchant_category"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_category: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          last_refreshed_at: string | null
+          name: string
+          refresh_frequency_days: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          last_refreshed_at?: string | null
+          name: string
+          refresh_frequency_days?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          last_refreshed_at?: string | null
+          name?: string
+          refresh_frequency_days?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      merchant_closure_alert: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          detected_at: string
+          id: string
+          location_id: string
+          new_status: string
+          previous_status: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          detected_at?: string
+          id?: string
+          location_id: string
+          new_status: string
+          previous_status?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          detected_at?: string
+          id?: string
+          location_id?: string
+          new_status?: string
+          previous_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_closure_alert_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_closure_alert_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "merchant_location"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_favorite: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_user_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_user_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_user_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_favorite_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_favorite_brand: {
+        Row: {
+          brand_id: string
+          favorite_id: string
+        }
+        Insert: {
+          brand_id: string
+          favorite_id: string
+        }
+        Update: {
+          brand_id?: string
+          favorite_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_favorite_brand_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "merchant_brand"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_favorite_brand_favorite_id_fkey"
+            columns: ["favorite_id"]
+            isOneToOne: false
+            referencedRelation: "merchant_favorite"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_favorite_share: {
+        Row: {
+          favorite_id: string
+          permission: string
+          shared_at: string
+          user_id: string
+        }
+        Insert: {
+          favorite_id: string
+          permission?: string
+          shared_at?: string
+          user_id: string
+        }
+        Update: {
+          favorite_id?: string
+          permission?: string
+          shared_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_favorite_share_favorite_id_fkey"
+            columns: ["favorite_id"]
+            isOneToOne: false
+            referencedRelation: "merchant_favorite"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_favorite_share_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_location: {
+        Row: {
+          brand_id: string
+          business_status: string
+          created_at: string
+          formatted_address: string | null
+          google_place_id: string
+          id: string
+          last_fetched_at: string
+          last_verified_at: string
+          latitude: number
+          longitude: number
+          name: string
+          phone: string | null
+          previous_status: string | null
+          status_changed_at: string | null
+          website: string | null
+        }
+        Insert: {
+          brand_id: string
+          business_status?: string
+          created_at?: string
+          formatted_address?: string | null
+          google_place_id: string
+          id?: string
+          last_fetched_at?: string
+          last_verified_at?: string
+          latitude: number
+          longitude: number
+          name: string
+          phone?: string | null
+          previous_status?: string | null
+          status_changed_at?: string | null
+          website?: string | null
+        }
+        Update: {
+          brand_id?: string
+          business_status?: string
+          created_at?: string
+          formatted_address?: string | null
+          google_place_id?: string
+          id?: string
+          last_fetched_at?: string
+          last_verified_at?: string
+          latitude?: number
+          longitude?: number
+          name?: string
+          phone?: string | null
+          previous_status?: string | null
+          status_changed_at?: string | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_location_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "merchant_brand"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      negotiation_logs: {
+        Row: {
+          clause_type_id: string | null
+          client_id: string
+          created_at: string
+          deal_id: string | null
+          decision_id: string | null
+          id: string
+          notes: string | null
+          override_source: string | null
+          position_used: number | null
+          round_id: string | null
+          session_id: string | null
+          was_override: boolean
+        }
+        Insert: {
+          clause_type_id?: string | null
+          client_id: string
+          created_at?: string
+          deal_id?: string | null
+          decision_id?: string | null
+          id?: string
+          notes?: string | null
+          override_source?: string | null
+          position_used?: number | null
+          round_id?: string | null
+          session_id?: string | null
+          was_override?: boolean
+        }
+        Update: {
+          clause_type_id?: string | null
+          client_id?: string
+          created_at?: string
+          deal_id?: string | null
+          decision_id?: string | null
+          id?: string
+          notes?: string | null
+          override_source?: string | null
+          position_used?: number | null
+          round_id?: string | null
+          session_id?: string | null
+          was_override?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "negotiation_logs_clause_type_id_fkey"
+            columns: ["clause_type_id"]
+            isOneToOne: false
+            referencedRelation: "clause_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "legal_loi_decision"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "legal_loi_round"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "negotiation_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "legal_loi_session"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       note: {
         Row: {
@@ -4560,6 +6822,13 @@ export type Database = {
             foreignKeyName: "fk_note_object_link_client_id"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_note_object_link_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -4588,6 +6857,13 @@ export type Database = {
             foreignKeyName: "fk_note_object_link_contact_id"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "fk_note_object_link_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -4604,6 +6880,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_object_link_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "fk_note_object_link_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "fk_note_object_link_deal_id"
@@ -4665,6 +6955,13 @@ export type Database = {
             foreignKeyName: "note_object_link_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "note_object_link_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -4693,6 +6990,13 @@ export type Database = {
             foreignKeyName: "note_object_link_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "note_object_link_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -4709,6 +7013,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "note_object_link_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "note_object_link_deal_id_fkey"
@@ -4798,7 +7116,9 @@ export type Database = {
           override_at: string | null
           override_by: string | null
           payment_amount: number | null
+          payment_date_auto_calculated: string | null
           payment_date_estimated: string | null
+          payment_date_source: string | null
           payment_invoice_date: string | null
           payment_name: string | null
           payment_received: boolean | null
@@ -4884,7 +7204,9 @@ export type Database = {
           override_at?: string | null
           override_by?: string | null
           payment_amount?: number | null
+          payment_date_auto_calculated?: string | null
           payment_date_estimated?: string | null
+          payment_date_source?: string | null
           payment_invoice_date?: string | null
           payment_name?: string | null
           payment_received?: boolean | null
@@ -4970,7 +7292,9 @@ export type Database = {
           override_at?: string | null
           override_by?: string | null
           payment_amount?: number | null
+          payment_date_auto_calculated?: string | null
           payment_date_estimated?: string | null
+          payment_date_source?: string | null
           payment_invoice_date?: string | null
           payment_name?: string | null
           payment_received?: boolean | null
@@ -5055,6 +7379,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "payment_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "payment_deal_id_fkey"
@@ -5227,6 +7565,353 @@ export type Database = {
           },
         ]
       }
+      pending_client_comment_email: {
+        Row: {
+          client_id: string
+          comment_count: number
+          created_at: string
+          first_comment_at: string
+          id: string
+          last_comment_at: string
+          site_submit_id: string
+        }
+        Insert: {
+          client_id: string
+          comment_count?: number
+          created_at?: string
+          first_comment_at?: string
+          id?: string
+          last_comment_at?: string
+          site_submit_id: string
+        }
+        Update: {
+          client_id?: string
+          comment_count?: number
+          created_at?: string
+          first_comment_at?: string
+          id?: string
+          last_comment_at?: string
+          site_submit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_client_comment_email_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_client_comment_email_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "pending_client_comment_email_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "pending_client_comment_email_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "pending_client_comment_email_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "pending_client_comment_email_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "pending_client_comment_email_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portal_activity_log: {
+        Row: {
+          auth_user_id: string | null
+          client_id: string | null
+          contact_id: string | null
+          created_at: string
+          event_data: Json | null
+          event_type: string
+          id: string
+          ip_address: unknown
+          page_path: string | null
+          session_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          auth_user_id?: string | null
+          client_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          event_data?: Json | null
+          event_type: string
+          id?: string
+          ip_address?: unknown
+          page_path?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          auth_user_id?: string | null
+          client_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          event_data?: Json | null
+          event_type?: string
+          id?: string
+          ip_address?: unknown
+          page_path?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_activity_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "portal_activity_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      portal_email_send: {
+        Row: {
+          activity_ids: string[]
+          body_html: string | null
+          cc: string[]
+          client_id: string
+          created_at: string
+          direction: string
+          error: string | null
+          id: string
+          provider: string
+          provider_message_id: string | null
+          recipients: string[]
+          scope: string | null
+          sent_at: string
+          site_submit_id: string | null
+          status: string
+          subject: string
+          triggered_by_id: string | null
+        }
+        Insert: {
+          activity_ids?: string[]
+          body_html?: string | null
+          cc?: string[]
+          client_id: string
+          created_at?: string
+          direction: string
+          error?: string | null
+          id?: string
+          provider: string
+          provider_message_id?: string | null
+          recipients?: string[]
+          scope?: string | null
+          sent_at?: string
+          site_submit_id?: string | null
+          status?: string
+          subject: string
+          triggered_by_id?: string | null
+        }
+        Update: {
+          activity_ids?: string[]
+          body_html?: string | null
+          cc?: string[]
+          client_id?: string
+          created_at?: string
+          direction?: string
+          error?: string | null
+          id?: string
+          provider?: string
+          provider_message_id?: string | null
+          recipients?: string[]
+          scope?: string | null
+          sent_at?: string
+          site_submit_id?: string | null
+          status?: string
+          subject?: string
+          triggered_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_email_send_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_email_send_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_email_send_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_email_send_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_email_send_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_email_send_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "portal_email_send_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portal_file_visibility: {
+        Row: {
+          changed_by_id: string | null
+          created_at: string | null
+          dropbox_path: string
+          entity_id: string
+          entity_type: string
+          id: string
+          is_visible: boolean
+          site_submit_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          changed_by_id?: string | null
+          created_at?: string | null
+          dropbox_path: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          is_visible: boolean
+          site_submit_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          changed_by_id?: string | null
+          created_at?: string | null
+          dropbox_path?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          is_visible?: boolean
+          site_submit_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_file_visibility_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "portal_file_visibility_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       portal_invite_log: {
         Row: {
           accepted_at: string | null
@@ -5271,6 +7956,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_invite_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "portal_invite_log_contact_id_fkey"
@@ -5376,6 +8068,13 @@ export type Database = {
             foreignKeyName: "portal_user_client_access_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "portal_user_client_access_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -5399,6 +8098,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_user_client_access_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "portal_user_client_access_contact_id_fkey"
@@ -5471,18 +8177,32 @@ export type Database = {
           created_at: string | null
           created_by_id: string | null
           created_by_sf_id: string | null
+          daytime_pop_1_mile: number | null
+          daytime_pop_10min_drive: number | null
+          daytime_pop_3_mile: number | null
+          daytime_pop_5_mile: number | null
           deal_type_id: string | null
           demographics: string | null
           description: string | null
+          employees_1_mile: number | null
+          employees_10min_drive: number | null
+          employees_3_mile: number | null
+          employees_5_mile: number | null
           esri_enriched_at: string | null
-          esri_enrichment_data: Record<string, unknown> | null
+          esri_enriched_latitude: number | null
+          esri_enriched_longitude: number | null
+          esri_enrichment_data: Json | null
+          google_place_id: string | null
           hh_income_avg_1_mile: number | null
+          hh_income_avg_10min_drive: number | null
           hh_income_avg_3_mile: number | null
           hh_income_avg_5_mile: number | null
           hh_income_median_1_mile: number | null
+          hh_income_median_10min_drive: number | null
           hh_income_median_3_mile: number | null
           hh_income_median_5_mile: number | null
           households_1_mile: number | null
+          households_10min_drive: number | null
           households_3_mile: number | null
           households_5_mile: number | null
           id: string
@@ -5494,10 +8214,15 @@ export type Database = {
           longitude: number | null
           map_link: string | null
           marketing_materials: string | null
+          median_age_1_mile: number | null
+          median_age_10min_drive: number | null
+          median_age_3_mile: number | null
+          median_age_5_mile: number | null
           nnn_psf: number | null
           owner_id: string | null
           parcel_id: string | null
           pop_1_mile: number | null
+          pop_10min_drive: number | null
           pop_3_mile: number | null
           pop_5_mile: number | null
           property_name: string | null
@@ -5545,18 +8270,32 @@ export type Database = {
           created_at?: string | null
           created_by_id?: string | null
           created_by_sf_id?: string | null
+          daytime_pop_1_mile?: number | null
+          daytime_pop_10min_drive?: number | null
+          daytime_pop_3_mile?: number | null
+          daytime_pop_5_mile?: number | null
           deal_type_id?: string | null
           demographics?: string | null
           description?: string | null
+          employees_1_mile?: number | null
+          employees_10min_drive?: number | null
+          employees_3_mile?: number | null
+          employees_5_mile?: number | null
           esri_enriched_at?: string | null
-          esri_enrichment_data?: Record<string, unknown> | null
+          esri_enriched_latitude?: number | null
+          esri_enriched_longitude?: number | null
+          esri_enrichment_data?: Json | null
+          google_place_id?: string | null
           hh_income_avg_1_mile?: number | null
+          hh_income_avg_10min_drive?: number | null
           hh_income_avg_3_mile?: number | null
           hh_income_avg_5_mile?: number | null
           hh_income_median_1_mile?: number | null
+          hh_income_median_10min_drive?: number | null
           hh_income_median_3_mile?: number | null
           hh_income_median_5_mile?: number | null
           households_1_mile?: number | null
+          households_10min_drive?: number | null
           households_3_mile?: number | null
           households_5_mile?: number | null
           id?: string
@@ -5568,10 +8307,15 @@ export type Database = {
           longitude?: number | null
           map_link?: string | null
           marketing_materials?: string | null
+          median_age_1_mile?: number | null
+          median_age_10min_drive?: number | null
+          median_age_3_mile?: number | null
+          median_age_5_mile?: number | null
           nnn_psf?: number | null
           owner_id?: string | null
           parcel_id?: string | null
           pop_1_mile?: number | null
+          pop_10min_drive?: number | null
           pop_3_mile?: number | null
           pop_5_mile?: number | null
           property_name?: string | null
@@ -5619,18 +8363,32 @@ export type Database = {
           created_at?: string | null
           created_by_id?: string | null
           created_by_sf_id?: string | null
+          daytime_pop_1_mile?: number | null
+          daytime_pop_10min_drive?: number | null
+          daytime_pop_3_mile?: number | null
+          daytime_pop_5_mile?: number | null
           deal_type_id?: string | null
           demographics?: string | null
           description?: string | null
+          employees_1_mile?: number | null
+          employees_10min_drive?: number | null
+          employees_3_mile?: number | null
+          employees_5_mile?: number | null
           esri_enriched_at?: string | null
-          esri_enrichment_data?: Record<string, unknown> | null
+          esri_enriched_latitude?: number | null
+          esri_enriched_longitude?: number | null
+          esri_enrichment_data?: Json | null
+          google_place_id?: string | null
           hh_income_avg_1_mile?: number | null
+          hh_income_avg_10min_drive?: number | null
           hh_income_avg_3_mile?: number | null
           hh_income_avg_5_mile?: number | null
           hh_income_median_1_mile?: number | null
+          hh_income_median_10min_drive?: number | null
           hh_income_median_3_mile?: number | null
           hh_income_median_5_mile?: number | null
           households_1_mile?: number | null
+          households_10min_drive?: number | null
           households_3_mile?: number | null
           households_5_mile?: number | null
           id?: string
@@ -5642,10 +8400,15 @@ export type Database = {
           longitude?: number | null
           map_link?: string | null
           marketing_materials?: string | null
+          median_age_1_mile?: number | null
+          median_age_10min_drive?: number | null
+          median_age_3_mile?: number | null
+          median_age_5_mile?: number | null
           nnn_psf?: number | null
           owner_id?: string | null
           parcel_id?: string | null
           pop_1_mile?: number | null
+          pop_10min_drive?: number | null
           pop_3_mile?: number | null
           pop_5_mile?: number | null
           property_name?: string | null
@@ -5709,6 +8472,96 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["auth_user_id"]
+          },
+        ]
+      }
+      property_activity: {
+        Row: {
+          activity_type: string
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          email_subject: string | null
+          id: string
+          notes: string | null
+          property_id: string
+        }
+        Insert: {
+          activity_type: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          email_subject?: string | null
+          id?: string
+          notes?: string | null
+          property_id: string
+        }
+        Update: {
+          activity_type?: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          email_subject?: string | null
+          id?: string
+          notes?: string | null
+          property_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "property_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "property_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "property_activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -5785,6 +8638,13 @@ export type Database = {
             foreignKeyName: "fk_property_contact_contact_id"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "fk_property_contact_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -5815,6 +8675,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "property_contact_contact_id_fkey"
@@ -5853,6 +8720,71 @@ export type Database = {
           },
           {
             foreignKeyName: "property_contact_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_note: {
+        Row: {
+          content: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_edited: boolean | null
+          is_migrated: boolean | null
+          migrated_from: string | null
+          property_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_edited?: boolean | null
+          is_migrated?: boolean | null
+          migrated_from?: string | null
+          property_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_edited?: boolean | null
+          is_migrated?: boolean | null
+          migrated_from?: string | null
+          property_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_note_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_note_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_note_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_note_property_id_fkey"
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "property_with_type"
@@ -6053,6 +8985,20 @@ export type Database = {
             foreignKeyName: "property_unit_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "property_unit_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "property_unit_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
             referencedRelation: "deal_with_stage"
             referencedColumns: ["id"]
           },
@@ -6099,6 +9045,241 @@ export type Database = {
             referencedColumns: ["auth_user_id"]
           },
         ]
+      }
+      prospecting_activity: {
+        Row: {
+          activity_date: string | null
+          activity_type: string
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          email_subject: string | null
+          hidden_from_timeline: boolean | null
+          id: string
+          notes: string | null
+          target_id: string | null
+        }
+        Insert: {
+          activity_date?: string | null
+          activity_type: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          email_subject?: string | null
+          hidden_from_timeline?: boolean | null
+          id?: string
+          notes?: string | null
+          target_id?: string | null
+        }
+        Update: {
+          activity_date?: string | null
+          activity_type?: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          email_subject?: string | null
+          hidden_from_timeline?: boolean | null
+          id?: string
+          notes?: string | null
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospecting_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "target"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_dashboard"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_outreach_queue"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "prospecting_activity_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospecting_note: {
+        Row: {
+          contact_id: string | null
+          content: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          target_id: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          content: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          target_id?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          content?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospecting_note_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "target"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_dashboard"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_outreach_queue"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "prospecting_note_hunter_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospecting_settings: {
+        Row: {
+          created_at: string | null
+          daily_time_goal_minutes: number | null
+          id: string
+          stale_lead_days: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          daily_time_goal_minutes?: number | null
+          id?: string
+          stale_lead_days?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          daily_time_goal_minutes?: number | null
+          id?: string
+          stale_lead_days?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       prospecting_target: {
         Row: {
@@ -6189,6 +9370,13 @@ export type Database = {
             foreignKeyName: "prospecting_target_converted_client_id_fkey"
             columns: ["converted_client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "prospecting_target_converted_client_id_fkey"
+            columns: ["converted_client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -6212,6 +9400,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_target_converted_contact_id_fkey"
+            columns: ["converted_contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "prospecting_target_converted_contact_id_fkey"
@@ -6256,6 +9451,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      prospecting_time_entry: {
+        Row: {
+          created_at: string | null
+          entry_date: string
+          id: string
+          minutes: number
+          notes: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          entry_date: string
+          id?: string
+          minutes: number
+          notes?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          entry_date?: string
+          id?: string
+          minutes?: number
+          notes?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      prospecting_vacation_day: {
+        Row: {
+          created_at: string | null
+          id: string
+          reason: string | null
+          user_id: string
+          vacation_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          reason?: string | null
+          user_id: string
+          vacation_date: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          reason?: string | null
+          user_id?: string
+          vacation_date?: string
+        }
+        Relationships: []
       }
       qb_account: {
         Row: {
@@ -6456,6 +9705,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qb_commission_mapping_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
           },
           {
             foreignKeyName: "qb_commission_mapping_client_id_fkey"
@@ -6816,6 +10072,50 @@ export type Database = {
           yr_built?: number | null
         }
         Relationships: []
+      }
+      restaurant_placer_rank: {
+        Row: {
+          created_at: string | null
+          entered_by: string
+          id: string
+          placer_url: string | null
+          rank_date: string
+          rank_percentage: number
+          rank_position: number
+          rank_total: number
+          store_no: string
+        }
+        Insert: {
+          created_at?: string | null
+          entered_by: string
+          id?: string
+          placer_url?: string | null
+          rank_date?: string
+          rank_percentage: number
+          rank_position: number
+          rank_total: number
+          store_no: string
+        }
+        Update: {
+          created_at?: string | null
+          entered_by?: string
+          id?: string
+          placer_url?: string | null
+          rank_date?: string
+          rank_percentage?: number
+          rank_position?: number
+          rank_total?: number
+          store_no?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_placer_rank_store_no_fkey"
+            columns: ["store_no"]
+            isOneToOne: false
+            referencedRelation: "restaurant_location"
+            referencedColumns: ["store_no"]
+          },
+        ]
       }
       restaurant_trend: {
         Row: {
@@ -8007,10 +11307,57 @@ export type Database = {
         }
         Relationships: []
       }
+      saved_search: {
+        Row: {
+          column_config: Json | null
+          created_at: string | null
+          created_by_id: string
+          description: string | null
+          filter_groups: Json
+          id: string
+          is_public: boolean | null
+          name: string
+          sort_config: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          column_config?: Json | null
+          created_at?: string | null
+          created_by_id: string
+          description?: string | null
+          filter_groups: Json
+          id?: string
+          is_public?: boolean | null
+          name: string
+          sort_config?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          column_config?: Json | null
+          created_at?: string | null
+          created_by_id?: string
+          description?: string | null
+          filter_groups?: Json
+          id?: string
+          is_public?: boolean | null
+          name?: string
+          sort_config?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_search_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_submit: {
         Row: {
           assignment_id: string | null
-          client_demographics: Record<string, unknown> | null
+          client_demographics: Json | null
           client_id: string | null
           code: string | null
           competitor_data: string | null
@@ -8057,7 +11404,7 @@ export type Database = {
         }
         Insert: {
           assignment_id?: string | null
-          client_demographics?: Record<string, unknown> | null
+          client_demographics?: Json | null
           client_id?: string | null
           code?: string | null
           competitor_data?: string | null
@@ -8104,7 +11451,7 @@ export type Database = {
         }
         Update: {
           assignment_id?: string | null
-          client_demographics?: Record<string, unknown> | null
+          client_demographics?: Json | null
           client_id?: string | null
           code?: string | null
           competitor_data?: string | null
@@ -8175,6 +11522,13 @@ export type Database = {
             foreignKeyName: "site_submit_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -8205,6 +11559,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_submit_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "site_submit_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "site_submit_deal_id_fkey"
@@ -8292,6 +11660,102 @@ export type Database = {
           },
         ]
       }
+      site_submit_activity: {
+        Row: {
+          activity_type: string
+          actor_kind: string
+          actor_user_id: string | null
+          client_id: string
+          client_visible: boolean
+          created_at: string
+          id: string
+          included_in_send_id: string | null
+          payload: Json
+          site_submit_id: string
+        }
+        Insert: {
+          activity_type: string
+          actor_kind: string
+          actor_user_id?: string | null
+          client_id: string
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          included_in_send_id?: string | null
+          payload?: Json
+          site_submit_id: string
+        }
+        Update: {
+          activity_type?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          client_id?: string
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          included_in_send_id?: string | null
+          payload?: Json
+          site_submit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_submit_activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_submit_activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_activity_included_in_send_id_fkey"
+            columns: ["included_in_send_id"]
+            isOneToOne: false
+            referencedRelation: "portal_email_send"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_submit_activity_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "site_submit_activity_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_submit_comment: {
         Row: {
           author_id: string
@@ -8299,6 +11763,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_edited: boolean | null
+          parent_comment_id: string | null
           site_submit_id: string
           updated_at: string | null
           updated_by_id: string | null
@@ -8310,6 +11775,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_edited?: boolean | null
+          parent_comment_id?: string | null
           site_submit_id: string
           updated_at?: string | null
           updated_by_id?: string | null
@@ -8321,12 +11787,20 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_edited?: boolean | null
+          parent_comment_id?: string | null
           site_submit_id?: string
           updated_at?: string | null
           updated_by_id?: string | null
           visibility?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "site_submit_comment_parent_comment_id_fkey"
+            columns: ["parent_comment_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit_comment"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "site_submit_comment_site_submit_id_fkey"
             columns: ["site_submit_id"]
@@ -8400,6 +11874,106 @@ export type Database = {
         }
         Relationships: []
       }
+      site_submit_stage_history: {
+        Row: {
+          changed_at: string
+          changed_by_id: string | null
+          client_id: string | null
+          created_at: string
+          duration_seconds: number | null
+          from_stage_id: string | null
+          id: string
+          site_submit_id: string
+          to_stage_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          from_stage_id?: string | null
+          id?: string
+          site_submit_id: string
+          to_stage_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          from_stage_id?: string | null
+          id?: string
+          site_submit_id?: string
+          to_stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_submit_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "submit_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_submit_stage_history_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "submit_stage"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       special_layer: {
         Row: {
           active: boolean | null
@@ -8442,6 +12016,554 @@ export type Database = {
         }
         Relationships: []
       }
+      target: {
+        Row: {
+          concept_name: string
+          created_at: string | null
+          dismiss_note: string | null
+          dismiss_reason: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
+          existing_client_id: string | null
+          existing_contact_id: string | null
+          first_seen_at: string | null
+          geo_relevance: string | null
+          id: string
+          industry_segment: string | null
+          key_person_name: string | null
+          key_person_title: string | null
+          last_contacted_at: string | null
+          last_signal_at: string | null
+          news_only: boolean | null
+          normalized_name: string
+          score_reasoning: string | null
+          signal_strength: string
+          source: string
+          status: string | null
+          target_geography: string[] | null
+          updated_at: string | null
+          website: string | null
+        }
+        Insert: {
+          concept_name: string
+          created_at?: string | null
+          dismiss_note?: string | null
+          dismiss_reason?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          existing_client_id?: string | null
+          existing_contact_id?: string | null
+          first_seen_at?: string | null
+          geo_relevance?: string | null
+          id?: string
+          industry_segment?: string | null
+          key_person_name?: string | null
+          key_person_title?: string | null
+          last_contacted_at?: string | null
+          last_signal_at?: string | null
+          news_only?: boolean | null
+          normalized_name: string
+          score_reasoning?: string | null
+          signal_strength: string
+          source?: string
+          status?: string | null
+          target_geography?: string[] | null
+          updated_at?: string | null
+          website?: string | null
+        }
+        Update: {
+          concept_name?: string
+          created_at?: string | null
+          dismiss_note?: string | null
+          dismiss_reason?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          existing_client_id?: string | null
+          existing_contact_id?: string | null
+          first_seen_at?: string | null
+          geo_relevance?: string | null
+          id?: string
+          industry_segment?: string | null
+          key_person_name?: string | null
+          key_person_title?: string | null
+          last_contacted_at?: string | null
+          last_signal_at?: string | null
+          news_only?: boolean | null
+          normalized_name?: string
+          score_reasoning?: string | null
+          signal_strength?: string
+          source?: string
+          status?: string | null
+          target_geography?: string[] | null
+          updated_at?: string | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      target_signal: {
+        Row: {
+          created_at: string | null
+          extracted_summary: string | null
+          id: string
+          mentioned_geography: string[] | null
+          mentioned_person: string | null
+          signal_id: string | null
+          target_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          extracted_summary?: string | null
+          id?: string
+          mentioned_geography?: string[] | null
+          mentioned_person?: string | null
+          signal_id?: string | null
+          target_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          extracted_summary?: string | null
+          id?: string
+          mentioned_geography?: string[] | null
+          mentioned_person?: string | null
+          signal_id?: string | null
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "target"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_dismissed_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_dashboard"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_outreach_queue"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["target_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_signal_lead_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "v_prospecting_stale_targets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_signal_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "hunter_signal"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task: {
+        Row: {
+          assigned_by_id: string | null
+          assignment_id: string | null
+          category: string
+          client_id: string | null
+          completed_at: string | null
+          completion_note: string | null
+          contact_id: string | null
+          created_at: string
+          created_by_id: string | null
+          deal_id: string | null
+          description: string | null
+          due_at: string | null
+          duration_minutes: number | null
+          high_flag: boolean
+          id: string
+          last_activity_at: string | null
+          owner_id: string
+          parent_task_id: string | null
+          private_completion: boolean
+          project_id: string | null
+          property_id: string | null
+          remind_at: string | null
+          signal_strength: string | null
+          site_submit_id: string | null
+          status: string
+          subject: string
+          top3_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_by_id?: string | null
+          assignment_id?: string | null
+          category?: string
+          client_id?: string | null
+          completed_at?: string | null
+          completion_note?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by_id?: string | null
+          deal_id?: string | null
+          description?: string | null
+          due_at?: string | null
+          duration_minutes?: number | null
+          high_flag?: boolean
+          id?: string
+          last_activity_at?: string | null
+          owner_id: string
+          parent_task_id?: string | null
+          private_completion?: boolean
+          project_id?: string | null
+          property_id?: string | null
+          remind_at?: string | null
+          signal_strength?: string | null
+          site_submit_id?: string | null
+          status?: string
+          subject: string
+          top3_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_by_id?: string | null
+          assignment_id?: string | null
+          category?: string
+          client_id?: string | null
+          completed_at?: string | null
+          completion_note?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by_id?: string | null
+          deal_id?: string | null
+          description?: string | null
+          due_at?: string | null
+          duration_minutes?: number | null
+          high_flag?: boolean
+          id?: string
+          last_activity_at?: string | null
+          owner_id?: string
+          parent_task_id?: string | null
+          private_completion?: boolean
+          project_id?: string | null
+          property_id?: string | null
+          remind_at?: string | null
+          signal_strength?: string | null
+          site_submit_id?: string | null
+          status?: string
+          subject?: string
+          top3_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_assigned_by_id_fkey"
+            columns: ["assigned_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "task_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "task_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "task_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "task_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "task_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "task_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "task_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "task_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "task_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "task_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "task"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "task_project"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "task_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_project: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          owner_id: string
+          status: string
+          target_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          owner_id: string
+          status?: string
+          target_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
+          status?: string
+          target_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_project_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       thread_message: {
         Row: {
           body: string
@@ -8478,6 +12600,33 @@ export type Database = {
           property_id?: string | null
           site_submit_id?: string | null
           visible_to_client?: boolean | null
+        }
+        Relationships: []
+      }
+      traffic_cache: {
+        Row: {
+          created_at: string
+          fetched_at: string
+          id: string
+          segments: Json
+          state: string
+          tile_key: string
+        }
+        Insert: {
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          segments: Json
+          state: string
+          tile_key: string
+        }
+        Update: {
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          segments?: Json
+          state?: string
+          tile_key?: string
         }
         Relationships: []
       }
@@ -8670,6 +12819,44 @@ export type Database = {
           },
         ]
       }
+      user_email_signature: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          signature_html: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          signature_html: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          signature_html?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_email_signature_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       budget_vs_actual: {
@@ -8688,6 +12875,177 @@ export type Database = {
           ytd_pct_used: number | null
         }
         Relationships: []
+      }
+      budget_vs_actual_monthly: {
+        Row: {
+          account_id: string | null
+          account_name: string | null
+          account_type: string | null
+          apr: number | null
+          aug: number | null
+          budget_annual: number | null
+          budget_current_month: number | null
+          budget_year: number | null
+          dec: number | null
+          feb: number | null
+          fully_qualified_name: string | null
+          jan: number | null
+          jul: number | null
+          jun: number | null
+          mar: number | null
+          may: number | null
+          mtd_actual: number | null
+          mtd_pct_used: number | null
+          nov: number | null
+          oct: number | null
+          qb_account_id: string | null
+          sep: number | null
+          ytd_actual: number | null
+        }
+        Relationships: []
+      }
+      client_velocity_stats: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          lease_psa_avg_days: number | null
+          lease_psa_deal_count: number | null
+          lease_psa_max_days: number | null
+          lease_psa_min_days: number | null
+          loi_avg_days: number | null
+          loi_deal_count: number | null
+          loi_max_days: number | null
+          loi_min_days: number | null
+          velocity_lease_psa_days_override: number | null
+          velocity_loi_days_override: number | null
+        }
+        Relationships: []
+      }
+      deal_current_stage_info: {
+        Row: {
+          client_id: string | null
+          days_in_stage: number | null
+          deal_id: string | null
+          deal_name: string | null
+          deal_owner_id: string | null
+          entered_current_stage_at: string | null
+          is_stale: boolean | null
+          stage_id: string | null
+          stage_label: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_stage_id"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "deal_stage"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_forecasting_summary: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          closing_deadline_days: number | null
+          contingency_period_days: number | null
+          contract_signed_date: string | null
+          days_in_current_stage: number | null
+          deal_id: string | null
+          deal_name: string | null
+          deal_type: string | null
+          due_diligence_days: number | null
+          estimated_execution_date: string | null
+          fee: number | null
+          is_behind_schedule: boolean | null
+          loi_date: string | null
+          loi_signed_date: string | null
+          number_of_payments: number | null
+          owner_id: string | null
+          rent_commencement_days: number | null
+          stage_id: string | null
+          stage_label: string | null
+          weeks_behind: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_stage_id"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "deal_stage"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       deal_with_stage: {
         Row: {
@@ -8824,6 +13182,13 @@ export type Database = {
             foreignKeyName: "deal_referral_payee_client_id_fkey"
             columns: ["referral_payee_client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "deal_referral_payee_client_id_fkey"
+            columns: ["referral_payee_client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -8873,6 +13238,13 @@ export type Database = {
             foreignKeyName: "fk_deal_client_id"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -8896,6 +13268,78 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal_stage"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_handoff_history: {
+        Row: {
+          changed_at: string | null
+          changed_by: string | null
+          created_at: string | null
+          days_held: number | null
+          deal_id: string | null
+          document_type: string | null
+          holder: string | null
+          id: string | null
+          total_turns: number | null
+        }
+        Insert: {
+          changed_at?: string | null
+          changed_by?: string | null
+          created_at?: string | null
+          days_held?: never
+          deal_id?: string | null
+          document_type?: string | null
+          holder?: string | null
+          id?: string | null
+          total_turns?: never
+        }
+        Update: {
+          changed_at?: string | null
+          changed_by?: string | null
+          created_at?: string | null
+          days_held?: never
+          deal_id?: string | null
+          document_type?: string | null
+          holder?: string | null
+          id?: string | null
+          total_turns?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_handoff_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["deal_id"]
           },
         ]
       }
@@ -8948,6 +13392,13 @@ export type Database = {
             foreignKeyName: "site_submit_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "site_submit_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -8973,6 +13424,26 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      portal_user_analytics: {
+        Row: {
+          clients: Json | null
+          contact_id: string | null
+          email: string | null
+          first_name: string | null
+          last_activity_at: string | null
+          last_name: string | null
+          portal_access_enabled: boolean | null
+          portal_auth_user_id: string | null
+          portal_invite_expires_at: string | null
+          portal_invite_sent_at: string | null
+          portal_invite_status: string | null
+          portal_last_login_at: string | null
+          portal_status: string | null
+          total_logins: number | null
+          total_page_views: number | null
+        }
+        Relationships: []
       }
       property_with_deal_type: {
         Row: {
@@ -9306,6 +13777,13 @@ export type Database = {
             foreignKeyName: "contact_client_role_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -9329,6 +13807,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "contact_client_role_contact_id_fkey"
@@ -9381,6 +13866,13 @@ export type Database = {
             foreignKeyName: "contact_deal_role_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_deal_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -9397,6 +13889,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_deal_role_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_current_stage_info"
+            referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "contact_deal_role_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_forecasting_summary"
+            referencedColumns: ["deal_id"]
           },
           {
             foreignKeyName: "contact_deal_role_deal_id_fkey"
@@ -9421,6 +13927,87 @@ export type Database = {
           },
         ]
       }
+      v_contact_tags: {
+        Row: {
+          contact_company: string | null
+          contact_email: string | null
+          contact_id: string | null
+          contact_name: string | null
+          created_at: string | null
+          created_by_id: string | null
+          id: string | null
+          notes: string | null
+          tag_color: string | null
+          tag_description: string | null
+          tag_id: string | null
+          tag_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_tag_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_tag_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tag_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "contact_tag_type"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_dismissed_targets: {
+        Row: {
+          concept_name: string | null
+          dismiss_note: string | null
+          dismiss_reason: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
+          dismissed_by_email: string | null
+          first_seen_at: string | null
+          id: string | null
+          industry_segment: string | null
+          last_signal_at: string | null
+          linked_contacts_count: number | null
+          signal_count: number | null
+          signal_strength: string | null
+          source: string | null
+          target_geography: string[] | null
+          website: string | null
+        }
+        Relationships: []
+      }
       v_hunter_dashboard: {
         Row: {
           concept_name: string | null
@@ -9436,16 +14023,19 @@ export type Database = {
           industry_segment: string | null
           key_person_name: string | null
           key_person_title: string | null
+          last_contacted_at: string | null
           last_signal_at: string | null
           latest_signal_summary: string | null
           latest_signal_title: string | null
           latest_signal_url: string | null
+          linked_contacts_count: number | null
           news_only: boolean | null
           pending_outreach: number | null
           primary_contact_email: string | null
           primary_contact_name: string | null
           signal_count: number | null
           signal_strength: string | null
+          source: string | null
           status: string | null
           target_geography: string[] | null
           website: string | null
@@ -9457,6 +14047,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
           },
           {
             foreignKeyName: "hunter_lead_existing_client_id_fkey"
@@ -9490,6 +14087,13 @@ export type Database = {
             foreignKeyName: "hunter_lead_existing_contact_id_fkey"
             columns: ["existing_contact_id"]
             isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
             referencedRelation: "v_hunter_reconnect"
             referencedColumns: ["contact_id"]
           },
@@ -9513,13 +14117,13 @@ export type Database = {
           created_at: string | null
           id: string | null
           industry_segment: string | null
-          lead_id: string | null
           outreach_type: string | null
           signal_strength: string | null
           signal_summary: string | null
           source_url: string | null
           status: string | null
           subject: string | null
+          target_id: string | null
         }
         Relationships: []
       }
@@ -9535,12 +14139,174 @@ export type Database = {
           contact_phone: string | null
           last_signal_at: string | null
           latest_news: string | null
-          lead_id: string | null
           signal_strength: string | null
           source_title: string | null
           source_url: string | null
+          target_id: string | null
         }
         Relationships: []
+      }
+      v_prospecting_daily_metrics: {
+        Row: {
+          activity_date: string | null
+          calls: number | null
+          contacts_touched: number | null
+          email_responses: number | null
+          emails: number | null
+          linkedin: number | null
+          linkedin_responses: number | null
+          meetings: number | null
+          return_calls: number | null
+          sms: number | null
+          sms_responses: number | null
+          total_connections: number | null
+          total_outreach: number | null
+          user_id: string | null
+          voicemail: number | null
+        }
+        Relationships: []
+      }
+      v_prospecting_stale_targets: {
+        Row: {
+          concept_name: string | null
+          created_at: string | null
+          days_since_contact: number | null
+          effective_last_contact: string | null
+          existing_client_id: string | null
+          existing_contact_id: string | null
+          first_seen_at: string | null
+          geo_relevance: string | null
+          id: string | null
+          industry_segment: string | null
+          key_person_name: string | null
+          key_person_title: string | null
+          last_contacted_at: string | null
+          last_signal_at: string | null
+          news_only: boolean | null
+          normalized_name: string | null
+          score_reasoning: string | null
+          signal_strength: string | null
+          source: string | null
+          status: string | null
+          target_geography: string[] | null
+          updated_at: string | null
+          website: string | null
+        }
+        Insert: {
+          concept_name?: string | null
+          created_at?: string | null
+          days_since_contact?: never
+          effective_last_contact?: never
+          existing_client_id?: string | null
+          existing_contact_id?: string | null
+          first_seen_at?: string | null
+          geo_relevance?: string | null
+          id?: string | null
+          industry_segment?: string | null
+          key_person_name?: string | null
+          key_person_title?: string | null
+          last_contacted_at?: string | null
+          last_signal_at?: string | null
+          news_only?: boolean | null
+          normalized_name?: string | null
+          score_reasoning?: string | null
+          signal_strength?: string | null
+          source?: string | null
+          status?: string | null
+          target_geography?: string[] | null
+          updated_at?: string | null
+          website?: string | null
+        }
+        Update: {
+          concept_name?: string | null
+          created_at?: string | null
+          days_since_contact?: never
+          effective_last_contact?: never
+          existing_client_id?: string | null
+          existing_contact_id?: string | null
+          first_seen_at?: string | null
+          geo_relevance?: string | null
+          id?: string | null
+          industry_segment?: string | null
+          key_person_name?: string | null
+          key_person_title?: string | null
+          last_contacted_at?: string | null
+          last_signal_at?: string | null
+          news_only?: boolean | null
+          normalized_name?: string | null
+          score_reasoning?: string | null
+          signal_strength?: string | null
+          source?: string | null
+          status?: string | null
+          target_geography?: string[] | null
+          updated_at?: string | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_client_id_fkey"
+            columns: ["existing_client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "hunter_lead_existing_contact_id_fkey"
+            columns: ["existing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+        ]
       }
       v_prospecting_target: {
         Row: {
@@ -9586,6 +14352,13 @@ export type Database = {
             foreignKeyName: "prospecting_target_converted_client_id_fkey"
             columns: ["converted_client_id"]
             isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "prospecting_target_converted_client_id_fkey"
+            columns: ["converted_client_id"]
+            isOneToOne: false
             referencedRelation: "invoice_aging"
             referencedColumns: ["client_id"]
           },
@@ -9609,6 +14382,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospecting_target_converted_contact_id_fkey"
+            columns: ["converted_contact_id"]
+            isOneToOne: false
+            referencedRelation: "portal_user_analytics"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "prospecting_target_converted_contact_id_fkey"
@@ -9640,6 +14420,42 @@ export type Database = {
           },
         ]
       }
+      v_prospecting_today_time: {
+        Row: {
+          created_at: string | null
+          daily_time_goal_minutes: number | null
+          entry_date: string | null
+          id: string | null
+          minutes: number | null
+          notes: string | null
+          percent_of_goal: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
+      v_prospecting_weekly_metrics: {
+        Row: {
+          calls_completed: number | null
+          emails_sent: number | null
+          funnel_active: number | null
+          funnel_converted: number | null
+          funnel_engaged: number | null
+          funnel_meeting_scheduled: number | null
+          funnel_new: number | null
+          funnel_nurture: number | null
+          funnel_researching: number | null
+          linkedin_messages: number | null
+          meetings_held: number | null
+          sms_sent: number | null
+          time_minutes: number | null
+          total_touches: number | null
+          voicemails_left: number | null
+          week_end: string | null
+          week_start: string | null
+        }
+        Relationships: []
+      }
       v_site_selectors_by_client: {
         Row: {
           client_id: string | null
@@ -9656,7 +14472,55 @@ export type Database = {
       }
     }
     Functions: {
+      accept_portal_invite: {
+        Args: { p_auth_user_id: string; p_contact_id: string }
+        Returns: Json
+      }
+      admin_update_user: {
+        Args: {
+          p_active?: boolean
+          p_email?: string
+          p_first_name?: string
+          p_last_name?: string
+          p_mobile_phone?: string
+          p_name?: string
+          p_ovis_role?: string
+          p_permissions?: Json
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      calculate_deal_payment_dates: {
+        Args: { p_deal_id: string }
+        Returns: undefined
+      }
+      calculate_payment_estimates: {
+        Args: { p_deal_id: string }
+        Returns: {
+          calculation_notes: string
+          estimated_date: string
+          payment_id: string
+          payment_sequence: number
+        }[]
+      }
+      calculate_prospecting_streak: {
+        Args: { p_user_id: string }
+        Returns: number
+      }
       can_manage_operations: { Args: never; Returns: boolean }
+      can_manage_portal: { Args: never; Returns: boolean }
+      cleanup_orphaned_auth_identity: {
+        Args: { p_email: string }
+        Returns: Json
+      }
+      correct_stage_transition_date: {
+        Args: {
+          p_corrected_date: string
+          p_deal_id: string
+          p_stage_label: string
+        }
+        Returns: undefined
+      }
       create_payment_splits_for_payment: {
         Args: { p_payment_id: string; p_user_id?: string }
         Returns: undefined
@@ -9665,11 +14529,36 @@ export type Database = {
         Args: { p_deal_id: string }
         Returns: undefined
       }
+      debug_payment_estimates: {
+        Args: { p_deal_id?: string }
+        Returns: {
+          check_name: string
+          result: string
+          status: string
+        }[]
+      }
       generate_payments_for_deal: {
         Args: { deal_uuid: string }
         Returns: string
       }
       get_current_user_role: { Args: never; Returns: string }
+      get_dropbox_folder_path: {
+        Args: { p_entity_id: string; p_entity_type: string }
+        Returns: string
+      }
+      get_effective_velocity: {
+        Args: { p_client_id: string; p_stage_label: string }
+        Returns: number
+      }
+      get_portal_file_visibility_overrides: {
+        Args: { p_entity_id: string; p_entity_type: string }
+        Returns: {
+          changed_by_id: string
+          dropbox_path: string
+          is_visible: boolean
+          updated_at: string
+        }[]
+      }
       get_portal_user_clients: {
         Args: { p_user_id: string }
         Returns: {
@@ -9677,6 +14566,7 @@ export type Database = {
           client_name: string
         }[]
       }
+      get_user_ovis_role: { Args: never; Returns: string }
       get_user_role:
         | { Args: never; Returns: string }
         | { Args: { user_id: string }; Returns: string }
@@ -9688,7 +14578,46 @@ export type Database = {
         Args: { p_stage_name: string }
         Returns: boolean
       }
+      is_file_visible_in_portal: {
+        Args: {
+          p_dropbox_path: string
+          p_entity_id: string
+          p_entity_type: string
+        }
+        Returns: boolean
+      }
+      is_internal_user: { Args: never; Returns: boolean }
+      is_portal_user: { Args: never; Returns: boolean }
+      is_portal_visible_stage: {
+        Args: { p_stage_id: string }
+        Returns: boolean
+      }
       lock_payment: { Args: { payment_uuid: string }; Returns: undefined }
+      log_portal_activity: {
+        Args: {
+          p_client_id?: string
+          p_contact_id?: string
+          p_event_data?: Json
+          p_event_type: string
+          p_page_path?: string
+          p_session_id?: string
+        }
+        Returns: string
+      }
+      merchants_can_edit_favorite: {
+        Args: { fav_id: string }
+        Returns: boolean
+      }
+      merchants_can_view_favorite: {
+        Args: { fav_id: string }
+        Returns: boolean
+      }
+      merchants_current_user_id: { Args: never; Returns: string }
+      merchants_is_admin: { Args: never; Returns: boolean }
+      merchants_is_favorite_owner: {
+        Args: { fav_id: string }
+        Returns: boolean
+      }
       override_payment_amount: {
         Args: { p_new_amount: number; p_payment_id: string }
         Returns: {
@@ -9697,6 +14626,16 @@ export type Database = {
           result_payment_id: string
           result_referral_fee_usd: number
         }[]
+      }
+      portal_user_can_access_site_submit: {
+        Args: { p_auth_user_id: string; p_site_submit_id: string }
+        Returns: boolean
+      }
+      portal_user_client_ids: { Args: never; Returns: string[] }
+      portal_user_contact_id: { Args: never; Returns: string }
+      recalculate_payment_dates_for_deal: {
+        Args: { p_deal_id: string }
+        Returns: undefined
       }
       record_portal_site_submit_view: {
         Args: { p_site_submit_id: string; p_user_id: string }
@@ -9707,15 +14646,39 @@ export type Database = {
         Args: { p_deal_id: string }
         Returns: string
       }
+      reset_portal_file_visibility: {
+        Args: {
+          p_dropbox_path: string
+          p_entity_id: string
+          p_entity_type: string
+        }
+        Returns: boolean
+      }
+      resolve_actor_kind: { Args: { p_auth_user_id: string }; Returns: string }
+      set_portal_file_visibility: {
+        Args: {
+          p_dropbox_path: string
+          p_entity_id: string
+          p_entity_type: string
+          p_is_visible: boolean
+          p_site_submit_id?: string
+          p_user_id?: string
+        }
+        Returns: string
+      }
       sync_deal_field_to_critical_date: {
         Args: { p_deal_id: string; p_field_name: string; p_new_value: string }
         Returns: undefined
       }
+      task_current_user_id: { Args: never; Returns: string }
       unlock_payment: { Args: { payment_uuid: string }; Returns: undefined }
+      update_all_payment_estimates: { Args: never; Returns: undefined }
+      update_behind_schedule_status: { Args: never; Returns: undefined }
       user_has_portal_client_access: {
         Args: { p_client_id: string; p_user_id: string }
         Returns: boolean
       }
+      validate_portal_invite_token: { Args: { p_token: string }; Returns: Json }
     }
     Enums: {
       prospecting_target_status:
