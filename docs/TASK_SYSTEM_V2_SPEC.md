@@ -178,13 +178,15 @@ Initial set (user-extensible later):
 
 ### 5.2 Block templates
 
-Each user defines their own recurring block templates. Templates specify:
+**Time blocks are opt-in per user.** Some users (e.g., Mike) will plan around blocks; others (e.g., Arty, Noree) may never set one up and just work the all-tasks view + Inbox + Top 3 lane. The system must work cleanly for both groups — see §11 for how the dashboard adapts.
+
+For users who opt in, each defines their own recurring block templates. Templates specify:
 - A category
 - Days of week it repeats (`byweekday`)
 - Start time and duration
 - Display name
 
-Mike's initial templates (from interview):
+Mike's example templates (illustrative — not seeded for any user):
 
 | Template | Days | Time | Duration |
 |---|---|---|---|
@@ -195,7 +197,7 @@ Mike's initial templates (from interview):
 | Email (PM) | Mon–Fri | 4:30 PM | 30 min |
 | Pipeline | Mon–Fri | 2:00 PM | 2 hr |
 
-(These are starter values — user edits during setup.)
+**First-run UX**: ship blank. Each user creates templates from scratch via a "Set up time blocks" entry point. No defaults pre-seeded — users with different rhythms shouldn't have to delete someone else's templates.
 
 ### 5.3 Block instances
 
@@ -438,6 +440,17 @@ Lanes:
 5. **Watching lane** — collapsible, secondary. Only uncompleted delegated tasks.
 6. **Plan Tomorrow** button — flips the same view to tomorrow's date.
 
+### 11.1 Adaptive layout for non-blocking users
+
+Per §5.2, time blocks are opt-in. Users with no active block templates and no scheduled tasks for today see a simplified dashboard:
+
+- The **Today's Timeline** lane is replaced with a **"Today's Tasks"** list (their open tasks, filterable by category, sorted by High flag → Top 3 → manual rank → due date).
+- Calendar events from Google still appear as a small "Today's meetings" strip above the task list.
+- Top 3, Inbox, Conflicts, Watching, Quick capture, and Plan Tomorrow all still work the same way.
+- A "Set up time blocks" call-to-action appears once, dismissible — for users who never opt in, it doesn't return.
+
+This means Arty and Noree can use the system as a clean prioritized task list without ever engaging with time blocks, while Mike gets the full block-based planning experience. Same data model, different UI surface.
+
 ---
 
 ## 12. Evening Planning
@@ -540,29 +553,82 @@ The Pipeline grouped-by-client toggle is also available here.
 
 ---
 
-## 16. Open items (defaults to confirm)
+## 16. Field-level decisions (resolved)
 
-These were called out during the interview as things I'd default in the spec rather than ask discrete questions about. **Mike to review and override if any are wrong.**
+These were defaulted in the draft and confirmed by Mike in review.
 
-1. **Task description / notes field** — yes, free-form markdown, optional.
-2. **Attachments on tasks** — yes, mirroring the Dropbox/file pattern used elsewhere in OVIS. Files attached at task level, follows OVIS file storage conventions.
-3. **URL links / external references** — captured inline in the description (no separate field). Revisit if it gets clunky.
-4. **Comments on tasks** — defer to v2. Completion notes cover most needs in v1.
-5. **All-tasks view default columns** — Subject, Category, Owner, Due, Priority (high flag), Linked-to (object names), Status, Updated. Sortable.
-6. **Migration of existing activity-table tasks** — one-time backfill: any `activity` row where `activity_type.name = 'Task'` becomes a `task` row, preserving all FKs and metadata. After cutover, the old TaskDashboardPage UI is decommissioned. Existing tasks land in `category=other` or are inferred from related object type.
-7. **First-run UX** — when a user first opens v2, prompt them with a starter set of templates (the table in §5.2 as defaults). They edit/remove/add. Skip-able.
-8. **Block notification timing** — "5 min before block starts" is the default; per-user adjustable.
+| # | Decision | Notes |
+|---|---|---|
+| 1 | Task description = free-form markdown, optional | Renders in detail view + completion timeline post |
+| 2 | **Attachments stored in Supabase Storage**, not Dropbox | See rationale below |
+| 3 | URL links captured inline in description (no separate field) | Revisit only if clunky |
+| 4 | Task comments deferred to v2 | Completion notes cover the v1 use case |
+| 5 | All-tasks view columns: Subject, Category, Owner, Due, High flag, Linked-to, Status, Updated | All sortable |
+| 6 | Existing-task migration: see §17 below for full plan | |
+| 7 | First-run UX: ship blank, no pre-seeded templates | Each user builds their own; non-blocking users may never opt in |
+| 8 | Block-start notification = 5 min before, per-user adjustable | No block-end "wrap up" alert in v1 |
+
+### 16.1 Why Supabase Storage for attachments (not Dropbox)
+
+Dropbox is the right backend for objects with **document-heavy lifecycles** (deals, properties, site_submits) where files persist for years and team members collaborate on them across the deal flow. Tasks are different: most attachments are screenshots, quick references, and personal context tied to an item that gets checked off in days. Two reasons to keep tasks on Supabase Storage:
+
+1. **Volume**: tasks will outnumber deals and properties by an order of magnitude. Creating a Dropbox folder per task would balloon the Dropbox tree and make navigation painful.
+2. **Scope**: task attachments rarely need cross-team document collaboration. Supabase Storage gives in-app preview and direct linking without round-tripping through Dropbox.
+
+If users start asking "where's the Dropbox folder for this task?" we add Dropbox later. Cheap to retrofit, hard to undo if we lock in early.
 
 ---
 
-## 17. Implementation Phases
+## 17. Migration from v1 task system
+
+### 17.1 Scope: open tasks only
+
+Only tasks that are **currently open** at cutover get migrated. Completed task rows in `activity` stay where they are as historical record — no need to move them since the v1 dashboard will be decommissioned and historical task state is preserved in the `activity` table for audit/reporting.
+
+### 17.2 Category inference
+
+Each migrated open task gets a category inferred from its strongest object link:
+
+```
+if contact_id present              → prospecting
+elif deal_id, client_id, property_id, site_submit_id, or assignment_id present
+                                   → pipeline
+else                               → personal
+```
+
+(`other` reserved for the rare case where inference fails or for explicit user choice later.)
+
+### 17.3 Cutover style: big-bang
+
+One ship. The v1 `TaskDashboardPage` UI is removed at the same moment the new dashboard goes live. No side-by-side period. Reasons:
+- Two task UIs running simultaneously creates "where do I add this?" confusion.
+- The migration is small (only open tasks) so the cutover window is short.
+- Reverting is achievable via git revert + a backwards migration if problems are caught early.
+
+### 17.4 Decommission
+
+The following are deleted at cutover:
+- `src/pages/TaskDashboardPage.tsx`
+- The `/tasks` route binding to it (replaced by the new dashboard)
+- `docs/TASK_MANAGEMENT_SYSTEM.md` and `docs/TASK_SYSTEM_IMPLEMENTATION_SUMMARY.md` (superseded by this spec)
+- Any v1-only code paths in `AddTaskModal.tsx` / `ActivityDetailView.tsx` that aren't reused by v2
+
+Git history retains all of the above. Revert path: `git revert` the cutover commit + run a backwards migration that re-creates `activity` rows from the post-cutover `task` table for any tasks created or modified post-cutover.
+
+### 17.5 Backwards-compatibility hooks during migration
+
+The old TaskDashboardPage and the new task system can both query their respective tables in the same Supabase instance during development. A feature flag (`enableTaskSystemV2`) toggles which dashboard route mounts. Cutover = flip the flag default to `true` + delete the old code in the same PR.
+
+---
+
+## 18. Implementation Phases
 
 A rough sketch — to be detailed in a separate implementation plan.
 
 | Phase | Scope | Independently shippable? |
 |---|---|---|
-| **1. Schema + core CRUD** | New tables, task creation/edit/delete, object linking, quick-capture popover, all-tasks view | Yes — replaces v1 task UI |
-| **2. Time blocks + dashboard** | Block templates, instances, edit semantics, dashboard layout, evening planning toggle | Yes — without calendar sync |
+| **1. Schema + core CRUD** | New tables, task creation/edit/delete, object linking, quick-capture popover, all-tasks view | Yes — replaces v1 task UI (with cutover per §17) |
+| **2. Time blocks + dashboard** | Block templates, instances, edit semantics, dashboard layout (block + adaptive non-block variants), evening planning toggle | Yes — without calendar sync |
 | **3. Calendar sync (pull-only)** | Multi-calendar config, polling + webhook, conflict detection | Yes |
 | **4. Notifications & reminders** | All triggers, in-app + batched email, per-user toggles | Yes |
 | **5. Recurring tasks** | Recurrence rules, both modes, instance generation | Yes |
@@ -574,7 +640,7 @@ Phases are ordered for risk/value, not dependency — most can run in parallel a
 
 ---
 
-## 18. Out of scope (for separate projects)
+## 19. Out of scope (for separate projects)
 
 - **Migrating deal/contact/client/assignment off the activity-style timeline onto the chat-style timeline.** Mike explicitly flagged this as a separate follow-up project. v1 of Task System v2 will route completion posts to whichever timeline each object uses today.
 - **AI auto-categorization** of brain-dumped or quick-captured tasks (Motion's "smart fill"). Deferred to v2.
