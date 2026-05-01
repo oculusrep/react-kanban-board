@@ -347,13 +347,13 @@ export default function PortalFilesTab({
     try {
       if (section === 'property') {
         setPropertyUploadError(null);
-        await propertyFiles.uploadFiles(Array.from(files) as any);
+        await propertyFiles.uploadFiles(Array.from(files) as any, propertyCurrentPath);
         await propertyFiles.refreshFiles();
         // Notify about uploaded files (property files are visible by default)
-        console.log('📁 Property upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath);
+        console.log('📁 Property upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath, 'currentPath:', propertyCurrentPath);
         if (siteSubmitId && propertyFiles.folderPath) {
           for (const file of Array.from(files)) {
-            const filePath = `${propertyFiles.folderPath}/${file.name}`;
+            const filePath = `${propertyFiles.folderPath}${propertyCurrentPath}/${file.name}`;
             await addFileShareNotification(siteSubmitId, file.name, filePath);
           }
         } else {
@@ -361,13 +361,13 @@ export default function PortalFilesTab({
         }
       } else {
         setDealUploadError(null);
-        await dealFiles.uploadFiles(Array.from(files) as any);
+        await dealFiles.uploadFiles(Array.from(files) as any, dealCurrentPath);
         await dealFiles.refreshFiles();
         // Notify about uploaded files
-        console.log('📁 Deal upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath);
+        console.log('📁 Deal upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath, 'currentPath:', dealCurrentPath);
         if (siteSubmitId && dealFiles.folderPath) {
           for (const file of Array.from(files)) {
-            const filePath = `${dealFiles.folderPath}/${file.name}`;
+            const filePath = `${dealFiles.folderPath}${dealCurrentPath}/${file.name}`;
             await addFileShareNotification(siteSubmitId, file.name, filePath);
           }
         } else {
@@ -395,13 +395,13 @@ export default function PortalFilesTab({
     try {
       if (section === 'property') {
         setPropertyUploadError(null);
-        await propertyFiles.uploadFiles(selectedFiles as any);
+        await propertyFiles.uploadFiles(selectedFiles as any, propertyCurrentPath);
         await propertyFiles.refreshFiles();
         // Notify about uploaded files (property files are visible by default)
-        console.log('📁 Property file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath);
+        console.log('📁 Property file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath, 'currentPath:', propertyCurrentPath);
         if (siteSubmitId && propertyFiles.folderPath) {
           for (const file of Array.from(selectedFiles)) {
-            const filePath = `${propertyFiles.folderPath}/${file.name}`;
+            const filePath = `${propertyFiles.folderPath}${propertyCurrentPath}/${file.name}`;
             await addFileShareNotification(siteSubmitId, file.name, filePath);
           }
         } else {
@@ -409,13 +409,13 @@ export default function PortalFilesTab({
         }
       } else {
         setDealUploadError(null);
-        await dealFiles.uploadFiles(selectedFiles as any);
+        await dealFiles.uploadFiles(selectedFiles as any, dealCurrentPath);
         await dealFiles.refreshFiles();
         // Notify about uploaded files
-        console.log('📁 Deal file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath);
+        console.log('📁 Deal file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath, 'currentPath:', dealCurrentPath);
         if (siteSubmitId && dealFiles.folderPath) {
           for (const file of Array.from(selectedFiles)) {
-            const filePath = `${dealFiles.folderPath}/${file.name}`;
+            const filePath = `${dealFiles.folderPath}${dealCurrentPath}/${file.name}`;
             await addFileShareNotification(siteSubmitId, file.name, filePath);
           }
         } else {
