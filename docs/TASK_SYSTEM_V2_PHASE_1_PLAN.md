@@ -48,12 +48,12 @@ Each row is one logical commit/PR. Most can be reviewed independently. The cutov
 
 | # | Title | Status |
 |---|---|---|
-| 1 | Schema migration | **Drafted, not yet applied to DB** |
-| 2 | Type regeneration | Pending PR 1 application |
-| 3 | Domain types + hook | Not started |
-| 4 | Quick-capture popover | Not started |
-| 5 | `+ Task` buttons on object pages | Not started |
-| 6 | All-tasks page | Not started |
+| 1 | Schema migration | ✅ Applied to Supabase |
+| 2 | Type regeneration | ✅ `database-schema.ts` regenerated |
+| 3 | Domain types + hook | ✅ `src/types/task.ts`, `src/hooks/useTasks.ts` |
+| 4 | Quick-capture popover | ✅ `src/components/tasks/QuickAddTaskPopover.tsx` + `QuickAddTaskButton.tsx` |
+| 5 | `+ Task` buttons on object pages | Not started — needs browser testing |
+| 6 | All-tasks page | Not started — needs browser testing |
 | 7 | Backfill script | Not started |
 | 8 | Feature flag + cutover | Not started |
 
