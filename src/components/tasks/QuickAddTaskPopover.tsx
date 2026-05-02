@@ -36,6 +36,10 @@ const CATEGORIES: { value: TaskCategory; label: string }[] = [
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120] as const;
 
+// Internal team roles that can be assigned tasks (spec §8.1).
+// Excludes coach, client portal users, and any future external-only role.
+const ASSIGNABLE_ROLES = new Set(['broker_full', 'va', 'admin']);
+
 // OVIS palette (CLAUDE.md)
 const COLORS = {
   midnight: '#002147',
@@ -227,7 +231,12 @@ export const QuickAddTaskPopover: React.FC<QuickAddTaskPopoverProps> = ({
         >
           <option value="">Me</option>
           {users
-            .filter((u) => u.id !== userTableId)
+            .filter(
+              (u) =>
+                u.id !== userTableId &&
+                u.ovis_role &&
+                ASSIGNABLE_ROLES.has(u.ovis_role)
+            )
             .map((u) => (
               <option key={u.id} value={u.id}>
                 {u.first_name && u.last_name
