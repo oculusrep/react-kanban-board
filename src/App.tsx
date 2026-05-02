@@ -40,7 +40,6 @@ import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
 import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
 import DropboxSyncAdminPage from "./pages/DropboxSyncAdminPage";
-import TaskDashboardPage from "./pages/TaskDashboardPage";
 import TasksPage from "./pages/TasksPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -145,9 +144,7 @@ function App() {
           <Route path="coach-dashboard" element={<CoachDashboardPage />} />
           {/* All routes below are blocked for coach users */}
           <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
-          <Route path="tasks" element={<CoachRoute><TaskDashboardPage /></CoachRoute>} />
-          {/* Phase 1 preview — will replace /tasks at cutover (PR 8) */}
-          <Route path="tasks-v2-preview" element={<CoachRoute><TasksPage /></CoachRoute>} />
+          <Route path="tasks" element={<CoachRoute><TasksPage /></CoachRoute>} />
           <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />
           <Route path="deal/new" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />

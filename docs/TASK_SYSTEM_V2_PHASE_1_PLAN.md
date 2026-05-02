@@ -52,10 +52,12 @@ Each row is one logical commit/PR. Most can be reviewed independently. The cutov
 | 2 | Type regeneration | ✅ `database-schema.ts` regenerated |
 | 3 | Domain types + hook | ✅ `src/types/task.ts`, `src/hooks/useTasks.ts` |
 | 4 | Quick-capture popover | ✅ `src/components/tasks/QuickAddTaskPopover.tsx` + `QuickAddTaskButton.tsx` |
-| 5 | `+ Task` buttons on object pages | ✅ Wired into all six headers — needs browser smoke test |
-| 6 | All-tasks page | ✅ `src/pages/TasksPage.tsx` — needs browser smoke test (not yet routed) |
-| 7 | Backfill script | Not started |
-| 8 | Feature flag + cutover | Not started — also handles routing of new page |
+| 5 | `+ Task` buttons on object pages | ✅ All six headers + OpenTasksPanel mounted on six sidebars |
+| 6 | All-tasks page | ✅ `src/pages/TasksPage.tsx` with TaskDetailSlideout + TaskLinksEditor |
+| 7 | Backfill script | ✅ 253 open v1 tasks migrated (99 prospecting / 54 pipeline / 100 other) |
+| 8 | Cutover | ✅ `/tasks` route now serves TasksPage; v1 `TaskDashboardPage.tsx` and the two superseded docs deleted; preview route retired |
+
+**Phase 1 complete.** See git log on `feat/task-system-v2` for the trail.
 
 ## Decisions / open questions
 
