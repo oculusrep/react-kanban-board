@@ -12262,6 +12262,7 @@ export type Database = {
           high_flag: boolean
           id: string
           last_activity_at: string | null
+          migrated_from_activity_id: string | null
           owner_id: string
           parent_task_id: string | null
           private_completion: boolean
@@ -12292,6 +12293,7 @@ export type Database = {
           high_flag?: boolean
           id?: string
           last_activity_at?: string | null
+          migrated_from_activity_id?: string | null
           owner_id: string
           parent_task_id?: string | null
           private_completion?: boolean
@@ -12322,6 +12324,7 @@ export type Database = {
           high_flag?: boolean
           id?: string
           last_activity_at?: string | null
+          migrated_from_activity_id?: string | null
           owner_id?: string
           parent_task_id?: string | null
           private_completion?: boolean
