@@ -52,10 +52,10 @@ Each row is one logical commit/PR. Most can be reviewed independently. The cutov
 | 2 | Type regeneration | ✅ `database-schema.ts` regenerated |
 | 3 | Domain types + hook | ✅ `src/types/task.ts`, `src/hooks/useTasks.ts` |
 | 4 | Quick-capture popover | ✅ `src/components/tasks/QuickAddTaskPopover.tsx` + `QuickAddTaskButton.tsx` |
-| 5 | `+ Task` buttons on object pages | Not started — needs browser testing |
-| 6 | All-tasks page | Not started — needs browser testing |
+| 5 | `+ Task` buttons on object pages | ✅ Wired into all six headers — needs browser smoke test |
+| 6 | All-tasks page | ✅ `src/pages/TasksPage.tsx` — needs browser smoke test (not yet routed) |
 | 7 | Backfill script | Not started |
-| 8 | Feature flag + cutover | Not started |
+| 8 | Feature flag + cutover | Not started — also handles routing of new page |
 
 ## Decisions / open questions
 
