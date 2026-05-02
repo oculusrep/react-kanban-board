@@ -1,11 +1,11 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
 import { completeTask, deleteTask, useTaskList } from '../../hooks/useTasks';
 import {
   TaskLinkableObjectType,
   TaskWithRelations,
 } from '../../types/task';
 import QuickAddTaskButton from './QuickAddTaskButton';
+import TaskDetailSlideout from './TaskDetailSlideout';
 
 // Composable open-tasks panel per docs/OVIS_OVERLAY_UX.md.
 // Takes objectType + objectId; renders identically wherever mounted —
@@ -71,6 +71,7 @@ export const OpenTasksPanel: React.FC<OpenTasksPanelProps> = ({
     [`${objectType}_id`]: objectId,
     status: 'open',
   });
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const handleComplete = async (task: TaskWithRelations) => {
     try {
@@ -135,13 +136,15 @@ export const OpenTasksPanel: React.FC<OpenTasksPanelProps> = ({
           return (
             <div
               key={task.id}
-              className="flex items-start gap-2 py-2 px-2 border-b last:border-b-0 hover:bg-gray-50"
+              className="flex items-start gap-2 py-2 px-2 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
               style={{ borderColor: COLORS.slate + '33' }}
+              onClick={() => setOpenTaskId(task.id)}
             >
               <input
                 type="checkbox"
                 checked={false}
                 onChange={() => handleComplete(task)}
+                onClick={(e) => e.stopPropagation()}
                 aria-label="Complete task"
                 className="mt-0.5"
               />
@@ -187,15 +190,7 @@ export const OpenTasksPanel: React.FC<OpenTasksPanelProps> = ({
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Link
-                  to={`/tasks?id=${task.id}`}
-                  className="text-xs px-1.5 py-0.5 rounded hover:underline"
-                  style={{ color: COLORS.steel }}
-                  title="View task"
-                >
-                  Open
-                </Link>
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   onClick={() => handleDelete(task)}
@@ -210,6 +205,12 @@ export const OpenTasksPanel: React.FC<OpenTasksPanelProps> = ({
           );
         })}
       </div>
+
+      <TaskDetailSlideout
+        taskId={openTaskId}
+        onClose={() => setOpenTaskId(null)}
+        onChanged={refetch}
+      />
     </div>
   );
 };

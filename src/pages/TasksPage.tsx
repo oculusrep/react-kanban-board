@@ -13,6 +13,7 @@ import {
   TaskWithRelations,
 } from '../types/task';
 import { useAuth } from '../contexts/AuthContext';
+import TaskDetailSlideout from '../components/tasks/TaskDetailSlideout';
 
 // All-tasks flat view (spec §15.3). The future "block-style" dashboard with
 // timeline / Top 3 / Inbox / Watching lanes is Phase 2 (per
@@ -107,6 +108,7 @@ export const TasksPage: React.FC = () => {
   const [highOnly, setHighOnly] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [search, setSearch] = useState('');
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const filters: TaskListFilters = useMemo(() => {
     const f: TaskListFilters = {};
@@ -247,8 +249,13 @@ export const TasksPage: React.FC = () => {
                   const overdue = isOverdue(task);
                   const completed = task.status === 'completed';
                   return (
-                    <tr key={task.id} className="border-t hover:bg-gray-50" style={{ borderColor: COLORS.slate + '33' }}>
-                      <td className="px-3 py-2 align-top">
+                    <tr
+                      key={task.id}
+                      className="border-t hover:bg-gray-50 cursor-pointer"
+                      style={{ borderColor: COLORS.slate + '33' }}
+                      onClick={() => setOpenTaskId(task.id)}
+                    >
+                      <td className="px-3 py-2 align-top" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={completed}
@@ -282,7 +289,7 @@ export const TasksPage: React.FC = () => {
                       >
                         {formatDate(task.due_at)}
                       </td>
-                      <td className="px-3 py-2 align-top">
+                      <td className="px-3 py-2 align-top" onClick={(e) => e.stopPropagation()}>
                         <LinkedToCell task={task} />
                       </td>
                       <td className="px-3 py-2 align-top">
@@ -297,7 +304,7 @@ export const TasksPage: React.FC = () => {
                           {task.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2 align-top text-right">
+                      <td className="px-3 py-2 align-top text-right" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => handleDelete(task)}
@@ -315,6 +322,12 @@ export const TasksPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <TaskDetailSlideout
+        taskId={openTaskId}
+        onClose={() => setOpenTaskId(null)}
+        onChanged={refetch}
+      />
     </div>
   );
 };
