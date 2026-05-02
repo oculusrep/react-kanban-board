@@ -97,6 +97,25 @@ const inputToIso = (s: string): string | null => {
   return new Date(`${s}T23:59:59`).toISOString();
 };
 
+// datetime-local input format: YYYY-MM-DDTHH:mm in local time. Use this for
+// completed_at so the user can pick both date and time (e.g., backdate to
+// last Tuesday at 3pm).
+const isoToDatetimeLocal = (iso: string | null): string => {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return '';
+  }
+};
+
+const datetimeLocalToIso = (s: string): string | null => {
+  if (!s) return null;
+  return new Date(s).toISOString();
+};
+
 export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
   taskId,
   onClose,
@@ -117,6 +136,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
   const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
   const [highFlag, setHighFlag] = useState(false);
   const [completionNote, setCompletionNote] = useState('');
+  const [completedAtInput, setCompletedAtInput] = useState(''); // editable timestamp
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -148,6 +168,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
         setDurationMinutes(t.duration_minutes ?? null);
         setHighFlag(t.high_flag);
         setCompletionNote(t.completion_note ?? '');
+        setCompletedAtInput(isoToDatetimeLocal(t.completed_at));
         setDirty(false);
       } catch (err) {
         if (cancelled) return;
@@ -191,7 +212,11 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     setSaving(true);
     setError(null);
     try {
-      await updateTask(task.id, {
+      // For completed tasks, allow editing completed_at (e.g., backdating).
+      // The DB CHECK constraint task_completed_consistency requires that
+      // completed_at stays non-null while status='completed', so we never
+      // null it out here.
+      const patch: Parameters<typeof updateTask>[1] = {
         subject: subject.trim(),
         description: description || null,
         category,
@@ -203,7 +228,15 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
         due_at: inputToIso(dueDate),
         duration_minutes: durationMinutes,
         high_flag: highFlag,
-      });
+        completion_note: completionNote || null,
+      };
+      if (completed) {
+        const newCompletedAt = datetimeLocalToIso(completedAtInput);
+        if (newCompletedAt) {
+          patch.completed_at = newCompletedAt;
+        }
+      }
+      await updateTask(task.id, patch);
       setDirty(false);
       onChanged?.();
       // Re-fetch by setting task to reflect persisted state
@@ -226,9 +259,20 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     setSaving(true);
     setError(null);
     try {
-      await completeTask(task.id, {
-        completion_note: completionNote || null,
-      });
+      // Honor user-entered completed_at (e.g., logging a task that got done
+      // last Tuesday). If empty, completeTask defaults to now.
+      const userPicked = datetimeLocalToIso(completedAtInput);
+      if (userPicked) {
+        await updateTask(task.id, {
+          status: 'completed',
+          completed_at: userPicked,
+          completion_note: completionNote || null,
+        });
+      } else {
+        await completeTask(task.id, {
+          completion_note: completionNote || null,
+        });
+      }
       onChanged?.();
       // Refresh
       const { data } = await supabase
@@ -236,7 +280,11 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
         .select(RELATIONS_SELECT)
         .eq('id', task.id)
         .single();
-      if (data) setTask(data as unknown as TaskWithRelations);
+      if (data) {
+        const t = data as unknown as TaskWithRelations;
+        setTask(t);
+        setCompletedAtInput(isoToDatetimeLocal(t.completed_at));
+      }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Complete failed');
@@ -314,6 +362,17 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
             >
               {task?.status ?? '—'}
             </span>
+            {completed && task?.completed_at && (
+              <span className="text-xs" style={{ color: '#166534' }}>
+                ✓ {new Date(task.completed_at).toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </span>
+            )}
             {task?.high_flag && (
               <span title="High priority" style={{ color: COLORS.midnight }}>
                 ⚑
@@ -502,33 +561,41 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                 </div>
               )}
 
-              {/* Completion note (only shown if not completed yet) */}
-              {!completed && (
-                <div>
-                  <label className="text-xs font-medium" style={{ color: COLORS.steel }}>
-                    Completion note (optional, captured when you click Complete)
-                  </label>
-                  <textarea
-                    value={completionNote}
-                    onChange={(e) => setCompletionNote(e.target.value)}
-                    rows={2}
-                    placeholder="What got done? Who did you talk to?"
-                    className="mt-1 w-full px-3 py-2 text-sm rounded border resize-y"
-                    style={{ borderColor: COLORS.slate, color: COLORS.midnight }}
-                  />
-                </div>
-              )}
+              {/* Completed at — editable, both pre-completion (defaults to
+                  now on Complete click) and post-completion (backdate / fix). */}
+              <div>
+                <label className="text-xs font-medium" style={{ color: COLORS.steel }}>
+                  {completed ? 'Completed at' : 'Complete as of (defaults to now)'}
+                </label>
+                <input
+                  type="datetime-local"
+                  value={completedAtInput}
+                  onChange={(e) => {
+                    setCompletedAtInput(e.target.value);
+                    if (completed) markDirty();
+                  }}
+                  className="mt-1 w-full px-2 py-1.5 text-sm rounded border"
+                  style={{ borderColor: COLORS.slate, color: COLORS.steel }}
+                />
+              </div>
 
-              {/* If completed, show prior note read-only */}
-              {completed && task.completion_note && (
-                <div
-                  className="text-sm px-3 py-2 rounded"
-                  style={{ backgroundColor: '#dcfce7', color: '#166534' }}
-                >
-                  <div className="text-xs font-medium mb-1">Completion note</div>
-                  {task.completion_note}
-                </div>
-              )}
+              {/* Completion note (editable while open, persists when completed) */}
+              <div>
+                <label className="text-xs font-medium" style={{ color: COLORS.steel }}>
+                  Completion note {completed ? '' : '(captured when you click Complete)'}
+                </label>
+                <textarea
+                  value={completionNote}
+                  onChange={(e) => {
+                    setCompletionNote(e.target.value);
+                    if (completed) markDirty();
+                  }}
+                  rows={2}
+                  placeholder="What got done? Who did you talk to?"
+                  className="mt-1 w-full px-3 py-2 text-sm rounded border resize-y"
+                  style={{ borderColor: COLORS.slate, color: COLORS.midnight }}
+                />
+              </div>
             </>
           )}
         </div>
@@ -549,7 +616,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
               Delete
             </button>
             <div className="flex items-center gap-2">
-              {dirty && !completed && (
+              {dirty && (
                 <button
                   type="button"
                   onClick={handleSave}

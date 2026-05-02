@@ -223,7 +223,7 @@ export const TasksPage: React.FC = () => {
                 <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Subject</th>
                 <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Category</th>
                 <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Owner</th>
-                <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Due</th>
+                <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Due / Done</th>
                 <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Linked to</th>
                 <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Status</th>
                 <th className="px-3 py-2 text-left font-medium w-20" />
@@ -283,11 +283,13 @@ export const TasksPage: React.FC = () => {
                       <td
                         className="px-3 py-2 align-top"
                         style={{
-                          color: overdue ? '#A27B5C' : COLORS.steel,
+                          color: completed ? '#166534' : overdue ? '#A27B5C' : COLORS.steel,
                           fontWeight: overdue ? 600 : undefined,
                         }}
                       >
-                        {formatDate(task.due_at)}
+                        {completed
+                          ? `✓ ${formatDate(task.completed_at)}`
+                          : formatDate(task.due_at)}
                       </td>
                       <td className="px-3 py-2 align-top" onClick={(e) => e.stopPropagation()}>
                         <LinkedToCell task={task} />
