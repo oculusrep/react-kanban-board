@@ -23,6 +23,7 @@ import ConvertSiteSubmitToDealModal from '../components/ConvertSiteSubmitToDealM
 import DigestComposeModal from '../components/portal/DigestComposeModal';
 import { Bell } from 'lucide-react';
 import { CLIENT_VISIBLE_STAGES } from '../components/client-pipeline/pipelineConfig';
+import QuickAddTaskButton from '../components/tasks/QuickAddTaskButton';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -622,6 +623,13 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 )}
               </div>
               <div className="flex space-x-2">
+                {!isNewSiteSubmit && siteSubmitId && (
+                  <QuickAddTaskButton
+                    linkedObjectType="site_submit"
+                    linkedObjectId={siteSubmitId}
+                    linkedObjectLabel={formData.site_submit_name || 'Site Submit'}
+                  />
+                )}
                 {!isNewSiteSubmit && (
                   <>
                     <button

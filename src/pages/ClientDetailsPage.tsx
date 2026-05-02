@@ -10,6 +10,7 @@ import { useTrackPageView } from '../hooks/useRecentlyViewed';
 import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../hooks/useToast';
+import QuickAddTaskButton from '../components/tasks/QuickAddTaskButton';
 
 type Client = Database['public']['Tables']['client']['Row'];
 
@@ -185,6 +186,13 @@ const ClientDetailsPage: React.FC = () => {
                 )}
               </div>
               <div className="flex items-center space-x-3">
+                {!isNewClient && clientId && client && (
+                  <QuickAddTaskButton
+                    linkedObjectType="client"
+                    linkedObjectId={clientId}
+                    linkedObjectLabel={client.client_name || 'Client'}
+                  />
+                )}
                 {!isNewClient && clientId && (
                   <button
                     onClick={handleDelete}
