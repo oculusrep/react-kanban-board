@@ -1,5 +1,20 @@
 # React Kanban Board - Current State Summary
-*Last Updated: September 15, 2025 - Client Management System Added*
+*Last meaningful update: September 15, 2025 — STALE for newer features.*
+
+> **Note (2026-05-02):** This document hasn't been kept current with feature
+> work since fall 2025. For the live state of major recent initiatives, see
+> the dedicated docs:
+> - **Task System v2** — [TASK_SYSTEM_V2_SPEC.md](TASK_SYSTEM_V2_SPEC.md) and
+>   [TASK_SYSTEM_V2_PHASE_1_PLAN.md](TASK_SYSTEM_V2_PHASE_1_PLAN.md). Phase 1
+>   complete; `/tasks` now serves the new system. v1 task UI is retired.
+> - **Overlay UX principle** — [OVIS_OVERLAY_UX.md](OVIS_OVERLAY_UX.md).
+>   Two-tier interaction model now governs new feature work.
+> - **Hunter / prospecting** — multiple docs under `HUNTER_*.md` and
+>   `PROSPECTING_*.md`.
+> - **Maps / merchants / portal** — see the various specs in `docs/`.
+>
+> The text below describes the September 2025 baseline and remains accurate
+> for everything that hasn't been refactored since.
 
 ## 🎯 Application Status: FULLY OPERATIONAL WITH COMPREHENSIVE CLIENT MANAGEMENT
 

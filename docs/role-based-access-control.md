@@ -225,7 +225,7 @@ function App() {
 
           {/* All other routes blocked for coach users */}
           <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
-          <Route path="tasks" element={<CoachRoute><TaskDashboardPage /></CoachRoute>} />
+          <Route path="tasks" element={<CoachRoute><TasksPage /></CoachRoute>} />
           <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           {/* ... wrap all restricted routes with CoachRoute */}
         </Route>

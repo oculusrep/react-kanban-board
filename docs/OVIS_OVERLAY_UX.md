@@ -1,8 +1,9 @@
 # OVIS Overlay UX Principle
 
-**Status:** Active design rule
+**Status:** Active design rule (in production use as of Phase 1 of Task System v2)
 **Owner:** Mike Minihan
 **Last updated:** 2026-05-02
+**First applied in:** Task System v2 Phase 1 (see [TASK_SYSTEM_V2_PHASE_1_PLAN.md](TASK_SYSTEM_V2_PHASE_1_PLAN.md))
 
 ---
 
@@ -34,18 +35,29 @@ This isn't anti-page. Pages are correct for destinations. It's anti-page-as-the-
 
 Every cross-object interaction surface should be built as a **self-contained, drop-in component** that takes the object id (and type, where polymorphic) as props and renders identically wherever mounted.
 
-Examples to build / continue:
-- `<OpenTasksPanel objectType="deal" objectId={id} />` — list + complete + create
-- `<NotesPanel objectType objectId>` — already partially exists (per-object Notes sections)
-- `<FilesPanel objectType objectId>` — already exists as `FileManagerModule`
-- `<RelatedContactsPanel objectId>` (deal/property scoped)
-- `<ActivityTimelinePanel objectType objectId>` — when chat-style timeline gets unified
+### Already shipped (Task System v2 Phase 1)
 
-These components must:
-- Take object reference as input; never assume a routing context
-- Render their own loading / error / empty states
-- Trigger overlay open events for nested object navigation rather than `navigate(...)` calls
-- Work both inside a sidebar `SidebarModule` *and* standalone in a slideout body
+| Component | Path | Responsibility |
+|---|---|---|
+| `<OpenTasksPanel objectType objectId>` | `src/components/tasks/OpenTasksPanel.tsx` | Lists open tasks for any object; click row → opens TaskDetailSlideout. Mounted on all six object surfaces. |
+| `<TaskDetailSlideout taskId onClose onChanged>` | `src/components/tasks/TaskDetailSlideout.tsx` | Right-side overlay with full task edit. Backdrop close + Esc. Mountable from any caller. |
+| `<TaskLinksEditor task onChanged>` | `src/components/tasks/TaskLinksEditor.tsx` | Add/change/clear any of the six linkable types from inside a task slideout. Per-type debounced search. |
+| `<QuickAddTaskButton linkedObjectType linkedObjectId linkedObjectLabel>` | `src/components/tasks/QuickAddTaskButton.tsx` | Trigger button + popover. One-line mount on object headers. |
+| `FileManagerModule` | `src/components/sidebar/FileManagerModule.tsx` | Pre-existing file panel; same composability shape. |
+
+### Still to build / to migrate to this shape
+
+- `<NotesPanel objectType objectId>` — partially exists per-object; needs polymorphic version
+- `<ActivityTimelinePanel objectType objectId>` — when the chat-style timeline migration happens
+- `<RelatedContactsPanel objectId>` — would unify deal/property contact panels
+- Any future Phase 2+ task-system surfaces (Top-3 lane, Inbox, Watching lane, etc.)
+
+### Rules these components must follow
+
+- Take object reference as input; **never** read `useParams()` inside the panel.
+- Render their own loading / error / empty states.
+- For nested object navigation, trigger overlay opens — not `navigate('/...')` calls. (Task system has a known gap here — flagged in code; future overlay shells fix it.)
+- Work inside a sidebar (wrapped by a module-card div) *and* standalone in a slideout body.
 
 ## What this means for new feature work
 

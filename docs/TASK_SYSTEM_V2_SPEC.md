@@ -1,9 +1,33 @@
 # Task System v2 — Design Spec
 
-**Status:** Draft (post-interview), pending Mike's review
-**Branch:** `feat/task-system-v2`
-**Author:** Claude + Mike (design interview)
-**Replaces:** `docs/TASK_MANAGEMENT_SYSTEM.md` (v1)
+**Status:** Phase 1 complete and live (2026-05-02)
+**Branch:** `feat/task-system-v2` (20 commits ahead of main as of cutover)
+**Author:** Claude + Mike (design interview, 2026-04-30)
+**Replaces:** `docs/TASK_MANAGEMENT_SYSTEM.md` (v1, deleted at cutover)
+**Companion docs:**
+- [TASK_SYSTEM_V2_PHASE_1_PLAN.md](TASK_SYSTEM_V2_PHASE_1_PLAN.md) — Phase 1 PR-by-PR status
+- [OVIS_OVERLAY_UX.md](OVIS_OVERLAY_UX.md) — overlay UX principle that emerged during build
+
+---
+
+## Phase 1 — built and live
+
+The schema, capture flows, all-tasks list, object-page integrations, completion timeline posts, and v1 cutover all shipped. 253 v1 tasks were migrated. `/tasks` now serves the new page; the v1 page is deleted.
+
+**What's live (in addition to what's spec'd below):**
+- `OpenTasksPanel` composable mounted on every object's sidebar / detail page (per the overlay UX principle).
+- `TaskDetailSlideout` overlay — click any task row anywhere → full edit slideout, no page navigation.
+- `TaskLinksEditor` — add / change / clear any of the six linkable object types from inside the slideout.
+- Editable `completed_at` field with backdating support before or after completion.
+- Completion → object timeline posts working for both timeline systems (activity-style for deal/client/contact/assignment, chat-style for property/site_submit).
+
+**Resolved during build (changes from the original spec text):**
+- §6.1 / §17.2: unlinked migrated tasks land in **`other`** (not `personal`). User-confirmed 2026-05-02 after spot-checking real data — `personal` stays clean for actual personal reminders, `other` becomes the triage bucket.
+- §7.1: link cardinality is **single FK per type** (one client + one deal + one contact, etc.). User considered junction-table multi-link 2026-05-02 and chose to defer; Brain Dump handles the multi-prospect case better.
+
+**Phase 2+ remain unbuilt** — see §18 Implementation Phases for the order.
+
+---
 
 ---
 
