@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUsers } from '../../hooks/useUsers';
 import {
@@ -13,6 +12,7 @@ import {
   TaskCategory,
   TaskWithRelations,
 } from '../../types/task';
+import TaskLinksEditor from './TaskLinksEditor';
 
 // Composable task detail slideout per docs/OVIS_OVERLAY_UX.md.
 // Opens from anywhere — TasksPage row click, OpenTasksPanel "Open" link,
@@ -62,25 +62,6 @@ const RELATIONS_SELECT = `
   assignment(*),
   contact(*)
 `;
-
-interface LinkChip {
-  label: string;
-  to: string;
-}
-
-const linkChipsFor = (task: TaskWithRelations): LinkChip[] => {
-  const out: LinkChip[] = [];
-  if (task.client) out.push({ label: task.client.client_name || 'Client', to: `/client/${task.client.id}` });
-  if (task.deal) out.push({ label: task.deal.deal_name || 'Deal', to: `/deal/${task.deal.id}` });
-  if (task.property) out.push({ label: task.property.property_name || task.property.address || 'Property', to: `/property/${task.property.id}` });
-  if (task.site_submit) out.push({ label: task.site_submit.site_submit_name || 'Site Submit', to: `/site-submit/${task.site_submit.id}` });
-  if (task.assignment) out.push({ label: task.assignment.assignment_name || 'Assignment', to: `/assignment/${task.assignment.id}` });
-  if (task.contact) {
-    const name = [task.contact.first_name, task.contact.last_name].filter(Boolean).join(' ') || 'Contact';
-    out.push({ label: name, to: `/contact/${task.contact.id}` });
-  }
-  return out;
-};
 
 const dateToInput = (iso: string | null): string => {
   if (!iso) return '';
@@ -200,7 +181,6 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     [users]
   );
 
-  const linkChips = useMemo(() => (task ? linkChipsFor(task) : []), [task]);
   const completed = task?.status === 'completed';
 
   const handleSave = async () => {
@@ -538,27 +518,28 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                 ⚑ High priority
               </label>
 
-              {/* Linked-to */}
-              {linkChips.length > 0 && (
-                <div>
-                  <label className="text-xs font-medium" style={{ color: COLORS.steel }}>
-                    Linked to
-                  </label>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {linkChips.map((c, i) => (
-                      <Link
-                        key={i}
-                        to={c.to}
-                        className="text-xs px-2 py-0.5 rounded hover:underline"
-                        style={{ backgroundColor: COLORS.slate + '33', color: COLORS.steel }}
-                        title="Note: still navigates as a page; future work makes these open as overlays"
-                      >
-                        {c.label}
-                      </Link>
-                    ))}
-                  </div>
+              {/* Linked to — editable; add / change / clear any of the six
+                  object link types (spec §7.1). */}
+              <div>
+                <label className="text-xs font-medium" style={{ color: COLORS.steel }}>
+                  Linked to
+                </label>
+                <div className="mt-1">
+                  <TaskLinksEditor
+                    task={task}
+                    onChanged={async () => {
+                      // Refetch with relations so chips reflect the new link
+                      const { data } = await supabase
+                        .from('task')
+                        .select(RELATIONS_SELECT)
+                        .eq('id', task.id)
+                        .single();
+                      if (data) setTask(data as unknown as TaskWithRelations);
+                      onChanged?.();
+                    }}
+                  />
                 </div>
-              )}
+              </div>
 
               {/* Completed at — editable, both pre-completion (defaults to
                   now on Complete click) and post-completion (backdate / fix). */}
