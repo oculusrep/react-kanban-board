@@ -4,6 +4,7 @@ import {
   TaskLinkableObjectType,
   TaskWithRelations,
 } from '../../types/task';
+import { useAuth } from '../../contexts/AuthContext';
 import QuickAddTaskButton from './QuickAddTaskButton';
 import TaskDetailSlideout from './TaskDetailSlideout';
 
@@ -72,10 +73,15 @@ export const OpenTasksPanel: React.FC<OpenTasksPanelProps> = ({
     status: 'open',
   });
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const { userTableId } = useAuth();
 
   const handleComplete = async (task: TaskWithRelations) => {
+    if (!userTableId) {
+      alert('Not authenticated');
+      return;
+    }
     try {
-      await completeTask(task.id);
+      await completeTask(task.id, { actor_user_id: userTableId });
       refetch();
     } catch (err) {
       console.error(err);

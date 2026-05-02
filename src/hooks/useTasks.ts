@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { postTaskCompletionToTimelines } from '../lib/taskTimelinePost';
 import {
   Task,
   TaskCategory,
@@ -170,23 +171,35 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task> {
 export interface CompleteTaskOptions {
   completion_note?: string | null;
   private_completion?: boolean;
+  /** When supplied, used as completed_at instead of now() — for backdating. */
+  completed_at?: string;
+  /**
+   * The OVIS user.id of whoever is doing the completion. Required for
+   * timeline posting. Pass auth context's userTableId.
+   */
+  actor_user_id: string;
 }
 
-// Sets status='completed' and stamps completed_at to now. Optionally records
-// a free-form completion note (spec §13). The DB CHECK constraint
-// task_completed_consistency enforces that completed status and completed_at
+// Sets status='completed' and stamps completed_at (defaults to now). Optional
+// completion note + private flag. After the task row is updated, posts an
+// entry to each linked object's timeline (spec §13) — unless private. The DB
+// CHECK constraint task_completed_consistency enforces status and completed_at
 // move together.
 export async function completeTask(
   id: string,
-  options: CompleteTaskOptions = {}
+  options: CompleteTaskOptions
 ): Promise<Task> {
   const patch: TaskUpdate = {
     status: 'completed',
-    completed_at: new Date().toISOString(),
+    completed_at: options.completed_at ?? new Date().toISOString(),
   };
   if (options.completion_note !== undefined) patch.completion_note = options.completion_note;
   if (options.private_completion !== undefined) patch.private_completion = options.private_completion;
-  return updateTask(id, patch);
+  const updated = await updateTask(id, patch);
+  // Timeline post is fire-and-forget from the caller's perspective: errors are
+  // logged inside the helper and don't undo the completion.
+  await postTaskCompletionToTimelines(updated, { actorUserId: options.actor_user_id });
+  return updated;
 }
 
 // Reopens a completed task. Clears completed_at to satisfy the consistency

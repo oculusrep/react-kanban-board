@@ -123,11 +123,15 @@ export const TasksPage: React.FC = () => {
   const { tasks, loading, error, refetch } = useTaskList(filters);
 
   const handleToggleComplete = async (task: TaskWithRelations) => {
+    if (!userTableId) {
+      alert('Not authenticated');
+      return;
+    }
     try {
       if (task.status === 'completed') {
         await reopenTask(task.id);
       } else {
-        await completeTask(task.id);
+        await completeTask(task.id, { actor_user_id: userTableId });
       }
       refetch();
     } catch (err) {

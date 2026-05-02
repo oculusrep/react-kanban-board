@@ -256,23 +256,22 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
 
   const handleComplete = async () => {
     if (!task) return;
+    if (!userTableId) {
+      setError('Not authenticated');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      // Honor user-entered completed_at (e.g., logging a task that got done
-      // last Tuesday). If empty, completeTask defaults to now.
+      // completeTask handles status + completed_at + timeline post in one
+      // call. If the user picked a custom datetime, pass it through;
+      // otherwise the helper defaults to now().
       const userPicked = datetimeLocalToIso(completedAtInput);
-      if (userPicked) {
-        await updateTask(task.id, {
-          status: 'completed',
-          completed_at: userPicked,
-          completion_note: completionNote || null,
-        });
-      } else {
-        await completeTask(task.id, {
-          completion_note: completionNote || null,
-        });
-      }
+      await completeTask(task.id, {
+        actor_user_id: userTableId,
+        completion_note: completionNote || null,
+        ...(userPicked ? { completed_at: userPicked } : {}),
+      });
       onChanged?.();
       // Refresh
       const { data } = await supabase
