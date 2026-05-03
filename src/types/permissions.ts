@@ -105,6 +105,11 @@ export interface RolePermissions {
   can_access_budget_pl?: boolean;
   can_access_cfo_dashboard?: boolean;
   can_access_finance_hub?: boolean;
+
+  // Traffic Data (StreetLight SATC)
+  can_view_traffic_data?: boolean;
+  can_consume_traffic_quota?: boolean;
+  can_admin_traffic_quota?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -128,7 +133,8 @@ export type PermissionCategory =
   | 'tab_visibility'
   | 'system_admin'
   | 'integrations'
-  | 'map_features';
+  | 'map_features'
+  | 'traffic_data';
 
 /**
  * Standard permission definitions with descriptions
@@ -613,6 +619,29 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'system_admin',
     defaultValue: false,
   },
+
+  // Traffic Data (StreetLight SATC)
+  {
+    key: 'can_view_traffic_data',
+    label: 'View Traffic Data',
+    description: 'View road segment geometry and cached AADT data on the map',
+    category: 'traffic_data',
+    defaultValue: false,
+  },
+  {
+    key: 'can_consume_traffic_quota',
+    label: 'Consume Traffic Quota',
+    description: 'Fetch live AADT metrics from StreetLight (consumes quota)',
+    category: 'traffic_data',
+    defaultValue: false,
+  },
+  {
+    key: 'can_admin_traffic_quota',
+    label: 'Admin Traffic Quota',
+    description: 'View and manage StreetLight quota config and user limits',
+    category: 'traffic_data',
+    defaultValue: false,
+  },
 ];
 
 /**
@@ -670,6 +699,10 @@ export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; 
   map_features: {
     label: 'Map Features',
     description: 'Permissions for map-specific features like pin verification',
+  },
+  traffic_data: {
+    label: 'Traffic Data',
+    description: 'StreetLight SATC integration — road segment geometry and AADT metrics',
   },
 };
 
