@@ -6,6 +6,7 @@ import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/laye
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
+import TrafficCountLayer from '../components/mapping/TrafficCountLayer';
 import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
@@ -2617,6 +2618,12 @@ const MappingPageContent: React.FC = () => {
             />
 
             {/* Closed Business Search Results Layer (live search) */}
+            {/* Traffic Count Layer - StreetLight SATC Integration */}
+            <TrafficCountLayer
+              map={mapInstance}
+              isVisible={layerState.traffic_counts?.isVisible || false}
+            />
+
             {closedBusinessResults.length > 0 && (
               <ClosedPlacesLayer
                 map={mapInstance}
