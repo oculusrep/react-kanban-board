@@ -74,15 +74,23 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
 
         const path = coords.map(([lng, lat]) => ({ lat, lng }));
         const aadt = aadts.get(seg.id) ?? null;
-        const strokeColor = aadt !== null ? aadtColor(aadt) : '#9ca3af'; // gray-400
+        const baseColor = aadt !== null ? aadtColor(aadt) : '#3b82f6'; // blue-500 for uncached
 
         const polyline = new google.maps.Polyline({
           path,
           map,
-          strokeColor,
+          strokeColor: baseColor,
           strokeOpacity: 0.85,
           strokeWeight: 3,
           clickable: true,
+        });
+
+        // Hover: highlight yellow
+        polyline.addListener('mouseover', () => {
+          polyline.setOptions({ strokeColor: '#facc15', strokeWeight: 5, strokeOpacity: 1 });
+        });
+        polyline.addListener('mouseout', () => {
+          polyline.setOptions({ strokeColor: baseColor, strokeWeight: 3, strokeOpacity: 0.85 });
         });
 
         polyline.addListener('click', (e: google.maps.MapMouseEvent) => {
