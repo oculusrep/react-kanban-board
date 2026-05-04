@@ -18,7 +18,7 @@ const corsHeaders = {
 };
 
 // StreetLight API base URL — easy to swap if they update their endpoint
-const STREETLIGHT_BASE_URL = 'https://insight.streetlightdata.com/api/v2';
+const STREETLIGHT_BASE_URL = 'https://api.streetlightdata.com/satc/v1';
 
 // ─── Request/Response Types ───────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ async function slFetch(path: string, apiKey: string, body?: unknown): Promise<un
   const res = await fetch(url, {
     method,
     headers: {
-      'x-api-key': apiKey,
+      'x-stl-key': apiKey,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
@@ -86,8 +86,13 @@ async function handleGeometry(
   supabase: ReturnType<typeof createClient>
 ): Promise<unknown> {
   // Call StreetLight API
-  const data = await slFetch('/satc/segments', apiKey, {
-    bbox: [bounds.west, bounds.south, bounds.east, bounds.north],
+  const data = await slFetch('/geometry', apiKey, {
+    country: 'us',
+    mode: 'vehicle',
+    geometry: {
+      type: 'polygon',
+      bbox: [bounds.west, bounds.south, bounds.east, bounds.north],
+    },
   }) as { segments?: Array<{
     id: string;
     road_name?: string;
@@ -151,7 +156,7 @@ async function handleSegmentCount(
 async function handleDateRanges(
   apiKey: string
 ): Promise<unknown> {
-  const data = await slFetch('/satc/date_ranges', apiKey) as { date_ranges?: unknown[] };
+  const data = await slFetch('/date_ranges', apiKey, { country: 'us', mode: 'vehicle' }) as { date_ranges?: unknown[] };
   return { date_ranges: data.date_ranges ?? [] };
 }
 
@@ -395,7 +400,7 @@ async function handleMetrics(
   let apiError: string | null = null;
 
   try {
-    const metricsData = await slFetch('/satc/metrics', apiKey, {
+    const metricsData = await slFetch('/metrics', apiKey, {
       segment_ids: finalSegmentIds,
       date_range: { start_date: latestRange.start_date, end_date: latestRange.end_date },
     }) as { metrics?: Array<{ segment_id: string; aadt?: number; [key: string]: unknown }> };
