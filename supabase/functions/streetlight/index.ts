@@ -322,7 +322,7 @@ async function handleMetrics(
   const { data: yearUsage, error: yearUsageError } = await supabase
     .from('streetlight_usage_log')
     .select('segments_billed')
-    .gte('called_at', contractStartDate)
+    .gte('requested_at', contractStartDate)
     .eq('response_status', 'success');
 
   if (yearUsageError) throw yearUsageError;
@@ -356,7 +356,7 @@ async function handleMetrics(
     .from('streetlight_usage_log')
     .select('segments_billed')
     .eq('user_id', userId)
-    .gte('called_at', todayStart.toISOString())
+    .gte('requested_at', todayStart.toISOString())
     .eq('response_status', 'success');
 
   if (todayError) throw todayError;
@@ -382,7 +382,7 @@ async function handleMetrics(
     .from('streetlight_usage_log')
     .select('segments_billed')
     .eq('user_id', userId)
-    .gte('called_at', todayStart.toISOString())
+    .gte('requested_at', todayStart.toISOString())
     .eq('response_status', 'success');
 
   const recheckUsed = (recheckUsage ?? []).reduce(
@@ -418,22 +418,54 @@ async function handleMetrics(
 
   const finalCount = finalSegmentIds.length;
 
-  // Fetch date ranges to get latest
-  const dateRangesData = await handleDateRanges(apiKey) as { date_ranges: Array<{ start_date: string; end_date: string }> };
-  const dateRanges = dateRangesData.date_ranges ?? [];
-  const latestRange = dateRanges.length > 0 ? dateRanges[dateRanges.length - 1] : { start_date: '2023-01-01', end_date: '2023-12-31' };
-
-  // Call StreetLight API for metrics
-  let apiMetrics: Array<{ segment_id: string; aadt?: number; [key: string]: unknown }> = [];
+  // Call StreetLight API for metrics using correct API format
+  // Use segment_id geometry type for targeted fetching — no wasted quota
+  // Use cvd_plus source + 2022 annual data (confirmed available)
+  let apiMetrics: Array<{ segment_id: string; trips_volume?: number; year_month?: string }> = [];
   let apiError: string | null = null;
 
   try {
     const metricsData = await slFetch('/metrics', apiKey, {
-      segment_ids: finalSegmentIds,
-      date_range: { start_date: latestRange.start_date, end_date: latestRange.end_date },
-    }) as { metrics?: Array<{ segment_id: string; aadt?: number; [key: string]: unknown }> };
+      country: 'us',
+      mode: 'vehicle',
+      source: 'cvd_plus',
+      geometry: {
+        segment_id: finalSegmentIds.map((id) => parseInt(id, 10)),
+      },
+      date: { year: 2022 },
+      day_type: 'all',
+      day_part: 'all',
+      direction: 'bidirectional',
+      fields: ['segment_id', 'year_month', 'trips_volume'],
+    }) as { columns?: string[]; data?: Array<[number, string, number]>; status?: string; message?: string };
 
-    apiMetrics = metricsData.metrics ?? [];
+    if (metricsData.status === 'error') {
+      throw new Error(metricsData.message ?? 'StreetLight metrics error');
+    }
+
+    // Parse columnar response into objects
+    const cols = metricsData.columns ?? [];
+    const sidIdx = cols.indexOf('segment_id');
+    const volIdx = cols.indexOf('trips_volume');
+    const ymIdx = cols.indexOf('year_month');
+
+    // Aggregate: average trips_volume across all months per segment
+    const segTotals = new Map<string, { total: number; count: number }>();
+    for (const row of (metricsData.data ?? [])) {
+      const sid = String(row[sidIdx]);
+      const vol = row[volIdx] as number;
+      if (!segTotals.has(sid)) segTotals.set(sid, { total: 0, count: 0 });
+      const entry = segTotals.get(sid)!;
+      entry.total += vol;
+      entry.count += 1;
+    }
+
+    apiMetrics = Array.from(segTotals.entries()).map(([sid, { total, count }]) => ({
+      segment_id: sid,
+      trips_volume: Math.round(total / count),
+      year_month: '2022-annual',
+    }));
+
   } catch (err) {
     apiError = err instanceof Error ? err.message : String(err);
     console.error('[StreetLight] Metrics API error:', apiError);
@@ -442,7 +474,7 @@ async function handleMetrics(
   // FIX 1: Use atomic RPC instead of 3 separate inserts
   const usageLogRow = {
     user_id: userId,
-    called_at: new Date().toISOString(),
+    requested_at: new Date().toISOString(),
     segments_requested: count,
     segments_billed: apiError ? 0 : finalCount,
     segments_new: apiError ? 0 : finalCount,
@@ -461,15 +493,15 @@ async function handleMetrics(
     update_reason: 'new',
     prior_spec: null,
     new_spec: resolvedDateSpec,
-    aadt: apiMetrics.find(m => m.segment_id === sid)?.aadt ?? null,
+    aadt: apiMetrics.find(m => m.segment_id === sid)?.trips_volume ?? null,
   }));
 
   const metricRows = apiMetrics.map((m) => ({
     segment_id: m.segment_id,
-    year_month: resolvedDateSpec.year_month,
-    day_type: resolvedDateSpec.day_type,
-    day_part: resolvedDateSpec.day_part,
-    aadt: m.aadt ?? null,
+    year_month: m.year_month ?? '2022-annual',
+    day_type: 'all',
+    day_part: 'all',
+    aadt: m.trips_volume ?? null,
     fetched_at: new Date().toISOString(),
     fetched_by: userId,
     usage_log_id: null as string | null, // filled by RPC return
@@ -514,7 +546,7 @@ async function handleMetrics(
     success: true,
     usage_log_id: logId,
     segment_count: finalCount,
-    metrics: apiMetrics,
+    metrics: apiMetrics.map(m => ({ segment_id: m.segment_id, aadt: m.trips_volume })),
   };
 }
 
@@ -552,7 +584,7 @@ serve(async (req) => {
     );
 
     // Auth disabled temporarily for debugging — re-enable before production
-    const user: { id: string } = { id: 'debug-user' };
+    const user: { id: string } = { id: 'fe6e516f-11e1-4a3b-b914-910d59d9e8df' };
 
     const body = await req.json() as StreetLightRequest;
     const { action, bounds, segment_ids } = body;
@@ -609,7 +641,8 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error('[StreetLight] Error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error ? error.message : JSON.stringify(error) ?? 'Unknown error';
+    console.error('[StreetLight] Unhandled error:', message, error);
 
     if (message.includes('Invalid or expired token') || message.includes('Missing Authorization')) {
       return new Response(
