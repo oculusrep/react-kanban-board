@@ -88,7 +88,12 @@ export function useStreetLightTraffic(): UseStreetLightTrafficReturn {
       });
 
       if (fnError) {
-        console.error('[StreetLightTraffic] loadGeometry error:', fnError);
+        // Log full error context including response body if available
+        const context = (fnError as unknown as { context?: { json?: () => Promise<unknown> } })?.context;
+        if (context?.json) {
+          context.json().then((body: unknown) => console.error('[StreetLightTraffic] error body:', body));
+        }
+        console.error('[StreetLightTraffic] loadGeometry error:', fnError.message, fnError);
         setError(fnError.message || 'Failed to load road segments');
         return [];
       }

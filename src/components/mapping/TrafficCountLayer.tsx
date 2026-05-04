@@ -239,7 +239,7 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
         style={{
           position: 'absolute',
           bottom: 120,
-          left: 12,
+          right: 12,
           zIndex: 10,
           background: 'rgba(255,255,255,0.95)',
           borderRadius: 8,
