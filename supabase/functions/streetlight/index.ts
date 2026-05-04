@@ -33,6 +33,7 @@ interface StreetLightRequest {
   action: 'geometry' | 'segmentcount' | 'classify' | 'metrics' | 'usage' | 'date_ranges';
   bounds?: BoundsParam;
   segment_ids?: string[];
+  date_spec?: { year_month: string; day_type: string; day_part: string };
 }
 
 // ─── StreetLight API Helpers ──────────────────────────────────────────────────
@@ -159,6 +160,8 @@ async function handleDateRanges(
  *   - up_to_date: have metrics fetched within the most recent date range
  *   - stale: have metrics but not for the latest date range
  *   - new: no metrics at all
+ *
+ * FIX 7: If no segments exist in cache for this viewport, call handleGeometry first.
  */
 async function handleClassify(
   bounds: BoundsParam,
@@ -171,7 +174,7 @@ async function handleClassify(
   const latestRange = dateRanges.length > 0 ? dateRanges[dateRanges.length - 1] : null;
 
   // 2. Fetch segments in bounds from cache
-  const { data: segments, error: segError } = await supabase
+  let { data: segments, error: segError } = await supabase
     .from('streetlight_segment')
     .select('id, road_name, road_type')
     .gte('bbox_south', bounds.south - 0.1)
@@ -180,6 +183,23 @@ async function handleClassify(
     .lte('bbox_east', bounds.east + 0.1);
 
   if (segError) throw segError;
+
+  // FIX 7: No segments cached for this viewport — populate geometry catalog first
+  if (!segments || segments.length === 0) {
+    console.log('[StreetLight] classify: no cached segments, fetching geometry first');
+    await handleGeometry(bounds, apiKey, supabase);
+
+    const { data: freshSegments, error: freshError } = await supabase
+      .from('streetlight_segment')
+      .select('id, road_name, road_type')
+      .gte('bbox_south', bounds.south - 0.1)
+      .lte('bbox_north', bounds.north + 0.1)
+      .gte('bbox_west', bounds.west - 0.1)
+      .lte('bbox_east', bounds.east + 0.1);
+
+    if (freshError) throw freshError;
+    segments = freshSegments;
+  }
 
   if (!segments || segments.length === 0) {
     return { up_to_date: [], stale: [], new: [], date_ranges: dateRanges };
@@ -240,7 +260,8 @@ async function handleMetrics(
   segmentIds: string[],
   userId: string,
   apiKey: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: ReturnType<typeof createClient>,
+  dateSpec?: { year_month: string; day_type: string; day_part: string }
 ): Promise<unknown> {
   if (!segmentIds || segmentIds.length === 0) {
     throw new Error('segment_ids is required');
@@ -250,68 +271,65 @@ async function handleMetrics(
 
   // ── Phase 1: Pre-flight checks ──────────────────────────────────────────────
 
-  // 1a. Fetch global quota config
+  // 1a. Fetch global quota config (FIX 3: use annual_segment_quota + hard_stop_pct)
   const { data: quotaRow, error: quotaError } = await supabase
     .from('streetlight_quota_config')
     .select('*')
-    .is('org_id', null)
+    .eq('id', 1)
     .single();
 
   if (quotaError && quotaError.code !== 'PGRST116') throw quotaError;
 
-  const costPerSegment = quotaRow?.cost_per_segment_usd ?? 0.10;
-  const monthlyHardLimitSegments = quotaRow?.monthly_hard_limit_segments ?? null;
+  const annualSegmentQuota = quotaRow?.annual_segment_quota ?? 10000;
+  const hardStopPct = quotaRow?.hard_stop_pct ?? 95;
+  const hardStopThreshold = Math.floor(annualSegmentQuota * hardStopPct / 100);
+  const contractStartDate = quotaRow?.contract_start_date ?? new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
 
-  // 1b. Org hard stop: sum segments consumed this calendar month
-  if (monthlyHardLimitSegments !== null) {
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
+  // 1b. Org hard stop: sum segments consumed this contract year (FIX 3)
+  const { data: yearUsage, error: yearUsageError } = await supabase
+    .from('streetlight_usage_log')
+    .select('segments_billed')
+    .gte('called_at', contractStartDate)
+    .eq('response_status', 'success');
 
-    const { data: monthUsage, error: monthUsageError } = await supabase
-      .from('streetlight_usage_log')
-      .select('segment_count')
-      .gte('requested_at', monthStart.toISOString())
-      .eq('status', 'success');
+  if (yearUsageError) throw yearUsageError;
 
-    if (monthUsageError) throw monthUsageError;
+  const segmentsUsedThisYear = (yearUsage ?? []).reduce(
+    (sum: number, row: { segments_billed: number }) => sum + (row.segments_billed ?? 0),
+    0
+  );
 
-    const totalThisMonth = (monthUsage ?? []).reduce(
-      (sum: number, row: { segment_count: number }) => sum + row.segment_count,
-      0
-    );
-
-    if (totalThisMonth + count > monthlyHardLimitSegments) {
-      return {
-        success: false,
-        error: 'monthly_quota_exceeded',
-        message: `Org monthly limit reached (${totalThisMonth}/${monthlyHardLimitSegments} segments)`,
-      };
-    }
+  if (segmentsUsedThisYear + count > hardStopThreshold) {
+    return {
+      success: false,
+      error: 'annual_quota_exceeded',
+      message: `Org annual hard stop reached (${segmentsUsedThisYear}/${hardStopThreshold} segments used of ${annualSegmentQuota} annual quota at ${hardStopPct}% threshold)`,
+    };
   }
 
-  // 1c. Per-user daily limit check
+  // 1c. Per-user daily limit check (FIX 3: default 200, not 500)
   const { data: userLimit } = await supabase
     .from('streetlight_user_limit')
     .select('daily_segment_limit')
     .eq('user_id', userId)
     .single();
 
-  const dailyLimit = userLimit?.daily_segment_limit ?? 500;
+  const dailyDefault = quotaRow?.default_daily_per_user ?? 200;
+  const dailyLimit = userLimit?.daily_segment_limit ?? dailyDefault;
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
   const { data: todayUsage, error: todayError } = await supabase
     .from('streetlight_usage_log')
-    .select('segment_count')
+    .select('segments_billed')
     .eq('user_id', userId)
-    .gte('requested_at', todayStart.toISOString())
-    .eq('status', 'success');
+    .gte('called_at', todayStart.toISOString())
+    .eq('response_status', 'success');
 
   if (todayError) throw todayError;
 
   const usedToday = (todayUsage ?? []).reduce(
-    (sum: number, row: { segment_count: number }) => sum + row.segment_count,
+    (sum: number, row: { segments_billed: number }) => sum + (row.segments_billed ?? 0),
     0
   );
 
@@ -329,13 +347,13 @@ async function handleMetrics(
   // (Supabase doesn't expose SELECT FOR UPDATE in the REST API, so we re-check counts)
   const { data: recheckUsage } = await supabase
     .from('streetlight_usage_log')
-    .select('segment_count')
+    .select('segments_billed')
     .eq('user_id', userId)
-    .gte('requested_at', todayStart.toISOString())
-    .eq('status', 'success');
+    .gte('called_at', todayStart.toISOString())
+    .eq('response_status', 'success');
 
   const recheckUsed = (recheckUsage ?? []).reduce(
-    (sum: number, row: { segment_count: number }) => sum + row.segment_count,
+    (sum: number, row: { segments_billed: number }) => sum + (row.segments_billed ?? 0),
     0
   );
 
@@ -346,6 +364,26 @@ async function handleMetrics(
       message: 'Daily limit exceeded (race condition re-check)',
     };
   }
+
+  // FIX 4: Re-verify — remove segments that got cached since the modal opened
+  const resolvedDateSpec = dateSpec ?? { year_month: '2024-annual', day_type: 'all_days', day_part: 'all_day' };
+
+  const { data: alreadyCached } = await supabase
+    .from('streetlight_segment_metrics')
+    .select('segment_id')
+    .in('segment_id', segmentIds)
+    .eq('year_month', resolvedDateSpec.year_month)
+    .eq('day_type', resolvedDateSpec.day_type)
+    .eq('day_part', resolvedDateSpec.day_part);
+
+  const cachedIds = new Set(alreadyCached?.map((r: { segment_id: string }) => r.segment_id) ?? []);
+  const finalSegmentIds = segmentIds.filter(id => !cachedIds.has(id));
+
+  if (finalSegmentIds.length === 0) {
+    return { success: true, usage_log_id: null, segment_count: 0, metrics: [], message: 'All segments already cached' };
+  }
+
+  const finalCount = finalSegmentIds.length;
 
   // Fetch date ranges to get latest
   const dateRangesData = await handleDateRanges(apiKey) as { date_ranges: Array<{ start_date: string; end_date: string }> };
@@ -358,7 +396,7 @@ async function handleMetrics(
 
   try {
     const metricsData = await slFetch('/satc/metrics', apiKey, {
-      segment_ids: segmentIds,
+      segment_ids: finalSegmentIds,
       date_range: { start_date: latestRange.start_date, end_date: latestRange.end_date },
     }) as { metrics?: Array<{ segment_id: string; aadt?: number; [key: string]: unknown }> };
 
@@ -366,58 +404,73 @@ async function handleMetrics(
   } catch (err) {
     apiError = err instanceof Error ? err.message : String(err);
     console.error('[StreetLight] Metrics API error:', apiError);
-    // We'll still log the usage attempt as 'failed'
   }
 
-  // Insert usage_log
-  const { data: logRow, error: logError } = await supabase
-    .from('streetlight_usage_log')
-    .insert({
-      user_id: userId,
-      segment_count: count,
-      cost_usd: count * costPerSegment,
-      status: apiError ? 'failed' : 'success',
-      error_message: apiError,
-    })
-    .select('id')
-    .single();
+  // FIX 1: Use atomic RPC instead of 3 separate inserts
+  const usageLogRow = {
+    user_id: userId,
+    called_at: new Date().toISOString(),
+    segments_requested: count,
+    segments_billed: apiError ? 0 : finalCount,
+    segments_new: apiError ? 0 : finalCount,
+    segments_refresh: 0,
+    request_geometry: null,
+    checked_segment_ids: segmentIds.map(id => parseInt(id, 10)).filter(n => !isNaN(n)),
+    date_spec: resolvedDateSpec,
+    endpoint: 'metrics',
+    response_status: apiError ? 'failed' : 'success',
+    error_message: apiError,
+  };
 
-  if (logError) throw logError;
-
-  const logId = logRow.id;
-
-  // Insert usage_log_segment junction rows
-  const junctionRows = segmentIds.map((sid) => ({
-    usage_log_id: logId,
+  const segmentLogRows = finalSegmentIds.map((sid) => ({
+    usage_log_id: null as string | null, // will be set by RPC
     segment_id: sid,
+    update_reason: 'new',
+    prior_spec: null,
+    new_spec: resolvedDateSpec,
+    aadt: apiMetrics.find(m => m.segment_id === sid)?.aadt ?? null,
   }));
 
-  const { error: junctionError } = await supabase
-    .from('streetlight_usage_log_segment')
-    .insert(junctionRows);
+  const metricRows = apiMetrics.map((m) => ({
+    segment_id: m.segment_id,
+    year_month: resolvedDateSpec.year_month,
+    day_type: resolvedDateSpec.day_type,
+    day_part: resolvedDateSpec.day_part,
+    aadt: m.aadt ?? null,
+    fetched_at: new Date().toISOString(),
+    fetched_by: userId,
+    usage_log_id: null as string | null, // filled by RPC return
+  }));
 
-  if (junctionError) {
-    console.error('[StreetLight] Junction insert error:', junctionError.message);
-  }
+  let logId: string | null = null;
 
-  // Upsert metrics rows if API call succeeded
-  if (apiMetrics.length > 0) {
-    const metricRows = apiMetrics.map((m) => ({
-      segment_id: m.segment_id,
-      date_range_start: latestRange.start_date,
-      date_range_end: latestRange.end_date,
-      aadt: m.aadt ?? null,
-      aadt_raw: m,
-      fetched_at: new Date().toISOString(),
-    }));
+  if (!apiError && metricRows.length > 0) {
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('streetlight_record_spend', {
+      p_usage_log: usageLogRow,
+      p_segments: segmentLogRows,
+      p_metrics: metricRows,
+    });
 
-    const { error: upsertError } = await supabase
-      .from('streetlight_segment_metrics')
-      .upsert(metricRows, { onConflict: 'segment_id,date_range_start,date_range_end' });
-
-    if (upsertError) {
-      console.error('[StreetLight] Metrics upsert error:', upsertError.message);
+    if (rpcError) {
+      console.error('[StreetLight] Atomic RPC error:', rpcError.message);
+      // Fallback: best-effort insert just the log
+      const { data: logRow } = await supabase
+        .from('streetlight_usage_log')
+        .insert(usageLogRow)
+        .select('id')
+        .single();
+      logId = logRow?.id ?? null;
+    } else {
+      logId = rpcResult as string;
     }
+  } else {
+    // Log the failed attempt
+    const { data: logRow } = await supabase
+      .from('streetlight_usage_log')
+      .insert(usageLogRow)
+      .select('id')
+      .single();
+    logId = logRow?.id ?? null;
   }
 
   if (apiError) {
@@ -427,8 +480,7 @@ async function handleMetrics(
   return {
     success: true,
     usage_log_id: logId,
-    segment_count: count,
-    cost_usd: count * costPerSegment,
+    segment_count: finalCount,
     metrics: apiMetrics,
   };
 }
@@ -502,7 +554,7 @@ serve(async (req) => {
         if (!segment_ids || segment_ids.length === 0) {
           throw new Error('segment_ids is required for metrics action');
         }
-        result = await handleMetrics(segment_ids, user.id, apiKey, supabase);
+        result = await handleMetrics(segment_ids, user.id, apiKey, supabase, body.date_spec);
         break;
       }
 

@@ -30,7 +30,7 @@ function aadtColor(aadt: number): string {
 }
 
 const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible }) => {
-  const { loadGeometry, classifySegments, fetchMetrics, isLoading, error } = useStreetLightTraffic();
+  const { loadGeometry, classifySegments, fetchMetrics, usageStatus, isLoading, error } = useStreetLightTraffic();
   const { hasPermission } = usePermissions();
 
   const canConsumeQuota = hasPermission('can_consume_traffic_quota');
@@ -120,6 +120,26 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible, map]);
+
+  // FIX 5: Reload geometry when map pans/zooms (idle fires after movement settles)
+  useEffect(() => {
+    if (!map || !isVisible) return;
+    const listener = map.addListener('idle', () => {
+      const bounds = map.getBounds();
+      if (!bounds) return;
+      const mapBounds: MapBounds = {
+        south: bounds.getSouthWest().lat(),
+        west: bounds.getSouthWest().lng(),
+        north: bounds.getNorthEast().lat(),
+        east: bounds.getNorthEast().lng(),
+      };
+      loadGeometry(mapBounds).then((segs) => {
+        setSegments(segs as SegmentWithMetric[]);
+        renderPolylines(segs as SegmentWithMetric[], aadtMap);
+      });
+    });
+    return () => google.maps.event.removeListener(listener);
+  }, [map, isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-render polylines when aadtMap updates
   useEffect(() => {
@@ -254,6 +274,11 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
       {showSpendModal && classifyResult && (
         <TrafficSpendModal
           classifyResult={classifyResult}
+          remainingQuota={usageStatus && 'annual_segment_quota' in usageStatus && 'segments_used' in usageStatus
+            ? (usageStatus as { annual_segment_quota: number; segments_used: number }).annual_segment_quota
+              - (usageStatus as { annual_segment_quota: number; segments_used: number }).segments_used
+            : null
+          }
           onClose={() => setShowSpendModal(false)}
           onConfirm={async (selectedIds) => {
             setShowSpendModal(false);
