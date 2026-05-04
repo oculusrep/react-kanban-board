@@ -190,22 +190,50 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
       return;
     }
 
+    const fetchBtn = infoPopup.aadt === null && canConsumeQuota
+      ? `<button id="stl-fetch-btn" style="margin-top:8px;width:100%;padding:5px 10px;background:#3b82f6;color:white;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Fetch AADT ($0.50)</button>`
+      : '';
+
     const content = `
-      <div style="font-family:sans-serif;font-size:13px;line-height:1.5;min-width:160px">
+      <div style="font-family:sans-serif;font-size:13px;line-height:1.5;min-width:180px">
         <div style="font-weight:600;margin-bottom:4px">${infoPopup.roadName ?? 'Road Segment'}</div>
-        ${infoPopup.roadType ? `<div style="color:#6b7280">${infoPopup.roadType}</div>` : ''}
+        ${infoPopup.roadType ? `<div style="color:#6b7280;font-size:12px">${infoPopup.roadType}</div>` : ''}
         <div style="margin-top:6px">
           ${infoPopup.aadt !== null
-            ? `<span style="font-weight:600">AADT:</span> ${infoPopup.aadt.toLocaleString()}`
-            : '<span style="color:#9ca3af">No AADT data yet</span>'
+            ? `<span style="font-weight:600">AADT:</span> ${infoPopup.aadt.toLocaleString()} vehicles/day`
+            : '<span style="color:#9ca3af">No traffic data yet</span>'
           }
         </div>
+        ${fetchBtn}
       </div>
     `;
 
     infoWindowRef.current.setContent(content);
     infoWindowRef.current.setPosition(infoPopup.position);
     infoWindowRef.current.open(map);
+
+    // Wire up the fetch button inside the InfoWindow DOM
+    setTimeout(() => {
+      const btn = document.getElementById('stl-fetch-btn');
+      if (btn) {
+        btn.onclick = async () => {
+          btn.textContent = 'Fetching…';
+          btn.setAttribute('disabled', 'true');
+          try {
+            const result = await fetchMetrics([infoPopup.segmentId]);
+            if (result?.metrics?.length) {
+              const m = result.metrics[0] as { segment_id: string; aadt?: number };
+              if (m.aadt !== undefined) {
+                setAadtMap(prev => new Map(prev).set(infoPopup.segmentId, m.aadt ?? null));
+                infoWindowRef.current?.close();
+              }
+            }
+          } catch {
+            btn.textContent = 'Error — try again';
+          }
+        };
+      }
+    }, 100);
   }, [map, infoPopup]);
 
   const handleLoadAadt = useCallback(async () => {
