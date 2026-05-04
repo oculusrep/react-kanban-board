@@ -201,10 +201,10 @@ async function handleClassify(
   apiKey: string,
   supabase: ReturnType<typeof createClient>
 ): Promise<unknown> {
-  // 1. Get available date ranges
-  const dateRangesData = await handleDateRanges(apiKey) as { date_ranges: Array<{ start_date: string; end_date: string }> };
-  const dateRanges = dateRangesData.date_ranges ?? [];
-  const latestRange = dateRanges.length > 0 ? dateRanges[dateRanges.length - 1] : null;
+  // 1. Use a hardcoded latest date range (date_ranges endpoint path TBD)
+  // Once the correct endpoint is confirmed, replace with: await handleDateRanges(apiKey)
+  const dateRanges: Array<{ start_date: string; end_date: string }> = [{ start_date: '2024-01-01', end_date: '2024-12-31' }];
+  const latestRange = dateRanges[0];
 
   // 2. Fetch segments in bounds from cache
   let { data: segments, error: segError } = await supabase

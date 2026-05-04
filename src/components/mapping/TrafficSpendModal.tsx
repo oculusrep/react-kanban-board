@@ -195,7 +195,7 @@ const TrafficSpendModal: React.FC<TrafficSpendModalProps> = ({
             color="#9ca3af"
             note="No data yet — select to fetch for the first time"
           >
-            {newSegments.map((seg) => (
+            {newSegments.slice(0, 200).map((seg) => (
               <label key={seg.id} style={{ ...rowStyle, cursor: 'pointer' }}>
                 <input
                   type="checkbox"

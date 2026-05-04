@@ -144,10 +144,14 @@ export function useStreetLightTraffic(): UseStreetLightTrafficReturn {
         return null;
       }
 
+      // Normalize IDs to strings (API returns numeric IDs)
+      const normalizeIds = (arr: Array<{ id: string | number; [key: string]: unknown }>) =>
+        arr.map(seg => ({ ...seg, id: String(seg.id) }));
+
       return {
-        up_to_date: data.up_to_date ?? [],
-        stale: data.stale ?? [],
-        new: data.new ?? [],
+        up_to_date: normalizeIds(data.up_to_date ?? []),
+        stale: normalizeIds(data.stale ?? []),
+        new: normalizeIds(data.new ?? []),
         date_ranges: data.date_ranges ?? [],
       };
     } catch (err) {
