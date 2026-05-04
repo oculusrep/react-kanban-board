@@ -497,37 +497,46 @@ async function handleMetrics(
   }));
 
   const metricRows = apiMetrics.map((m) => ({
-    segment_id: m.segment_id,
+    segment_id: parseInt(m.segment_id, 10),
     year_month: m.year_month ?? '2022-annual',
+    date_range_start: '2022-01-01',
+    date_range_end: '2022-12-31',
     day_type: 'all',
     day_part: 'all',
     aadt: m.trips_volume ?? null,
+    trips_volume: m.trips_volume ?? null,
     fetched_at: new Date().toISOString(),
     fetched_by: userId,
-    usage_log_id: null as string | null, // filled by RPC return
+    usage_log_id: null as string | null,
   }));
 
   let logId: string | null = null;
 
   if (!apiError && metricRows.length > 0) {
-    const { data: rpcResult, error: rpcError } = await supabase.rpc('streetlight_record_spend', {
-      p_usage_log: usageLogRow,
-      p_segments: segmentLogRows,
-      p_metrics: metricRows,
-    });
+    // Insert usage log
+    const { data: logRow, error: logError } = await supabase
+      .from('streetlight_usage_log')
+      .insert(usageLogRow)
+      .select('id')
+      .single();
+    if (logError) console.error('[StreetLight] Usage log error:', logError.message);
+    logId = logRow?.id ?? null;
 
-    if (rpcError) {
-      console.error('[StreetLight] Atomic RPC error:', rpcError.message);
-      // Fallback: best-effort insert just the log
-      const { data: logRow } = await supabase
-        .from('streetlight_usage_log')
-        .insert(usageLogRow)
-        .select('id')
-        .single();
-      logId = logRow?.id ?? null;
-    } else {
-      logId = rpcResult as string;
-    }
+    // Ensure all segment IDs exist in streetlight_segment (FK requirement)
+    const segmentStubs = metricRows.map(m => ({
+      id: m.segment_id,
+      road_name: null,
+      road_type: null,
+      updated_at: new Date().toISOString(),
+      cached_at: new Date().toISOString(),
+    }));
+    await supabase.from('streetlight_segment').upsert(segmentStubs, { onConflict: 'id', ignoreDuplicates: true });
+
+    // Upsert metrics cache — this is the permanent cache
+    const { error: metricsError } = await supabase
+      .from('streetlight_segment_metrics')
+      .upsert(metricRows, { onConflict: 'segment_id,year_month,day_type,day_part' });
+    if (metricsError) console.error('[StreetLight] Metrics upsert error:', metricsError.message);
   } else {
     // Log the failed attempt
     const { data: logRow } = await supabase
