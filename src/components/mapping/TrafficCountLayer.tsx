@@ -102,6 +102,18 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
     [map, clearPolylines]
   );
 
+  // Minimum zoom level required to query StreetLight (area limit ~1.2km²)
+  const MIN_ZOOM = 13;
+
+  const isSafeToQuery = (b: MapBounds): boolean => {
+    const zoom = map?.getZoom() ?? 0;
+    if (zoom < MIN_ZOOM) return false;
+    // Also guard by area: lat/lng degree difference
+    const latDiff = b.north - b.south;
+    const lngDiff = b.east - b.west;
+    return latDiff < 0.08 && lngDiff < 0.12; // ~8km × 12km max
+  };
+
   // Load geometry when layer becomes visible
   useEffect(() => {
     if (!isVisible || !map) {
@@ -111,6 +123,8 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
 
     const bounds = getMapBounds();
     if (!bounds) return;
+
+    if (!isSafeToQuery(bounds)) return; // too zoomed out
 
     setBoundsSnapshot(bounds);
 
@@ -133,6 +147,10 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
         north: bounds.getNorthEast().lat(),
         east: bounds.getNorthEast().lng(),
       };
+      if (!isSafeToQuery(mapBounds)) {
+        clearPolylines();
+        return;
+      }
       loadGeometry(mapBounds).then((segs) => {
         setSegments(segs as SegmentWithMetric[]);
         renderPolylines(segs as SegmentWithMetric[], aadtMap);
@@ -226,6 +244,9 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
       >
         <div style={{ fontWeight: 700, marginBottom: 6 }}>🚗 Traffic Count (AADT)</div>
 
+        {(map?.getZoom() ?? 0) < MIN_ZOOM && (
+          <div style={{ color: '#f59e0b', marginBottom: 6 }}>⚠️ Zoom in to load road segments</div>
+        )}
         {isLoading && (
           <div style={{ color: '#6b7280', marginBottom: 6 }}>Loading segments…</div>
         )}
@@ -234,7 +255,9 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
         )}
 
         <div style={{ marginBottom: 8 }}>
-          {segmentsWithAadt} of {totalSegments} segments have AADT data
+          {(map?.getZoom() ?? 0) < MIN_ZOOM
+            ? 'Zoom to street level to see traffic data'
+            : `${segmentsWithAadt} of ${totalSegments} segments have AADT data`}
         </div>
 
         {/* Color scale legend */}
