@@ -31,7 +31,7 @@ function aadtColor(aadt: number): string {
 }
 
 const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible }) => {
-  const { loadGeometry, classifySegments, fetchMetrics, usageStatus, isLoading, error } = useStreetLightTraffic();
+  const { loadGeometry, loadCachedMetrics, classifySegments, fetchMetrics, usageStatus, isLoading, error } = useStreetLightTraffic();
   const { hasPermission } = usePermissions();
 
   const canConsumeQuota = hasPermission('can_consume_traffic_quota');
@@ -161,9 +161,24 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
 
     setBoundsSnapshot(bounds);
 
-    loadGeometry(bounds).then((segs) => {
+    loadGeometry(bounds).then(async (segs) => {
       setSegments(segs as SegmentWithMetric[]);
-      renderPolylines(segs as SegmentWithMetric[], aadtMap);
+      // Immediately hydrate from cache — no extra API cost
+      const ids = segs.map(s => s.id);
+      const cached = await loadCachedMetrics(ids);
+      if (Object.keys(cached).length > 0) {
+        setAadtMap(prev => {
+          const next = new Map(prev);
+          Object.entries(cached).forEach(([id, aadt]) => next.set(id, aadt));
+          return next;
+        });
+        setDataYearMap(prev => {
+          const next = new Map(prev);
+          Object.keys(cached).forEach(id => next.set(id, '2022 annual avg'));
+          return next;
+        });
+      }
+      renderPolylines(segs as SegmentWithMetric[], new Map(Object.entries(cached)));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible, map]);
@@ -184,9 +199,21 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
         clearPolylines();
         return;
       }
-      loadGeometry(mapBounds).then((segs) => {
+      loadGeometry(mapBounds).then(async (segs) => {
         setSegments(segs as SegmentWithMetric[]);
-        renderPolylines(segs as SegmentWithMetric[], aadtMap);
+        const ids = segs.map(s => s.id);
+        const cached = await loadCachedMetrics(ids);
+        const mergedAadt = new Map(aadtMap);
+        Object.entries(cached).forEach(([id, aadt]) => mergedAadt.set(id, aadt));
+        setAadtMap(mergedAadt);
+        if (Object.keys(cached).length > 0) {
+          setDataYearMap(prev => {
+            const next = new Map(prev);
+            Object.keys(cached).forEach(id => next.set(id, '2022 annual avg'));
+            return next;
+          });
+        }
+        renderPolylines(segs as SegmentWithMetric[], mergedAadt);
       });
     });
     return () => google.maps.event.removeListener(listener);

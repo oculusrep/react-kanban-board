@@ -58,6 +58,7 @@ interface UseStreetLightTrafficReturn {
   usageStatus: UsageStatus | null;
 
   loadGeometry: (bounds: MapBounds) => Promise<StreetLightSegment[]>;
+  loadCachedMetrics: (segmentIds: string[]) => Promise<Record<string, number | null>>;
   classifySegments: (bounds: MapBounds) => Promise<ClassifyResult | null>;
   fetchMetrics: (checkedSegmentIds: string[]) => Promise<MetricsResult | null>;
   refreshUsageStatus: () => Promise<void>;
@@ -239,12 +240,40 @@ export function useStreetLightTraffic(): UseStreetLightTrafficReturn {
     refreshUsageStatus();
   }, [refreshUsageStatus]);
 
+  /**
+   * Load cached AADT from DB for a list of segment IDs.
+   * Returns a map of segment_id -> aadt (null if not cached).
+   */
+  const loadCachedMetrics = useCallback(async (segmentIds: string[]): Promise<Record<string, number | null>> => {
+    if (!segmentIds.length) return {};
+    try {
+      const { data, error } = await supabase
+        .from('streetlight_segment_metrics')
+        .select('segment_id, aadt')
+        .in('segment_id', segmentIds);
+      if (error) throw error;
+      const result: Record<string, number | null> = {};
+      for (const row of (data ?? [])) {
+        // Keep highest aadt if multiple rows per segment
+        const sid = String(row.segment_id);
+        if (result[sid] === undefined || (row.aadt !== null && (result[sid] === null || row.aadt > result[sid]!))) {
+          result[sid] = row.aadt;
+        }
+      }
+      return result;
+    } catch (err) {
+      console.warn('[StreetLightTraffic] loadCachedMetrics error:', err);
+      return {};
+    }
+  }, []);
+
   return {
     segments,
     isLoading,
     error,
     usageStatus,
     loadGeometry,
+    loadCachedMetrics,
     classifySegments,
     fetchMetrics,
     refreshUsageStatus,
