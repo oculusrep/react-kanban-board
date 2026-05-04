@@ -93,23 +93,24 @@ async function handleGeometry(
       type: 'polygon',
       bbox: [bounds.west, bounds.south, bounds.east, bounds.north],
     },
-  }) as { segments?: Array<{
-    id: string;
-    road_name?: string;
-    road_type?: string;
-    geometry: { type: string; coordinates: number[][] };
-  }> };
+  }) as Record<string, unknown>;
 
-  const segments = data.segments ?? [];
+  // StreetLight returns an array of [segment_id, {coordinates, type}] pairs
+  // Shape: [[id, {type: "LineString", coordinates: [[lng,lat]...]}], ...]
+  const rawPairs = Array.isArray(data) ? data as Array<[string | number, { type: string; coordinates: number[][] }]> : [];
+
+  const segments = rawPairs.map(([id, geom]) => ({
+    id: String(id),
+    geometry: geom,
+  }));
 
   if (segments.length > 0) {
     // Upsert segments into DB (geometry as WKT)
     const rows = segments.map((seg) => ({
       id: seg.id,
-      road_name: seg.road_name ?? null,
-      road_type: seg.road_type ?? null,
-      // PostGIS: store as GeoJSON string for st_geomfromgeojson
-      geom: `SRID=4326;LINESTRING(${seg.geometry.coordinates.map((c) => c.join(' ')).join(',')})`,
+      road_name: null,
+      road_type: null,
+      geom: `SRID=4326;LINESTRING(${seg.geometry.coordinates.map((c: number[]) => c.join(' ')).join(',')})`,
       bbox_south: bounds.south,
       bbox_west: bounds.west,
       bbox_north: bounds.north,
@@ -128,7 +129,7 @@ async function handleGeometry(
     }
   }
 
-  return { segments };
+  return { success: true, segments: segments.map(s => ({ id: s.id, geometry: s.geometry })) };
 }
 
 /**
