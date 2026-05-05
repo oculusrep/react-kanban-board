@@ -870,11 +870,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           // Log for debugging
           if (touchMoved) {
             console.log('👆 Touch ended with movement - no context menu');
-          } else if (touchDuration < 750) {
+          } else if (touchDuration < 1500) {
             console.log('⚡ Touch too short for long-press:', touchDuration, 'ms');
           }
 
-          if (touchDuration >= 750 && !touchMoved && touchLatLng) {
+          if (touchDuration >= 1500 && !touchMoved && touchLatLng) {
             // Don't show map context menu if a marker was just long-pressed
             if (suppressMapContextMenu) {
               console.log('🚫 Marker was long-pressed, skipping map context menu');
