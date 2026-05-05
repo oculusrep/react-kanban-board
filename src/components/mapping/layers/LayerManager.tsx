@@ -12,9 +12,10 @@ export interface LayerConfig {
   count?: number;
   isSystemLayer: boolean;
   permissions?: LayerPermissions; // For future use
+  requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -105,7 +106,17 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     description: 'Road segment AADT data from StreetLight',
     defaultVisible: false,
     isSystemLayer: true,
-  }
+  },
+  {
+    id: 'starbucks',
+    name: 'Starbucks Stores',
+    type: 'starbucks',
+    icon: '☕',
+    description: 'Confidential Starbucks store data',
+    defaultVisible: false,
+    isSystemLayer: true,
+    requiresPermission: 'can_view_starbucks_layer',
+  },
 ];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);

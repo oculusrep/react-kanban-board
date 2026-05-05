@@ -6,11 +6,13 @@ import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/laye
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
+import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
 import TrafficCountLayer from '../components/mapping/TrafficCountLayer';
 import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideout';
+import StarbucksSlideout from '../components/mapping/slideouts/StarbucksSlideout';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
@@ -97,7 +99,46 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Slideout states
   const [isPinDetailsOpen, setIsPinDetailsOpen] = useState(false);
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
-  const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | null>(null);
+  const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | 'starbucks' | null>(null);
+  const [selectedStarbucksStore, setSelectedStarbucksStore] = useState<any>(null);
+  const [starbucksLogoUrl, setStarbucksLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('merchant_brand')
+      .select('logo_url')
+      .ilike('name', 'starbucks')
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (!data?.logo_url) return;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const halo = 3;
+          const logo = 64;
+          const total = logo + halo * 2;
+          const canvas = document.createElement('canvas');
+          canvas.width = total;
+          canvas.height = total;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          const cx = total / 2;
+          ctx.beginPath();
+          ctx.arc(cx, cx, cx, 0, Math.PI * 2);
+          ctx.fillStyle = 'white';
+          ctx.fill();
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cx, logo / 2, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(img, halo, halo, logo, logo);
+          ctx.restore();
+          setStarbucksLogoUrl(canvas.toDataURL('image/png'));
+        };
+        img.src = data.logo_url;
+      });
+  }, []);
   const [pinDetailsInitialTab, setPinDetailsInitialTab] = useState<'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | undefined>(undefined);
 
   // Property details slideout (for "View Full Details" from site submit)
@@ -2124,6 +2165,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   </button>
                 </div>
 
+
                 {/* Client Selector */}
                 <div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Client:</label>
@@ -2433,6 +2475,35 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
                 {showCustomLayersMenu && (
                   <div className="absolute left-0 mt-1 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
+
+                    {/* Starbucks system layer — only visible to authorized users */}
+                    {hasPermission('can_view_starbucks_layer') && (
+                      <div className="p-2 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => toggleLayer('starbucks')}
+                              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                                layerState.starbucks?.isVisible ? 'bg-green-700' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                  layerState.starbucks?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                            {starbucksLogoUrl
+                              ? <img src={starbucksLogoUrl} alt="Starbucks" style={{ width: 18, height: 18 }} />
+                              : <span>☕</span>
+                            }
+                            <span className="text-sm font-medium text-gray-900">Starbucks Stores</span>
+                          </div>
+                          <span className="text-xs text-gray-400">Confidential</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
@@ -2721,6 +2792,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setSelectedPinType('restaurant');
                 setSelectedPinData(restaurant);
                 setIsPinDetailsOpen(true);
+              }}
+            />
+
+            {/* Starbucks Layer — confidential, permission-gated */}
+            <StarbucksLayer
+              map={mapInstance}
+              isVisible={layerState.starbucks?.isVisible || false}
+              selectedStoreNumber={selectedPinType === 'starbucks' && selectedStarbucksStore ? selectedStarbucksStore.store_number : null}
+              clusterConfig={clusterConfig}
+              onPinClick={(store) => {
+                setSelectedPinType('starbucks');
+                setSelectedStarbucksStore(store);
               }}
             />
 
@@ -3130,6 +3213,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         <RestaurantSlideout
           restaurant={selectedPinData as any}
           onClose={handlePinDetailsClose}
+          topOffset={showPropertySearch ? 45 : 0}
+        />
+      )}
+
+      {/* Starbucks Slideout - confidential store trends */}
+      {selectedPinType === 'starbucks' && selectedStarbucksStore && (
+        <StarbucksSlideout
+          store={selectedStarbucksStore}
+          onClose={() => {
+            setSelectedPinType(null);
+            setSelectedStarbucksStore(null);
+          }}
           topOffset={showPropertySearch ? 45 : 0}
         />
       )}

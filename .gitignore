@@ -59,12 +59,12 @@ supabase/archive/
 # Supabase CLI temp files
 supabase/.temp/
 
-# Restaurant Trends ETL
-data/incoming/          # Excel source files
-data/processed/         # Generated CSV files
-etl/config.yaml         # ETL configuration (may contain credentials)
-*.xlsx                  # Excel files (large, contain data)
-*.csv                   # CSV files (generated outputs)
+# Restaurant Trends ETL / Starbucks data — never commit source files
+data/incoming/
+data/processed/
+etl/config.yaml
+*.xlsx
+*.csv
 
 # Test/debug scripts that may contain hardcoded credentials
 check-*.js
