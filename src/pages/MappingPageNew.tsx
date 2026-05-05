@@ -101,6 +101,44 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | 'starbucks' | null>(null);
   const [selectedStarbucksStore, setSelectedStarbucksStore] = useState<any>(null);
+  const [starbucksLogoUrl, setStarbucksLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('merchant_brand')
+      .select('logo_url')
+      .ilike('name', 'starbucks')
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (!data?.logo_url) return;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const halo = 3;
+          const logo = 64;
+          const total = logo + halo * 2;
+          const canvas = document.createElement('canvas');
+          canvas.width = total;
+          canvas.height = total;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          const cx = total / 2;
+          ctx.beginPath();
+          ctx.arc(cx, cx, cx, 0, Math.PI * 2);
+          ctx.fillStyle = 'white';
+          ctx.fill();
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cx, logo / 2, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(img, halo, halo, logo, logo);
+          ctx.restore();
+          setStarbucksLogoUrl(canvas.toDataURL('image/png'));
+        };
+        img.src = data.logo_url;
+      });
+  }, []);
   const [pinDetailsInitialTab, setPinDetailsInitialTab] = useState<'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | undefined>(undefined);
 
   // Property details slideout (for "View Full Details" from site submit)
@@ -2455,7 +2493,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                                 }`}
                               />
                             </button>
-                            <span className="text-sm font-medium text-gray-900">☕ Starbucks Stores</span>
+                            {starbucksLogoUrl
+                              ? <img src={starbucksLogoUrl} alt="Starbucks" style={{ width: 18, height: 18 }} />
+                              : <span>☕</span>
+                            }
+                            <span className="text-sm font-medium text-gray-900">Starbucks Stores</span>
                           </div>
                           <span className="text-xs text-gray-400">Confidential</span>
                         </div>

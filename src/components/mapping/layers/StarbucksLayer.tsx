@@ -60,14 +60,22 @@ export interface StarbucksLayerProps {
 }
 
 const STARBUCKS_GREEN = '#00704A';
-const STARBUCKS_GREEN_DARK = '#004E32';
 
-function createStarbucksMarkerIcon(selected = false): google.maps.Icon {
-  const size = selected ? 24 : 16;
-  const color = selected ? STARBUCKS_GREEN_DARK : STARBUCKS_GREEN;
+function createFallbackIcon(selected = false): google.maps.Icon {
+  const size = selected ? 28 : 20;
+  const color = selected ? '#004E32' : STARBUCKS_GREEN;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${color}" stroke="white" stroke-width="2"/></svg>`;
   return {
     url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    scaledSize: new google.maps.Size(size, size),
+    anchor: new google.maps.Point(size / 2, size / 2),
+  };
+}
+
+function createLogoIcon(logoUrl: string, selected = false): google.maps.Icon {
+  const size = selected ? 36 : 26;
+  return {
+    url: logoUrl,
     scaledSize: new google.maps.Size(size, size),
     anchor: new google.maps.Point(size / 2, size / 2),
   };
@@ -80,6 +88,7 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
   selectedStoreNumber = null,
   clusterConfig,
 }) => {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [stores, setStores] = useState<StarbucksStoreWithSnapshot[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
@@ -96,6 +105,45 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
   const starbucksRefreshTrigger = refreshTrigger.starbucks || 0;
 
   useEffect(() => { openPopupRef.current = openPopup; }, [openPopup]);
+
+  useEffect(() => {
+    supabase
+      .from('merchant_brand')
+      .select('logo_url')
+      .ilike('name', 'starbucks')
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (!data?.logo_url) return;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const halo = 3;
+          const logo = 64;
+          const total = logo + halo * 2;
+          const canvas = document.createElement('canvas');
+          canvas.width = total;
+          canvas.height = total;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          const cx = total / 2;
+          // White halo ring
+          ctx.beginPath();
+          ctx.arc(cx, cx, cx, 0, Math.PI * 2);
+          ctx.fillStyle = 'white';
+          ctx.fill();
+          // Clip to inner logo circle and draw image
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cx, logo / 2, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(img, halo, halo, logo, logo);
+          ctx.restore();
+          setLogoUrl(canvas.toDataURL('image/png'));
+        };
+        img.src = data.logo_url;
+      });
+  }, []);
 
   const createPopupOverlay = useCallback(
     (store: StarbucksStoreWithSnapshot, position: google.maps.LatLng) => {
@@ -252,7 +300,7 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
           position: { lat: store.latitude!, lng: store.longitude! },
           map: null,
           title: store.store_name || `Store ${store.store_number}`,
-          icon: createStarbucksMarkerIcon(isSelected),
+          icon: logoUrl ? createLogoIcon(logoUrl, isSelected) : createFallbackIcon(isSelected),
           zIndex: isSelected ? 3000 : 100,
         });
 
@@ -307,7 +355,7 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
         setClusterer(newClusterer);
       }
     }
-  }, [stores, selectedStoreNumber, map, createPopupOverlay, clusterConfig]);
+  }, [stores, selectedStoreNumber, map, createPopupOverlay, clusterConfig, logoUrl]);
 
   // Visibility toggle
   useEffect(() => {

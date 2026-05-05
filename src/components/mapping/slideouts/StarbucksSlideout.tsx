@@ -122,31 +122,6 @@ const StarbucksSlideout: React.FC<StarbucksSlideoutProps> = ({ store, onClose, t
         )}
       </div>
 
-      {/* Chart */}
-      {hasChart && (
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>RTM Sales History</div>
-          <ResponsiveContainer width="100%" height={120}>
-            <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="sbGreen" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={STARBUCKS_GREEN} stopOpacity={0.4} />
-                  <stop offset="95%" stopColor={STARBUCKS_GREEN} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`} width={45} />
-              <Tooltip
-                contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 6, fontSize: 12 }}
-                labelStyle={{ color: '#94a3b8' }}
-                formatter={(v: any) => [formatCurrency(v as number), 'RTM Sales']}
-              />
-              <Area type="monotone" dataKey="sales" stroke={STARBUCKS_GREEN} fill="url(#sbGreen)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
       {/* Snapshot history table */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 16px' }}>
         <div style={{ padding: '12px 20px 6px', fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -190,6 +165,79 @@ const StarbucksSlideout: React.FC<StarbucksSlideoutProps> = ({ store, onClose, t
             </div>
           </div>
         ))}
+
+        {/* RTM Sales chart — below snapshot cards */}
+        {hasChart && (
+          <div style={{ margin: '16px 16px 8px' }}>
+            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              RTM Sales Performance
+            </div>
+            <div
+              style={{
+                position: 'relative',
+                borderRadius: 16,
+                overflow: 'hidden',
+                height: 300,
+                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+              }}
+            >
+              {/* Glow */}
+              <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.35,
+                background: `radial-gradient(circle at 20% 50%, rgba(0,112,74,0.25), transparent 50%), radial-gradient(circle at 80% 50%, rgba(0,178,118,0.15), transparent 50%)`,
+              }} />
+              {/* Grid */}
+              <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05,
+                backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+                backgroundSize: '20px 20px',
+              }} />
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 28, right: 24, left: 16, bottom: 28 }}>
+                  <defs>
+                    <linearGradient id="sbSalesGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={STARBUCKS_GREEN} stopOpacity={0.45} />
+                      <stop offset="55%" stopColor={STARBUCKS_GREEN} stopOpacity={0.15} />
+                      <stop offset="100%" stopColor={STARBUCKS_GREEN} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="date"
+                    stroke="#94a3b8"
+                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                    axisLine={{ stroke: '#334155', strokeWidth: 2 }}
+                    tickLine={false}
+                    label={{ value: 'Snapshot', position: 'bottom', offset: 10, fill: '#cbd5e1', fontSize: 11, fontWeight: 700 }}
+                  />
+                  <YAxis
+                    stroke="#94a3b8"
+                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                    axisLine={{ stroke: '#334155', strokeWidth: 2 }}
+                    tickLine={false}
+                    tickFormatter={v => `$${(v / 1_000_000).toFixed(1)}M`}
+                    width={60}
+                    label={{ value: 'RTM Sales', angle: -90, position: 'insideLeft', offset: -5, fill: '#cbd5e1', fontSize: 11, fontWeight: 700 }}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f8fafc' }}
+                    formatter={(v: any) => [formatCurrency(v as number), 'RTM Sales']}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="sales"
+                    stroke={STARBUCKS_GREEN}
+                    strokeWidth={3}
+                    fill="url(#sbSalesGradient)"
+                    dot={{ fill: STARBUCKS_GREEN, stroke: '#00a86b', strokeWidth: 2, r: 5 }}
+                    activeDot={{ fill: '#00a86b', stroke: STARBUCKS_GREEN, strokeWidth: 2, r: 7 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
