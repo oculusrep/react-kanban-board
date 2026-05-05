@@ -2127,6 +2127,25 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   </button>
                 </div>
 
+                {/* Starbucks Layer Toggle — only visible to authorized users */}
+                {hasPermission('can_view_starbucks_layer') && (
+                  <div className="flex items-center space-x-2">
+                    <label className="text-sm font-medium text-gray-700">☕ Starbucks:</label>
+                    <button
+                      onClick={() => toggleLayer('starbucks')}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        layerState.starbucks?.isVisible ? 'bg-green-700' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          layerState.starbucks?.isVisible ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
+
                 {/* Client Selector */}
                 <div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Client:</label>
