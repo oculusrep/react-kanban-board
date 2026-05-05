@@ -65,14 +65,9 @@ const STARBUCKS_GREEN_DARK = '#004E32';
 function createStarbucksMarkerIcon(selected = false): google.maps.Icon {
   const size = selected ? 24 : 16;
   const color = selected ? STARBUCKS_GREEN_DARK : STARBUCKS_GREEN;
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" fill="${color}" stroke="white" stroke-width="2"/>
-      <text x="12" y="16" text-anchor="middle" font-size="12" fill="white" font-family="sans-serif">✦</text>
-    </svg>
-  `;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${color}" stroke="white" stroke-width="2"/></svg>`;
   return {
-    url: `data:image/svg+xml;base64,${btoa(svg)}`,
+    url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
     scaledSize: new google.maps.Size(size, size),
     anchor: new google.maps.Point(size / 2, size / 2),
   };
@@ -301,7 +296,7 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
             return new google.maps.Marker({
               position,
               icon: {
-                url: `data:image/svg+xml;base64,${btoa(svg)}`,
+                url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
                 scaledSize: new google.maps.Size(45, 45),
               },
               zIndex: Number(google.maps.Marker.MAX_ZINDEX) + count,
