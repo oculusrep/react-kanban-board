@@ -6,11 +6,13 @@ import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/laye
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
+import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
 import TrafficCountLayer from '../components/mapping/TrafficCountLayer';
 import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideout';
+import StarbucksSlideout from '../components/mapping/slideouts/StarbucksSlideout';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
@@ -97,7 +99,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Slideout states
   const [isPinDetailsOpen, setIsPinDetailsOpen] = useState(false);
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
-  const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | null>(null);
+  const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | 'starbucks' | null>(null);
+  const [selectedStarbucksStore, setSelectedStarbucksStore] = useState<any>(null);
   const [pinDetailsInitialTab, setPinDetailsInitialTab] = useState<'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | undefined>(undefined);
 
   // Property details slideout (for "View Full Details" from site submit)
@@ -2724,6 +2727,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               }}
             />
 
+            {/* Starbucks Layer — confidential, permission-gated */}
+            <StarbucksLayer
+              map={mapInstance}
+              isVisible={layerState.starbucks?.isVisible || false}
+              selectedStoreNumber={selectedPinType === 'starbucks' && selectedStarbucksStore ? selectedStarbucksStore.store_number : null}
+              clusterConfig={clusterConfig}
+              onPinClick={(store) => {
+                setSelectedPinType('starbucks');
+                setSelectedStarbucksStore(store);
+              }}
+            />
+
             {/* Closed Business Search Results Layer (live search) */}
             {/* Traffic Count Layer - StreetLight SATC Integration */}
             <TrafficCountLayer
@@ -3130,6 +3145,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         <RestaurantSlideout
           restaurant={selectedPinData as any}
           onClose={handlePinDetailsClose}
+          topOffset={showPropertySearch ? 45 : 0}
+        />
+      )}
+
+      {/* Starbucks Slideout - confidential store trends */}
+      {selectedPinType === 'starbucks' && selectedStarbucksStore && (
+        <StarbucksSlideout
+          store={selectedStarbucksStore}
+          onClose={() => {
+            setSelectedPinType(null);
+            setSelectedStarbucksStore(null);
+          }}
           topOffset={showPropertySearch ? 45 : 0}
         />
       )}

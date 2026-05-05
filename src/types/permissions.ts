@@ -110,6 +110,9 @@ export interface RolePermissions {
   can_view_traffic_data?: boolean;
   can_consume_traffic_quota?: boolean;
   can_admin_traffic_quota?: boolean;
+
+  // Starbucks Layer (confidential — per-user override only, never role default)
+  can_view_starbucks_layer?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -134,7 +137,8 @@ export type PermissionCategory =
   | 'system_admin'
   | 'integrations'
   | 'map_features'
-  | 'traffic_data';
+  | 'traffic_data'
+  | 'starbucks_layer';
 
 /**
  * Standard permission definitions with descriptions
@@ -642,6 +646,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'traffic_data',
     defaultValue: false,
   },
+
+  // Starbucks Layer
+  {
+    key: 'can_view_starbucks_layer',
+    label: 'View Starbucks Layer',
+    description: 'Access the confidential Starbucks store map layer and sales data',
+    category: 'starbucks_layer',
+    defaultValue: false,
+  },
 ];
 
 /**
@@ -703,6 +716,10 @@ export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; 
   traffic_data: {
     label: 'Traffic Data',
     description: 'StreetLight SATC integration — road segment geometry and AADT metrics',
+  },
+  starbucks_layer: {
+    label: 'Starbucks Layer',
+    description: 'Confidential Starbucks store data — grant only to authorized users',
   },
 };
 

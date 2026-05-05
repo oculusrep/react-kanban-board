@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLayerManager, CreateMode } from './layers/LayerManager';
+import { usePermissions } from '../../hooks/usePermissions';
 import { Link } from 'react-router-dom';
 
 interface CreateModeButtonProps {
@@ -414,10 +415,12 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ onBuildTerritory, onBulkAddFrom
     setCreateMode,
   } = useLayerManager();
 
-  // Debug: Uncomment these to debug layer state
-  // console.log('🗺️ LayerPanel rendering - isPanelOpen:', isPanelOpen);
-  // console.log('🗺️ LayerPanel layers:', layers);
-  // console.log('🗺️ LayerPanel layerState:', layerState);
+  const { hasPermission } = usePermissions();
+
+  // Filter out layers that require a permission the user doesn't have
+  const visibleLayers = layers.filter(l =>
+    !l.requiresPermission || hasPermission(l.requiresPermission as any)
+  );
 
   if (!isPanelOpen) {
     // Collapsed state - just show toggle button
@@ -457,7 +460,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ onBuildTerritory, onBulkAddFrom
         {/* Layer List */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="space-y-1">
-            {layers.map(layer => {
+            {visibleLayers.map(layer => {
               const state = layerState[layer.id] || {
                 isVisible: false,
                 isLoading: false,
