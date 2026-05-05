@@ -90,16 +90,16 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
           map,
           strokeColor: baseColor,
           strokeOpacity: 0.85,
-          strokeWeight: 3,
+          strokeWeight: 5,
           clickable: true,
         });
 
         // Hover: highlight yellow
         polyline.addListener('mouseover', () => {
-          polyline.setOptions({ strokeColor: '#facc15', strokeWeight: 5, strokeOpacity: 1 });
+          polyline.setOptions({ strokeColor: '#facc15', strokeWeight: 7, strokeOpacity: 1 });
         });
         polyline.addListener('mouseout', () => {
-          polyline.setOptions({ strokeColor: baseColor, strokeWeight: 3, strokeOpacity: 0.85 });
+          polyline.setOptions({ strokeColor: baseColor, strokeWeight: 5, strokeOpacity: 0.85 });
         });
 
         polyline.addListener('click', (e: google.maps.MapMouseEvent) => {
