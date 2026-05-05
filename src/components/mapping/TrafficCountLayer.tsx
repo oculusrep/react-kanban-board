@@ -32,7 +32,7 @@ function aadtColor(aadt: number): string {
 }
 
 const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible }) => {
-  const { loadGeometry, loadCachedMetrics, classifySegments, fetchMetrics, usageStatus, isLoading, error, clearError } = useStreetLightTraffic();
+  const { loadGeometry, loadCachedSegments, loadCachedMetrics, classifySegments, fetchMetrics, usageStatus, isLoading, error, clearError } = useStreetLightTraffic();
   const { hasPermission } = usePermissions();
 
   const canConsumeQuota = hasPermission('can_consume_traffic_quota');
@@ -193,40 +193,68 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
   };
 
   // Load geometry when layer becomes visible
+  // Render the union of (DB cache for viewport) ∪ (live /geometry result).
+  // The DB-cache pass is the authoritative renderer — it returns every segment we
+  // have, regardless of which past geometry-fetch bbox brought it in.
+  // The /geometry call runs in parallel only to grow the catalog for new areas;
+  // its result is upserted into streetlight_segment by the edge function, then we
+  // re-pull from the DB to pick up anything new.
+  const refreshSegments = useCallback(async (bounds: MapBounds) => {
+    // 1. Pull every cached segment intersecting the viewport (instant).
+    const cachedSegs = await loadCachedSegments(bounds);
+    setSegments(cachedSegs as SegmentWithMetric[]);
+
+    // 2. Hydrate AADT for those segments from the metrics cache.
+    const ids = cachedSegs.map((s) => s.id);
+    const aadtByIdInitial = await loadCachedMetrics(ids);
+    if (Object.keys(aadtByIdInitial).length > 0) {
+      setAadtMap((prev) => {
+        const next = new Map(prev);
+        Object.entries(aadtByIdInitial).forEach(([id, aadt]) => next.set(id, aadt));
+        return next;
+      });
+      setDataYearMap((prev) => {
+        const next = new Map(prev);
+        Object.keys(aadtByIdInitial).forEach((id) => next.set(id, '2022 annual avg'));
+        return next;
+      });
+    }
+
+    // 3. Fire /geometry in the background to fill in any new segments StreetLight
+    //    has for this bbox that weren't already in our cache. The edge function
+    //    upserts them into streetlight_segment; we then re-pull to render them.
+    loadGeometry(bounds).then(async () => {
+      const refreshed = await loadCachedSegments(bounds);
+      if (refreshed.length === cachedSegs.length) return; // nothing new
+      setSegments(refreshed as SegmentWithMetric[]);
+      const refreshedIds = refreshed.map((s) => s.id);
+      const aadtForRefreshed = await loadCachedMetrics(refreshedIds);
+      if (Object.keys(aadtForRefreshed).length > 0) {
+        setAadtMap((prev) => {
+          const next = new Map(prev);
+          Object.entries(aadtForRefreshed).forEach(([id, aadt]) => next.set(id, aadt));
+          return next;
+        });
+      }
+    }).catch(() => {
+      // Geometry fetch failures are non-fatal — we already rendered from cache.
+    });
+  }, [loadCachedSegments, loadCachedMetrics, loadGeometry]);
+
+  // Initial load when the layer becomes visible
   useEffect(() => {
     if (!isVisible || !map) {
       clearPolylines();
       return;
     }
-
     const bounds = getMapBounds();
     if (!bounds) return;
-
-    if (!isSafeToQuery(bounds)) return; // too zoomed out
-
-    loadGeometry(bounds).then(async (segs) => {
-      setSegments(segs as SegmentWithMetric[]);
-      // Immediately hydrate from cache — no extra API cost
-      const ids = segs.map(s => s.id);
-      const cached = await loadCachedMetrics(ids);
-      if (Object.keys(cached).length > 0) {
-        setAadtMap(prev => {
-          const next = new Map(prev);
-          Object.entries(cached).forEach(([id, aadt]) => next.set(id, aadt));
-          return next;
-        });
-        setDataYearMap(prev => {
-          const next = new Map(prev);
-          Object.keys(cached).forEach(id => next.set(id, '2022 annual avg'));
-          return next;
-        });
-      }
-      renderPolylines(segs as SegmentWithMetric[], new Map(Object.entries(cached)), billedSet);
-    });
+    if (!isSafeToQuery(bounds)) return;
+    refreshSegments(bounds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible, map]);
 
-  // FIX 5: Reload geometry when map pans/zooms (idle fires after movement settles)
+  // Reload when map pans/zooms
   useEffect(() => {
     if (!map || !isVisible) return;
     const listener = map.addListener('idle', () => {
@@ -240,28 +268,13 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
       };
       if (!isSafeToQuery(mapBounds)) {
         clearPolylines();
-        clearError(); // drop any stale "non-2xx" message from a previous bad bounds
+        clearError();
         return;
       }
-      loadGeometry(mapBounds).then(async (segs) => {
-        setSegments(segs as SegmentWithMetric[]);
-        const ids = segs.map(s => s.id);
-        const cached = await loadCachedMetrics(ids);
-        const mergedAadt = new Map(aadtMap);
-        Object.entries(cached).forEach(([id, aadt]) => mergedAadt.set(id, aadt));
-        setAadtMap(mergedAadt);
-        if (Object.keys(cached).length > 0) {
-          setDataYearMap(prev => {
-            const next = new Map(prev);
-            Object.keys(cached).forEach(id => next.set(id, '2022 annual avg'));
-            return next;
-          });
-        }
-        renderPolylines(segs as SegmentWithMetric[], mergedAadt, billedSet);
-      });
+      refreshSegments(mapBounds);
     });
     return () => google.maps.event.removeListener(listener);
-  }, [map, isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [map, isVisible, refreshSegments, clearError, clearPolylines]);
 
   // Re-render polylines when aadtMap or billedSet updates
   useEffect(() => {

@@ -65,6 +65,7 @@ interface UseStreetLightTrafficReturn {
   usageStatus: UsageStatus | null;
 
   loadGeometry: (bounds: MapBounds) => Promise<StreetLightSegment[]>;
+  loadCachedSegments: (bounds: MapBounds) => Promise<StreetLightSegment[]>;
   loadCachedMetrics: (segmentIds: string[]) => Promise<Record<string, number | null>>;
   classifySegments: (bounds: MapBounds) => Promise<ClassifyResult | null>;
   fetchMetrics: (checkedSegmentIds: string[], options?: FetchMetricsOptions) => Promise<MetricsResult | null>;
@@ -258,6 +259,37 @@ export function useStreetLightTraffic(): UseStreetLightTrafficReturn {
   }, [refreshUsageStatus]);
 
   /**
+   * Load all streetlight_segment rows whose geometry intersects the given viewport bbox.
+   * Reads directly from our DB cache via a PostGIS RPC — no API call, no quota cost,
+   * fast spatial query backed by the GiST index on geom.
+   *
+   * Returns the union of every segment we've ever fetched into the catalog, regardless
+   * of which past geometry-fetch bbox originally pulled them in. This is what the map
+   * actually renders — `loadGeometry` runs in parallel only to expand the catalog.
+   */
+  const loadCachedSegments = useCallback(async (bounds: MapBounds): Promise<StreetLightSegment[]> => {
+    try {
+      const { data, error } = await supabase.rpc('get_streetlight_segments_in_bbox', {
+        p_south: bounds.south,
+        p_west: bounds.west,
+        p_north: bounds.north,
+        p_east: bounds.east,
+      });
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{ id: number | string; road_name: string | null; road_type: string | null; geom_geojson: { type: string; coordinates: number[][] } }>;
+      return rows.map((r) => ({
+        id: String(r.id),
+        road_name: r.road_name,
+        road_type: r.road_type,
+        geometry: r.geom_geojson,
+      }));
+    } catch (err) {
+      console.warn('[StreetLightTraffic] loadCachedSegments error:', err);
+      return [];
+    }
+  }, []);
+
+  /**
    * Load cached AADT from DB for a list of segment IDs.
    * Returns a map of segment_id -> aadt (null if not cached).
    */
@@ -290,6 +322,7 @@ export function useStreetLightTraffic(): UseStreetLightTrafficReturn {
     error,
     usageStatus,
     loadGeometry,
+    loadCachedSegments,
     loadCachedMetrics,
     classifySegments,
     fetchMetrics,
