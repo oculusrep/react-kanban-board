@@ -179,15 +179,15 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
 
   // Minimum zoom level required to query StreetLight (area limit ~1.2km²)
   const MIN_ZOOM = 13;
-  const MAX_ZOOM = 19; // beyond this the bbox is too small for StreetLight
 
   const isSafeToQuery = (b: MapBounds): boolean => {
     const zoom = map?.getZoom() ?? 0;
     if (zoom < MIN_ZOOM) return false;
-    if (zoom > MAX_ZOOM) return false;
     const latDiff = b.north - b.south;
     const lngDiff = b.east - b.west;
-    // Reject very tiny bboxes (< ~50m) — StreetLight rejects them with a 4xx
+    // Reject very tiny bboxes (< ~50m) — StreetLight rejects them with a 4xx.
+    // No upper-zoom cap; the bbox-size check is the real guard and works on wide
+    // screens that still have a meaningful viewport at zoom 20+.
     if (latDiff < 0.0005 || lngDiff < 0.0005) return false;
     return latDiff < 0.08 && lngDiff < 0.12; // ~8km × 12km max
   };
@@ -511,8 +511,11 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
         <div style={{ marginBottom: 8 }}>
           {(() => {
             const z = map?.getZoom() ?? 0;
+            const b = getMapBounds();
             if (z < MIN_ZOOM) return 'Zoom in to street level to see traffic data';
-            if (z > MAX_ZOOM) return 'Zoom out a bit to see traffic data';
+            if (b && (b.north - b.south < 0.0005 || b.east - b.west < 0.0005)) {
+              return 'Zoom out a bit to see traffic data';
+            }
             return `${segmentsWithAadt} of ${totalSegments} segments have AADT data`;
           })()}
         </div>
