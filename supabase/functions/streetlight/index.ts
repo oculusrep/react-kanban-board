@@ -469,7 +469,9 @@ async function handleMetrics(
   let apiError: string | null = null;
   let resolvedYear: number | null = null;
 
-  const yearsToTry = [2024, 2023, 2022];
+  // Try most recent first; fall through if SATC has no data for that year.
+  // 2026 annual isn't possible (year not over). 2025 may or may not be published yet.
+  const yearsToTry = [2025, 2024, 2023, 2022];
 
   for (let i = 0; i < yearsToTry.length; i++) {
     const year = yearsToTry[i];
