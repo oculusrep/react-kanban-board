@@ -33,7 +33,7 @@ interface StreetLightRequest {
   action: 'geometry' | 'segmentcount' | 'classify' | 'metrics' | 'usage' | 'date_ranges';
   bounds?: BoundsParam;
   segment_ids?: string[];
-  date_spec?: { year_month: string; day_type: string; day_part: string };
+  date_spec?: { year_month: string; day_type: string; day_part: string; direction?: string };
 }
 
 // ─── StreetLight API Helpers ──────────────────────────────────────────────────
@@ -44,23 +44,35 @@ async function slFetch(path: string, apiKey: string, body?: unknown): Promise<un
 
   console.log(`[StreetLight] ${method} ${url}`);
 
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'x-stl-key': apiKey,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  // StreetLight enforces 1 request/second. On 429 we wait and retry up to twice.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'x-stl-key': apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`[StreetLight] ${res.status} from ${path}:`, text.substring(0, 500));
-    throw new Error(`StreetLight API error ${res.status}: ${text.substring(0, 200)}`);
+    if (res.status === 429 && attempt < 2) {
+      const wait = 1500 + attempt * 1500; // 1.5s, then 3s
+      console.warn(`[StreetLight] 429 rate-limited on ${path}, retrying in ${wait}ms`);
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[StreetLight] ${res.status} from ${path}:`, text.substring(0, 500));
+      throw new Error(`StreetLight API error ${res.status}: ${text.substring(0, 200)}`);
+    }
+
+    return await res.json();
   }
 
-  return await res.json();
+  throw new Error(`StreetLight API error: rate limit exhausted after retries on ${path}`);
 }
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
@@ -294,7 +306,7 @@ async function handleMetrics(
   userId: string,
   apiKey: string,
   supabase: ReturnType<typeof createClient>,
-  dateSpec?: { year_month: string; day_type: string; day_part: string }
+  dateSpec?: { year_month: string; day_type: string; day_part: string; direction?: string }
 ): Promise<unknown> {
   if (!segmentIds || segmentIds.length === 0) {
     throw new Error('segment_ids is required');
@@ -398,77 +410,127 @@ async function handleMetrics(
     };
   }
 
-  // FIX 4: Re-verify — remove segments that got cached since the modal opened
-  const resolvedDateSpec = dateSpec ?? { year_month: '2024-annual', day_type: 'all_days', day_part: 'all_day' };
+  // Re-verify — skip segments we already have metrics for at the requested dimensions.
+  // SATC day_part: 'all' (string) for full-day aggregate, or '0'..'23' for a single hour.
+  // (The -1..-8 / -10 codes documented in some StreetLight docs are NOT accepted by SATC;
+  // they validate "Day part as an hour must be between 0 and 23 (inclusive)".)
+  const resolvedDateSpec = {
+    year_month: dateSpec?.year_month ?? 'auto',
+    day_type: dateSpec?.day_type ?? 'all',
+    day_part: dateSpec?.day_part ?? 'all',
+    direction: dateSpec?.direction ?? 'bidirectional',
+  };
+  const cacheDayPart = resolvedDateSpec.day_part;
+  const cacheDayType = resolvedDateSpec.day_type;
 
   const { data: alreadyCached } = await supabase
     .from('streetlight_segment_metrics')
-    .select('segment_id')
-    .in('segment_id', segmentIds)
-    .eq('year_month', resolvedDateSpec.year_month)
-    .eq('day_type', resolvedDateSpec.day_type)
-    .eq('day_part', resolvedDateSpec.day_part);
+    .select('segment_id, year_month, aadt, trips_volume')
+    .in('segment_id', segmentIds.map(id => parseInt(id, 10)).filter(n => !isNaN(n)))
+    .eq('day_type', cacheDayType)
+    .eq('day_part', cacheDayPart);
 
-  const cachedIds = new Set(alreadyCached?.map((r: { segment_id: string }) => r.segment_id) ?? []);
-  const finalSegmentIds = segmentIds.filter(id => !cachedIds.has(id));
+  const cachedMap = new Map<string, { year_month: string; aadt: number | null; trips_volume: number | null }>();
+  for (const row of (alreadyCached ?? []) as Array<{ segment_id: number; year_month: string; aadt: number | null; trips_volume: number | null }>) {
+    cachedMap.set(String(row.segment_id), { year_month: row.year_month, aadt: row.aadt, trips_volume: row.trips_volume });
+  }
+  const finalSegmentIds = segmentIds.filter(id => !cachedMap.has(id));
 
   if (finalSegmentIds.length === 0) {
-    return { success: true, usage_log_id: null, segment_count: 0, metrics: [], message: 'All segments already cached' };
+    const cachedMetrics = segmentIds.map(sid => {
+      const c = cachedMap.get(sid);
+      return { segment_id: sid, aadt: c?.aadt ?? c?.trips_volume ?? null };
+    });
+    return { success: true, usage_log_id: null, segment_count: 0, metrics: cachedMetrics, message: 'All segments already cached' };
   }
 
-  const finalCount = finalSegmentIds.length;
+  // Identify segments previously billed under any user — those get a free retry.
+  // (Cache writes silently failed under v21 for some segments; users should not pay twice.)
+  const finalSegIdNums = finalSegmentIds.map(id => parseInt(id, 10)).filter(n => !isNaN(n));
+  const previouslyBilledSet = new Set<string>();
+  if (finalSegIdNums.length > 0) {
+    const { data: priorLogs } = await supabase
+      .from('streetlight_usage_log')
+      .select('checked_segment_ids')
+      .eq('response_status', 'success')
+      .overlaps('checked_segment_ids', finalSegIdNums);
+    for (const row of (priorLogs ?? []) as Array<{ checked_segment_ids: number[] | null }>) {
+      for (const sid of row.checked_segment_ids ?? []) previouslyBilledSet.add(String(sid));
+    }
+  }
+
+  const newlyBilledIds = finalSegmentIds.filter(id => !previouslyBilledSet.has(id));
+  const finalCount = newlyBilledIds.length;
 
   // Call StreetLight API for metrics using correct API format
   // Use segment_id geometry type for targeted fetching — no wasted quota
-  // Use cvd_plus source + 2022 annual data (confirmed available)
+  // Try most recent year first, fall back if no data is available
   let apiMetrics: Array<{ segment_id: string; trips_volume?: number; year_month?: string }> = [];
   let apiError: string | null = null;
+  let resolvedYear: number | null = null;
 
-  try {
-    const metricsData = await slFetch('/metrics', apiKey, {
-      country: 'us',
-      mode: 'vehicle',
-      source: 'cvd_plus',
-      geometry: {
-        segment_id: finalSegmentIds.map((id) => parseInt(id, 10)),
-      },
-      date: { year: 2022 },
-      day_type: 'all',
-      day_part: 'all',
-      direction: 'bidirectional',
-      fields: ['segment_id', 'year_month', 'trips_volume'],
-    }) as { columns?: string[]; data?: Array<[number, string, number]>; status?: string; message?: string };
+  const yearsToTry = [2024, 2023, 2022];
 
-    if (metricsData.status === 'error') {
-      throw new Error(metricsData.message ?? 'StreetLight metrics error');
+  for (let i = 0; i < yearsToTry.length; i++) {
+    const year = yearsToTry[i];
+    // StreetLight rate limit is 1 request/second. Pause between attempts on the year fallback.
+    if (i > 0) await new Promise(r => setTimeout(r, 1100));
+    try {
+      const metricsData = await slFetch('/metrics', apiKey, {
+        country: 'us',
+        mode: 'vehicle',
+        source: 'cvd_plus',
+        geometry: {
+          segment_id: finalSegmentIds.map((id) => parseInt(id, 10)),
+        },
+        date: { year },
+        day_type: cacheDayType,
+        day_part: cacheDayPart,
+        direction: resolvedDateSpec.direction,
+        fields: ['segment_id', 'year_month', 'trips_volume'],
+      }) as { columns?: string[]; data?: Array<[number, string, number]>; status?: string; message?: string };
+
+      if (metricsData.status === 'error') {
+        throw new Error(metricsData.message ?? 'StreetLight metrics error');
+      }
+
+      const cols = metricsData.columns ?? [];
+      const sidIdx = cols.indexOf('segment_id');
+      const volIdx = cols.indexOf('trips_volume');
+      const rows = metricsData.data ?? [];
+
+      if (rows.length === 0) {
+        console.log(`[StreetLight] No metrics data for year ${year}, trying next`);
+        continue;
+      }
+
+      // Aggregate: average trips_volume across all months per segment
+      const segTotals = new Map<string, { total: number; count: number }>();
+      for (const row of rows) {
+        const sid = String(row[sidIdx]);
+        const vol = row[volIdx] as number;
+        if (!segTotals.has(sid)) segTotals.set(sid, { total: 0, count: 0 });
+        const entry = segTotals.get(sid)!;
+        entry.total += vol;
+        entry.count += 1;
+      }
+
+      apiMetrics = Array.from(segTotals.entries()).map(([sid, { total, count }]) => ({
+        segment_id: sid,
+        trips_volume: Math.round(total / count),
+        year_month: `${year}-annual`,
+      }));
+      resolvedYear = year;
+      apiError = null;
+      break;
+    } catch (err) {
+      apiError = err instanceof Error ? err.message : String(err);
+      console.error(`[StreetLight] Metrics API error for year ${year}:`, apiError);
     }
+  }
 
-    // Parse columnar response into objects
-    const cols = metricsData.columns ?? [];
-    const sidIdx = cols.indexOf('segment_id');
-    const volIdx = cols.indexOf('trips_volume');
-    const ymIdx = cols.indexOf('year_month');
-
-    // Aggregate: average trips_volume across all months per segment
-    const segTotals = new Map<string, { total: number; count: number }>();
-    for (const row of (metricsData.data ?? [])) {
-      const sid = String(row[sidIdx]);
-      const vol = row[volIdx] as number;
-      if (!segTotals.has(sid)) segTotals.set(sid, { total: 0, count: 0 });
-      const entry = segTotals.get(sid)!;
-      entry.total += vol;
-      entry.count += 1;
-    }
-
-    apiMetrics = Array.from(segTotals.entries()).map(([sid, { total, count }]) => ({
-      segment_id: sid,
-      trips_volume: Math.round(total / count),
-      year_month: '2022-annual',
-    }));
-
-  } catch (err) {
-    apiError = err instanceof Error ? err.message : String(err);
-    console.error('[StreetLight] Metrics API error:', apiError);
+  if (!resolvedYear && !apiError) {
+    apiError = `No StreetLight metrics available for years ${yearsToTry.join(', ')}`;
   }
 
   // FIX 1: Use atomic RPC instead of 3 separate inserts
@@ -480,7 +542,10 @@ async function handleMetrics(
     segments_new: apiError ? 0 : finalCount,
     segments_refresh: 0,
     request_geometry: null,
-    checked_segment_ids: segmentIds.map(id => parseInt(id, 10)).filter(n => !isNaN(n)),
+    // Only segments newly billed in this call go into checked_segment_ids — previously
+    // billed segments getting a free retry must not appear here, or future overlap checks
+    // would incorrectly count them as billed multiple times.
+    checked_segment_ids: newlyBilledIds.map(id => parseInt(id, 10)).filter(n => !isNaN(n)),
     date_spec: resolvedDateSpec,
     endpoint: 'metrics',
     response_status: apiError ? 'failed' : 'success',
@@ -498,11 +563,11 @@ async function handleMetrics(
 
   const metricRows = apiMetrics.map((m) => ({
     segment_id: parseInt(m.segment_id, 10),
-    year_month: m.year_month ?? '2022-annual',
-    date_range_start: '2022-01-01',
-    date_range_end: '2022-12-31',
-    day_type: 'all',
-    day_part: 'all',
+    year_month: m.year_month ?? (resolvedYear ? `${resolvedYear}-annual` : null),
+    date_range_start: resolvedYear ? `${resolvedYear}-01-01` : null,
+    date_range_end: resolvedYear ? `${resolvedYear}-12-31` : null,
+    day_type: cacheDayType,
+    day_part: cacheDayPart,
     aadt: m.trips_volume ?? null,
     trips_volume: m.trips_volume ?? null,
     fetched_at: new Date().toISOString(),
@@ -555,6 +620,8 @@ async function handleMetrics(
     success: true,
     usage_log_id: logId,
     segment_count: finalCount,
+    free_retry_count: previouslyBilledSet.size,
+    year: resolvedYear,
     metrics: apiMetrics.map(m => ({ segment_id: m.segment_id, aadt: m.trips_volume })),
   };
 }
@@ -592,8 +659,7 @@ serve(async (req) => {
       }
     );
 
-    // Auth disabled temporarily for debugging — re-enable before production
-    const user: { id: string } = { id: 'fe6e516f-11e1-4a3b-b914-910d59d9e8df' };
+    const user = await requireAuth(req, supabase);
 
     const body = await req.json() as StreetLightRequest;
     const { action, bounds, segment_ids } = body;
@@ -660,7 +726,9 @@ serve(async (req) => {
       );
     }
 
-    const status = message.includes('too large') || message.includes('StreetLight error') ? 400 : 500;
+    // Match both "StreetLight error: ..." (from handleGeometry's API-level error)
+    // and "StreetLight API error N: ..." (from slFetch HTTP errors).
+    const status = message.includes('too large') || message.includes('StreetLight') ? 400 : 500;
     return new Response(
       JSON.stringify({ success: false, error: message }),
       { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

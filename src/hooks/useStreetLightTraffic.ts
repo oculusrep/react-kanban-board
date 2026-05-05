@@ -41,6 +41,13 @@ export interface MetricsResult {
   message?: string;
 }
 
+export interface FetchMetricsOptions {
+  /** SATC day_part: 'all' (default) for full-day aggregate, or '0'..'23' for a single hour. */
+  day_part?: string | number;
+  /** 'bidirectional' (default), 'with', or 'against' */
+  direction?: string;
+}
+
 export interface UsageStatus {
   /** Remaining quota from StreetLight /usage endpoint */
   raw?: unknown;
@@ -60,7 +67,7 @@ interface UseStreetLightTrafficReturn {
   loadGeometry: (bounds: MapBounds) => Promise<StreetLightSegment[]>;
   loadCachedMetrics: (segmentIds: string[]) => Promise<Record<string, number | null>>;
   classifySegments: (bounds: MapBounds) => Promise<ClassifyResult | null>;
-  fetchMetrics: (checkedSegmentIds: string[]) => Promise<MetricsResult | null>;
+  fetchMetrics: (checkedSegmentIds: string[], options?: FetchMetricsOptions) => Promise<MetricsResult | null>;
   refreshUsageStatus: () => Promise<void>;
   clearError: () => void;
 }
@@ -169,17 +176,27 @@ export function useStreetLightTraffic(): UseStreetLightTrafficReturn {
    * Fetch AADT metrics for the selected segment IDs.
    * Enforces quota limits; returns the spend summary on success.
    */
-  const fetchMetrics = useCallback(async (checkedSegmentIds: string[]): Promise<MetricsResult | null> => {
+  const fetchMetrics = useCallback(async (checkedSegmentIds: string[], options?: FetchMetricsOptions): Promise<MetricsResult | null> => {
     if (checkedSegmentIds.length === 0) return null;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      console.log('[StreetLightTraffic] fetchMetrics:', checkedSegmentIds.length, 'segments');
+      console.log('[StreetLightTraffic] fetchMetrics:', checkedSegmentIds.length, 'segments', options ?? '');
+
+      const body: Record<string, unknown> = { action: 'metrics', segment_ids: checkedSegmentIds };
+      if (options?.day_part !== undefined || options?.direction !== undefined) {
+        body.date_spec = {
+          year_month: 'auto',
+          day_type: 'all',
+          day_part: String(options.day_part ?? 'all'),
+          direction: options.direction ?? 'bidirectional',
+        };
+      }
 
       const { data, error: fnError } = await supabase.functions.invoke('streetlight', {
-        body: { action: 'metrics', segment_ids: checkedSegmentIds },
+        body,
       });
 
       if (fnError) {
