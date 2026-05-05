@@ -196,9 +196,9 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
   // Render the union of (DB cache for viewport) ∪ (live /geometry result).
   // The DB-cache pass is the authoritative renderer — it returns every segment we
   // have, regardless of which past geometry-fetch bbox brought it in.
-  // The /geometry call runs in parallel only to grow the catalog for new areas;
-  // its result is upserted into streetlight_segment by the edge function, then we
-  // re-pull from the DB to pick up anything new.
+  // The /geometry call runs in parallel and is intentionally fired against an
+  // EXPANDED bbox (3× viewport) so the cache gets populated for nearby areas
+  // before the user pans there. /geometry is free, so this costs nothing.
   const refreshSegments = useCallback(async (bounds: MapBounds) => {
     // 1. Pull every cached segment intersecting the viewport (instant).
     const cachedSegs = await loadCachedSegments(bounds);
@@ -220,12 +220,35 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
       });
     }
 
-    // 3. Fire /geometry in the background to fill in any new segments StreetLight
-    //    has for this bbox that weren't already in our cache. The edge function
-    //    upserts them into streetlight_segment; we then re-pull to render them.
-    loadGeometry(bounds).then(async () => {
+    // 3. Fire /geometry in the background against an EXPANDED bbox (3× the
+    //    viewport, capped by SATC's 8km × 12km size limit). This populates the
+    //    cache for the surrounding area so panning is instant and Crosstown-Dr-
+    //    style "I see no segments on this road" gaps go away.
+    const latPad = (bounds.north - bounds.south);
+    const lngPad = (bounds.east - bounds.west);
+    const expanded: MapBounds = {
+      south: bounds.south - latPad,
+      west: bounds.west - lngPad,
+      north: bounds.north + latPad,
+      east: bounds.east + lngPad,
+    };
+    // Cap to SATC's hard polygon-size limits: ~0.07° lat, ~0.10° lng.
+    if (expanded.north - expanded.south > 0.07) {
+      const c = (expanded.north + expanded.south) / 2;
+      expanded.south = c - 0.035;
+      expanded.north = c + 0.035;
+    }
+    if (expanded.east - expanded.west > 0.1) {
+      const c = (expanded.east + expanded.west) / 2;
+      expanded.west = c - 0.05;
+      expanded.east = c + 0.05;
+    }
+
+    loadGeometry(expanded).then(async () => {
+      // Re-pull from the DB cache (the edge function upserted into
+      // streetlight_segment), filtered by the visible viewport.
       const refreshed = await loadCachedSegments(bounds);
-      if (refreshed.length === cachedSegs.length) return; // nothing new
+      if (refreshed.length === cachedSegs.length) return; // nothing new in viewport
       setSegments(refreshed as SegmentWithMetric[]);
       const refreshedIds = refreshed.map((s) => s.id);
       const aadtForRefreshed = await loadCachedMetrics(refreshedIds);
