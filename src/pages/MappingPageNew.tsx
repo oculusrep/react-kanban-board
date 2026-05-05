@@ -6,6 +6,7 @@ import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/laye
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
+import TrafficCountLayer from '../components/mapping/TrafficCountLayer';
 import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
@@ -2106,6 +2107,23 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   </button>
                 </div>
 
+                {/* Traffic Counts Layer Toggle */}
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Traffic Counts:</label>
+                  <button
+                    onClick={() => toggleLayer('traffic_counts')}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      layerState.traffic_counts?.isVisible ? 'bg-yellow-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        layerState.traffic_counts?.isVisible ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
                 {/* Client Selector */}
                 <div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Client:</label>
@@ -2707,6 +2725,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             />
 
             {/* Closed Business Search Results Layer (live search) */}
+            {/* Traffic Count Layer - StreetLight SATC Integration */}
+            <TrafficCountLayer
+              map={mapInstance}
+              isVisible={layerState.traffic_counts?.isVisible || false}
+            />
+
             {closedBusinessResults.length > 0 && (
               <ClosedPlacesLayer
                 map={mapInstance}

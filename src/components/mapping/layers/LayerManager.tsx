@@ -14,7 +14,7 @@ export interface LayerConfig {
   permissions?: LayerPermissions; // For future use
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -96,8 +96,16 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     description: 'Site submission data with stage-based visualization',
     defaultVisible: false,
     isSystemLayer: true,
+  },
+  {
+    id: 'traffic_counts',
+    name: 'Traffic Counts',
+    type: 'traffic_count',
+    icon: '🚗',
+    description: 'Road segment AADT data from StreetLight',
+    defaultVisible: false,
+    isSystemLayer: true,
   }
-  // Future layers can be added here
 ];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
