@@ -877,7 +877,7 @@ export default function SiteSubmitSidebar({
 
           {/* Portal context: Copy Link and View Toggle text buttons */}
           <div className="flex items-center gap-2">
-            {/* Copy coordinates */}
+            {/* Copy coordinates (crosshairs / viewfinder) */}
             {hasCoords && (
               <button
                 onClick={handleCopyLatLng}
@@ -885,13 +885,12 @@ export default function SiteSubmitSidebar({
                 title={`Copy coordinates: ${propLat}, ${propLng}`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7.5 3.75H6A2.25 2.25 0 003.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0120.25 6v1.5M20.25 16.5V18A2.25 2.25 0 0118 20.25h-1.5M7.5 20.25H6A2.25 2.25 0 013.75 18v-1.5M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </button>
             )}
 
-            {/* Copy Google Maps link */}
+            {/* Copy Google Maps link (globe) */}
             {hasCoords && (
               <button
                 onClick={handleCopyMapsLink}
@@ -899,7 +898,7 @@ export default function SiteSubmitSidebar({
                 title="Copy Google Maps link"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a14.953 14.953 0 010 18M12 3a14.953 14.953 0 000 18" />
                 </svg>
               </button>
             )}
