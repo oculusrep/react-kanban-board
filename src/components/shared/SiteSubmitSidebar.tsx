@@ -267,6 +267,26 @@ export default function SiteSubmitSidebar({
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
+  // Resolved coordinates (verified takes priority over raw)
+  const propLat = siteSubmit?.property?.verified_latitude ?? siteSubmit?.property?.latitude ?? null;
+  const propLng = siteSubmit?.property?.verified_longitude ?? siteSubmit?.property?.longitude ?? null;
+  const hasCoords = propLat != null && propLng != null;
+
+  // Copy "lat, lng" to clipboard
+  const handleCopyLatLng = () => {
+    if (!hasCoords) return;
+    navigator.clipboard.writeText(`${propLat}, ${propLng}`);
+    showToast('Coordinates copied to clipboard', { type: 'success' });
+  };
+
+  // Copy a Google Maps link for the property to clipboard
+  const handleCopyMapsLink = () => {
+    if (!hasCoords) return;
+    const url = `https://www.google.com/maps?q=${propLat},${propLng}`;
+    navigator.clipboard.writeText(url);
+    showToast('Google Maps link copied', { type: 'success' });
+  };
+
   // Determine current view from URL (for portal context)
   const isMapView = location.pathname.includes('/map');
 
@@ -857,6 +877,33 @@ export default function SiteSubmitSidebar({
 
           {/* Portal context: Copy Link and View Toggle text buttons */}
           <div className="flex items-center gap-2">
+            {/* Copy coordinates */}
+            {hasCoords && (
+              <button
+                onClick={handleCopyLatLng}
+                className="p-1 rounded text-gray-300 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                title={`Copy coordinates: ${propLat}, ${propLng}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+            )}
+
+            {/* Copy Google Maps link */}
+            {hasCoords && (
+              <button
+                onClick={handleCopyMapsLink}
+                className="p-1 rounded text-gray-300 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                title="Copy Google Maps link"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </button>
+            )}
+
             {context === 'portal' && isEditable && (
               <button
                 onClick={handleCopyLink}
