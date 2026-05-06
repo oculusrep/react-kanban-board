@@ -828,9 +828,9 @@ export default function PortalFilesTab({
                           >
                             <button
                               onClick={() => navigateToFolder(folder)}
-                              className="flex-1 flex items-center space-x-3 text-left"
+                              className="flex-1 min-w-0 flex items-center space-x-3 text-left"
                             >
-                              <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-5 h-5 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
                               </svg>
                               <span className="text-sm font-medium text-gray-900 truncate">
@@ -842,7 +842,7 @@ export default function PortalFilesTab({
                             {isInternalUser && (
                               <button
                                 onClick={() => toggleVisibility(folder.path, entityType, entityId!, isVisible)}
-                                className={`p-1.5 rounded transition-colors ${
+                                className={`flex-shrink-0 p-1.5 rounded transition-colors ${
                                   isVisible
                                     ? 'text-green-600 hover:bg-green-50'
                                     : 'text-gray-400 hover:bg-gray-100'
@@ -866,7 +866,7 @@ export default function PortalFilesTab({
                             {isInternalUser && (
                               <button
                                 onClick={() => setDeleteConfirmPath(folder.path)}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                className="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                                 title="Delete folder"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -875,7 +875,7 @@ export default function PortalFilesTab({
                               </button>
                             )}
 
-                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
                           </div>
@@ -928,7 +928,7 @@ export default function PortalFilesTab({
                           >
                             <button
                               onClick={() => handleFileView(file)}
-                              className="flex-1 flex items-center space-x-3 text-left"
+                              className="flex-1 min-w-0 flex items-center space-x-3 text-left"
                             >
                               {getFileIcon(file.name || '')}
                               <div className="flex-1 min-w-0">
@@ -945,7 +945,7 @@ export default function PortalFilesTab({
                             {isInternalUser && (
                               <button
                                 onClick={() => toggleVisibility(file.path, entityType, entityId!, isVisible)}
-                                className={`p-1.5 rounded transition-colors ${
+                                className={`flex-shrink-0 p-1.5 rounded transition-colors ${
                                   isVisible
                                     ? 'text-green-600 hover:bg-green-50'
                                     : 'text-gray-400 hover:bg-gray-100'
@@ -967,7 +967,7 @@ export default function PortalFilesTab({
 
                             <button
                               onClick={() => handleDownload(file)}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              className="flex-shrink-0 p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                               title="Download"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -979,7 +979,7 @@ export default function PortalFilesTab({
                             {isInternalUser && (
                               <button
                                 onClick={() => setDeleteConfirmPath(file.path)}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                className="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                                 title="Delete file"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

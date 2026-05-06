@@ -811,7 +811,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                           </div>
                         </button>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         <button
                           onClick={() => handleDownload(file)}
                           className="flex-shrink-0 p-1 text-gray-400 hover:text-green-600 opacity-0 group-hover:opacity-100 transition-opacity"
