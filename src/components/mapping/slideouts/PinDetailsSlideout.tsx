@@ -13,7 +13,7 @@ import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
 import FormattedField from '../../shared/FormattedField';
-import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink, Map } from 'lucide-react';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink, Map, CheckSquare } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
@@ -33,6 +33,7 @@ import { useSiteSubmitEmail } from '../../../hooks/useSiteSubmitEmail';
 import RecordMetadata from '../../RecordMetadata';
 import SalesTrendChart from '../../charts/SalesTrendChart';
 import PropertyActivityTab from '../../property/PropertyActivityTab';
+import OpenTasksPanel from '../../tasks/OpenTasksPanel';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -189,7 +190,7 @@ interface PinDetailsSlideoutProps {
   onOpenFullSiteSubmit?: (siteSubmitId: string) => void; // Callback to open full site submit slideout
 }
 
-type TabType = 'property' | 'activity' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | 'units';
+type TabType = 'property' | 'activity' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | 'units' | 'tasks';
 
 // Contacts Tab Component
 const ContactsTabContent: React.FC<{
@@ -1774,15 +1775,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   };
 
   // Tab configuration based on type with modern Lucide icons
-  const getAvailableTabs = (): { id: TabType; label: string; icon: React.ReactNode }[] => {
+  const getAvailableTabs = (): { id: TabType; label: string; icon: React.ReactNode; iconOnly?: boolean }[] => {
     if (isProperty) {
       return [
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
         { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
         { id: 'units' as TabType, label: 'UNITS', icon: <Grid3x3 size={16} /> },
         { id: 'submits' as TabType, label: 'SUBMITS', icon: <FileText size={16} /> },
-        { id: 'contacts' as TabType, label: 'CONTACTS', icon: <Users size={16} /> },
-        { id: 'files' as TabType, label: 'FILES', icon: <FolderOpen size={16} /> },
+        { id: 'contacts' as TabType, label: 'CONTACTS', icon: <Users size={16} />, iconOnly: true },
+        { id: 'files' as TabType, label: 'FILES', icon: <FolderOpen size={16} />, iconOnly: true },
+        { id: 'tasks' as TabType, label: 'TASKS', icon: <CheckSquare size={16} />, iconOnly: true },
       ];
     } else {
       return [
@@ -2566,6 +2568,23 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           </div>
         );
 
+      case 'tasks':
+        return (
+          <div className="p-4">
+            {localPropertyData?.id ? (
+              <OpenTasksPanel
+                objectType="property"
+                objectId={localPropertyData.id}
+                objectLabel={localPropertyData.property_name || undefined}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-32 text-gray-500">
+                <p>No property selected</p>
+              </div>
+            )}
+          </div>
+        );
+
       default:
         return <div>Content for {activeTab}</div>;
     }
@@ -2912,6 +2931,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               <button
                 key={tab.id}
                 onClick={() => handleTabClick(tab.id)}
+                title={tab.label}
+                aria-label={tab.label}
                 className={`relative flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-200 border-b-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600 bg-blue-50/50'
@@ -2923,9 +2944,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 }`}>
                   {tab.icon}
                 </span>
-                <span className="font-semibold tracking-tight whitespace-nowrap">
-                  {tab.label}
-                </span>
+                {!tab.iconOnly && (
+                  <span className="font-semibold tracking-tight whitespace-nowrap">
+                    {tab.label}
+                  </span>
+                )}
 
                 {/* Active tab indicator */}
                 {activeTab === tab.id && (

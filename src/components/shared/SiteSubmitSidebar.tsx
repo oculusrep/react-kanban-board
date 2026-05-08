@@ -23,6 +23,7 @@ import EmailComposerModal from '../EmailComposerModal';
 import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
 import DigestComposeModal from '../portal/DigestComposeModal';
 import { CLIENT_VISIBLE_STAGES } from '../client-pipeline/pipelineConfig';
+import OpenTasksPanel from '../tasks/OpenTasksPanel';
 
 export interface SiteSubmitData {
   id: string;
@@ -130,7 +131,7 @@ export interface SiteSubmitData {
   } | null;
 }
 
-type TabType = 'data' | 'chat' | 'files' | 'contacts';
+type TabType = 'data' | 'chat' | 'files' | 'contacts' | 'tasks';
 
 // Initial data for creating new site submits
 interface InitialSiteSubmitData {
@@ -641,6 +642,15 @@ export default function SiteSubmitSidebar({
         </svg>
       ),
     });
+    tabs.push({
+      id: 'tasks',
+      label: 'TASKS',
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+      ),
+    });
   }
 
   return (
@@ -1002,6 +1012,15 @@ export default function SiteSubmitSidebar({
                 propertyId={siteSubmit.property_id}
                 isEditable={isEditable}
               />
+            )}
+            {activeTab === 'tasks' && context === 'map' && (
+              <div className="p-4">
+                <OpenTasksPanel
+                  objectType="site_submit"
+                  objectId={siteSubmit.id}
+                  objectLabel={siteSubmit.site_submit_name || siteSubmit.property?.property_name || undefined}
+                />
+              </div>
             )}
           </>
         )}
