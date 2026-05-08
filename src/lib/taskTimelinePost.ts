@@ -29,19 +29,20 @@ interface PostOptions {
 
 interface ActorInfo {
   id: string;
+  authUserId: string | null;
   name: string;
 }
 
 const fetchActor = async (userTableId: string): Promise<ActorInfo> => {
   const { data, error } = await supabase
     .from('user')
-    .select('id, first_name, last_name, email')
+    .select('id, auth_user_id, first_name, last_name, email')
     .eq('id', userTableId)
     .single();
-  if (error || !data) return { id: userTableId, name: 'Someone' };
+  if (error || !data) return { id: userTableId, authUserId: null, name: 'Someone' };
   const name =
     [data.first_name, data.last_name].filter(Boolean).join(' ') || data.email || 'Someone';
-  return { id: data.id, name };
+  return { id: data.id, authUserId: data.auth_user_id ?? null, name };
 };
 
 // Local-date YYYY-MM-DD per CLAUDE.md timezone guidance (Eastern, but local
@@ -93,7 +94,9 @@ export async function postTaskCompletionToTimelines(
   }
 
   // ----- Property chat-style timeline -----
-  if (task.property_id) {
+  // property_activity.created_by FK -> auth.users(id), so we need the actor's
+  // auth_user_id, not the OVIS user table id.
+  if (task.property_id && actor.authUserId) {
     const propertyNotes = noteText
       ? `Completed task: ${task.subject}\n\n${noteText}`
       : `Completed task: ${task.subject}`;
@@ -102,7 +105,7 @@ export async function postTaskCompletionToTimelines(
       contact_id: task.contact_id,
       activity_type: 'task_completed',
       notes: propertyNotes,
-      created_by: options.actorUserId,
+      created_by: actor.authUserId,
     });
     if (error) {
       console.warn('[task timeline] property_activity insert failed:', error);
@@ -110,35 +113,21 @@ export async function postTaskCompletionToTimelines(
   }
 
   // ----- Site_submit chat-style timeline -----
-  if (task.site_submit_id) {
-    // site_submit_activity.client_id is NOT NULL — look up from site_submit.
-    const { data: ss, error: ssError } = await supabase
-      .from('site_submit')
-      .select('client_id')
-      .eq('id', task.site_submit_id)
-      .single();
-    if (ssError) {
-      console.warn('[task timeline] site_submit lookup failed:', ssError);
-    } else if (ss?.client_id) {
-      const payload = {
-        task_id: task.id,
-        subject: task.subject,
-        completion_note: noteText,
-        completed_at: completedAtIso,
-        actor_name: actor.name,
-      };
-      const { error } = await supabase.from('site_submit_activity').insert({
-        site_submit_id: task.site_submit_id,
-        client_id: ss.client_id,
-        activity_type: 'task_completed',
-        actor_user_id: options.actorUserId,
-        actor_kind: 'broker',
-        payload,
-        client_visible: false,
-      });
-      if (error) {
-        console.warn('[task timeline] site_submit_activity insert failed:', error);
-      }
+  // The CHAT tab reads from site_submit_comment (NOT site_submit_activity).
+  // Match the existing pattern used by status changes & file shares: write a
+  // row to site_submit_comment with content describing the event.
+  // visibility='internal' so completions surface to brokers but stay out of
+  // the client portal feed.
+  if (task.site_submit_id && actor.authUserId) {
+    const content = noteText ? `${headerSubject}\n\n${noteText}` : headerSubject;
+    const { error } = await supabase.from('site_submit_comment').insert({
+      site_submit_id: task.site_submit_id,
+      author_id: actor.authUserId,
+      content,
+      visibility: 'internal',
+    });
+    if (error) {
+      console.warn('[task timeline] site_submit_comment insert failed:', error);
     }
   }
 }
