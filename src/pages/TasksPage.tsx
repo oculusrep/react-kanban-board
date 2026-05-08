@@ -80,11 +80,12 @@ const LinkedToCell: React.FC<LinkedToCellProps> = ({ task }) => {
 const formatDate = (iso: string | null): string => {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
   } catch {
     return '—';
   }
@@ -101,6 +102,40 @@ const ownerLabel = (task: TaskWithRelations): string => {
   return [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || 'Unnamed';
 };
 
+type SortKey = 'subject' | 'category' | 'owner' | 'due' | 'status';
+type SortDir = 'asc' | 'desc';
+
+const sortValue = (task: TaskWithRelations, key: SortKey): string | number | null => {
+  switch (key) {
+    case 'subject':
+      return (task.subject || '').toLowerCase();
+    case 'category':
+      return (task.category || '').toLowerCase();
+    case 'owner':
+      return ownerLabel(task).toLowerCase();
+    case 'due': {
+      // Mirrors what the cell shows: completed_at when completed, else due_at.
+      const iso = task.status === 'completed' ? task.completed_at : task.due_at;
+      return iso ? new Date(iso).getTime() : null;
+    }
+    case 'status':
+      return (task.status || '').toLowerCase();
+  }
+};
+
+const compareTasks = (a: TaskWithRelations, b: TaskWithRelations, key: SortKey, dir: SortDir): number => {
+  const av = sortValue(a, key);
+  const bv = sortValue(b, key);
+  // Nulls always sort to the end regardless of direction.
+  if (av === null && bv === null) return 0;
+  if (av === null) return 1;
+  if (bv === null) return -1;
+  let cmp: number;
+  if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+  else cmp = String(av).localeCompare(String(bv));
+  return dir === 'asc' ? cmp : -cmp;
+};
+
 export const TasksPage: React.FC = () => {
   const { userTableId } = useAuth();
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('open');
@@ -109,6 +144,17 @@ export const TasksPage: React.FC = () => {
   const [mineOnly, setMineOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const handleSort = (key: SortKey) => {
+    if (sortBy === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortDir('asc');
+    }
+  };
 
   const filters: TaskListFilters = useMemo(() => {
     const f: TaskListFilters = {};
@@ -121,6 +167,11 @@ export const TasksPage: React.FC = () => {
   }, [statusFilter, categoryFilter, highOnly, mineOnly, search, userTableId]);
 
   const { tasks, loading, error, refetch } = useTaskList(filters);
+
+  const sortedTasks = useMemo(() => {
+    if (!sortBy) return tasks;
+    return [...tasks].sort((a, b) => compareTasks(a, b, sortBy, sortDir));
+  }, [tasks, sortBy, sortDir]);
 
   const handleToggleComplete = async (task: TaskWithRelations) => {
     if (!userTableId) {
@@ -224,12 +275,40 @@ export const TasksPage: React.FC = () => {
             <thead style={{ backgroundColor: COLORS.bg }}>
               <tr>
                 <th className="px-3 py-2 text-left font-medium w-8" />
-                <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Subject</th>
-                <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Category</th>
-                <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Owner</th>
-                <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Due / Done</th>
+                {([
+                  { key: 'subject' as SortKey, label: 'Subject', nowrap: false },
+                  { key: 'category' as SortKey, label: 'Category', nowrap: true },
+                  { key: 'owner' as SortKey, label: 'Owner', nowrap: true },
+                  { key: 'due' as SortKey, label: 'Due / Done', nowrap: true },
+                ]).map((col) => {
+                  const active = sortBy === col.key;
+                  return (
+                    <th
+                      key={col.key}
+                      onClick={() => handleSort(col.key)}
+                      className={`px-3 py-2 text-left font-medium select-none cursor-pointer hover:bg-gray-100 ${col.nowrap ? 'whitespace-nowrap' : ''}`}
+                      style={{ color: COLORS.midnight }}
+                      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      {col.label}
+                      <span className="ml-1 text-xs" style={{ color: active ? COLORS.midnight : COLORS.slate }}>
+                        {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </th>
+                  );
+                })}
                 <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Linked to</th>
-                <th className="px-3 py-2 text-left font-medium" style={{ color: COLORS.midnight }}>Status</th>
+                <th
+                  onClick={() => handleSort('status')}
+                  className="px-3 py-2 text-left font-medium whitespace-nowrap select-none cursor-pointer hover:bg-gray-100"
+                  style={{ color: COLORS.midnight }}
+                  aria-sort={sortBy === 'status' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                >
+                  Status
+                  <span className="ml-1 text-xs" style={{ color: sortBy === 'status' ? COLORS.midnight : COLORS.slate }}>
+                    {sortBy === 'status' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </th>
                 <th className="px-3 py-2 text-left font-medium w-20" />
               </tr>
             </thead>
@@ -241,7 +320,7 @@ export const TasksPage: React.FC = () => {
                   </td>
                 </tr>
               )}
-              {!loading && tasks.length === 0 && (
+              {!loading && sortedTasks.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-6 text-center" style={{ color: COLORS.slate }}>
                     No tasks match your filters.
@@ -249,7 +328,7 @@ export const TasksPage: React.FC = () => {
                 </tr>
               )}
               {!loading &&
-                tasks.map((task) => {
+                sortedTasks.map((task) => {
                   const overdue = isOverdue(task);
                   const completed = task.status === 'completed';
                   return (
@@ -278,14 +357,14 @@ export const TasksPage: React.FC = () => {
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2 align-top" style={{ color: COLORS.steel }}>
+                      <td className="px-3 py-2 align-top whitespace-nowrap" style={{ color: COLORS.steel }}>
                         {task.category}
                       </td>
-                      <td className="px-3 py-2 align-top" style={{ color: COLORS.steel }}>
+                      <td className="px-3 py-2 align-top whitespace-nowrap" style={{ color: COLORS.steel }}>
                         {ownerLabel(task)}
                       </td>
                       <td
-                        className="px-3 py-2 align-top"
+                        className="px-3 py-2 align-top whitespace-nowrap"
                         style={{
                           color: completed ? '#166534' : overdue ? '#A27B5C' : COLORS.steel,
                           fontWeight: overdue ? 600 : undefined,
@@ -298,7 +377,7 @@ export const TasksPage: React.FC = () => {
                       <td className="px-3 py-2 align-top" onClick={(e) => e.stopPropagation()}>
                         <LinkedToCell task={task} />
                       </td>
-                      <td className="px-3 py-2 align-top">
+                      <td className="px-3 py-2 align-top whitespace-nowrap">
                         <span
                           className="text-xs px-2 py-0.5 rounded-full"
                           style={
