@@ -10,6 +10,7 @@ import { useTrackPageView } from '../hooks/useRecentlyViewed';
 import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../hooks/useToast';
+import QuickAddTaskButton from '../components/tasks/QuickAddTaskButton';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 
@@ -224,6 +225,13 @@ const ContactDetailsPage: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-2">
+                {!isNewContact && contactId && contact && (
+                  <QuickAddTaskButton
+                    linkedObjectType="contact"
+                    linkedObjectId={contactId}
+                    linkedObjectLabel={contactName}
+                  />
+                )}
                 {!isNewContact && contactId && (
                   <button
                     onClick={handleDelete}

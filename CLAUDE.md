@@ -85,6 +85,19 @@ The `activity` table has both `user_id` and `owner_id` columns:
 - Use TypeScript strict mode
 - Follow existing patterns in the codebase for consistency
 
+## UX: Overlay-first object interactions
+
+**Build cross-object interaction features as composable, drop-in components — not page-bound UI.** OVIS is moving toward a model where you can drill into any deal / contact / client / property / site_submit / assignment from wherever you are (map pin slideout, kanban card slideout, dashboard) without navigating away. See [docs/OVIS_OVERLAY_UX.md](docs/OVIS_OVERLAY_UX.md) for the full principle and rationale.
+
+Two-tier model:
+- **Pages = destinations** (Master Pipeline, Map, Tasks/Planning dashboard, all-tasks list). They have URLs and are workplaces.
+- **Object interactions = overlays.** Always. From a page, from a slideout, from anywhere.
+
+Concretely:
+- New components that render object data take `objectType` + `objectId` props; they don't read `useParams`.
+- Prefer "open in slideout" over `navigate('/deal/:id')` for related-object drill-downs (today this often still means navigating; flag the gap rather than papering over it with a page-bound design).
+- A panel built for a sidebar should also work mounted inside a slideout body.
+
 ## Supabase Query Pagination
 
 **Always paginate Supabase queries that may return more than 1000 rows.**

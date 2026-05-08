@@ -9,6 +9,7 @@ import PropertyContactsTab from './property/PropertyContactsTab';
 import PropertyFilesTab from './property/PropertyFilesTab';
 import AutosaveIndicator from './AutosaveIndicator';
 import DemographicsModal from './shared/DemographicsModal';
+import OpenTasksPanel from './tasks/OpenTasksPanel';
 import { useAutosave } from '../hooks/useAutosave';
 import { usePropertyGeoenrichment, isEnrichmentStale, formatEnrichmentDate } from '../hooks/usePropertyGeoenrichment';
 import { FileText, DollarSign, Building2, MapPin, Users, Grid3x3 } from 'lucide-react';
@@ -185,6 +186,24 @@ export default function PropertyDetailsSlideoutContent({ propertyId, onSiteSubmi
       {/* Autosave Indicator */}
       <div className="px-6 pt-4">
         <AutosaveIndicator status={autosaveStatus} lastSavedAt={lastSavedAt} />
+      </div>
+
+      {/* Open Tasks panel (composable; spec §7, OVIS_OVERLAY_UX.md) */}
+      <div className="px-6 pt-3">
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            <h4 className="font-medium text-gray-900 text-sm">Open Tasks</h4>
+          </div>
+          <OpenTasksPanel
+            objectType="property"
+            objectId={propertyId}
+            objectLabel={formData.property_name || property.property_name || undefined}
+            maxHeightPx={240}
+          />
+        </div>
       </div>
 
       {/* Tabs */}

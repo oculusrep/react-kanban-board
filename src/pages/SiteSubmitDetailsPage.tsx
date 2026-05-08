@@ -23,6 +23,8 @@ import ConvertSiteSubmitToDealModal from '../components/ConvertSiteSubmitToDealM
 import DigestComposeModal from '../components/portal/DigestComposeModal';
 import { Bell } from 'lucide-react';
 import { CLIENT_VISIBLE_STAGES } from '../components/client-pipeline/pipelineConfig';
+import QuickAddTaskButton from '../components/tasks/QuickAddTaskButton';
+import OpenTasksPanel from '../components/tasks/OpenTasksPanel';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -622,6 +624,13 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 )}
               </div>
               <div className="flex space-x-2">
+                {!isNewSiteSubmit && siteSubmitId && (
+                  <QuickAddTaskButton
+                    linkedObjectType="site_submit"
+                    linkedObjectId={siteSubmitId}
+                    linkedObjectLabel={formData.site_submit_name || 'Site Submit'}
+                  />
+                )}
                 {!isNewSiteSubmit && (
                   <>
                     <button
@@ -732,6 +741,26 @@ const SiteSubmitDetailsPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Open Tasks panel (composable; spec §7, OVIS_OVERLAY_UX.md) */}
+        {!isNewSiteSubmit && siteSubmitId && !loading && (
+          <div className={isInIframe ? "mb-4" : "bg-white shadow rounded-lg mb-6"}>
+            <div className={isInIframe ? "p-3" : "p-4"}>
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                <h4 className="font-medium text-gray-900 text-sm">Open Tasks</h4>
+              </div>
+              <OpenTasksPanel
+                objectType="site_submit"
+                objectId={siteSubmitId}
+                objectLabel={formData.site_submit_name || undefined}
+                maxHeightPx={300}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Form Content */}
         <div className={isInIframe ? "space-y-6" : "bg-white shadow rounded-lg"}>
