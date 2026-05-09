@@ -7,6 +7,7 @@ import {
   useBlockInstancesForDate,
 } from '../../../hooks/useTaskBlocks';
 import { MANUAL_RANK_STEP, localDateString } from '../../../types/taskBlock';
+import AdHocBlockCreator from './AdHocBlockCreator';
 import BlockRow from './BlockRow';
 import TaskDetailSlideout from '../TaskDetailSlideout';
 
@@ -167,26 +168,32 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
 
   if (instances.length === 0) {
     return (
-      <div
-        className="bg-white rounded-lg border p-6 text-center"
-        style={{ borderColor: COLORS.slate + '66' }}
-      >
-        <p className="text-sm mb-2" style={{ color: COLORS.steel }}>
-          No time blocks for {isToday ? 'today' : 'this date'}.
-        </p>
-        <Link
-          to="/settings/time-blocks"
-          className="text-sm font-medium hover:underline"
-          style={{ color: COLORS.midnight }}
+      <>
+        <AdHocBlockCreator ownerId={ownerId} onDate={onDate} onCreated={refetch} />
+        <div
+          className="bg-white rounded-lg border p-6 text-center"
+          style={{ borderColor: COLORS.slate + '66' }}
         >
-          Set up time blocks →
-        </Link>
-      </div>
+          <p className="text-sm mb-2" style={{ color: COLORS.steel }}>
+            No time blocks for {isToday ? 'today' : 'this date'}.
+          </p>
+          <Link
+            to="/settings/time-blocks"
+            className="text-sm font-medium hover:underline"
+            style={{ color: COLORS.midnight }}
+          >
+            Set up time blocks →
+          </Link>
+        </div>
+      </>
     );
   }
 
   return (
     <>
+      <div className="flex justify-end mb-2">
+        <AdHocBlockCreator ownerId={ownerId} onDate={onDate} onCreated={refetch} />
+      </div>
       <DragDropContext onDragEnd={handleDragEnd}>
         <div>
           {instances.map((inst) => {
