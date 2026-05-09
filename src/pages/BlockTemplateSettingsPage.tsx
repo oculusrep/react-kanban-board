@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   createBlockTemplate,
   deleteBlockTemplate,
+  ensureInstancesForDate,
   updateBlockTemplate,
   useTaskBlockTemplates,
 } from '../hooks/useTaskBlocks';
@@ -10,6 +11,7 @@ import {
   IsoWeekday,
   TaskBlockCategory,
   TaskBlockTemplate,
+  localDateString,
 } from '../types/taskBlock';
 
 // Block template management page (spec §5.2). Lives at /settings/time-blocks.
@@ -194,6 +196,17 @@ export const BlockTemplateSettingsPage: React.FC = () => {
           active: form.active,
         });
       }
+      // Per resolved Phase 2 decision (2026-05-09): when a template is
+      // active, immediately materialize today's instance so the user sees
+      // the block without waiting for the next dashboard mount.
+      if (form.active) {
+        try {
+          await ensureInstancesForDate({ ownerId: userTableId, onDate: localDateString() });
+        } catch (genErr) {
+          // Generator failure shouldn't undo the save — log and continue.
+          console.warn('[BlockTemplateSettings] ensureInstancesForDate failed:', genErr);
+        }
+      }
       cancelForm();
       refetch();
     } catch (err) {
@@ -205,8 +218,18 @@ export const BlockTemplateSettingsPage: React.FC = () => {
   };
 
   const handleToggleActive = async (t: TaskBlockTemplate) => {
+    if (!userTableId) return;
     try {
-      await updateBlockTemplate(t.id, { active: !t.active });
+      const willBeActive = !t.active;
+      await updateBlockTemplate(t.id, { active: willBeActive });
+      // Reactivation should also materialize today's instance.
+      if (willBeActive) {
+        try {
+          await ensureInstancesForDate({ ownerId: userTableId, onDate: localDateString() });
+        } catch (genErr) {
+          console.warn('[BlockTemplateSettings] ensureInstancesForDate failed:', genErr);
+        }
+      }
       refetch();
     } catch (err) {
       console.error(err);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import {
   BlockInstanceWithTasks,
+  IsoWeekday,
   MANUAL_RANK_STEP,
   TaskBlockInstance,
   TaskBlockInstanceInsert,
@@ -10,6 +11,7 @@ import {
   TaskBlockTemplate,
   TaskBlockTemplateInsert,
   TaskBlockTemplateUpdate,
+  isoWeekday,
 } from '../types/taskBlock';
 
 // ---------------------------------------------------------------------------
@@ -220,6 +222,68 @@ export async function updateBlockInstance(
 export async function deleteBlockInstance(id: string): Promise<void> {
   const { error } = await supabase.from('task_block_instance').delete().eq('id', id);
   if (error) throw error;
+}
+
+// Daily instance generator -------------------------------------------------
+
+// For the given (owner, date), ensures a task_block_instance row exists for
+// every active template whose byweekday includes that date's weekday. Safe
+// to call repeatedly: the unique partial index on (template_id, owner_id,
+// on_date) WHERE template_id IS NOT NULL absorbs duplicates via
+// `ignoreDuplicates: true`. Multi-device races are handled by Postgres, not
+// the client.
+//
+// Called from:
+//   - The dashboard's Today's Timeline lane on mount (PR 5)
+//   - The template settings page after a template is created or activated,
+//     so the user sees today's instance show up without waiting for the
+//     next dashboard mount.
+export async function ensureInstancesForDate(args: {
+  ownerId: string;
+  /** Local YYYY-MM-DD per CLAUDE.md timezone guidance. */
+  onDate: string;
+}): Promise<{ generated: number }> {
+  // Parse the date in local time. 'YYYY-MM-DD' alone is parsed as UTC by
+  // some browsers, so explicitly anchor it to local midnight.
+  const [y, m, d] = args.onDate.split('-').map((s) => parseInt(s, 10));
+  const localDate = new Date(y, m - 1, d);
+  const weekday: IsoWeekday = isoWeekday(localDate);
+
+  // Pull active templates that run on this weekday. Postgres array contains
+  // operator (`@>`) maps to .contains() in the supabase-js client.
+  const { data: templates, error: tplError } = await supabase
+    .from('task_block_template')
+    .select('id, name, category, start_time, duration_minutes')
+    .eq('owner_id', args.ownerId)
+    .eq('active', true)
+    .contains('byweekday', [weekday]);
+  if (tplError) throw tplError;
+  if (!templates || templates.length === 0) return { generated: 0 };
+
+  const rows = templates.map((t) => ({
+    template_id: t.id,
+    owner_id: args.ownerId,
+    on_date: args.onDate,
+    start_time: t.start_time,
+    duration_minutes: t.duration_minutes,
+    name: t.name,
+    category: t.category,
+    status: 'scheduled' as const,
+  }));
+
+  // Use upsert with ignoreDuplicates to map to ON CONFLICT DO NOTHING. The
+  // partial unique index `idx_task_block_instance_template_owner_date`
+  // covers (template_id, owner_id, on_date) WHERE template_id IS NOT NULL.
+  const { data: inserted, error: insError } = await supabase
+    .from('task_block_instance')
+    .upsert(rows, {
+      onConflict: 'template_id,owner_id,on_date',
+      ignoreDuplicates: true,
+    })
+    .select('id');
+  if (insError) throw insError;
+
+  return { generated: inserted?.length ?? 0 };
 }
 
 // Scheduled tasks ----------------------------------------------------------

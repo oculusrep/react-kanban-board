@@ -53,6 +53,13 @@ export const isoWeekday = (d: Date): IsoWeekday => {
   return (js === 0 ? 7 : js) as IsoWeekday;
 };
 
+// Local-date YYYY-MM-DD per CLAUDE.md (Eastern). Use for task_block_instance.on_date
+// and any other DATE column where "today" matters. Avoid toISOString() which is UTC
+// and wraps a day late after 8pm Eastern.
+export const localDateString = (d: Date = new Date()): string => {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // Drag-rank spacing — leaves room to insert between adjacent tasks without
 // a full reindex. See task_block_scheduled_task.manual_rank comment.
 export const MANUAL_RANK_STEP = 1024;
