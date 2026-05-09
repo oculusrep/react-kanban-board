@@ -338,6 +338,24 @@ export async function updateScheduledTaskRank(
   return data as TaskBlockScheduledTask;
 }
 
+// Moves a scheduled task to a (possibly different) block + sets its rank.
+// Used by the timeline's drag-and-drop handler — handles both reorder
+// within a block and move across blocks in one update.
+export async function moveScheduledTask(args: {
+  scheduledTaskId: string;
+  newBlockInstanceId: string;
+  newRank: number;
+}): Promise<void> {
+  const { error } = await supabase
+    .from('task_block_scheduled_task')
+    .update({
+      block_instance_id: args.newBlockInstanceId,
+      manual_rank: args.newRank,
+    })
+    .eq('id', args.scheduledTaskId);
+  if (error) throw error;
+}
+
 // Returns the next manual_rank for a block (max existing + step). Used by
 // scheduleTaskInBlock when no explicit rank is supplied.
 async function nextRankForBlock(blockInstanceId: string): Promise<number> {
