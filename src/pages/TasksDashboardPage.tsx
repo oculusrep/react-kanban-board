@@ -4,9 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
 import { localDateString } from '../types/taskBlock';
 
-// Preview route for Phase 2. The full /tasks dashboard lands at cutover
-// (PR 8). Until then this page lets us iterate on the timeline without
-// touching the existing /tasks (flat list) page.
+// Phase 2 dashboard mounted at /tasks. The flat all-tasks list now lives at
+// /tasks/all (was /tasks before the Phase 2 PR 8 cutover, 2026-05-09).
 
 const COLORS = {
   midnight: '#002147',
@@ -33,7 +32,7 @@ const addDaysLocal = (iso: string, days: number): string => {
   return localDateString(date);
 };
 
-export const TasksDashboardPreviewPage: React.FC = () => {
+export const TasksDashboardPage: React.FC = () => {
   const { userTableId } = useAuth();
   const today = localDateString();
   const [viewDate, setViewDate] = useState(today);
@@ -66,6 +65,13 @@ export const TasksDashboardPreviewPage: React.FC = () => {
               {isViewingToday ? 'Plan Tomorrow →' : '← Today'}
             </button>
             <Link
+              to="/tasks/all"
+              className="text-xs font-medium hover:underline"
+              style={{ color: COLORS.steel }}
+            >
+              All tasks →
+            </Link>
+            <Link
               to="/settings/time-blocks"
               className="text-xs font-medium hover:underline"
               style={{ color: COLORS.steel }}
@@ -74,12 +80,6 @@ export const TasksDashboardPreviewPage: React.FC = () => {
             </Link>
           </div>
         </div>
-
-        <p className="text-xs mb-4" style={{ color: COLORS.slate }}>
-          Preview of the Phase 2 dashboard. Block edit semantics + adaptive
-          layout land in the rest of PR 7. The full dashboard replaces /tasks
-          at PR 8 cutover.
-        </p>
 
         {userTableId ? (
           <TodaysTimeline key={viewDate} ownerId={userTableId} onDate={viewDate} />
@@ -93,4 +93,4 @@ export const TasksDashboardPreviewPage: React.FC = () => {
   );
 };
 
-export default TasksDashboardPreviewPage;
+export default TasksDashboardPage;

@@ -207,9 +207,18 @@ export const TasksPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold" style={{ color: COLORS.midnight }}>
-            Tasks
-          </h1>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-2xl font-bold" style={{ color: COLORS.midnight }}>
+              All Tasks
+            </h1>
+            <Link
+              to="/tasks"
+              className="text-xs font-medium hover:underline"
+              style={{ color: COLORS.steel }}
+            >
+              ← Today's Timeline
+            </Link>
+          </div>
           <span className="text-sm" style={{ color: COLORS.steel }}>
             {loading ? 'Loading…' : `${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
           </span>
