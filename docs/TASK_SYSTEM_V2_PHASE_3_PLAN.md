@@ -44,9 +44,8 @@ Most are sequential — the schema and OAuth wiring need to land before sync wor
 | 6 | Cron schedule + manual Sync now button | pg_cron migration, dashboard "↻ Sync" control | Low — cron runs the same edge function |
 | 7 | Conflict detection + Conflicts lane | `src/lib/calendarConflicts.ts` (overlap math), `src/components/tasks/dashboard/ConflictsLane.tsx`, mounted on TasksDashboardPage | Medium — visual surface |
 | 8 | Calendar events on the timeline (interleaved with blocks) | render-only changes in `TodaysTimeline` | Low — visual addition |
-| 9 | gcal-webhook edge function for Google push notifications | `supabase/functions/gcal-webhook/index.ts`, channel-subscribe call inside `gcal-sync` | Medium — public webhook, channel expiry handling. Optional in v1; polling alone is acceptable |
 
-PRs 1–6 form the minimum viable sync (you can connect, subscribe, and the dashboard shows pulled events). PR 7 adds the Conflicts lane. PR 8 puts events on the timeline. PR 9 is the push-notification optimization that can land later if not before.
+PRs 1–6 form the minimum viable sync (you can connect, subscribe, and the dashboard shows pulled events). PR 7 adds the Conflicts lane. PR 8 puts events on the timeline. The webhook PR (`gcal-webhook`) was deferred per the resolved decisions — polling alone is acceptable for v1.
 
 ## Schema notes (PR 1)
 
@@ -67,13 +66,9 @@ CREATE TABLE google_calendar_connection (
   is_active BOOLEAN DEFAULT TRUE,
   sync_error TEXT,
   sync_error_at TIMESTAMPTZ,
-  -- Webhook channel for push notifications (PR 9; nullable until then)
-  webhook_channel_id TEXT,
-  webhook_resource_id TEXT,
-  webhook_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (user_id, google_email)
+  UNIQUE (user_id)                          -- single Google account per user (v1)
 );
 ```
 
@@ -180,20 +175,17 @@ A small card next to Top 3 / Inbox. Renders each conflict as a one-line summary 
 ### Events on the timeline (PR 8)
 TodaysTimeline gets a second data source. Render events as compact greyed slots interleaved chronologically with blocks. A "⛔ Meeting w/ Bob (calendar)" pattern from spec §11. No interaction beyond click-to-open-in-Google.
 
-## Resolved decisions (placeholders — to settle before code)
+## Resolved decisions (2026-05-09)
 
 1. **Token storage:** mirror `gmail_connection` shape exactly. Tokens stored as plain text in the DB column (matching existing pattern). Encryption-at-rest is Supabase's default; no app-layer crypto added.
-2. **Multi-calendar:** one Google account per user in v1, with multi-calendar selection within that account. Adding a second Google account gets deferred unless someone needs it (spec implies "primary + personal + team" can be different calendars under the same Google account).
-3. **Conflict detection:** client-side overlap math. SQL function only if perf complains.
-4. **Webhook (PR 9):** ship without it in v1. Polling at 5-min cadence is acceptable for the use case (planning, not real-time scheduling). Add `gcal-webhook` if anyone hits the latency.
+2. **OAuth client:** reuse the existing Gmail Google Cloud OAuth client. Add `calendar.readonly` scope to the consent screen. One client ID + secrets to manage.
+3. **Multi-account per user:** single Google account per user in v1. UNIQUE constraint on `google_calendar_connection.user_id`. Multi-calendar selection happens within that one account. Lift the constraint later if anyone has separate work + personal accounts both needing to feed the dashboard.
+4. **Conflict detection:** client-side overlap math. SQL function only if perf complains.
+5. **Webhook:** deferred from v1. Polling at 5-min cadence is fine for planning use case. Drop PR 9 from the work order; revisit if anyone hits the latency.
+6. **Sync window:** today − 1 day → today + 14 days for routine syncs. First sync after connecting pulls a wider window (today − 7 → today + 30) so historic context exists.
+7. **All-day events:** render as a thin banner above the timeline, not interleaved into the hour-based lane. Skip from conflict detection (informational only).
 
-## Open questions
-
-1. **Sync window.** Spec §9 doesn't pin a horizon. I propose **today − 1 day → today + 14 days** for routine syncs. First sync after connecting could pull a wider window (e.g. − 7 / + 30) so historic context exists. Cron syncs use the routine window.
-2. **Multi-account per user.** v1 = single Google account per OVIS user. If you have personal + work Google accounts that should both feed the dashboard, we'd need to allow multiple `google_calendar_connection` rows per user_id (just drop the unique constraint). Easier to add later than to remove. **Recommendation: single account in v1, expand if asked.**
-3. **All-day events.** Render on the timeline as a thin all-day strip at the top, or skip (since the timeline is hour-based)? Recommendation: render as a small banner above the timeline; don't intrude into the chronological lane.
-4. **OAuth client ID re-use.** The Gmail OAuth uses an existing Google Cloud project. Calendar can use the same client ID by adding the `calendar.readonly` scope, OR we set up a separate client ID. Same client ID is simpler — same consent screen, same secrets to manage.
-5. **Webhook public URL.** If we do PR 9 eventually, we need the edge function URL to be reachable by Google. Supabase edge functions are public by default; that should work. Just calling out so it doesn't surprise us later.
+The work order above is now 8 PRs (was 9). PR 1 schema drops the webhook-channel columns since they'd sit unused.
 
 ## Risks & mitigations
 
