@@ -3,7 +3,16 @@
 **Branch:** `feat/tasks-v2-phase-2-5`
 **Spec:** [TASK_SYSTEM_V2_SPEC.md](./TASK_SYSTEM_V2_SPEC.md) — §6.2, §7.3, §7.4, §8.2, §11, §15.2
 **Phase 2:** [TASK_SYSTEM_V2_PHASE_2_PLAN.md](./TASK_SYSTEM_V2_PHASE_2_PLAN.md) (shipped 2026-05-09)
-**Status:** 📝 Drafted 2026-05-09, not started
+**Status:** ✅ Complete (2026-05-09)
+
+## Status — all done
+
+| # | Title | Commit |
+|---|---|---|
+| 1 | Schema: `task.is_inbox` BOOLEAN + index | `5f5074a3` (applied to live DB via Supabase MCP) |
+| 2 | Top 3 / Inbox / Watching lanes + pin/unpin in TaskDetailSlideout | `dda28b76` |
+| 3 | Brain Dump modal | `22f5ab60` |
+| 4 | Pipeline grouped-by-client toggle | _(this commit)_ |
 
 Phase 2.5 fills in the **planning lanes** that were deferred during Phase 2 scoping so the dashboard becomes the morning planning surface from spec §11. No new heavy infrastructure — mostly UI on top of the data we already have, plus one small schema add for the Inbox flag.
 
