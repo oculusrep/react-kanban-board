@@ -10,8 +10,11 @@ import {
 import { MANUAL_RANK_STEP, localDateString } from '../../../types/taskBlock';
 import AdHocBlockCreator from './AdHocBlockCreator';
 import BlockRow from './BlockRow';
+import EventRow from './EventRow';
 import TaskDetailSlideout from '../TaskDetailSlideout';
 import TodaysTasksList from './TodaysTasksList';
+import { useExternalCalendarEvents } from '../../../hooks/useGoogleCalendar';
+import { ExternalCalendarEvent } from '../../../types/calendar';
 
 // Today's Timeline lane (spec §11). Reads block instances for one (owner, date)
 // and renders them chronologically with their queued tasks.
@@ -67,6 +70,15 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
   const { templates, loading: templatesLoading } = useTaskBlockTemplates({
     ownerId,
     activeOnly: true,
+  });
+
+  // Phase 3 PR 8: pulled calendar events for the viewed date.
+  // Interleaved chronologically with blocks; all-day events render as a
+  // small banner above the timeline.
+  const { events: calendarEvents } = useExternalCalendarEvents({
+    userId: ownerId,
+    fromDate: onDate,
+    toDate: onDate,
   });
 
   // Idempotent — safe to fire on every (owner,date) change. Refetch after
@@ -216,14 +228,64 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
     );
   }
 
+  // Build the interleaved render order: blocks + non-all-day events sorted
+  // by their start time. Each item carries its origin so we can render with
+  // the right component. Drag-and-drop wraps only the blocks portion via the
+  // DragDropContext below — events are non-droppable.
+  const allDayEvents = calendarEvents.filter((e) => e.is_all_day);
+  const timedEvents = calendarEvents.filter((e) => !e.is_all_day);
+
+  type TimelineItem =
+    | { kind: 'block'; instance: typeof instances[number]; startMs: number }
+    | { kind: 'event'; event: ExternalCalendarEvent; startMs: number };
+
+  const timelineItems: TimelineItem[] = [
+    ...instances.map((inst) => {
+      const [sh, sm] = inst.start_time.split(':').map((s) => parseInt(s, 10));
+      const [y, m, d] = onDate.split('-').map((s) => parseInt(s, 10));
+      const startMs = new Date(y, m - 1, d, sh, sm, 0, 0).getTime();
+      return { kind: 'block' as const, instance: inst, startMs };
+    }),
+    ...timedEvents.map((event) => ({
+      kind: 'event' as const,
+      event,
+      startMs: new Date(event.start_at).getTime(),
+    })),
+  ].sort((a, b) => a.startMs - b.startMs);
+
   return (
     <>
       <div className="flex justify-end mb-2">
         <AdHocBlockCreator ownerId={ownerId} onDate={onDate} onCreated={refetch} />
       </div>
+
+      {allDayEvents.length > 0 && (
+        <div
+          className="mb-2 px-3 py-1.5 rounded text-xs flex flex-wrap gap-x-3 gap-y-1"
+          style={{ backgroundColor: COLORS.slate + '22', color: COLORS.steel }}
+        >
+          <span className="font-semibold uppercase tracking-wide">All-day</span>
+          {allDayEvents.map((e) => (
+            <a
+              key={e.id}
+              href={e.html_link ?? '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              {e.summary || '(no title)'}
+            </a>
+          ))}
+        </div>
+      )}
+
       <DragDropContext onDragEnd={handleDragEnd}>
         <div>
-          {instances.map((inst) => {
+          {timelineItems.map((item) => {
+            if (item.kind === 'event') {
+              return <EventRow key={`event-${item.event.id}`} event={item.event} />;
+            }
+            const inst = item.instance;
             const [sh, sm] = inst.start_time.split(':').map((s) => parseInt(s, 10));
             const endMin = sh * 60 + sm + inst.duration_minutes;
             const isPast = isToday && endMin <= nowMin;
