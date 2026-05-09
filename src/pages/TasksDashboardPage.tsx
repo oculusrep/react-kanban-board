@@ -5,6 +5,7 @@ import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
 import Top3Lane from '../components/tasks/dashboard/Top3Lane';
 import InboxLane from '../components/tasks/dashboard/InboxLane';
 import WatchingLane from '../components/tasks/dashboard/WatchingLane';
+import BrainDumpModal from '../components/tasks/BrainDumpModal';
 import { localDateString } from '../types/taskBlock';
 
 // Phase 2 dashboard mounted at /tasks. The flat all-tasks list now lives at
@@ -39,6 +40,10 @@ export const TasksDashboardPage: React.FC = () => {
   const { userTableId } = useAuth();
   const today = localDateString();
   const [viewDate, setViewDate] = useState(today);
+  const [brainDumpOpen, setBrainDumpOpen] = useState(false);
+  // Bumped after Brain Dump saves so the InboxLane keys-remount and pulls
+  // the new tasks. Cheap; the lane is small.
+  const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
   const isViewingToday = viewDate === today;
   const headerLabel = isViewingToday ? "Today's Timeline" : "Tomorrow's Plan";
 
@@ -53,6 +58,19 @@ export const TasksDashboardPage: React.FC = () => {
             </span>
           </h1>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setBrainDumpOpen(true)}
+              className="text-xs font-medium px-2.5 py-1 rounded border"
+              style={{
+                borderColor: COLORS.slate,
+                color: COLORS.midnight,
+                backgroundColor: COLORS.white,
+              }}
+              title="Brain Dump — capture a list of tasks to your Inbox"
+            >
+              🧠 Brain Dump
+            </button>
             <button
               type="button"
               onClick={() =>
@@ -89,7 +107,7 @@ export const TasksDashboardPage: React.FC = () => {
             {/* Planning lanes — Top 3 + Inbox above the timeline (spec §11). */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <Top3Lane ownerId={userTableId} viewDate={viewDate} />
-              <InboxLane ownerId={userTableId} viewDate={viewDate} />
+              <InboxLane key={inboxRefreshKey} ownerId={userTableId} viewDate={viewDate} />
             </div>
 
             <TodaysTimeline key={viewDate} ownerId={userTableId} onDate={viewDate} />
@@ -103,6 +121,12 @@ export const TasksDashboardPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <BrainDumpModal
+        isOpen={brainDumpOpen}
+        onClose={() => setBrainDumpOpen(false)}
+        onSaved={() => setInboxRefreshKey((k) => k + 1)}
+      />
     </div>
   );
 };
