@@ -3,9 +3,25 @@
 **Branch:** `feat/tasks-v2-phase-2`
 **Spec:** [TASK_SYSTEM_V2_SPEC.md](./TASK_SYSTEM_V2_SPEC.md) — primarily §4.1, §5, §6.2, §11, §11.1, §12
 **Phase 1:** [TASK_SYSTEM_V2_PHASE_1_PLAN.md](./TASK_SYSTEM_V2_PHASE_1_PLAN.md) (shipped 2026-05-02)
-**Status:** 📝 Drafted 2026-05-08, not started
+**Status:** ✅ Complete (2026-05-09)
 
 Phase 2 lands the **time-block schema** (3 new tables) and a **minimal Today's Timeline lane** on the dashboard so blocks are usable end-to-end. The full multi-lane dashboard (Top 3 / Inbox / Watching / Conflicts) is deferred to Phase 2.5 — see "Deferred from this scope" below.
+
+## Status — all done
+
+| # | Title | Commit |
+|---|---|---|
+| 1 | Schema migration (3 block tables + RLS + indexes) | `8948f434` (applied to live DB via Supabase MCP) |
+| 2 | Types regen + domain types + CRUD hooks | `08cb0ac0` |
+| 3 | Block template management page at `/settings/time-blocks` | `c38f7165` |
+| 4 | Daily instance generation (`ensureInstancesForDate`) | `6ab0df70` |
+| 5 | Today's Timeline lane (read-only) | `29b03754` |
+| 6 | Schedule tasks into blocks + drag-rank (`@hello-pangea/dnd`) | `e7d03ca3` |
+| 7a | Plan Tomorrow + ad-hoc blocks | `c609497d` |
+| 7b | Block edit semantics + adaptive non-blocking layout | `6dc01b7b` |
+| 8 | Cutover — `/tasks` → dashboard, flat list to `/tasks/all` | `7539349b` |
+
+PR 7 was split into 7a + 7b for commit hygiene (same logical scope per plan).
 
 ## Scope of Phase 2
 
