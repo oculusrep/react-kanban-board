@@ -2,7 +2,22 @@
 
 **Branch:** `feat/tasks-v2-phase-3`
 **Spec:** [TASK_SYSTEM_V2_SPEC.md](./TASK_SYSTEM_V2_SPEC.md) — §9 Calendar Sync
-**Status:** 📝 Drafted 2026-05-09, not started
+**Status:** ✅ Complete (2026-05-09)
+
+## Status — all done
+
+| # | Title | Commit |
+|---|---|---|
+| 1 | Schema: connection / subscription / event tables + RLS | `852c8e93` (applied to live DB via Supabase MCP) |
+| 2 | Domain types + CRUD hooks | `b2ac681a` |
+| 3 | OAuth edge functions: gcal-connect / -callback / -disconnect | `6b3b347a` (deployed via MCP) |
+| 4 | Calendar settings page + gcal-list-calendars helper | `aa94cef1` (deployed via MCP) |
+| 5 | gcal-sync edge function | `09634f7c` (deployed via MCP) |
+| 6 | pg_cron schedule + dashboard "↻ Sync" button | `29c684a6` |
+| 7 | Conflicts lane | `3ac6c0a5` |
+| 8 | Events on the timeline (interleaved + all-day banner) | _(this commit)_ |
+
+PR 9 (gcal-webhook) was deferred per the resolved decisions; polling-only ships in v1.
 
 Phase 3 lands **Google Calendar pull-only sync** + the **Conflicts lane** on the dashboard. Single direction (Calendar → OVIS), multi-calendar per user, polling + webhook with manual "Sync now" fallback.
 
