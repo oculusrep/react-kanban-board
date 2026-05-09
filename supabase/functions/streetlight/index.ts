@@ -20,6 +20,16 @@ const corsHeaders = {
 // StreetLight API base URL — easy to swap if they update their endpoint
 const STREETLIGHT_BASE_URL = 'https://api.streetlightdata.com/satc/v1';
 
+// SATC source — AGPS is the current product (2019 → present, comprehensive coverage
+// down to residential roads). The legacy CVD+ source covers only 2022 → April 2023
+// and excludes many city arterials, which is what created the Crosstown Drive,
+// Peachtree City coverage gap that originally blocked this integration.
+const SATC_SOURCE = 'agps';
+
+// OSM vintage paired with AGPS, per StreetLight product support guidance.
+// Format is YYYYMM as a single-element array. Bump when a newer vintage ships.
+const OSM_VINTAGE: number[] = [202501];
+
 // ─── Request/Response Types ───────────────────────────────────────────────────
 
 interface BoundsParam {
@@ -113,6 +123,8 @@ async function handleGeometry(
   const data = await slFetch('/geometry', apiKey, {
     country: 'us',
     mode: 'vehicle',
+    source: SATC_SOURCE,
+    osm_vintage: OSM_VINTAGE,
     geometry: {
       polygon: {
         type: 'Polygon',
@@ -196,7 +208,7 @@ async function handleSegmentCount(
 async function handleDateRanges(
   apiKey: string
 ): Promise<unknown> {
-  const data = await slFetch('/date_ranges', apiKey, { country: 'us', mode: 'vehicle' }) as { date_ranges?: unknown[] };
+  const data = await slFetch('/date_ranges', apiKey, { country: 'us', mode: 'vehicle', source: SATC_SOURCE }) as { date_ranges?: unknown[] };
   return { date_ranges: data.date_ranges ?? [] };
 }
 
@@ -481,7 +493,8 @@ async function handleMetrics(
       const metricsData = await slFetch('/metrics', apiKey, {
         country: 'us',
         mode: 'vehicle',
-        source: 'cvd_plus',
+        source: SATC_SOURCE,
+        osm_vintage: OSM_VINTAGE,
         geometry: {
           segment_id: finalSegmentIds.map((id) => parseInt(id, 10)),
         },

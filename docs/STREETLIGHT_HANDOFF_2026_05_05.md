@@ -1,12 +1,65 @@
-# StreetLight Integration — Handoff (2026-05-05)
+# StreetLight Integration — Handoff
 
-**Status:** ⏸️ **BLOCKED** on response from StreetLight support
-**Branch:** `feature/streetlight-integration` (also merged into `main`)
-**Edge function deployed version:** `27` (live in production)
+**Status:** ⏸️ **BLOCKED** on StreetLight enabling AGPS source on the account
+**Branch:** `main` (feature/streetlight-integration was merged)
+**Edge function deployed version:** `28` (AGPS-targeted code; live but every call returns 401 until support enables AGPS)
+**Database cache:** empty (wiped 2026-05-09 when switching from CVD+ to AGPS)
 
 ---
 
-## Why we paused
+## Update 2026-05-09 — AGPS attempted, blocked at entitlement layer
+
+The 2026-05-05 email to StreetLight support came back. Their answer:
+
+> CVD+ metrics represent an older generation of segments (2022 → April 2023, limited geographic coverage). The latest SATC vehicle traffic metrics use **AGPS source data**, available 2019 → Feb 2026, with coverage starting at residential roadway classes and above. Recommended pairing: most recent annualized year (2025) + AGPS source + latest OSM vintage `[202501]`.
+
+That cleanly explains the original Crosstown Drive gap: we'd been hitting CVD+ (the legacy default) the entire time. So we made the switch:
+
+1. **Edge function v28 deployed** — added `SATC_SOURCE = 'agps'` and `OSM_VINTAGE = [202501]` constants at the top of [supabase/functions/streetlight/index.ts](../supabase/functions/streetlight/index.ts), threaded both into `/geometry`, `/metrics`, and `/date_ranges` calls. Replaced the explicit `source: 'cvd_plus'` on `/metrics`.
+2. **DB cache wiped** — `streetlight_segment` (5,292 rows), `streetlight_segment_metrics` (7 rows), `streetlight_usage_log` (18 rows). All of it was CVD+-derived data; segment IDs aren't comparable across sources, so a clean slate is correct. The 18 historical billings are gone, but most were from buggy v21-era testing anyway.
+3. **Direct probe via `streetlight-test` (verify_jwt: false)** against the original Crosstown Drive bbox `(33.380, -84.590, 33.400, -84.560)` and support's example point `[-84.56443, 33.37426]`. Result:
+
+   ```json
+   "agps_polygon":     { "status": 401, "error": "SATC Aggregated GPS source is not enabled for this account." }
+   "agps_nearest_10":  { "status": 401, "error": "SATC Aggregated GPS source is not enabled for this account." }
+   "cvd_plus_polygon": { "status": 400, "error": "Year must be specified with source 'cvd_plus'" }
+   ```
+
+The API key is valid and authorized for SATC — it just isn't entitled to the AGPS source. Support recommended a product our contract apparently doesn't include.
+
+**Side observation:** CVD+ now requires an explicit `date.year` on `/geometry` (it didn't when v27 shipped, since v27's `/geometry` call sent no `source` and used SATC's default). If we ever roll back to a CVD+ state, `/geometry` will need `date.year` added too — not just `/metrics`.
+
+### Follow-up email sent 2026-05-09
+
+Drafted at [docs/STREETLIGHT_AGPS_ENABLEMENT_EMAIL_2026_05_09.md](STREETLIGHT_AGPS_ENABLEMENT_EMAIL_2026_05_09.md). Two asks:
+
+1. Enable AGPS on the account, OR
+2. Quote the upgrade path (pricing, contract changes, per-segment cost delta vs. the current $0.50 / 10K-annual plan).
+
+### Production impact while waiting
+
+- Cache is empty, so the map shows no AADT data — no errors visible to view-only users.
+- Users with `can_consume_traffic_quota` (admin, broker_full) who try to fetch AADT will hit a 401 from the edge function. The frontend currently surfaces this as a generic error; no users have been observed hitting it yet.
+- No financial impact: 401s aren't billable, and the empty cache means no accidental charges.
+
+### Resume triggers (now)
+
+- **AGPS gets enabled** on our existing contract → no further code changes needed; v28 just starts working. Re-run the Crosstown Drive probe to confirm coverage, then mark integration shipped.
+- **AGPS requires an upgrade we accept** → same as above, no code changes.
+- **AGPS upgrade is too expensive / declined** → roll v28 back to a CVD+ state (see "Rollback notes" below) and revisit the secondary-data-source plan (GDOT free, possibly HERE/INRIX/Wejo) before SitesUSA can be retired.
+
+### Rollback notes (if AGPS doesn't get enabled)
+
+To restore working CVD+ behavior in [supabase/functions/streetlight/index.ts](../supabase/functions/streetlight/index.ts):
+
+- Change `SATC_SOURCE` constant from `'agps'` to `'cvd_plus'`.
+- Add `date: { year: <yearToTry> }` to `handleGeometry`'s slFetch body — CVD+ now requires it on `/geometry`, not just `/metrics`.
+- Either drop `osm_vintage` from all calls or probe whether CVD+ accepts it (unverified; safer to drop).
+- The `/metrics` flow already supplied `date: { year }`, so it just needs the source change.
+
+The cleanup work in v28 (top-of-file constants, type plumbing) should stay — it's the right shape regardless of which source ends up final.
+
+---
 
 The integration is technically working end-to-end (auth, geometry, metrics fetch, billing, free retry, cache-first rendering, permission gating). The blocker is **a SATC product-coverage gap**, not a code bug.
 
@@ -87,26 +140,27 @@ All four spend-buttons render as empty for users without `can_consume_traffic_qu
 
 | Layer | Deployed state | Repo state |
 |---|---|---|
-| Edge function `streetlight` | v27 (auth, year-fallback 2025-2022, free-retry, day_part='all') | `main` matches |
-| Edge function `streetlight-test` | **TEMPORARY**, `verify_jwt: false`, deployed for SATC probing | source untracked locally; deployed copy still live |
+| Edge function `streetlight` | **v28** — `SATC_SOURCE='agps'` + `OSM_VINTAGE=[202501]` on `/geometry`, `/metrics`, `/date_ranges`. Returns 401 on every call until AGPS is enabled on the account. | `main` matches (changes not yet committed as of 2026-05-09) |
+| Edge function `streetlight-test` | **TEMPORARY**, `verify_jwt: false`, v4 — repurposed 2026-05-09 to compare CVD+ vs AGPS for the entitlement probe. Source still untracked locally. | n/a — delete when AGPS work ships or is fully shelved |
 | Frontend `TrafficCountLayer.tsx` | Cache-first via RPC, 3× expanded `/geometry` bbox | `main` matches |
 | Migrations | All applied (`20260503000000_streetlight_tables`, `20260504000001_streetlight_atomic_spend`, `20260504000002_streetlight_schema_fix`, `20260504000003_streetlight_segment_id_bigint`, `20260504000004_streetlight_traffic_role_permissions`, `20260505000000_streetlight_segments_in_bbox_rpc`) | `main` matches |
+| DB cache | **Empty** — wiped 2026-05-09 (was 5,292 segment rows / 7 metrics / 18 usage_log rows of CVD+ data, all superseded by the source change). | n/a |
 
 ---
 
 ## Known follow-ups when we resume
 
 ### Cleanup
-- [ ] Delete the `streetlight-test` edge function (deployed with `verify_jwt: false`, intended only for SATC probing). Source has never been committed.
+- [ ] Delete the `streetlight-test` edge function once the AGPS direction is settled (kept around 2026-05-09 in case we need another probe round during the support back-and-forth).
+- [ ] Commit v28 edge function changes to `main` once we confirm AGPS will be the final source — don't want to land "broken on production" code if the answer turns out to be a different parameter combo.
 - [ ] Server-side permission check in `handleMetrics` (`requireAuth` only validates JWT, doesn't check `can_consume_traffic_quota`). A user with view-only access could still craft a direct call. ~5 lines.
 
 ### Open implementation work
 - [ ] Surface "data is N years old" warning in the popup for segments where `year_month` is more than 2 years old.
-- [ ] Wire up the temporary `streetlight-test` capabilities (or drop it once we confirm coverage strategy).
 
 ### Documentation
-- [ ] Once StreetLight support responds, capture their answer in this doc and decide direction.
-- [ ] If a secondary data source is added (GDOT, HERE, etc.), update [STREETLIGHT_INTEGRATION_PLAN.md](STREETLIGHT_INTEGRATION_PLAN.md) with the new coverage strategy.
+- [x] ~~Once StreetLight support responds, capture their answer in this doc and decide direction.~~ Done 2026-05-09 — see "Update 2026-05-09" section above.
+- [ ] If AGPS isn't enabled and we add a secondary data source (GDOT, HERE, etc.), update [STREETLIGHT_INTEGRATION_PLAN.md](STREETLIGHT_INTEGRATION_PLAN.md) with the new coverage strategy.
 
 ---
 
@@ -121,7 +175,7 @@ The email's reproduction is **deterministic** — they should be able to paste t
 ## How to resume
 
 1. **Check this doc first** — it's the single source of truth for what's deployed and what's blocked.
-2. Read StreetLight's response and decide which of the three "resume trigger" branches above applies.
-3. If you need to re-test SATC parameters, the `streetlight-test` edge function is still deployed and unauthenticated; hit it with curl against `https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/streetlight-test` with a JSON bbox body.
-4. The full session log of yesterday's bug fixes is in [STREETLIGHT_BUGFIX_2026_05_04.md](STREETLIGHT_BUGFIX_2026_05_04.md). Today's session (cache-first rendering, expanded bbox pre-fetch, 2025 year-fallback) is summarized in this doc.
-5. Run `git log main --oneline -20` to see the merge history. The relevant feature branch is `feature/streetlight-integration` and is currently in sync with main.
+2. Read StreetLight's reply on the AGPS enablement request (sent 2026-05-09; see [STREETLIGHT_AGPS_ENABLEMENT_EMAIL_2026_05_09.md](STREETLIGHT_AGPS_ENABLEMENT_EMAIL_2026_05_09.md)) and decide which "Resume triggers (now)" branch above applies.
+3. If you need to re-test SATC parameters, `streetlight-test` is still deployed (verify_jwt: false). Hit it with curl against `https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/streetlight-test` with a JSON bbox body. The current version (v4) compares CVD+ vs AGPS side-by-side.
+4. Earlier session history: [STREETLIGHT_BUGFIX_2026_05_04.md](STREETLIGHT_BUGFIX_2026_05_04.md) for the v22→v26 bug-fix work, this doc's "Update 2026-05-09" section for the AGPS attempt.
+5. Run `git log main --oneline -20` to see the merge history. v28 edge function source is in `main`'s working tree but not yet committed — see "Cleanup" follow-ups.
