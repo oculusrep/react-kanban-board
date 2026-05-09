@@ -293,6 +293,8 @@ export async function ensureInstancesForDate(args: {
 // row or moves an existing one to a different block (the upsert handles both).
 // `rank` defaults to (current max in target block) + MANUAL_RANK_STEP so the
 // task lands at the bottom of the queue.
+//
+// Side effect: clears task.is_inbox (Phase 2.5) — scheduling is triage.
 export async function scheduleTaskInBlock(args: {
   blockInstanceId: string;
   taskId: string;
@@ -312,6 +314,17 @@ export async function scheduleTaskInBlock(args: {
     .select()
     .single();
   if (error) throw error;
+  // Fire-and-forget inbox clear. Failure is logged but doesn't undo the
+  // scheduling — the task is in the block, that's the user-visible win.
+  supabase
+    .from('task')
+    .update({ is_inbox: false })
+    .eq('id', args.taskId)
+    .then(({ error: clearError }) => {
+      if (clearError) {
+        console.warn('[scheduleTaskInBlock] failed to clear is_inbox:', clearError);
+      }
+    });
   return data as TaskBlockScheduledTask;
 }
 

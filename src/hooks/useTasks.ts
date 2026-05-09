@@ -81,6 +81,10 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
         if (filters?.contact_id) query = query.eq('contact_id', filters.contact_id);
         if (filters?.due_before) query = query.lte('due_at', filters.due_before);
         if (filters?.due_after) query = query.gte('due_at', filters.due_after);
+        if (filters?.is_inbox !== undefined) query = query.eq('is_inbox', filters.is_inbox);
+        if (filters?.top3_date) query = query.eq('top3_date', filters.top3_date);
+        if (filters?.assigned_by_id) query = query.eq('assigned_by_id', filters.assigned_by_id);
+        if (filters?.owner_id_not) query = query.neq('owner_id', filters.owner_id_not);
         if (filters?.search) {
           const term = `%${filters.search}%`;
           query = query.or(`subject.ilike.${term},description.ilike.${term}`);
@@ -131,6 +135,10 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
     filters?.contact_id,
     filters?.due_before,
     filters?.due_after,
+    filters?.is_inbox,
+    filters?.top3_date,
+    filters?.assigned_by_id,
+    filters?.owner_id_not,
     filters?.search,
   ]);
 
@@ -148,9 +156,20 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
 // ---------------------------------------------------------------------------
 
 export async function createTask(input: TaskInsert): Promise<Task> {
+  // Phase 2.5: cross-user assignment lands in the assignee's inbox unless the
+  // caller explicitly set is_inbox.
+  const finalInput: TaskInsert = { ...input };
+  if (
+    finalInput.is_inbox === undefined &&
+    finalInput.owner_id &&
+    finalInput.created_by_id &&
+    finalInput.owner_id !== finalInput.created_by_id
+  ) {
+    finalInput.is_inbox = true;
+  }
   const { data, error } = await supabase
     .from('task')
-    .insert(input)
+    .insert(finalInput)
     .select()
     .single();
   if (error) throw error;
@@ -158,14 +177,29 @@ export async function createTask(input: TaskInsert): Promise<Task> {
 }
 
 export async function updateTask(id: string, patch: TaskUpdate): Promise<Task> {
+  // Phase 2.5: any explicit category change or Top-3 pin counts as triage —
+  // clear is_inbox unless the caller already specified a value.
+  const finalPatch: TaskUpdate = { ...patch };
+  const categoryChanged = patch.category !== undefined;
+  const top3Pinned = patch.top3_date !== undefined && patch.top3_date !== null;
+  if ((categoryChanged || top3Pinned) && finalPatch.is_inbox === undefined) {
+    finalPatch.is_inbox = false;
+  }
   const { data, error } = await supabase
     .from('task')
-    .update(patch)
+    .update(finalPatch)
     .eq('id', id)
     .select()
     .single();
   if (error) throw error;
   return data as Task;
+}
+
+// Explicit "Mark triaged" action used by the Inbox lane row when the user
+// is fine with the task as-is and wants it out of the inbox without
+// changing category, scheduling, or pinning.
+export async function markTaskTriaged(id: string): Promise<Task> {
+  return updateTask(id, { is_inbox: false });
 }
 
 export interface CompleteTaskOptions {

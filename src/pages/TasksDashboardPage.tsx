@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
+import Top3Lane from '../components/tasks/dashboard/Top3Lane';
+import InboxLane from '../components/tasks/dashboard/InboxLane';
+import WatchingLane from '../components/tasks/dashboard/WatchingLane';
 import { localDateString } from '../types/taskBlock';
 
 // Phase 2 dashboard mounted at /tasks. The flat all-tasks list now lives at
@@ -82,7 +85,18 @@ export const TasksDashboardPage: React.FC = () => {
         </div>
 
         {userTableId ? (
-          <TodaysTimeline key={viewDate} ownerId={userTableId} onDate={viewDate} />
+          <>
+            {/* Planning lanes — Top 3 + Inbox above the timeline (spec §11). */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <Top3Lane ownerId={userTableId} viewDate={viewDate} />
+              <InboxLane ownerId={userTableId} viewDate={viewDate} />
+            </div>
+
+            <TodaysTimeline key={viewDate} ownerId={userTableId} onDate={viewDate} />
+
+            {/* Watching lane below the timeline — collapsible, hides when empty. */}
+            <WatchingLane assignerId={userTableId} />
+          </>
         ) : (
           <div className="text-sm" style={{ color: COLORS.slate }}>
             Not authenticated.
