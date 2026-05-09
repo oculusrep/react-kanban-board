@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Draggable, Droppable } from '@hello-pangea/dnd';
 import { unscheduleTask } from '../../../hooks/useTaskBlocks';
 import {
@@ -8,6 +8,12 @@ import {
 } from '../../../types/taskBlock';
 import BlockTaskPicker from './BlockTaskPicker';
 import BlockEditModal from './BlockEditModal';
+import PipelineGroupedView from './PipelineGroupedView';
+
+// Per-user persisted preference for the Pipeline-grouped-by-client toggle
+// (spec §15.2). Per-browser, not synced — Phase 2.5 doesn't need user-prefs
+// infrastructure for this.
+const GROUPED_PREF_KEY = 'tasks-v2.pipeline-grouped-by-client';
 
 // Renders one task_block_instance with its queued tasks.
 // Read-only in PR 5; PR 6 wires drag-to-reorder + add/remove, PR 7 wires
@@ -75,6 +81,15 @@ export const BlockRow: React.FC<BlockRowProps> = ({
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const isPipeline = instance.category === 'pipeline';
+  const [grouped, setGrouped] = useState<boolean>(() => {
+    if (!isPipeline || typeof window === 'undefined') return false;
+    return window.localStorage.getItem(GROUPED_PREF_KEY) === '1';
+  });
+  useEffect(() => {
+    if (!isPipeline || typeof window === 'undefined') return;
+    window.localStorage.setItem(GROUPED_PREF_KEY, grouped ? '1' : '0');
+  }, [grouped, isPipeline]);
   const status = (instance.status ?? 'scheduled') as TaskBlockInstanceStatus;
   const isSkipped = status === 'skipped';
   const taskCount = instance.scheduled_tasks?.length ?? 0;
@@ -149,6 +164,23 @@ export const BlockRow: React.FC<BlockRowProps> = ({
               <span className="text-xs whitespace-nowrap" style={{ color: COLORS.slate }}>
                 {taskCount} {taskCount === 1 ? 'task' : 'tasks'}
               </span>
+              {isPipeline && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGrouped((v) => !v);
+                  }}
+                  className="text-xs px-1.5 py-0.5 rounded hover:bg-gray-100"
+                  style={{
+                    color: grouped ? COLORS.midnight : COLORS.steel,
+                    fontWeight: grouped ? 600 : undefined,
+                  }}
+                  title={grouped ? 'Switch to flat view' : 'Group by client'}
+                >
+                  {grouped ? '⊞ Grouped' : '⊟ Flat'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={(e) => {
@@ -188,8 +220,18 @@ export const BlockRow: React.FC<BlockRowProps> = ({
             </div>
           </div>
 
-          {/* Task list — droppable so cross-block drags can land in empty blocks */}
-          {!isSkipped && (
+          {/* Pipeline grouped-by-client view — drag-rank disabled here per
+              spec §15.2 (visual rollup only; toggle to Flat to reorder). */}
+          {!isSkipped && isPipeline && grouped && (
+            <PipelineGroupedView
+              instance={instance}
+              onTaskClick={onTaskClick}
+              onChanged={onChanged}
+            />
+          )}
+
+          {/* Flat (default) view — droppable so cross-block drags can land in empty blocks */}
+          {!isSkipped && !(isPipeline && grouped) && (
             <Droppable droppableId={instance.id}>
               {(provided, snapshot) => (
                 <div
