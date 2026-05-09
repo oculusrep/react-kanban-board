@@ -12,6 +12,7 @@ import {
   TaskCategory,
   TaskWithRelations,
 } from '../../types/task';
+import { localDateString } from '../../types/taskBlock';
 import TaskLinksEditor from './TaskLinksEditor';
 
 // Composable task detail slideout per docs/OVIS_OVERLAY_UX.md.
@@ -116,6 +117,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
   const [dueDate, setDueDate] = useState('');
   const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
   const [highFlag, setHighFlag] = useState(false);
+  const [top3Date, setTop3Date] = useState<string | null>(null);
   const [completionNote, setCompletionNote] = useState('');
   const [completedAtInput, setCompletedAtInput] = useState(''); // editable timestamp
   const [saving, setSaving] = useState(false);
@@ -148,6 +150,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
         setDueDate(dateToInput(t.due_at));
         setDurationMinutes(t.duration_minutes ?? null);
         setHighFlag(t.high_flag);
+        setTop3Date(t.top3_date ?? null);
         setCompletionNote(t.completion_note ?? '');
         setCompletedAtInput(isoToDatetimeLocal(t.completed_at));
         setDirty(false);
@@ -208,6 +211,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
         due_at: inputToIso(dueDate),
         duration_minutes: durationMinutes,
         high_flag: highFlag,
+        top3_date: top3Date,
         completion_note: completionNote || null,
       };
       if (completed) {
@@ -516,6 +520,27 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                   }}
                 />
                 ⚑ High priority
+              </label>
+
+              {/* Top 3 today pin (Phase 2.5, spec §6.2 #1). Toggles top3_date
+                  between today's local date and null. Future-day pinning is
+                  available by setting top3_date elsewhere; the slideout only
+                  exposes the dominant case. */}
+              <label className="flex items-center gap-2 text-sm" style={{ color: COLORS.steel }}>
+                <input
+                  type="checkbox"
+                  checked={!!top3Date && top3Date === localDateString()}
+                  onChange={(e) => {
+                    setTop3Date(e.target.checked ? localDateString() : null);
+                    markDirty();
+                  }}
+                />
+                ★ Pin to Top 3 today
+                {top3Date && top3Date !== localDateString() && (
+                  <span className="text-xs ml-1" style={{ color: COLORS.slate }}>
+                    (currently pinned for {top3Date})
+                  </span>
+                )}
               </label>
 
               {/* Linked to — editable; add / change / clear any of the six

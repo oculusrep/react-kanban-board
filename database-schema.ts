@@ -12693,6 +12693,7 @@ export type Database = {
           duration_minutes: number | null
           high_flag: boolean
           id: string
+          is_inbox: boolean
           last_activity_at: string | null
           migrated_from_activity_id: string | null
           owner_id: string
@@ -12724,6 +12725,7 @@ export type Database = {
           duration_minutes?: number | null
           high_flag?: boolean
           id?: string
+          is_inbox?: boolean
           last_activity_at?: string | null
           migrated_from_activity_id?: string | null
           owner_id: string
@@ -12755,6 +12757,7 @@ export type Database = {
           duration_minutes?: number | null
           high_flag?: boolean
           id?: string
+          is_inbox?: boolean
           last_activity_at?: string | null
           migrated_from_activity_id?: string | null
           owner_id?: string

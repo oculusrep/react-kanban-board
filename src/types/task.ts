@@ -80,7 +80,7 @@ export interface QuickAddTaskInput {
   contact_id?: string | null;
 }
 
-// Filters for the all-tasks view (spec §15.3)
+// Filters for the all-tasks view (spec §15.3) and the dashboard lanes (Phase 2.5).
 export interface TaskListFilters {
   status?: TaskStatus | TaskStatus[];
   category?: TaskCategory | TaskCategory[];
@@ -100,6 +100,14 @@ export interface TaskListFilters {
   due_after?: string;
   // Free text on subject + description
   search?: string;
+  // Phase 2.5 — dashboard lanes
+  is_inbox?: boolean;
+  /** YYYY-MM-DD; matches tasks pinned to Top 3 for that specific date. */
+  top3_date?: string;
+  /** Filters to tasks that current_user delegated (assigned_by_id = X). Pair with owner_id_not for the Watching lane. */
+  assigned_by_id?: string;
+  /** "Tasks where owner_id is not this user" — for the Watching lane (delegated to others). */
+  owner_id_not?: string;
 }
 
 // Default category mapping when quick-capturing from an object page (spec §7.2).
