@@ -42,6 +42,7 @@ import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
 import DropboxSyncAdminPage from "./pages/DropboxSyncAdminPage";
 import TasksPage from "./pages/TasksPage";
 import BlockTemplateSettingsPage from "./pages/BlockTemplateSettingsPage";
+import TasksDashboardPreviewPage from "./pages/TasksDashboardPreviewPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserManagementPage from "./pages/UserManagementPage";
@@ -147,6 +148,7 @@ function App() {
           <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
           <Route path="tasks" element={<CoachRoute><TasksPage /></CoachRoute>} />
           <Route path="settings/time-blocks" element={<CoachRoute><BlockTemplateSettingsPage /></CoachRoute>} />
+          <Route path="tasks-dashboard-preview" element={<CoachRoute><TasksDashboardPreviewPage /></CoachRoute>} />
           <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />
           <Route path="deal/new" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
