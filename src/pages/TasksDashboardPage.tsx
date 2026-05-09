@@ -5,7 +5,9 @@ import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
 import Top3Lane from '../components/tasks/dashboard/Top3Lane';
 import InboxLane from '../components/tasks/dashboard/InboxLane';
 import WatchingLane from '../components/tasks/dashboard/WatchingLane';
+import ConflictsLane from '../components/tasks/dashboard/ConflictsLane';
 import BrainDumpModal from '../components/tasks/BrainDumpModal';
+import { triggerSyncNow, useGoogleCalendarConnection } from '../hooks/useGoogleCalendar';
 import { localDateString } from '../types/taskBlock';
 
 // Phase 2 dashboard mounted at /tasks. The flat all-tasks list now lives at
@@ -44,8 +46,23 @@ export const TasksDashboardPage: React.FC = () => {
   // Bumped after Brain Dump saves so the InboxLane keys-remount and pulls
   // the new tasks. Cheap; the lane is small.
   const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const { connection: calendarConnection } = useGoogleCalendarConnection(userTableId);
   const isViewingToday = viewDate === today;
   const headerLabel = isViewingToday ? "Today's Timeline" : "Tomorrow's Plan";
+
+  const handleSyncCalendar = async () => {
+    if (!userTableId) return;
+    setSyncing(true);
+    try {
+      await triggerSyncNow(userTableId);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: COLORS.bg }}>
@@ -71,6 +88,22 @@ export const TasksDashboardPage: React.FC = () => {
             >
               🧠 Brain Dump
             </button>
+            {calendarConnection?.is_active && (
+              <button
+                type="button"
+                onClick={handleSyncCalendar}
+                disabled={syncing}
+                className="text-xs font-medium px-2.5 py-1 rounded border disabled:opacity-50"
+                style={{
+                  borderColor: COLORS.slate,
+                  color: COLORS.midnight,
+                  backgroundColor: COLORS.white,
+                }}
+                title="Sync Google Calendar now (cron also runs every 5 min)"
+              >
+                {syncing ? '↻ Syncing…' : '↻ Sync'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() =>
@@ -104,10 +137,11 @@ export const TasksDashboardPage: React.FC = () => {
 
         {userTableId ? (
           <>
-            {/* Planning lanes — Top 3 + Inbox above the timeline (spec §11). */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            {/* Planning lanes — Top 3 / Inbox / Conflicts above the timeline (spec §11). */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <Top3Lane ownerId={userTableId} viewDate={viewDate} />
               <InboxLane key={inboxRefreshKey} ownerId={userTableId} viewDate={viewDate} />
+              <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
             </div>
 
             <TodaysTimeline key={viewDate} ownerId={userTableId} onDate={viewDate} />

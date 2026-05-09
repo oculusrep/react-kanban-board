@@ -4621,6 +4621,59 @@ export type Database = {
         }
         Relationships: []
       }
+      external_calendar_event: {
+        Row: {
+          description: string | null
+          end_at: string
+          google_event_id: string
+          html_link: string | null
+          id: string
+          is_all_day: boolean
+          location: string | null
+          pulled_at: string
+          start_at: string
+          status: string | null
+          subscription_id: string
+          summary: string | null
+        }
+        Insert: {
+          description?: string | null
+          end_at: string
+          google_event_id: string
+          html_link?: string | null
+          id?: string
+          is_all_day?: boolean
+          location?: string | null
+          pulled_at?: string
+          start_at: string
+          status?: string | null
+          subscription_id: string
+          summary?: string | null
+        }
+        Update: {
+          description?: string | null
+          end_at?: string
+          google_event_id?: string
+          html_link?: string | null
+          id?: string
+          is_all_day?: boolean
+          location?: string | null
+          pulled_at?: string
+          start_at?: string
+          status?: string | null
+          subscription_id?: string
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_calendar_event_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "google_calendar_subscription"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_snapshot: {
         Row: {
           created_at: string | null
@@ -4763,6 +4816,100 @@ export type Database = {
           year?: number
         }
         Relationships: []
+      }
+      google_calendar_connection: {
+        Row: {
+          access_token: string
+          created_at: string
+          google_email: string
+          id: string
+          is_active: boolean | null
+          last_sync_at: string | null
+          refresh_token: string
+          sync_error: string | null
+          sync_error_at: string | null
+          token_expires_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          google_email: string
+          id?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          refresh_token: string
+          sync_error?: string | null
+          sync_error_at?: string | null
+          token_expires_at: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          google_email?: string
+          id?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          refresh_token?: string
+          sync_error?: string | null
+          sync_error_at?: string | null
+          token_expires_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_connection_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_calendar_subscription: {
+        Row: {
+          color_hex: string | null
+          connection_id: string
+          created_at: string
+          display_name: string | null
+          enabled: boolean
+          google_calendar_id: string
+          id: string
+          last_synced_at: string | null
+        }
+        Insert: {
+          color_hex?: string | null
+          connection_id: string
+          created_at?: string
+          display_name?: string | null
+          enabled?: boolean
+          google_calendar_id: string
+          id?: string
+          last_synced_at?: string | null
+        }
+        Update: {
+          color_hex?: string | null
+          connection_id?: string
+          created_at?: string
+          display_name?: string | null
+          enabled?: boolean
+          google_calendar_id?: string
+          id?: string
+          last_synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_subscription_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "google_calendar_connection"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       google_places_api_log: {
         Row: {
