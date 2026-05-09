@@ -7,6 +7,7 @@ import {
   TaskBlockInstanceStatus,
 } from '../../../types/taskBlock';
 import BlockTaskPicker from './BlockTaskPicker';
+import BlockEditModal from './BlockEditModal';
 
 // Renders one task_block_instance with its queued tasks.
 // Read-only in PR 5; PR 6 wires drag-to-reorder + add/remove, PR 7 wires
@@ -73,6 +74,7 @@ export const BlockRow: React.FC<BlockRowProps> = ({
   onChanged,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const status = (instance.status ?? 'scheduled') as TaskBlockInstanceStatus;
   const isSkipped = status === 'skipped';
   const taskCount = instance.scheduled_tasks?.length ?? 0;
@@ -147,6 +149,18 @@ export const BlockRow: React.FC<BlockRowProps> = ({
               <span className="text-xs whitespace-nowrap" style={{ color: COLORS.slate }}>
                 {taskCount} {taskCount === 1 ? 'task' : 'tasks'}
               </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditOpen(true);
+                }}
+                className="text-xs px-1.5 py-0.5 rounded hover:bg-gray-100"
+                style={{ color: COLORS.steel }}
+                title="Edit block"
+              >
+                ✎
+              </button>
               {!isSkipped && (
                 <button
                   type="button"
@@ -257,6 +271,13 @@ export const BlockRow: React.FC<BlockRowProps> = ({
           )}
         </div>
       </div>
+      {editOpen && (
+        <BlockEditModal
+          instance={instance}
+          onClose={() => setEditOpen(false)}
+          onChanged={onChanged}
+        />
+      )}
     </div>
   );
 };

@@ -5,11 +5,13 @@ import {
   ensureInstancesForDate,
   moveScheduledTask,
   useBlockInstancesForDate,
+  useTaskBlockTemplates,
 } from '../../../hooks/useTaskBlocks';
 import { MANUAL_RANK_STEP, localDateString } from '../../../types/taskBlock';
 import AdHocBlockCreator from './AdHocBlockCreator';
 import BlockRow from './BlockRow';
 import TaskDetailSlideout from '../TaskDetailSlideout';
+import TodaysTasksList from './TodaysTasksList';
 
 // Today's Timeline lane (spec §11). Reads block instances for one (owner, date)
 // and renders them chronologically with their queued tasks.
@@ -58,6 +60,13 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
   const { instances, loading, error, refetch } = useBlockInstancesForDate({
     ownerId,
     onDate,
+  });
+  // Used by the empty-state branch to decide between "no templates → show
+  // the simple Today's Tasks list" (spec §11.1) vs "templates exist but
+  // none today → show the empty-day message".
+  const { templates, loading: templatesLoading } = useTaskBlockTemplates({
+    ownerId,
+    activeOnly: true,
   });
 
   // Idempotent — safe to fire on every (owner,date) change. Refetch after
@@ -158,7 +167,7 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
     );
   }
 
-  if (loading || generating) {
+  if (loading || generating || templatesLoading) {
     return (
       <div className="p-4 text-sm" style={{ color: COLORS.slate }}>
         Loading timeline…
@@ -167,23 +176,41 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
   }
 
   if (instances.length === 0) {
+    // Spec §11.1: when the user has no active templates AND no instances,
+    // render the simplified Today's Tasks list. Templates that exist but
+    // don't run today get the lighter "no blocks for this date" message
+    // instead — the user knows blocks are set up; today just isn't one.
+    if (templates.length === 0) {
+      return (
+        <>
+          <div className="flex justify-end mb-2">
+            <AdHocBlockCreator ownerId={ownerId} onDate={onDate} onCreated={refetch} />
+          </div>
+          <TodaysTasksList ownerId={ownerId} viewDate={onDate} />
+        </>
+      );
+    }
     return (
       <>
-        <AdHocBlockCreator ownerId={ownerId} onDate={onDate} onCreated={refetch} />
+        <div className="flex justify-end mb-2">
+          <AdHocBlockCreator ownerId={ownerId} onDate={onDate} onCreated={refetch} />
+        </div>
         <div
           className="bg-white rounded-lg border p-6 text-center"
           style={{ borderColor: COLORS.slate + '66' }}
         >
           <p className="text-sm mb-2" style={{ color: COLORS.steel }}>
-            No time blocks for {isToday ? 'today' : 'this date'}.
+            No time blocks for {isToday ? 'today' : 'this date'}. Add an ad-hoc block above
+            or{' '}
+            <Link
+              to="/settings/time-blocks"
+              className="font-medium hover:underline"
+              style={{ color: COLORS.midnight }}
+            >
+              edit templates
+            </Link>
+            .
           </p>
-          <Link
-            to="/settings/time-blocks"
-            className="text-sm font-medium hover:underline"
-            style={{ color: COLORS.midnight }}
-          >
-            Set up time blocks →
-          </Link>
         </div>
       </>
     );
