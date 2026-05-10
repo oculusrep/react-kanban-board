@@ -10,6 +10,7 @@ import {
   useBlockInstancesForDate,
 } from '../../../hooks/useTaskBlocks';
 import { TaskCategory, TaskWithRelations } from '../../../types/task';
+import CategoryDropdown from '../CategoryDropdown';
 import TaskDetailSlideout from '../TaskDetailSlideout';
 
 // Inbox lane (spec §7.4). Holds untriaged tasks: brand-new assignments,
@@ -23,8 +24,6 @@ const COLORS = {
   white: '#FFFFFF',
   bg: '#F8FAFC',
 } as const;
-
-const CATEGORIES: TaskCategory[] = ['prospecting', 'pipeline', 'ovis', 'email', 'personal', 'other'];
 
 interface InboxLaneProps {
   ownerId: string;
@@ -160,23 +159,11 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
                   {ageLabel(task.created_at)}
                 </div>
                 <div className="flex items-center gap-1 mt-1 flex-wrap">
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) handleSetCategory(task, e.target.value as TaskCategory);
-                    }}
-                    className="text-[11px] px-1 py-0.5 rounded border"
-                    style={{ borderColor: COLORS.slate, color: COLORS.steel }}
-                  >
-                    <option value="" disabled>
-                      Category…
-                    </option>
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <CategoryDropdown
+                    value={task.category ?? null}
+                    onChange={(c) => handleSetCategory(task, c)}
+                  />
+
                   {instances.length > 0 && (
                     <select
                       value=""
