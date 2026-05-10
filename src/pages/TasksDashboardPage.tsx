@@ -66,7 +66,7 @@ export const TasksDashboardPage: React.FC = () => {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: COLORS.bg }}>
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-baseline justify-between mb-4">
           <h1 className="text-2xl font-bold" style={{ color: COLORS.midnight }}>
             {headerLabel}
