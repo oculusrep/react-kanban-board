@@ -8,11 +8,9 @@ import {
   updateTask,
 } from '../../hooks/useTasks';
 import { supabase } from '../../lib/supabaseClient';
-import {
-  TaskCategory,
-  TaskWithRelations,
-} from '../../types/task';
+import { TaskWithRelations } from '../../types/task';
 import { localDateString } from '../../types/taskBlock';
+import CategoryDropdown from './CategoryDropdown';
 import TaskLinksEditor from './TaskLinksEditor';
 
 // Composable task detail slideout per docs/OVIS_OVERLAY_UX.md.
@@ -39,15 +37,6 @@ const COLORS = {
 } as const;
 
 const ASSIGNABLE_ROLES = new Set(['broker_full', 'va', 'admin']);
-
-const CATEGORIES: { value: TaskCategory; label: string }[] = [
-  { value: 'prospecting', label: 'Prospecting' },
-  { value: 'pipeline', label: 'Pipeline' },
-  { value: 'ovis', label: 'OVIS' },
-  { value: 'email', label: 'Email' },
-  { value: 'personal', label: 'Personal' },
-  { value: 'other', label: 'Other' },
-];
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120] as const;
 
@@ -112,7 +101,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
   // Editable form state
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<TaskCategory>('personal');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [ownerId, setOwnerId] = useState<string>('');
   const [dueDate, setDueDate] = useState('');
   const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
@@ -145,7 +134,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
         setTask(t);
         setSubject(t.subject);
         setDescription(t.description ?? '');
-        setCategory((t.category as TaskCategory) ?? 'personal');
+        setCategoryId(t.category_id ?? null);
         setOwnerId(t.owner_id);
         setDueDate(dateToInput(t.due_at));
         setDurationMinutes(t.duration_minutes ?? null);
@@ -202,7 +191,9 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
       const patch: Parameters<typeof updateTask>[1] = {
         subject: subject.trim(),
         description: description || null,
-        category,
+        // updateTask backfills the legacy category text from category_id
+        // via lib/taskCategory, so the text column stays in sync.
+        category_id: categoryId ?? task.category_id,
         owner_id: ownerId || task.owner_id,
         assigned_by_id:
           ownerId && ownerId !== userTableId && userTableId !== task.assigned_by_id
@@ -429,21 +420,15 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                   <label className="text-xs font-medium" style={{ color: COLORS.steel }}>
                     Category
                   </label>
-                  <select
-                    value={category}
-                    onChange={(e) => {
-                      setCategory(e.target.value as TaskCategory);
-                      markDirty();
-                    }}
-                    className="mt-1 w-full px-2 py-1.5 text-sm rounded border"
-                    style={{ borderColor: COLORS.slate, color: COLORS.steel }}
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mt-1">
+                    <CategoryDropdown
+                      value={categoryId}
+                      onChange={(catId) => {
+                        setCategoryId(catId);
+                        markDirty();
+                      }}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-medium" style={{ color: COLORS.steel }}>
