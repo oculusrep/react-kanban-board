@@ -26,6 +26,7 @@ const COLORS = {
   white: '#FFFFFF',
   bg: '#F8FAFC',
   accent: '#3B82F6',
+  warning: '#A27B5C',
 } as const;
 
 const formatTime12 = (t: string): string => {
@@ -99,6 +100,25 @@ export const BlockRow: React.FC<BlockRowProps> = ({
 
   const accent = isCurrent ? COLORS.accent : COLORS.slate;
   const taskIdsInThisBlock = (instance.scheduled_tasks ?? []).map((st) => st.task.id);
+
+  // Capacity: sum of scheduled task durations vs the block's own duration.
+  // Tasks without a duration_minutes contribute 0 (treat as "TBD"). When
+  // the sum exceeds the block, the bar turns terracotta and an explicit
+  // overbook indicator renders below the bar.
+  const scheduledMinutes = (instance.scheduled_tasks ?? []).reduce(
+    (sum, st) => sum + (st.task.duration_minutes ?? 0),
+    0
+  );
+  const blockMinutes = instance.duration_minutes;
+  const capacityPct = blockMinutes > 0
+    ? Math.min(100, Math.round((scheduledMinutes / blockMinutes) * 100))
+    : 0;
+  const overbookedMinutes = Math.max(0, scheduledMinutes - blockMinutes);
+  const isOverbooked = overbookedMinutes > 0;
+  const isAtCapacity = !isOverbooked && scheduledMinutes >= blockMinutes && blockMinutes > 0;
+  const tasksMissingDuration = (instance.scheduled_tasks ?? []).filter(
+    (st) => st.task.duration_minutes == null
+  ).length;
 
   const handleRemove = async (e: React.MouseEvent, taskId: string) => {
     e.stopPropagation();
@@ -219,6 +239,56 @@ export const BlockRow: React.FC<BlockRowProps> = ({
               )}
             </div>
           </div>
+
+          {/* Capacity bar (spec §6.10): shows how full the block is based on
+              scheduled task durations. Slate fill while under capacity,
+              terracotta when overbooked. Skipped blocks hide the bar. */}
+          {!isSkipped && (
+            <div className="mt-1.5">
+              <div
+                className="relative h-1.5 rounded overflow-hidden"
+                style={{ backgroundColor: COLORS.slate + '22' }}
+                title={
+                  isOverbooked
+                    ? `Overbooked by ${overbookedMinutes} min — ${scheduledMinutes}/${blockMinutes} scheduled`
+                    : `${scheduledMinutes}/${blockMinutes} min scheduled`
+                }
+              >
+                <div
+                  className="h-full transition-all"
+                  style={{
+                    width: `${capacityPct}%`,
+                    backgroundColor: isOverbooked
+                      ? COLORS.warning
+                      : isAtCapacity
+                      ? COLORS.accent
+                      : COLORS.steel,
+                  }}
+                />
+              </div>
+              <div
+                className="mt-0.5 flex items-center justify-between text-[10px]"
+                style={{
+                  color: isOverbooked ? COLORS.warning : COLORS.slate,
+                }}
+              >
+                <span>
+                  {scheduledMinutes}/{blockMinutes} min scheduled
+                  {tasksMissingDuration > 0 && (
+                    <span style={{ color: COLORS.slate }}>
+                      {' '}
+                      ({tasksMissingDuration} task{tasksMissingDuration === 1 ? '' : 's'} missing duration)
+                    </span>
+                  )}
+                </span>
+                {isOverbooked && (
+                  <span style={{ fontWeight: 600 }}>
+                    ⚠ Over by {overbookedMinutes} min
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Pipeline grouped-by-client view — drag-rank disabled here per
               spec §15.2 (visual rollup only; toggle to Flat to reorder). */}

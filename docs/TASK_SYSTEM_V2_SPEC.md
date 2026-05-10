@@ -368,6 +368,19 @@ A blocked task can still be pinned to Top 3, scheduled, or due-dated — all of 
 
 Future (deferred): an optional `blocked_until date` for auto-resurface (e.g., "remind me in 3 days if no reply") and a manual nudge action that bumps the assignee.
 
+### 6.10 Block capacity (added 2026-05-10)
+
+Each block on the timeline shows a small capacity bar comparing the sum of scheduled task `duration_minutes` to the block's own `duration_minutes`. The bar fills as you schedule tasks into a block — slate while under capacity, brand blue (`accent`) when exactly at capacity, and brand terracotta (`warning`) when overbooked.
+
+Below the bar:
+- A line reads "X/Y min scheduled" so the absolute numbers are visible at a glance.
+- If any tasks in the block lack a duration, append "(N tasks missing duration)" so the math isn't silently distorted.
+- If overbooked, append "⚠ Over by N min" in terracotta with bold weight.
+
+This is a visual-only safeguard — nothing prevents an overbook (the user might intentionally cluster a lot of small tasks knowing some will slip). It just makes the situation visible without doing math in your head.
+
+The full calendar-style proportional layout (block heights pixel-proportional to duration; meeting events overlaid as fixed-height blocks) is a deferred follow-up; it's the natural next step once this signal proves itself in real use.
+
 ---
 
 ## 7. Object Linking & Capture

@@ -90,6 +90,15 @@ Run tests in order. Each one is independent enough that a failure on test N does
 - [ ] **6.1** Open `/tasks/all` → category filter dropdown shows the 6 seeded categories AND any user-defined ones (global + your personals).
 - [ ] **6.2** Pick a custom category from the filter → table shows only tasks with that category.
 
+## PR 7b — Block capacity bar
+
+- [ ] **7b.1** Each block on the timeline shows a thin horizontal bar near the header.
+- [ ] **7b.2** The bar's fill width matches the % of the block consumed by scheduled task durations. Verify on a block with one ~half-duration task.
+- [ ] **7b.3** Schedule tasks until the block is exactly at capacity → bar turns brand blue (`accent`) and reads "X/X min scheduled".
+- [ ] **7b.4** Schedule one more task → bar turns terracotta (`warning`) AND a "⚠ Over by N min" indicator appears.
+- [ ] **7b.5** Add a task with no `duration_minutes` to a block → label reads "(N tasks missing duration)".
+- [ ] **7b.6** A skipped block does not show the capacity bar (per `!isSkipped` guard).
+
 ## PR 7 — gcal-sync cron 401 fix
 
 - [ ] **7.1** **Required first**: in Supabase dashboard → Edge Function Secrets, add `CRON_SECRET` = the value generated this session (provided in chat).
