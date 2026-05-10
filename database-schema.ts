@@ -13269,27 +13269,33 @@ export type Database = {
       }
       task_category: {
         Row: {
+          archived_at: string | null
           color: string
           created_at: string
           created_by_id: string | null
           id: string
           name: string
+          scope: string
           sort_order: number
         }
         Insert: {
+          archived_at?: string | null
           color?: string
           created_at?: string
           created_by_id?: string | null
           id?: string
           name: string
+          scope?: string
           sort_order?: number
         }
         Update: {
+          archived_at?: string | null
           color?: string
           created_at?: string
           created_by_id?: string | null
           id?: string
           name?: string
+          scope?: string
           sort_order?: number
         }
         Relationships: [

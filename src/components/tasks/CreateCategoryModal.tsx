@@ -6,6 +6,7 @@ import {
   TASK_CATEGORY_COLORS,
   TaskCategoryColor,
   TaskCategoryRow,
+  TaskCategoryScope,
 } from '../../types/task';
 
 // Modal for creating a new task_category. Matches OVIS modal style
@@ -45,6 +46,7 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
   const { userTableId } = useAuth();
   const [name, setName] = useState('');
   const [color, setColor] = useState<TaskCategoryColor>('blue');
+  const [scope, setScope] = useState<TaskCategoryScope>('personal');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +55,7 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
     if (!isOpen) return;
     setName('');
     setColor('blue');
+    setScope('personal');
     setError(null);
     setSubmitting(false);
     const t = setTimeout(() => inputRef.current?.focus(), 50);
@@ -78,11 +81,13 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
     setError(null);
     try {
       // sort_order: place new categories at the bottom by default.
+      // Personal categories require created_by_id (DB CHECK constraint).
       const { data, error: insertError } = await supabase
         .from('task_category')
         .insert({
           name: trimmed,
           color,
+          scope,
           sort_order: 1000,
           created_by_id: userTableId ?? null,
         })
@@ -90,7 +95,8 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
         .single();
       if (insertError) {
         if (insertError.code === '23505') {
-          setError(`A category named "${trimmed}" already exists.`);
+          const where = scope === 'global' ? 'team-wide' : 'in your personal categories';
+          setError(`A category named "${trimmed}" already exists ${where}.`);
         } else {
           setError(insertError.message);
         }
@@ -119,7 +125,7 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
                 New category
               </h3>
               <p className="mt-1 text-sm" style={{ color: COLORS.steel }}>
-                Adds a category to the team-wide list. All OVIS users will see it.
+                Choose whether this category is just yours or visible to the whole team.
               </p>
             </div>
             <button
@@ -150,6 +156,41 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
                 maxLength={40}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
+            </div>
+
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: COLORS.steel }}
+              >
+                Visibility
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScope('personal')}
+                  disabled={submitting}
+                  className={`flex-1 px-3 py-2 text-sm rounded border transition-colors ${
+                    scope === 'personal'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Just me
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('global')}
+                  disabled={submitting}
+                  className={`flex-1 px-3 py-2 text-sm rounded border transition-colors ${
+                    scope === 'global'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Team-wide
+                </button>
+              </div>
             </div>
 
             <div>

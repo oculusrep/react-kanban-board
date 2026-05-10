@@ -193,20 +193,57 @@ task_outreach_draft                                  -- replaces hunter_outreach
 
 ### 5.1 Categories
 
-Categories are **team-wide and user-extensible** since 2026-05-10. They live in the `task_category` table — `id`, `name` (unique), `color` (palette key: `amber | blue | indigo | gray | green | slate | red | teal`), `sort_order`, `created_at`, `created_by_id`. `task.category_id` is a NOT NULL FK on this table.
+Categories live in the `task_category` table. Each row has:
+- `id` (uuid)
+- `name` (free text, any case the user types)
+- `color` (palette key: `amber | blue | indigo | gray | green | slate | red | teal`)
+- `scope` (`global` or `personal`)
+- `sort_order` (int)
+- `created_at`, `created_by_id`
+- `archived_at` (nullable — soft delete)
 
-Seeded set (created at migration time; users can add more inline from the Inbox dropdown via "+ New category…"):
+`task.category_id` is a NOT NULL FK on this table.
 
-| Category | Color | Use |
+#### Scope
+
+- **`global`** — visible to every user. The original 6 seeded categories live here.
+- **`personal`** — visible only to the `created_by_id` user. Defaults to this when a user creates a new category from the Inbox dropdown, so they don't accidentally pollute the shared list.
+
+Seeded set:
+
+| Category | Color | Scope | Use |
+|---|---|---|---|
+| `prospecting` | amber | global | Outbound calls, follow-ups, Hunter-driven outreach |
+| `pipeline` | blue | global | Active deal/client work |
+| `ovis` | indigo | global | System design, building, internal projects |
+| `email` | gray | global | Inbox triage, replies |
+| `personal` | green | global | Personal reminders and standalone tasks |
+| `other` | slate | global | Catch-all (default for Brain Dump and Quick Capture) |
+
+#### Uniqueness
+
+Case-insensitive within scope:
+- `global`: `lower(name)` is unique across all global categories.
+- `personal`: `lower(name) + created_by_id` is unique. Two users can each have their own personal "Bookkeeping"; they do not collide.
+
+A personal "Bookkeeping" can coexist with a global "bookkeeping" (different scopes). The dropdown groups them visually so the distinction is clear.
+
+#### Edit + delete permissions
+
+| Category scope | Who can edit (rename / change color) | Who can archive |
 |---|---|---|
-| `prospecting` | amber | Outbound calls, follow-ups, Hunter-driven outreach |
-| `pipeline` | blue | Active deal/client work |
-| `ovis` | indigo | System design, building, internal projects |
-| `email` | gray | Inbox triage, replies |
-| `personal` | green | Personal reminders and standalone tasks |
-| `other` | slate | Catch-all (default for Brain Dump and Quick Capture) |
+| `global` | Admin (`user.ovis_role = 'admin'`) only | Admin only |
+| `personal` | Owner OR admin | Owner OR admin |
 
-Names are stored lowercase to keep the list consistent. Color is rendered as the pill background everywhere a task surface (Inbox / Top 3 / All Tasks) renders the category chip.
+Archive = soft delete: sets `archived_at = now()`. Archived categories disappear from `CategoryDropdown` but tasks that already reference one continue to render the chip. Restore by clearing `archived_at`.
+
+#### UI
+
+- Dropdown groups: **Team** (globals, ordered by `sort_order` then name), divider, **Mine** (visible personals).
+- Pencil icon next to each row the current user can edit (`canEditCategory` helper). Opens the `EditCategoryModal`.
+- "+ New category…" pinned at the bottom — opens `CreateCategoryModal` with a Just me / Team-wide scope toggle (default Just me).
+
+#### Legacy compatibility
 
 The legacy `task.category` text column is retained during the migration window and kept in sync by `updateTask` so older UI (TaskDetailSlideout's native `<select>`) keeps working until it's migrated to the new dropdown. Will be dropped in a follow-up migration once the FK is load-bearing in prod.
 

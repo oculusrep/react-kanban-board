@@ -8,10 +8,15 @@ export type TaskUpdate = Database['public']['Tables']['task']['Update'];
 export type TaskProject = Database['public']['Tables']['task_project']['Row'];
 export type TaskProjectInsert = Database['public']['Tables']['task_project']['Insert'];
 
-// task_category table — team-wide list of categories. Users can add more
-// inline from the Inbox dropdown. Replaces the old fixed CHECK enum.
+// task_category table — categories live here. Each row is either
+// scope='global' (visible to everyone, originally the 6 seeded values)
+// or scope='personal' (visible only to created_by_id). Users add more
+// inline from the Inbox dropdown. Soft-deletable via archived_at.
 export type TaskCategoryRow = Database['public']['Tables']['task_category']['Row'];
 export type TaskCategoryRowInsert = Database['public']['Tables']['task_category']['Insert'];
+export type TaskCategoryRowUpdate = Database['public']['Tables']['task_category']['Update'];
+
+export type TaskCategoryScope = 'global' | 'personal';
 
 // Palette keys for task_category.color — must match the CHECK constraint.
 export type TaskCategoryColor =
