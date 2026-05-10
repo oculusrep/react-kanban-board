@@ -25,9 +25,11 @@ interface Top3LaneProps {
   ownerId: string;
   /** Local YYYY-MM-DD per CLAUDE.md timezone guidance. */
   viewDate: string;
+  /** Bump shared dashboard refresh signal so peer lanes refetch. */
+  onTaskChanged?: () => void;
 }
 
-export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate }) => {
+export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate, onTaskChanged }) => {
   const { userTableId } = useAuth();
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const { tasks, loading, error, refetch } = useTaskList({
@@ -40,7 +42,7 @@ export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate }) => {
     e.stopPropagation();
     try {
       await updateTask(task.id, { top3_date: null });
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Unpin failed');
@@ -52,7 +54,7 @@ export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate }) => {
     if (!userTableId) return;
     try {
       await completeTask(task.id, { actor_user_id: userTableId });
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Complete failed');

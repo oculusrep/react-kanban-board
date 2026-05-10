@@ -12854,6 +12854,7 @@ export type Database = {
           status: string
           subject: string
           top3_date: string | null
+          triaged_at: string | null
           updated_at: string
         }
         Insert: {
@@ -12886,6 +12887,7 @@ export type Database = {
           status?: string
           subject: string
           top3_date?: string | null
+          triaged_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -12918,6 +12920,7 @@ export type Database = {
           status?: string
           subject?: string
           top3_date?: string | null
+          triaged_at?: string | null
           updated_at?: string
         }
         Relationships: [

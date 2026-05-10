@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { recomputeIsInbox } from '../lib/taskInbox';
 import { postTaskCompletionToTimelines } from '../lib/taskTimelinePost';
 import {
   Task,
@@ -177,29 +178,40 @@ export async function createTask(input: TaskInsert): Promise<Task> {
 }
 
 export async function updateTask(id: string, patch: TaskUpdate): Promise<Task> {
-  // Phase 2.5: any explicit category change or Top-3 pin counts as triage —
-  // clear is_inbox unless the caller already specified a value.
-  const finalPatch: TaskUpdate = { ...patch };
-  const categoryChanged = patch.category !== undefined;
-  const top3Pinned = patch.top3_date !== undefined && patch.top3_date !== null;
-  if ((categoryChanged || top3Pinned) && finalPatch.is_inbox === undefined) {
-    finalPatch.is_inbox = false;
-  }
   const { data, error } = await supabase
     .from('task')
-    .update(finalPatch)
+    .update(patch)
     .eq('id', id)
     .select()
     .single();
   if (error) throw error;
+
+  // Inbox is a derived signal off placement (top3_date, block schedules,
+  // triaged_at). If the caller mutated a placement field and didn't set
+  // is_inbox explicitly, recompute and re-fetch so the returned row is
+  // accurate. Category, due_at, and high_flag changes never affect inbox.
+  const placementChanged =
+    patch.top3_date !== undefined || patch.triaged_at !== undefined;
+  if (placementChanged && patch.is_inbox === undefined) {
+    await recomputeIsInbox(id);
+    const { data: refreshed } = await supabase
+      .from('task')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (refreshed) return refreshed as Task;
+  }
   return data as Task;
 }
 
-// Explicit "Mark triaged" action used by the Inbox lane row when the user
-// is fine with the task as-is and wants it out of the inbox without
-// changing category, scheduling, or pinning.
+// Explicit "I've decided to leave this in All Tasks without scheduling."
+// Sets triaged_at so subsequent unpin/unschedule of any later placement
+// won't auto-restore the task to inbox.
 export async function markTaskTriaged(id: string): Promise<Task> {
-  return updateTask(id, { is_inbox: false });
+  return updateTask(id, {
+    is_inbox: false,
+    triaged_at: new Date().toISOString(),
+  });
 }
 
 export interface CompleteTaskOptions {

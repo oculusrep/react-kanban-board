@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
@@ -6,7 +6,9 @@ import Top3Lane from '../components/tasks/dashboard/Top3Lane';
 import InboxLane from '../components/tasks/dashboard/InboxLane';
 import WatchingLane from '../components/tasks/dashboard/WatchingLane';
 import ConflictsLane from '../components/tasks/dashboard/ConflictsLane';
+import OverdueLane from '../components/tasks/dashboard/OverdueLane';
 import BrainDumpModal from '../components/tasks/BrainDumpModal';
+import QuickCaptureBar from '../components/tasks/QuickCaptureBar';
 import { triggerSyncNow, useGoogleCalendarConnection } from '../hooks/useGoogleCalendar';
 import { localDateString } from '../types/taskBlock';
 
@@ -43,9 +45,15 @@ export const TasksDashboardPage: React.FC = () => {
   const today = localDateString();
   const [viewDate, setViewDate] = useState(today);
   const [brainDumpOpen, setBrainDumpOpen] = useState(false);
-  // Bumped after Brain Dump saves so the InboxLane keys-remount and pulls
-  // the new tasks. Cheap; the lane is small.
-  const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
+  // Single shared signal: any lane (or Brain Dump / Quick Capture) bumps
+  // this after a mutation, every lane re-keys, every useTaskList re-runs.
+  // Cheap; lanes are small. Slideouts keep using local refetch so editing
+  // in a slideout doesn't close it.
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+  const bumpDashboardRefresh = useCallback(
+    () => setDashboardRefreshKey((k) => k + 1),
+    []
+  );
   const [syncing, setSyncing] = useState(false);
   const { connection: calendarConnection } = useGoogleCalendarConnection(userTableId);
   const isViewingToday = viewDate === today;
@@ -137,17 +145,42 @@ export const TasksDashboardPage: React.FC = () => {
 
         {userTableId ? (
           <>
-            {/* Planning lanes — Top 3 / Inbox / Conflicts above the timeline (spec §11). */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <Top3Lane ownerId={userTableId} viewDate={viewDate} />
-              <InboxLane key={inboxRefreshKey} ownerId={userTableId} viewDate={viewDate} />
+            <QuickCaptureBar ownerId={userTableId} onSaved={bumpDashboardRefresh} />
+
+            {/* Planning lanes — Overdue / Top 3 / Inbox / Conflicts above the timeline (spec §11). */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <OverdueLane
+                key={`overdue-${dashboardRefreshKey}`}
+                ownerId={userTableId}
+                viewDate={viewDate}
+                onTaskChanged={bumpDashboardRefresh}
+              />
+              <Top3Lane
+                key={`top3-${dashboardRefreshKey}`}
+                ownerId={userTableId}
+                viewDate={viewDate}
+                onTaskChanged={bumpDashboardRefresh}
+              />
+              <InboxLane
+                key={`inbox-${dashboardRefreshKey}`}
+                ownerId={userTableId}
+                viewDate={viewDate}
+                onTaskChanged={bumpDashboardRefresh}
+              />
               <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
             </div>
 
-            <TodaysTimeline key={viewDate} ownerId={userTableId} onDate={viewDate} />
+            <TodaysTimeline
+              key={`timeline-${viewDate}-${dashboardRefreshKey}`}
+              ownerId={userTableId}
+              onDate={viewDate}
+            />
 
             {/* Watching lane below the timeline — collapsible, hides when empty. */}
-            <WatchingLane assignerId={userTableId} />
+            <WatchingLane
+              key={`watching-${dashboardRefreshKey}`}
+              assignerId={userTableId}
+            />
           </>
         ) : (
           <div className="text-sm" style={{ color: COLORS.slate }}>
@@ -159,7 +192,7 @@ export const TasksDashboardPage: React.FC = () => {
       <BrainDumpModal
         isOpen={brainDumpOpen}
         onClose={() => setBrainDumpOpen(false)}
-        onSaved={() => setInboxRefreshKey((k) => k + 1)}
+        onSaved={bumpDashboardRefresh}
       />
     </div>
   );

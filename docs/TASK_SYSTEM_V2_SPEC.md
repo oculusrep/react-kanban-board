@@ -92,6 +92,7 @@ task
 ├── duration_minutes (int, nullable)                 -- required to schedule into block
 ├── high_flag (bool, default false)                  -- single sparingly-used priority flag
 ├── top3_date (date, nullable)                       -- if pinned to "Top 3" for a specific day
+├── triaged_at (timestamptz, nullable)               -- explicit ✓ Mark Triaged stamp (see §7.4.1)
 ├── due_at (timestamptz, nullable)                   -- alerts & overdue, NOT a sort key
 ├── remind_at (timestamptz, nullable)                -- personal reminder ping
 ├── private_completion (bool, default false)         -- skip auto-post to object timeline
@@ -296,6 +297,16 @@ Just lightweight tasks: a subject + `remind_at` time, no category, no duration, 
 
 Tasks without any object link are fully supported. They live in `personal` or `other` categories and behave like any other task.
 
+### 6.8 Overdue (added 2026-05-10)
+
+A task is **overdue** when `due_at < today` (local Eastern time per CLAUDE.md) and `status` is still `open` or `in_progress`. Overdue is a derived signal — no separate column.
+
+Surfacing:
+- **Visual badge** on every row that renders the task (Inbox, Top 3, in-block, All Tasks): the due date is rendered with the brand terracotta color (`#A27B5C`) instead of the slate default.
+- **Dedicated dashboard lane** — see §11. Lists every overdue task regardless of inbox/scheduled state. Same task can show in Overdue *and* in Inbox *and* in a block — that's intentional, overdue is the critical surface.
+
+Overdue does NOT auto-sort or auto-reschedule (per §6.2 #4). The user decides what to do: re-pin Top 3, clear the due date if no longer relevant, complete it, or delete. Notification triggers (per §10.1) follow separately.
+
 ---
 
 ## 7. Object Linking & Capture
@@ -331,8 +342,27 @@ The Inbox holds:
 - Newly-assigned tasks from teammates (Q4)
 - Brain dump captures (Q18 side)
 - Quick-captures where the user didn't set a category
+- **Anything not yet placed.** A task that isn't pinned to Top 3, isn't in a block schedule, and wasn't explicitly marked triaged stays in the Inbox — even if it has a category, due date, or High flag.
 
-Triage flow during planning: scan inbox, for each — set category, set Top-3 if any, drop into tomorrow's block (or future day), or delete. Untriaged items stay until next session.
+#### 7.4.1 Inbox-exit rule (revised 2026-05-10)
+
+`is_inbox` is a derived signal. A task is in the Inbox iff **none** of the following placement signals exist:
+
+| Action | Stays in Inbox? |
+|---|---|
+| Set category alone | Yes — naming isn't a plan |
+| Set due date alone | Yes — that's a constraint, not a plan |
+| Set High flag alone | Yes — importance, not placement |
+| Pin to Top 3 (today or any future date) | No — placed |
+| Schedule into a time block (today or any future date) | No — placed |
+| Click ✓ Mark Triaged | No — explicit "I've decided" |
+| Reassigned to another user | No (leaves your inbox; lands in theirs) |
+
+Removing the last placement signal (e.g., unpinning Top 3 when the task isn't in any block and wasn't explicitly triaged) **restores `is_inbox = true`** so the task isn't lost.
+
+The `task.triaged_at timestamptz NULL` column distinguishes intentional "I've decided" triage from the side-effect inbox-clearing of placement. Set when ✓ Mark Triaged is clicked; checked by inbox-recompute to avoid auto-restoring tasks the user explicitly removed from the inbox.
+
+Triage flow during planning: scan inbox, for each — pin Top 3, schedule into a block, click ✓ to acknowledge, or delete. Untriaged items stay until next session.
 
 ---
 
@@ -431,10 +461,10 @@ The morning dashboard is the home view. Same layout flips to "Tomorrow" mode for
 │  [Quick capture: type a task...]              [+ Task] [↻ Sync] │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  TOP 3 TODAY              INBOX (3)            CONFLICTS (1)   │
-│  ☐ Pinned task A          [open triage]        [resolve]       │
-│  ☐ Pinned task B                                                │
-│  ☐ Pinned task C                                                │
+│  OVERDUE (2)   TOP 3 TODAY      INBOX (3)      CONFLICTS (1)   │
+│  ⚑ 4d overdue  ☐ Pinned task A  [open triage]  [resolve]       │
+│  ⚑ 1d overdue  ☐ Pinned task B                                 │
+│                ☐ Pinned task C                                 │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  TODAY'S TIMELINE                                               │
@@ -457,8 +487,8 @@ The morning dashboard is the home view. Same layout flips to "Tomorrow" mode for
 ```
 
 Lanes:
-1. **Quick capture** bar — always visible at top.
-2. **Top 3 / Inbox / Conflicts** — three small panels in a row.
+1. **Quick capture** bar — always visible at top. Single-line input → Enter → task lands in Inbox.
+2. **Overdue / Top 3 / Inbox / Conflicts** — four small panels in a row. Overdue is far-left so it's the first thing you see.
 3. **Today's Timeline** — blocks chronologically, calendar meetings interleaved as fixed events. Current/next block highlighted. Each block expands to show its task queue.
 4. **Pipeline block view-mode toggle** — Flat (manual rank) vs. Grouped by client. Per-user persisted preference.
 5. **Watching lane** — collapsible, secondary. Only uncompleted delegated tasks.

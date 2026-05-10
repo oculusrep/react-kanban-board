@@ -10,6 +10,7 @@ import {
   useBlockInstancesForDate,
 } from '../../../hooks/useTaskBlocks';
 import { TaskCategory, TaskWithRelations } from '../../../types/task';
+import { isOverdue } from '../../../lib/taskOverdue';
 import CategoryDropdown from '../CategoryDropdown';
 import TaskDetailSlideout from '../TaskDetailSlideout';
 
@@ -23,12 +24,15 @@ const COLORS = {
   slate: '#8FA9C8',
   white: '#FFFFFF',
   bg: '#F8FAFC',
+  warning: '#A27B5C',
 } as const;
 
 interface InboxLaneProps {
   ownerId: string;
   /** Local YYYY-MM-DD — used to populate the inline schedule-into-block dropdown. */
   viewDate: string;
+  /** Bump shared dashboard refresh signal so peer lanes refetch. */
+  onTaskChanged?: () => void;
 }
 
 const ageDays = (createdAt: string): number => {
@@ -43,7 +47,7 @@ const ageLabel = (createdAt: string): string => {
   return `${days}d ago`;
 };
 
-export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
+export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskChanged }) => {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const { tasks, loading, error, refetch } = useTaskList({
     owner_id: ownerId,
@@ -54,20 +58,30 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
 
   const handleSetCategory = async (task: TaskWithRelations, category: TaskCategory) => {
     try {
+      // Category alone no longer leaves the inbox (revised §7.4 rule);
+      // task stays here until pinned, scheduled, or explicitly triaged.
       await updateTask(task.id, { category });
-      // updateTask clears is_inbox automatically when category is in the patch.
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Set category failed');
     }
   };
 
+  const handleSetDueAt = async (task: TaskWithRelations, dueAt: string | null) => {
+    try {
+      await updateTask(task.id, { due_at: dueAt });
+      onTaskChanged?.();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Set due date failed');
+    }
+  };
+
   const handleSchedule = async (task: TaskWithRelations, blockId: string) => {
     try {
       await scheduleTaskInBlock({ blockInstanceId: blockId, taskId: task.id });
-      // scheduleTaskInBlock fires an inbox-clear update internally.
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Schedule failed');
@@ -77,7 +91,7 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
   const handlePinTop3 = async (task: TaskWithRelations) => {
     try {
       await updateTask(task.id, { top3_date: viewDate });
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Pin failed');
@@ -87,7 +101,7 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
   const handleTriaged = async (task: TaskWithRelations) => {
     try {
       await markTaskTriaged(task.id);
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Mark triaged failed');
@@ -98,7 +112,7 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
     if (!confirm(`Delete task: "${task.subject}"?`)) return;
     try {
       await deleteTask(task.id);
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Delete failed');
@@ -160,10 +174,28 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
                 </div>
                 <div className="flex items-center gap-1 mt-1 flex-wrap">
                   <CategoryDropdown
-                    value={task.category ?? null}
+                    value={(task.category as TaskCategory | null) ?? null}
                     onChange={(c) => handleSetCategory(task, c)}
                   />
-
+                  <input
+                    type="date"
+                    value={task.due_at ? task.due_at.slice(0, 10) : ''}
+                    onChange={(e) => handleSetDueAt(task, e.target.value || null)}
+                    className="text-[11px] px-1 py-0.5 rounded border"
+                    style={{
+                      borderColor: isOverdue(task.due_at)
+                        ? COLORS.warning
+                        : COLORS.slate,
+                      color: isOverdue(task.due_at)
+                        ? COLORS.warning
+                        : COLORS.steel,
+                    }}
+                    title={
+                      isOverdue(task.due_at)
+                        ? `Overdue (was due ${task.due_at?.slice(0, 10)})`
+                        : 'Set due date'
+                    }
+                  />
                   {instances.length > 0 && (
                     <select
                       value=""
