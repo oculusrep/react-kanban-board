@@ -93,6 +93,8 @@ task
 ├── high_flag (bool, default false)                  -- single sparingly-used priority flag
 ├── top3_date (date, nullable)                       -- if pinned to "Top 3" for a specific day
 ├── triaged_at (timestamptz, nullable)               -- explicit ✓ Mark Triaged stamp (see §7.4.1)
+├── blocked_at (timestamptz, nullable)               -- Awaiting / blocked stamp (see §6.9)
+├── blocked_reason (text, nullable)                  -- free text shown in Awaiting lane
 ├── due_at (timestamptz, nullable)                   -- alerts & overdue, NOT a sort key
 ├── remind_at (timestamptz, nullable)                -- personal reminder ping
 ├── private_completion (bool, default false)         -- skip auto-post to object timeline
@@ -307,6 +309,21 @@ Surfacing:
 
 Overdue does NOT auto-sort or auto-reschedule (per §6.2 #4). The user decides what to do: re-pin Top 3, clear the due date if no longer relevant, complete it, or delete. Notification triggers (per §10.1) follow separately.
 
+### 6.9 Awaiting / blocked (added 2026-05-10)
+
+A task you can't act on yet because you're waiting on someone external (vendor reply, attorney sign-off, client signature) gets stamped with `blocked_at` and a free-text `blocked_reason`. Surfaced in a dedicated **Awaiting** lane below the timeline alongside Watching.
+
+Inbox semantics: `blocked_at` is treated as a placement signal. Blocking a task removes it from the Inbox; unblocking restores it (unless another placement signal exists). This matches the §7.4.1 rule — "anything unscheduled stays in inbox" — extended so that *waiting* also counts as a deliberate placement decision.
+
+Lane behavior:
+- Sorted oldest-first by `blocked_at` (longest waits stay visible).
+- Hidden when empty so it doesn't crowd the dashboard.
+- Inline action: ▶ Unblock — clears `blocked_at` + `blocked_reason`, returns task to Inbox if no other placement.
+
+A blocked task can still be pinned to Top 3, scheduled, or due-dated — all of those continue to work. The Awaiting lane is where the user goes to find "things I'm parked on," not the only place they appear.
+
+Future (deferred): an optional `blocked_until date` for auto-resurface (e.g., "remind me in 3 days if no reply") and a manual nudge action that bumps the assignee.
+
 ---
 
 ## 7. Object Linking & Capture
@@ -356,6 +373,7 @@ The Inbox holds:
 | Pin to Top 3 (today or any future date) | No — placed |
 | Schedule into a time block (today or any future date) | No — placed |
 | Click ✓ Mark Triaged | No — explicit "I've decided" |
+| Click ⏸ Awaiting (set blocked_at) | No — placed in Awaiting lane (see §6.9) |
 | Reassigned to another user | No (leaves your inbox; lands in theirs) |
 
 Removing the last placement signal (e.g., unpinning Top 3 when the task isn't in any block and wasn't explicitly triaged) **restores `is_inbox = true`** so the task isn't lost.
@@ -478,6 +496,11 @@ The morning dashboard is the home view. Same layout flips to "Tomorrow" mode for
 │  ▍ 4:30  — 5:00  Email                                          │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
+│  ▾ AWAITING (3 blocked, oldest first)                           │
+│      ⏸ Waiting on attorney to review LOI — blocked 6d           │
+│      ⏸ Waiting on Sarah for survey signature — blocked 2d       │
+│      ...                                                        │
+├─────────────────────────────────────────────────────────────────┤
 │  ▾ WATCHING (5 delegated, oldest first)                         │
 │      ☐ Task you assigned to Arty — 4 days                      │
 │      ☐ Task you assigned to Noree — 2 days                     │
@@ -491,8 +514,9 @@ Lanes:
 2. **Overdue / Top 3 / Inbox / Conflicts** — four small panels in a row. Overdue is far-left so it's the first thing you see.
 3. **Today's Timeline** — blocks chronologically, calendar meetings interleaved as fixed events. Current/next block highlighted. Each block expands to show its task queue.
 4. **Pipeline block view-mode toggle** — Flat (manual rank) vs. Grouped by client. Per-user persisted preference.
-5. **Watching lane** — collapsible, secondary. Only uncompleted delegated tasks.
-6. **Plan Tomorrow** button — flips the same view to tomorrow's date.
+5. **Awaiting lane** — collapsible, secondary. Only blocked tasks (`blocked_at IS NOT NULL`). Hidden when empty. See §6.9.
+6. **Watching lane** — collapsible, secondary. Only uncompleted delegated tasks. Hidden when empty.
+7. **Plan Tomorrow** button — flips the same view to tomorrow's date.
 
 ### 11.1 Adaptive layout for non-blocking users
 

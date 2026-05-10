@@ -12827,6 +12827,8 @@ export type Database = {
         Row: {
           assigned_by_id: string | null
           assignment_id: string | null
+          blocked_at: string | null
+          blocked_reason: string | null
           category: string
           client_id: string | null
           completed_at: string | null
@@ -12860,6 +12862,8 @@ export type Database = {
         Insert: {
           assigned_by_id?: string | null
           assignment_id?: string | null
+          blocked_at?: string | null
+          blocked_reason?: string | null
           category?: string
           client_id?: string | null
           completed_at?: string | null
@@ -12893,6 +12897,8 @@ export type Database = {
         Update: {
           assigned_by_id?: string | null
           assignment_id?: string | null
+          blocked_at?: string | null
+          blocked_reason?: string | null
           category?: string
           client_id?: string | null
           completed_at?: string | null

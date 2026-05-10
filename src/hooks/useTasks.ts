@@ -86,6 +86,8 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
         if (filters?.top3_date) query = query.eq('top3_date', filters.top3_date);
         if (filters?.assigned_by_id) query = query.eq('assigned_by_id', filters.assigned_by_id);
         if (filters?.owner_id_not) query = query.neq('owner_id', filters.owner_id_not);
+        if (filters?.blocked === true) query = query.not('blocked_at', 'is', null);
+        if (filters?.blocked === false) query = query.is('blocked_at', null);
         if (filters?.search) {
           const term = `%${filters.search}%`;
           query = query.or(`subject.ilike.${term},description.ilike.${term}`);
@@ -141,6 +143,7 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
     filters?.assigned_by_id,
     filters?.owner_id_not,
     filters?.search,
+    filters?.blocked,
   ]);
 
   useEffect(() => {
@@ -187,11 +190,14 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task> {
   if (error) throw error;
 
   // Inbox is a derived signal off placement (top3_date, block schedules,
-  // triaged_at). If the caller mutated a placement field and didn't set
-  // is_inbox explicitly, recompute and re-fetch so the returned row is
-  // accurate. Category, due_at, and high_flag changes never affect inbox.
+  // triaged_at, blocked_at). If the caller mutated a placement field and
+  // didn't set is_inbox explicitly, recompute and re-fetch so the returned
+  // row is accurate. Category, due_at, and high_flag changes never affect
+  // inbox.
   const placementChanged =
-    patch.top3_date !== undefined || patch.triaged_at !== undefined;
+    patch.top3_date !== undefined ||
+    patch.triaged_at !== undefined ||
+    patch.blocked_at !== undefined;
   if (placementChanged && patch.is_inbox === undefined) {
     await recomputeIsInbox(id);
     const { data: refreshed } = await supabase
@@ -211,6 +217,26 @@ export async function markTaskTriaged(id: string): Promise<Task> {
   return updateTask(id, {
     is_inbox: false,
     triaged_at: new Date().toISOString(),
+  });
+}
+
+// Park a task in the Awaiting lane. Blocking is a placement signal —
+// updateTask + recomputeIsInbox will clear is_inbox automatically.
+// Reason is free text (e.g., "Waiting on attorney to review LOI").
+export async function blockTask(id: string, reason: string): Promise<Task> {
+  return updateTask(id, {
+    blocked_at: new Date().toISOString(),
+    blocked_reason: reason,
+  });
+}
+
+// Clear the Awaiting state. Inbox-recompute fires via updateTask so the
+// task returns to the Inbox unless it has another placement signal
+// (Top 3, schedule, or triaged_at).
+export async function unblockTask(id: string): Promise<Task> {
+  return updateTask(id, {
+    blocked_at: null,
+    blocked_reason: null,
   });
 }
 

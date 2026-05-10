@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  blockTask,
   deleteTask,
   markTaskTriaged,
   updateTask,
@@ -105,6 +106,20 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Mark triaged failed');
+    }
+  };
+
+  const handleBlock = async (task: TaskWithRelations) => {
+    const reason = prompt('What are you waiting on?', '');
+    if (reason === null) return; // user cancelled
+    const trimmed = reason.trim();
+    if (!trimmed) return;
+    try {
+      await blockTask(task.id, trimmed);
+      onTaskChanged?.();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Block failed');
     }
   };
 
@@ -223,6 +238,15 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
                     title="Pin to Top 3"
                   >
                     ★
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBlock(task)}
+                    className="text-[11px] px-1.5 py-0.5 rounded hover:bg-gray-100"
+                    style={{ color: COLORS.steel }}
+                    title="Awaiting (waiting on someone external)"
+                  >
+                    ⏸
                   </button>
                   <button
                     type="button"

@@ -108,6 +108,8 @@ export interface TaskListFilters {
   assigned_by_id?: string;
   /** "Tasks where owner_id is not this user" — for the Watching lane (delegated to others). */
   owner_id_not?: string;
+  /** When true, only tasks with blocked_at IS NOT NULL (Awaiting lane). When false, only blocked_at IS NULL. */
+  blocked?: boolean;
 }
 
 // Default category mapping when quick-capturing from an object page (spec §7.2).

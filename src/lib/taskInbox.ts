@@ -7,16 +7,18 @@ import { supabase } from './supabaseClient';
 //   - top3_date IS NULL          (not pinned to Top 3 for any date)
 //   - no row in task_block_scheduled_task  (not in any time block)
 //   - triaged_at IS NULL         (user did not click ✓ Mark Triaged)
+//   - blocked_at IS NULL         (user did not park as Awaiting / Blocked)
 //
 // Whenever code mutates a placement signal — pinning/unpinning Top 3,
-// scheduling/unscheduling from a block, marking triaged — call this
-// helper afterward to keep is_inbox consistent. Setting category alone,
-// due_at alone, or high_flag alone never affects inbox state.
+// scheduling/unscheduling from a block, marking triaged, blocking or
+// unblocking — call this helper afterward to keep is_inbox consistent.
+// Setting category alone, due_at alone, or high_flag alone never
+// affects inbox state.
 
 export async function recomputeIsInbox(taskId: string): Promise<void> {
   const { data: task, error: tErr } = await supabase
     .from('task')
-    .select('top3_date, triaged_at, is_inbox')
+    .select('top3_date, triaged_at, blocked_at, is_inbox')
     .eq('id', taskId)
     .single();
   if (tErr || !task) {
@@ -36,7 +38,8 @@ export async function recomputeIsInbox(taskId: string): Promise<void> {
   const hasPlacement =
     task.top3_date !== null ||
     (scheduleCount ?? 0) > 0 ||
-    task.triaged_at !== null;
+    task.triaged_at !== null ||
+    task.blocked_at !== null;
   const desired = !hasPlacement;
 
   if (task.is_inbox === desired) return;

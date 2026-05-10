@@ -7,6 +7,7 @@ import InboxLane from '../components/tasks/dashboard/InboxLane';
 import WatchingLane from '../components/tasks/dashboard/WatchingLane';
 import ConflictsLane from '../components/tasks/dashboard/ConflictsLane';
 import OverdueLane from '../components/tasks/dashboard/OverdueLane';
+import AwaitingLane from '../components/tasks/dashboard/AwaitingLane';
 import BrainDumpModal from '../components/tasks/BrainDumpModal';
 import QuickCaptureBar from '../components/tasks/QuickCaptureBar';
 import { triggerSyncNow, useGoogleCalendarConnection } from '../hooks/useGoogleCalendar';
@@ -176,7 +177,12 @@ export const TasksDashboardPage: React.FC = () => {
               onDate={viewDate}
             />
 
-            {/* Watching lane below the timeline — collapsible, hides when empty. */}
+            {/* Awaiting + Watching below the timeline — both secondary, hide when empty. */}
+            <AwaitingLane
+              key={`awaiting-${dashboardRefreshKey}`}
+              ownerId={userTableId}
+              onTaskChanged={bumpDashboardRefresh}
+            />
             <WatchingLane
               key={`watching-${dashboardRefreshKey}`}
               assignerId={userTableId}
