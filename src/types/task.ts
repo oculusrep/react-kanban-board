@@ -113,7 +113,11 @@ export interface QuickAddTaskInput {
 // Filters for the all-tasks view (spec §15.3) and the dashboard lanes (Phase 2.5).
 export interface TaskListFilters {
   status?: TaskStatus | TaskStatus[];
-  category?: TaskCategory | TaskCategory[];
+  // Plain string: categories are user-extensible (since 2026-05-10), so the
+  // legacy TaskCategory union no longer covers all valid values. Filter
+  // matches against the legacy task.category text column which updateTask
+  // keeps in sync with the FK.
+  category?: string | string[];
   owner_id?: string;
   high_flag?: boolean;
   has_parent?: boolean;

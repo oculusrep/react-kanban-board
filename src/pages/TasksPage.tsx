@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   completeTask,
@@ -7,12 +7,14 @@ import {
   useTaskList,
 } from '../hooks/useTasks';
 import {
-  TaskCategory,
+  TaskCategoryRow,
   TaskListFilters,
   TaskStatus,
   TaskWithRelations,
 } from '../types/task';
 import { useAuth } from '../contexts/AuthContext';
+import { isCategoryVisibleTo } from '../lib/taskCategory';
+import { supabase } from '../lib/supabaseClient';
 import TaskDetailSlideout from '../components/tasks/TaskDetailSlideout';
 
 // All-tasks flat view (spec §15.3). The future "block-style" dashboard with
@@ -35,15 +37,10 @@ const STATUS_OPTIONS: { value: TaskStatus | 'all'; label: string }[] = [
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
-const CATEGORY_OPTIONS: { value: TaskCategory | 'all'; label: string }[] = [
-  { value: 'all', label: 'All categories' },
-  { value: 'prospecting', label: 'Prospecting' },
-  { value: 'pipeline', label: 'Pipeline' },
-  { value: 'ovis', label: 'OVIS' },
-  { value: 'email', label: 'Email' },
-  { value: 'personal', label: 'Personal' },
-  { value: 'other', label: 'Other' },
-];
+// Category options for the filter dropdown are loaded from task_category
+// at mount time (since 2026-05-10 categories are user-extensible). Filter
+// applies the legacy task.category text column — kept in sync with
+// category_id by updateTask — so existing filter wiring keeps working.
 
 interface LinkedToCellProps {
   task: TaskWithRelations;
@@ -139,7 +136,28 @@ const compareTasks = (a: TaskWithRelations, b: TaskWithRelations, key: SortKey, 
 export const TasksPage: React.FC = () => {
   const { userTableId } = useAuth();
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('open');
-  const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
+  // Category filter value is the category name (text), which keeps working
+  // against the legacy task.category column. UUID FK filtering is a future
+  // option but the text path lets us drop in user-defined categories with
+  // zero query changes.
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [categoryOptions, setCategoryOptions] = useState<TaskCategoryRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('task_category')
+        .select('*')
+        .is('archived_at', null)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
+      if (cancelled) return;
+      const visible = (data ?? []).filter((c) => isCategoryVisibleTo(c, userTableId));
+      setCategoryOptions(visible);
+    })();
+    return () => { cancelled = true; };
+  }, [userTableId]);
   const [highOnly, setHighOnly] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [search, setSearch] = useState('');
@@ -251,13 +269,14 @@ export const TasksPage: React.FC = () => {
           </select>
           <select
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as TaskCategory | 'all')}
+            onChange={(e) => setCategoryFilter(e.target.value)}
             className="text-sm px-2 py-1.5 rounded border"
             style={{ borderColor: COLORS.slate, color: COLORS.steel }}
           >
-            {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
+            <option value="all">All categories</option>
+            {categoryOptions.map((o) => (
+              <option key={o.id} value={o.name}>
+                {o.name}
               </option>
             ))}
           </select>
