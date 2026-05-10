@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Draggable, Droppable } from '@hello-pangea/dnd';
 import {
   blockTask,
   deleteTask,
@@ -159,22 +160,52 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
             Loading…
           </div>
         )}
-        {!loading && tasks.length === 0 && (
-          <div className="text-xs italic" style={{ color: COLORS.slate }}>
-            Inbox zero. Brain dumps and new assignments land here.
-          </div>
-        )}
-        {!loading &&
-          tasks.map((task) => {
-            const assignerName = task.assigned_by
-              ? [task.assigned_by.first_name, task.assigned_by.last_name].filter(Boolean).join(' ')
-              : null;
-            return (
-              <div
-                key={task.id}
-                className="py-1.5 px-1 border-b last:border-b-0"
-                style={{ borderColor: COLORS.slate + '22' }}
-              >
+        <Droppable droppableId="inbox-zone">
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className="rounded transition-colors"
+              style={{
+                minHeight: tasks.length === 0 ? 60 : undefined,
+                backgroundColor: snapshot.isDraggingOver ? COLORS.slate + '15' : undefined,
+              }}
+            >
+              {!loading && tasks.length === 0 && (
+                <div className="text-xs italic" style={{ color: COLORS.slate }}>
+                  Inbox zero. Brain dumps and new assignments land here.
+                </div>
+              )}
+              {!loading &&
+                tasks.map((task, idx) => {
+                  const assignerName = task.assigned_by
+                    ? [task.assigned_by.first_name, task.assigned_by.last_name].filter(Boolean).join(' ')
+                    : null;
+                  return (
+                    <Draggable key={task.id} draggableId={task.id} index={idx}>
+                      {(dragProvided, dragSnapshot) => (
+                        <div
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
+                          className="py-1.5 px-1 border-b last:border-b-0"
+                          style={{
+                            borderColor: COLORS.slate + '22',
+                            backgroundColor: dragSnapshot.isDragging ? COLORS.bg : undefined,
+                            boxShadow: dragSnapshot.isDragging ? '0 2px 6px rgba(0,0,0,0.12)' : undefined,
+                            ...dragProvided.draggableProps.style,
+                          }}
+                        >
+                          <div className="flex items-start gap-1.5">
+                            <span
+                              {...dragProvided.dragHandleProps}
+                              className="text-[11px] cursor-grab select-none mt-0.5"
+                              style={{ color: COLORS.slate }}
+                              title="Drag to Top 3"
+                              aria-label="Drag handle"
+                            >
+                              ⠿
+                            </span>
+                            <div className="flex-1 min-w-0">
                 <div
                   className="text-sm cursor-pointer truncate"
                   style={{ color: COLORS.midnight }}
@@ -268,9 +299,17 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
                     ×
                   </button>
                 </div>
-              </div>
-            );
-          })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  );
+                })}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
       </div>
 
       <TaskDetailSlideout

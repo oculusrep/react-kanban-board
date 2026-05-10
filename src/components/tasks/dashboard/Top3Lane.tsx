@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Draggable, Droppable } from '@hello-pangea/dnd';
 import { useTaskList, updateTask, completeTask } from '../../../hooks/useTasks';
 import { useAuth } from '../../../contexts/AuthContext';
 import { TaskStatus, TaskWithRelations } from '../../../types/task';
@@ -86,41 +87,76 @@ export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate, onTaskCha
             Loading…
           </div>
         )}
-        {!loading && tasks.length === 0 && (
-          <div className="text-xs italic" style={{ color: COLORS.slate }}>
-            No Top 3 set for this day yet. Pin from any task.
-          </div>
-        )}
-        {!loading &&
-          tasks.map((task) => (
+        <Droppable droppableId="top3-zone">
+          {(provided, snapshot) => (
             <div
-              key={task.id}
-              className="flex items-center gap-2 py-1 px-1 rounded hover:bg-gray-50 cursor-pointer text-sm"
-              style={{ color: COLORS.midnight }}
-              onClick={() => setOpenTaskId(task.id)}
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className="rounded transition-colors"
+              style={{
+                minHeight: tasks.length === 0 ? 60 : undefined,
+                backgroundColor: snapshot.isDraggingOver ? COLORS.star + '22' : undefined,
+              }}
             >
-              <input
-                type="checkbox"
-                checked={false}
-                onChange={(e) => handleComplete(e as unknown as React.MouseEvent, task)}
-                onClick={(e) => e.stopPropagation()}
-                aria-label="Complete task"
-              />
-              <span className="flex-1 truncate" title={task.subject}>
-                {task.high_flag && <span className="mr-1" title="High priority">⚑</span>}
-                {task.subject}
-              </span>
-              <button
-                type="button"
-                onClick={(e) => handleUnpin(e, task)}
-                className="text-xs px-1 rounded hover:bg-gray-100"
-                style={{ color: COLORS.steel }}
-                title="Unpin from Top 3"
-              >
-                ★
-              </button>
+              {!loading && tasks.length === 0 && (
+                <div className="text-xs italic" style={{ color: COLORS.slate }}>
+                  No Top 3 set for this day yet. Drag tasks here from the Inbox or pin from any task.
+                </div>
+              )}
+              {!loading &&
+                tasks.map((task, idx) => (
+                  <Draggable key={task.id} draggableId={task.id} index={idx}>
+                    {(dragProvided, dragSnapshot) => (
+                      <div
+                        ref={dragProvided.innerRef}
+                        {...dragProvided.draggableProps}
+                        className="flex items-center gap-2 py-1 px-1 rounded hover:bg-gray-50 cursor-pointer text-sm"
+                        style={{
+                          color: COLORS.midnight,
+                          backgroundColor: dragSnapshot.isDragging ? COLORS.bg : undefined,
+                          boxShadow: dragSnapshot.isDragging ? '0 2px 6px rgba(0,0,0,0.12)' : undefined,
+                          ...dragProvided.draggableProps.style,
+                        }}
+                        onClick={() => setOpenTaskId(task.id)}
+                      >
+                        <span
+                          {...dragProvided.dragHandleProps}
+                          className="text-[11px] cursor-grab select-none"
+                          style={{ color: COLORS.slate }}
+                          title="Drag to Inbox to unpin"
+                          aria-label="Drag handle"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          ⠿
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={(e) => handleComplete(e as unknown as React.MouseEvent, task)}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Complete task"
+                        />
+                        <span className="flex-1 truncate" title={task.subject}>
+                          {task.high_flag && <span className="mr-1" title="High priority">⚑</span>}
+                          {task.subject}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleUnpin(e, task)}
+                          className="text-xs px-1 rounded hover:bg-gray-100"
+                          style={{ color: COLORS.steel }}
+                          title="Unpin from Top 3"
+                        >
+                          ★
+                        </button>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+              {provided.placeholder}
             </div>
-          ))}
+          )}
+        </Droppable>
       </div>
 
       <TaskDetailSlideout

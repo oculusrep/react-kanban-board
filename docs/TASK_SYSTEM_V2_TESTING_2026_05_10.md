@@ -73,6 +73,31 @@ Run tests in order. Each one is independent enough that a failure on test N does
 
 ---
 
+## PR 5 — Drag-and-drop between Inbox and Top 3
+
+- [ ] **5.1** Each Inbox row has a `⠿` handle on the left.
+- [ ] **5.2** Each Top 3 row has a `⠿` handle on the left.
+- [ ] **5.3** Drag an Inbox card onto the Top 3 panel → drop zone highlights amber. Release → task moves to Top 3 AND leaves Inbox.
+- [ ] **5.4** Drag a Top 3 card onto the Inbox panel → drop zone highlights slate. Release → task returns to Inbox AND leaves Top 3.
+- [ ] **5.5** Drag a Top 3 card that was previously ✓ Mark Triaged into the Inbox → it does NOT come back to inbox (`triaged_at` is sticky), but it does leave Top 3.
+- [ ] **5.6** Click the `⠿` handle (without dragging) → does NOT open the slideout.
+- [ ] **5.7** Click anywhere else on the row → opens the slideout.
+- [ ] **5.8** Drag within the same lane (no destination change) → no-op, no DB write.
+- [ ] **5.9** Existing in-block drag-reorder still works in Today's Timeline (separate DragDropContext).
+
+## PR 6 — TasksPage filter parity
+
+- [ ] **6.1** Open `/tasks/all` → category filter dropdown shows the 6 seeded categories AND any user-defined ones (global + your personals).
+- [ ] **6.2** Pick a custom category from the filter → table shows only tasks with that category.
+
+## PR 7 — gcal-sync cron 401 fix
+
+- [ ] **7.1** **Required first**: in Supabase dashboard → Edge Function Secrets, add `CRON_SECRET` = the value generated this session (provided in chat).
+- [ ] **7.2** Wait 5 minutes for the next cron tick. In Supabase Logs → Edge Functions, confirm `gcal-sync` returns 200 (not 401).
+- [ ] **7.3** Click "↻ Sync" on the dashboard → succeeds (user JWT path still works).
+
+---
+
 ## Ad-hoc / regression
 
 - [ ] **4.1** **All Tasks page still works**: click "All tasks →" in the dashboard header. Page loads, table shows tasks, filters work.

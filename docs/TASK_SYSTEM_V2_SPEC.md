@@ -555,7 +555,7 @@ The morning dashboard is the home view. Same layout flips to "Tomorrow" mode for
 
 Lanes:
 1. **Quick capture** bar — always visible at top. Single-line input → Enter → task lands in Inbox.
-2. **Overdue / Top 3 / Inbox / Conflicts** — four small panels in a row. Overdue is far-left so it's the first thing you see.
+2. **Overdue / Top 3 / Inbox / Conflicts** — four small panels in a row. Overdue is far-left so it's the first thing you see. Inbox and Top 3 share a `DragDropContext` so tasks can be dragged between them: Inbox → Top 3 pins for the viewed date (sets `top3_date = viewDate`); Top 3 → Inbox unpins (clears `top3_date`; the inbox-recompute helper restores `is_inbox = true` unless another placement holds it out). Each draggable row has a `⠿` handle on the left.
 3. **Today's Timeline** — blocks chronologically, calendar meetings interleaved as fixed events. Current/next block highlighted. Each block expands to show its task queue.
 4. **Pipeline block view-mode toggle** — Flat (manual rank) vs. Grouped by client. Per-user persisted preference.
 5. **Awaiting lane** — collapsible, secondary. Only blocked tasks (`blocked_at IS NOT NULL`). Hidden when empty. See §6.9.

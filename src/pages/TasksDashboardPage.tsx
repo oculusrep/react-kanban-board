@@ -1,6 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { useAuth } from '../contexts/AuthContext';
+import { updateTask } from '../hooks/useTasks';
 import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
 import Top3Lane from '../components/tasks/dashboard/Top3Lane';
 import InboxLane from '../components/tasks/dashboard/InboxLane';
@@ -59,6 +61,33 @@ export const TasksDashboardPage: React.FC = () => {
   const { connection: calendarConnection } = useGoogleCalendarConnection(userTableId);
   const isViewingToday = viewDate === today;
   const headerLabel = isViewingToday ? "Today's Timeline" : "Tomorrow's Plan";
+
+  // Top-row drag-and-drop. Each lane is a Droppable with the well-known
+  // ids 'inbox-zone' / 'top3-zone'. Draggables carry the bare task.id as
+  // their draggableId — a task is only ever in one of the two lanes at a
+  // time, so the global Draggable-id-uniqueness rule isn't violated.
+  // Drag into the *other* lane triggers a placement change; drag back to
+  // the same lane is a no-op (no manual_rank concept yet on either lane).
+  const handleTopRowDragEnd = useCallback(async (result: DropResult) => {
+    if (!result.destination) return;
+    const { draggableId, source, destination } = result;
+    if (source.droppableId === destination.droppableId) return;
+    try {
+      if (destination.droppableId === 'top3-zone' && source.droppableId === 'inbox-zone') {
+        await updateTask(draggableId, { top3_date: viewDate });
+      } else if (destination.droppableId === 'inbox-zone' && source.droppableId === 'top3-zone') {
+        // Unpin Top 3. recomputeIsInbox restores is_inbox=true unless
+        // another placement (block / triaged_at) holds the task out.
+        await updateTask(draggableId, { top3_date: null });
+      } else {
+        return;
+      }
+      bumpDashboardRefresh();
+    } catch (err) {
+      console.error('[Dashboard] drag move failed:', err);
+      alert(err instanceof Error ? err.message : 'Move failed');
+    }
+  }, [viewDate, bumpDashboardRefresh]);
 
   const handleSyncCalendar = async () => {
     if (!userTableId) return;
@@ -148,28 +177,31 @@ export const TasksDashboardPage: React.FC = () => {
           <>
             <QuickCaptureBar ownerId={userTableId} onSaved={bumpDashboardRefresh} />
 
-            {/* Planning lanes — Overdue / Top 3 / Inbox / Conflicts above the timeline (spec §11). */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-              <OverdueLane
-                key={`overdue-${dashboardRefreshKey}`}
-                ownerId={userTableId}
-                viewDate={viewDate}
-                onTaskChanged={bumpDashboardRefresh}
-              />
-              <Top3Lane
-                key={`top3-${dashboardRefreshKey}`}
-                ownerId={userTableId}
-                viewDate={viewDate}
-                onTaskChanged={bumpDashboardRefresh}
-              />
-              <InboxLane
-                key={`inbox-${dashboardRefreshKey}`}
-                ownerId={userTableId}
-                viewDate={viewDate}
-                onTaskChanged={bumpDashboardRefresh}
-              />
-              <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
-            </div>
+            {/* Planning lanes — Overdue / Top 3 / Inbox / Conflicts above the timeline (spec §11).
+                Top 3 ⇆ Inbox supports drag-and-drop via the shared DragDropContext below. */}
+            <DragDropContext onDragEnd={handleTopRowDragEnd}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <OverdueLane
+                  key={`overdue-${dashboardRefreshKey}`}
+                  ownerId={userTableId}
+                  viewDate={viewDate}
+                  onTaskChanged={bumpDashboardRefresh}
+                />
+                <Top3Lane
+                  key={`top3-${dashboardRefreshKey}`}
+                  ownerId={userTableId}
+                  viewDate={viewDate}
+                  onTaskChanged={bumpDashboardRefresh}
+                />
+                <InboxLane
+                  key={`inbox-${dashboardRefreshKey}`}
+                  ownerId={userTableId}
+                  viewDate={viewDate}
+                  onTaskChanged={bumpDashboardRefresh}
+                />
+                <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
+              </div>
+            </DragDropContext>
 
             <TodaysTimeline
               key={`timeline-${viewDate}-${dashboardRefreshKey}`}
