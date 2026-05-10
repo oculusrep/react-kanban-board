@@ -12,6 +12,7 @@ import {
 } from '../../../hooks/useTaskBlocks';
 import { TaskCategory, TaskWithRelations } from '../../../types/task';
 import { isOverdue } from '../../../lib/taskOverdue';
+import BlockTaskModal from '../BlockTaskModal';
 import CategoryDropdown from '../CategoryDropdown';
 import TaskDetailSlideout from '../TaskDetailSlideout';
 
@@ -50,6 +51,7 @@ const ageLabel = (createdAt: string): string => {
 
 export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskChanged }) => {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [blockTarget, setBlockTarget] = useState<TaskWithRelations | null>(null);
   const { tasks, loading, error, refetch } = useTaskList({
     owner_id: ownerId,
     is_inbox: true,
@@ -109,17 +111,15 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
     }
   };
 
-  const handleBlock = async (task: TaskWithRelations) => {
-    const reason = prompt('What are you waiting on?', '');
-    if (reason === null) return; // user cancelled
-    const trimmed = reason.trim();
-    if (!trimmed) return;
+  const handleBlockSubmit = async (reason: string) => {
+    if (!blockTarget) return;
     try {
-      await blockTask(task.id, trimmed);
+      await blockTask(blockTarget.id, reason);
       onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Block failed');
+      throw err;
     }
   };
 
@@ -241,7 +241,7 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleBlock(task)}
+                    onClick={() => setBlockTarget(task)}
                     className="text-[11px] px-1.5 py-0.5 rounded hover:bg-gray-100"
                     style={{ color: COLORS.steel }}
                     title="Awaiting (waiting on someone external)"
@@ -276,6 +276,13 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
         taskId={openTaskId}
         onClose={() => setOpenTaskId(null)}
         onChanged={refetch}
+      />
+
+      <BlockTaskModal
+        isOpen={blockTarget !== null}
+        onClose={() => setBlockTarget(null)}
+        onSubmit={handleBlockSubmit}
+        taskSubject={blockTarget?.subject}
       />
     </>
   );
