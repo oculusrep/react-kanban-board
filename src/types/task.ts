@@ -8,6 +8,25 @@ export type TaskUpdate = Database['public']['Tables']['task']['Update'];
 export type TaskProject = Database['public']['Tables']['task_project']['Row'];
 export type TaskProjectInsert = Database['public']['Tables']['task_project']['Insert'];
 
+// task_category table — team-wide list of categories. Users can add more
+// inline from the Inbox dropdown. Replaces the old fixed CHECK enum.
+export type TaskCategoryRow = Database['public']['Tables']['task_category']['Row'];
+export type TaskCategoryRowInsert = Database['public']['Tables']['task_category']['Insert'];
+
+// Palette keys for task_category.color — must match the CHECK constraint.
+export type TaskCategoryColor =
+  | 'amber'
+  | 'blue'
+  | 'indigo'
+  | 'gray'
+  | 'green'
+  | 'slate'
+  | 'red'
+  | 'teal';
+export const TASK_CATEGORY_COLORS: TaskCategoryColor[] = [
+  'amber', 'blue', 'indigo', 'gray', 'green', 'slate', 'red', 'teal',
+];
+
 type User = Database['public']['Tables']['user']['Row'];
 type Client = Database['public']['Tables']['client']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
@@ -16,9 +35,11 @@ type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type Assignment = Database['public']['Tables']['assignment']['Row'];
 type Contact = Database['public']['Tables']['contact']['Row'];
 
-// String-literal narrowings of the CHECK-constrained columns. The generated
-// schema types these as `string`; these aliases let callers get autocompletion
-// and exhaustive switch checks without changing the storage type.
+// Legacy string-literal type for the original 6 hardcoded categories.
+// Retained only because the task.category text column still exists as
+// a fallback during the user-defined-categories migration. Prefer
+// task.category_id (UUID FK) + the joined `category_record` relation
+// for new code; this union will be removed when the text column drops.
 export type TaskCategory =
   | 'prospecting'
   | 'pipeline'
@@ -49,6 +70,10 @@ export interface TaskWithRelations extends Task {
   created_by?: User;
   parent_task?: Task;
   project?: TaskProject;
+  /** Joined task_category row (UUID FK on task.category_id). Aliased
+   *  `category_record` so it doesn't collide with the legacy `category`
+   *  text column. Once the text column is dropped this can be renamed. */
+  category_record?: TaskCategoryRow;
   client?: Client;
   deal?: Deal;
   property?: Property;

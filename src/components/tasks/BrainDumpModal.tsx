@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { getCategoryIdByName } from '../../lib/taskCategory';
 import { useAuth } from '../../contexts/AuthContext';
 
 // Brain Dump modal (spec §7.3). Full-screen textarea; each non-blank line
@@ -68,9 +69,14 @@ export const BrainDumpModal: React.FC<BrainDumpModalProps> = ({ isOpen, onClose,
     setSaving(true);
     setError(null);
     try {
+      const otherCategoryId = await getCategoryIdByName('other');
+      if (!otherCategoryId) {
+        throw new Error('Default category "other" not found.');
+      }
       const rows = lines.map((subject) => ({
         subject,
         category: 'other' as const,
+        category_id: otherCategoryId,
         owner_id: userTableId,
         created_by_id: userTableId,
         is_inbox: true,

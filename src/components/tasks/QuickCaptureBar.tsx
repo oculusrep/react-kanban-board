@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { getCategoryIdByName } from '../../lib/taskCategory';
 
 // Quick Capture bar (spec §11 #1). Always-visible single-line input at the
 // top of the dashboard. Type → Enter → task lands in Inbox just like one
@@ -31,9 +32,14 @@ export const QuickCaptureBar: React.FC<QuickCaptureBarProps> = ({ ownerId, onSav
     setSaving(true);
     setError(null);
     try {
+      const otherCategoryId = await getCategoryIdByName('other');
+      if (!otherCategoryId) {
+        throw new Error('Default category "other" not found.');
+      }
       const { error: insertError } = await supabase.from('task').insert({
         subject,
         category: 'other',
+        category_id: otherCategoryId,
         owner_id: ownerId,
         created_by_id: ownerId,
         is_inbox: true,

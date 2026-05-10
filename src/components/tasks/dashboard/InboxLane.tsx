@@ -10,7 +10,7 @@ import {
   scheduleTaskInBlock,
   useBlockInstancesForDate,
 } from '../../../hooks/useTaskBlocks';
-import { TaskCategory, TaskWithRelations } from '../../../types/task';
+import { TaskWithRelations } from '../../../types/task';
 import { isOverdue } from '../../../lib/taskOverdue';
 import BlockTaskModal from '../BlockTaskModal';
 import CategoryDropdown from '../CategoryDropdown';
@@ -59,11 +59,12 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
   });
   const { instances } = useBlockInstancesForDate({ ownerId, onDate: viewDate });
 
-  const handleSetCategory = async (task: TaskWithRelations, category: TaskCategory) => {
+  const handleSetCategory = async (task: TaskWithRelations, categoryId: string) => {
     try {
       // Category alone no longer leaves the inbox (revised §7.4 rule);
       // task stays here until pinned, scheduled, or explicitly triaged.
-      await updateTask(task.id, { category });
+      // updateTask backfills the legacy category text from category_id.
+      await updateTask(task.id, { category_id: categoryId });
       onTaskChanged?.();
     } catch (err) {
       console.error(err);
@@ -189,8 +190,8 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
                 </div>
                 <div className="flex items-center gap-1 mt-1 flex-wrap">
                   <CategoryDropdown
-                    value={(task.category as TaskCategory | null) ?? null}
-                    onChange={(c) => handleSetCategory(task, c)}
+                    value={task.category_id ?? null}
+                    onChange={(catId) => handleSetCategory(task, catId)}
                   />
                   <input
                     type="date"

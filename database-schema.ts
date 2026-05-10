@@ -12830,6 +12830,7 @@ export type Database = {
           blocked_at: string | null
           blocked_reason: string | null
           category: string
+          category_id: string
           client_id: string | null
           completed_at: string | null
           completion_note: string | null
@@ -12865,6 +12866,7 @@ export type Database = {
           blocked_at?: string | null
           blocked_reason?: string | null
           category?: string
+          category_id?: string
           client_id?: string | null
           completed_at?: string | null
           completion_note?: string | null
@@ -12900,6 +12902,7 @@ export type Database = {
           blocked_at?: string | null
           blocked_reason?: string | null
           category?: string
+          category_id?: string
           client_id?: string | null
           completed_at?: string | null
           completion_note?: string | null
@@ -12942,6 +12945,13 @@ export type Database = {
             columns: ["assignment_id"]
             isOneToOne: false
             referencedRelation: "assignment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "task_category"
             referencedColumns: ["id"]
           },
           {
@@ -13251,6 +13261,41 @@ export type Database = {
           {
             foreignKeyName: "task_block_template_owner_id_fkey"
             columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_category: {
+        Row: {
+          color: string
+          created_at: string
+          created_by_id: string | null
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          created_by_id?: string | null
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          created_by_id?: string | null
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_category_created_by_id_fkey"
+            columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]

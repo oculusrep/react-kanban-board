@@ -83,7 +83,8 @@ task
 ├── subject (text, required)
 ├── description (text, nullable)
 ├── status (enum: open | in_progress | completed | cancelled)
-├── category (enum: prospecting | pipeline | ovis | email | personal | other)
+├── category_id (fk → task_category, NOT NULL)       -- user-extensible, see §5.1
+├── category (text, legacy, kept in sync — drops in a follow-up migration)
 ├── owner_id (fk → user)
 ├── assigned_by_id (fk → user, nullable)             -- who delegated this
 ├── parent_task_id (fk → task, nullable)             -- subtask support (1 level)
@@ -192,16 +193,22 @@ task_outreach_draft                                  -- replaces hunter_outreach
 
 ### 5.1 Categories
 
-Initial set (user-extensible later):
+Categories are **team-wide and user-extensible** since 2026-05-10. They live in the `task_category` table — `id`, `name` (unique), `color` (palette key: `amber | blue | indigo | gray | green | slate | red | teal`), `sort_order`, `created_at`, `created_by_id`. `task.category_id` is a NOT NULL FK on this table.
 
-| Category | Use |
-|---|---|
-| `prospecting` | Outbound calls, follow-ups, Hunter-driven outreach |
-| `pipeline` | Active deal/client work |
-| `ovis` | System design, building, internal projects |
-| `email` | Inbox triage, replies |
-| `personal` | Personal reminders and standalone tasks |
-| `other` | Catch-all (rare) |
+Seeded set (created at migration time; users can add more inline from the Inbox dropdown via "+ New category…"):
+
+| Category | Color | Use |
+|---|---|---|
+| `prospecting` | amber | Outbound calls, follow-ups, Hunter-driven outreach |
+| `pipeline` | blue | Active deal/client work |
+| `ovis` | indigo | System design, building, internal projects |
+| `email` | gray | Inbox triage, replies |
+| `personal` | green | Personal reminders and standalone tasks |
+| `other` | slate | Catch-all (default for Brain Dump and Quick Capture) |
+
+Names are stored lowercase to keep the list consistent. Color is rendered as the pill background everywhere a task surface (Inbox / Top 3 / All Tasks) renders the category chip.
+
+The legacy `task.category` text column is retained during the migration window and kept in sync by `updateTask` so older UI (TaskDetailSlideout's native `<select>`) keeps working until it's migrated to the new dropdown. Will be dropped in a follow-up migration once the FK is load-bearing in prod.
 
 ### 5.2 Block templates
 

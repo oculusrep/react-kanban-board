@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { getCategoryById, getCategoryByName } from '../lib/taskCategory';
 import { recomputeIsInbox } from '../lib/taskInbox';
 import { postTaskCompletionToTimelines } from '../lib/taskTimelinePost';
 import {
@@ -29,6 +30,7 @@ const RELATIONS_SELECT = `
   assigned_by:user!task_assigned_by_id_fkey(*),
   created_by:user!task_created_by_id_fkey(*),
   project:task_project(*),
+  category_record:task_category!task_category_id_fkey(*),
   client(*),
   deal(*),
   property(*),
@@ -181,9 +183,23 @@ export async function createTask(input: TaskInsert): Promise<Task> {
 }
 
 export async function updateTask(id: string, patch: TaskUpdate): Promise<Task> {
+  // Bidirectional sync of category text ↔ category_id during the
+  // user-defined-categories migration window. Either field alone is
+  // enough; we resolve the other from task_category so legacy callers
+  // (slideout's text <select>) and new callers (CategoryDropdown using
+  // category_id) both keep the row consistent.
+  const finalPatch: TaskUpdate = { ...patch };
+  if (patch.category_id !== undefined && patch.category === undefined) {
+    const row = await getCategoryById(patch.category_id);
+    if (row) finalPatch.category = row.name;
+  } else if (patch.category !== undefined && patch.category_id === undefined) {
+    const row = await getCategoryByName(patch.category);
+    if (row) finalPatch.category_id = row.id;
+  }
+
   const { data, error } = await supabase
     .from('task')
-    .update(patch)
+    .update(finalPatch)
     .eq('id', id)
     .select()
     .single();
