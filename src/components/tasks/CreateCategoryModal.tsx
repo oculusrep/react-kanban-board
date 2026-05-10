@@ -72,7 +72,7 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = name.trim().toLowerCase();
+    const trimmed = name.trim();
     if (!trimmed || submitting) return;
     setSubmitting(true);
     setError(null);
@@ -145,14 +145,11 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., bookkeeping"
+                placeholder="e.g., Bookkeeping"
                 disabled={submitting}
                 maxLength={40}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 lowercase"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
-              <p className="mt-1 text-xs" style={{ color: COLORS.steel }}>
-                Stored lowercase to keep the list consistent.
-              </p>
             </div>
 
             <div>
