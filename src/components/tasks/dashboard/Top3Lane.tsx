@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { useTaskList, updateTask, completeTask } from '../../../hooks/useTasks';
 import { useAuth } from '../../../contexts/AuthContext';
-import { TaskWithRelations } from '../../../types/task';
+import { TaskStatus, TaskWithRelations } from '../../../types/task';
 import TaskDetailSlideout from '../TaskDetailSlideout';
+
+// Hoisted so its reference is stable across renders — useTaskList's deps
+// treat array identity as a change and would refetch in an infinite loop.
+const ACTIVE_STATUSES: TaskStatus[] = ['open', 'in_progress'];
 
 // Top 3 today lane (spec §6.2 #1, §11). Up to 3 cross-block priorities pinned
 // to the viewed date. Pin/unpin from the task slideout (or via the unpin
@@ -29,7 +33,7 @@ export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate }) => {
   const { tasks, loading, error, refetch } = useTaskList({
     owner_id: ownerId,
     top3_date: viewDate,
-    status: ['open', 'in_progress'],
+    status: ACTIVE_STATUSES,
   });
 
   const handleUnpin = async (e: React.MouseEvent, task: TaskWithRelations) => {

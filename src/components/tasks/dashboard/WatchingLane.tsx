@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useTaskList } from '../../../hooks/useTasks';
-import { TaskWithRelations } from '../../../types/task';
+import { TaskStatus, TaskWithRelations } from '../../../types/task';
 import TaskDetailSlideout from '../TaskDetailSlideout';
+
+// Hoisted so its reference is stable across renders — useTaskList's deps
+// treat array identity as a change and would refetch in an infinite loop.
+const ACTIVE_STATUSES: TaskStatus[] = ['open', 'in_progress'];
 
 // Watching lane (spec §8.2). Shows uncompleted tasks the current user
 // delegated to someone else. On the assigner's dashboard, NOT the
@@ -41,7 +45,7 @@ export const WatchingLane: React.FC<WatchingLaneProps> = ({ assignerId }) => {
   const { tasks, loading, error, refetch } = useTaskList({
     assigned_by_id: assignerId,
     owner_id_not: assignerId,
-    status: ['open', 'in_progress'],
+    status: ACTIVE_STATUSES,
   });
 
   // Sort oldest-first by created_at — stale delegations bubble up.
