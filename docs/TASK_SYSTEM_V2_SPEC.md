@@ -574,7 +574,20 @@ Layout (revised 2026-05-10): two-column on `lg` and wider, single-column below.
 
 Lanes:
 1. **Quick capture** bar — always visible at top. Single-line input → Enter → task lands in Inbox.
-2. **Overdue / Top 3 / Inbox / Conflicts** — vertical stack on the right column (was a horizontal row before 2026-05-10). Overdue is at top so it's the first thing you see. Inbox and Top 3 share a `DragDropContext` so tasks can be dragged between them: Inbox → Top 3 pins for the viewed date (sets `top3_date = viewDate`); Top 3 → Inbox unpins (clears `top3_date`; the inbox-recompute helper restores `is_inbox = true` unless another placement holds it out). Each draggable row has a `⠿` handle on the left.
+2. **Overdue / Top 3 / Inbox / Conflicts** — vertical stack on the right column (was a horizontal row before 2026-05-10). Overdue is at top so it's the first thing you see. A single `DragDropContext` wraps both columns and the timeline, so tasks can be dragged across every surface:
+
+   | From → To | Action |
+   |---|---|
+   | Inbox → Top 3 | Pin for the viewed date (`top3_date = viewDate`) |
+   | Inbox → time block | `scheduleTaskInBlock` (appended at block end) |
+   | Top 3 → Inbox | Unpin (`top3_date = null`); inbox-recompute restores `is_inbox = true` unless another placement holds it out |
+   | Top 3 → time block | `scheduleTaskInBlock`; Top 3 pin stays (multi-placement is legal per §7.4.1) |
+   | Block → Inbox | `unscheduleTask`; inbox-recompute restores `is_inbox = true` |
+   | Block → Top 3 | `unscheduleTask` + `updateTask({ top3_date: viewDate })` |
+   | Block → block (other) | `moveScheduledTask` with rank computed from destination neighbors |
+   | Block → block (same) | `moveScheduledTask` reorder via rank |
+
+   Draggable ids are prefix-encoded (`inbox:<task.id>`, `top3:<task.id>`, `block:<scheduled_task.id>:<task.id>`) so a task pinned to Top 3 *and* scheduled into a block doesn't collide. Each draggable row has a `⠿` handle on the left.
 3. **Today's Timeline** — blocks chronologically, calendar meetings interleaved as fixed events. Current/next block highlighted. Each block expands to show its task queue.
 4. **Pipeline block view-mode toggle** — Flat (manual rank) vs. Grouped by client. Per-user persisted preference.
 5. **Awaiting lane** — collapsible, secondary. Only blocked tasks (`blocked_at IS NOT NULL`). Hidden when empty. See §6.9.

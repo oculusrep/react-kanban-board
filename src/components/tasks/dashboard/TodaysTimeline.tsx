@@ -1,13 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import {
   ensureInstancesForDate,
-  moveScheduledTask,
   useBlockInstancesForDate,
   useTaskBlockTemplates,
 } from '../../../hooks/useTaskBlocks';
-import { MANUAL_RANK_STEP, localDateString } from '../../../types/taskBlock';
+import { localDateString } from '../../../types/taskBlock';
 import AdHocBlockCreator from './AdHocBlockCreator';
 import BlockRow from './BlockRow';
 import EventRow from './EventRow';
@@ -119,54 +117,10 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
     return ids;
   }, [instances]);
 
-  // Drag-end: compute the new rank from the destination block's existing
-  // ranks (excluding the dragged item to avoid self-reference) and update
-  // both the rank and block_instance_id in one call. Optimistic refetch
-  // after the write — mis-ordering during the round trip is fine because
-  // the source-of-truth is the DB.
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-    const { draggableId, source, destination } = result;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) {
-      return;
-    }
-    const destBlock = instances.find((i) => i.id === destination.droppableId);
-    if (!destBlock) return;
-
-    // The dragged task's id within the destination block is `draggableId`.
-    // Filter it out to compute neighbor ranks correctly.
-    const destTasks = (destBlock.scheduled_tasks ?? []).filter((st) => st.id !== draggableId);
-
-    let newRank: number;
-    if (destTasks.length === 0) {
-      newRank = MANUAL_RANK_STEP;
-    } else if (destination.index <= 0) {
-      newRank = destTasks[0].manual_rank - MANUAL_RANK_STEP;
-    } else if (destination.index >= destTasks.length) {
-      newRank = destTasks[destTasks.length - 1].manual_rank + MANUAL_RANK_STEP;
-    } else {
-      const prev = destTasks[destination.index - 1].manual_rank;
-      const next = destTasks[destination.index].manual_rank;
-      newRank = Math.floor((prev + next) / 2);
-      // Defensive: if neighbors collapsed to consecutive ints, kick the
-      // ranks apart by stepping the new value down. The deterministic
-      // created_at tiebreak in the read still keeps render order stable.
-      if (newRank === prev) newRank = prev - 1;
-    }
-
-    try {
-      await moveScheduledTask({
-        scheduledTaskId: draggableId,
-        newBlockInstanceId: destination.droppableId,
-        newRank,
-      });
-      refetch();
-    } catch (err) {
-      console.error('[TodaysTimeline] drag move failed:', err);
-      alert(err instanceof Error ? err.message : 'Move failed');
-      refetch();
-    }
-  };
+  // Drag-end is now owned by TasksDashboardPage so a single DragDropContext
+  // can span both the lanes column and the timeline. See handleDragEnd in
+  // src/pages/TasksDashboardPage.tsx for the routing logic — moves, pin to
+  // Top 3, schedule from Inbox, etc. all flow through one place.
 
   if (error) {
     return (
@@ -279,31 +233,29 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
         </div>
       )}
 
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div>
-          {timelineItems.map((item) => {
-            if (item.kind === 'event') {
-              return <EventRow key={`event-${item.event.id}`} event={item.event} />;
-            }
-            const inst = item.instance;
-            const [sh, sm] = inst.start_time.split(':').map((s) => parseInt(s, 10));
-            const endMin = sh * 60 + sm + inst.duration_minutes;
-            const isPast = isToday && endMin <= nowMin;
-            return (
-              <BlockRow
-                key={inst.id}
-                instance={inst}
-                ownerId={ownerId}
-                scheduledTaskIdsAcrossDay={scheduledTaskIdsAcrossDay}
-                isCurrent={inst.id === currentBlockId}
-                isPast={isPast}
-                onTaskClick={setOpenTaskId}
-                onChanged={refetch}
-              />
-            );
-          })}
-        </div>
-      </DragDropContext>
+      <div>
+        {timelineItems.map((item) => {
+          if (item.kind === 'event') {
+            return <EventRow key={`event-${item.event.id}`} event={item.event} />;
+          }
+          const inst = item.instance;
+          const [sh, sm] = inst.start_time.split(':').map((s) => parseInt(s, 10));
+          const endMin = sh * 60 + sm + inst.duration_minutes;
+          const isPast = isToday && endMin <= nowMin;
+          return (
+            <BlockRow
+              key={inst.id}
+              instance={inst}
+              ownerId={ownerId}
+              scheduledTaskIdsAcrossDay={scheduledTaskIdsAcrossDay}
+              isCurrent={inst.id === currentBlockId}
+              isPast={isPast}
+              onTaskClick={setOpenTaskId}
+              onChanged={refetch}
+            />
+          );
+        })}
+      </div>
 
       <TaskDetailSlideout
         taskId={openTaskId}

@@ -105,7 +105,11 @@ export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate, onTaskCha
               )}
               {!loading &&
                 tasks.map((task, idx) => (
-                  <Draggable key={task.id} draggableId={task.id} index={idx}>
+                  <Draggable
+                    key={task.id}
+                    draggableId={`top3:${task.id}`}
+                    index={idx}
+                  >
                     {(dragProvided, dragSnapshot) => (
                       <div
                         ref={dragProvided.innerRef}
