@@ -83,7 +83,8 @@ task
 ├── subject (text, required)
 ├── description (text, nullable)
 ├── status (enum: open | in_progress | completed | cancelled)
-├── category (enum: prospecting | pipeline | ovis | email | personal | other)
+├── category_id (fk → task_category, NOT NULL)       -- user-extensible, see §5.1
+├── category (text, legacy, kept in sync — drops in a follow-up migration)
 ├── owner_id (fk → user)
 ├── assigned_by_id (fk → user, nullable)             -- who delegated this
 ├── parent_task_id (fk → task, nullable)             -- subtask support (1 level)
@@ -92,6 +93,9 @@ task
 ├── duration_minutes (int, nullable)                 -- required to schedule into block
 ├── high_flag (bool, default false)                  -- single sparingly-used priority flag
 ├── top3_date (date, nullable)                       -- if pinned to "Top 3" for a specific day
+├── triaged_at (timestamptz, nullable)               -- explicit ✓ Mark Triaged stamp (see §7.4.1)
+├── blocked_at (timestamptz, nullable)               -- Awaiting / blocked stamp (see §6.9)
+├── blocked_reason (text, nullable)                  -- free text shown in Awaiting lane
 ├── due_at (timestamptz, nullable)                   -- alerts & overdue, NOT a sort key
 ├── remind_at (timestamptz, nullable)                -- personal reminder ping
 ├── private_completion (bool, default false)         -- skip auto-post to object timeline
@@ -189,16 +193,59 @@ task_outreach_draft                                  -- replaces hunter_outreach
 
 ### 5.1 Categories
 
-Initial set (user-extensible later):
+Categories live in the `task_category` table. Each row has:
+- `id` (uuid)
+- `name` (free text, any case the user types)
+- `color` (palette key: `amber | blue | indigo | gray | green | slate | red | teal`)
+- `scope` (`global` or `personal`)
+- `sort_order` (int)
+- `created_at`, `created_by_id`
+- `archived_at` (nullable — soft delete)
 
-| Category | Use |
-|---|---|
-| `prospecting` | Outbound calls, follow-ups, Hunter-driven outreach |
-| `pipeline` | Active deal/client work |
-| `ovis` | System design, building, internal projects |
-| `email` | Inbox triage, replies |
-| `personal` | Personal reminders and standalone tasks |
-| `other` | Catch-all (rare) |
+`task.category_id` is a NOT NULL FK on this table.
+
+#### Scope
+
+- **`global`** — visible to every user. The original 6 seeded categories live here.
+- **`personal`** — visible only to the `created_by_id` user. Defaults to this when a user creates a new category from the Inbox dropdown, so they don't accidentally pollute the shared list.
+
+Seeded set:
+
+| Category | Color | Scope | Use |
+|---|---|---|---|
+| `prospecting` | amber | global | Outbound calls, follow-ups, Hunter-driven outreach |
+| `pipeline` | blue | global | Active deal/client work |
+| `ovis` | indigo | global | System design, building, internal projects |
+| `email` | gray | global | Inbox triage, replies |
+| `personal` | green | global | Personal reminders and standalone tasks |
+| `other` | slate | global | Catch-all (default for Brain Dump and Quick Capture) |
+
+#### Uniqueness
+
+Case-insensitive within scope:
+- `global`: `lower(name)` is unique across all global categories.
+- `personal`: `lower(name) + created_by_id` is unique. Two users can each have their own personal "Bookkeeping"; they do not collide.
+
+A personal "Bookkeeping" can coexist with a global "bookkeeping" (different scopes). The dropdown groups them visually so the distinction is clear.
+
+#### Edit + delete permissions
+
+| Category scope | Who can edit (rename / change color) | Who can archive |
+|---|---|---|
+| `global` | Admin (`user.ovis_role = 'admin'`) only | Admin only |
+| `personal` | Owner OR admin | Owner OR admin |
+
+Archive = soft delete: sets `archived_at = now()`. Archived categories disappear from `CategoryDropdown` but tasks that already reference one continue to render the chip. Restore by clearing `archived_at`.
+
+#### UI
+
+- Dropdown groups: **Team** (globals, ordered by `sort_order` then name), divider, **Mine** (visible personals).
+- Pencil icon next to each row the current user can edit (`canEditCategory` helper). Opens the `EditCategoryModal`.
+- "+ New category…" pinned at the bottom — opens `CreateCategoryModal` with a Just me / Team-wide scope toggle (default Just me).
+
+#### Legacy compatibility
+
+The legacy `task.category` text column is retained during the migration window and kept in sync by `updateTask` so older UI (TaskDetailSlideout's native `<select>`) keeps working until it's migrated to the new dropdown. Will be dropped in a follow-up migration once the FK is load-bearing in prod.
 
 ### 5.2 Block templates
 
@@ -296,6 +343,44 @@ Just lightweight tasks: a subject + `remind_at` time, no category, no duration, 
 
 Tasks without any object link are fully supported. They live in `personal` or `other` categories and behave like any other task.
 
+### 6.8 Overdue (added 2026-05-10)
+
+A task is **overdue** when `due_at < today` (local Eastern time per CLAUDE.md) and `status` is still `open` or `in_progress`. Overdue is a derived signal — no separate column.
+
+Surfacing:
+- **Visual badge** on every row that renders the task (Inbox, Top 3, in-block, All Tasks): the due date is rendered with the brand terracotta color (`#A27B5C`) instead of the slate default.
+- **Dedicated dashboard lane** — see §11. Lists every overdue task regardless of inbox/scheduled state. Same task can show in Overdue *and* in Inbox *and* in a block — that's intentional, overdue is the critical surface.
+
+Overdue does NOT auto-sort or auto-reschedule (per §6.2 #4). The user decides what to do: re-pin Top 3, clear the due date if no longer relevant, complete it, or delete. Notification triggers (per §10.1) follow separately.
+
+### 6.9 Awaiting / blocked (added 2026-05-10)
+
+A task you can't act on yet because you're waiting on someone external (vendor reply, attorney sign-off, client signature) gets stamped with `blocked_at` and a free-text `blocked_reason`. Surfaced in a dedicated **Awaiting** lane below the timeline alongside Watching.
+
+Inbox semantics: `blocked_at` is treated as a placement signal. Blocking a task removes it from the Inbox; unblocking restores it (unless another placement signal exists). This matches the §7.4.1 rule — "anything unscheduled stays in inbox" — extended so that *waiting* also counts as a deliberate placement decision.
+
+Lane behavior:
+- Sorted oldest-first by `blocked_at` (longest waits stay visible).
+- Hidden when empty so it doesn't crowd the dashboard.
+- Inline action: ▶ Unblock — clears `blocked_at` + `blocked_reason`, returns task to Inbox if no other placement.
+
+A blocked task can still be pinned to Top 3, scheduled, or due-dated — all of those continue to work. The Awaiting lane is where the user goes to find "things I'm parked on," not the only place they appear.
+
+Future (deferred): an optional `blocked_until date` for auto-resurface (e.g., "remind me in 3 days if no reply") and a manual nudge action that bumps the assignee.
+
+### 6.10 Block capacity (added 2026-05-10)
+
+Each block on the timeline shows a small capacity bar comparing the sum of scheduled task `duration_minutes` to the block's own `duration_minutes`. The bar fills as you schedule tasks into a block — slate while under capacity, brand blue (`accent`) when exactly at capacity, and brand terracotta (`warning`) when overbooked.
+
+Below the bar:
+- A line reads "X/Y min scheduled" so the absolute numbers are visible at a glance.
+- If any tasks in the block lack a duration, append "(N tasks missing duration)" so the math isn't silently distorted.
+- If overbooked, append "⚠ Over by N min" in terracotta with bold weight.
+
+This is a visual-only safeguard — nothing prevents an overbook (the user might intentionally cluster a lot of small tasks knowing some will slip). It just makes the situation visible without doing math in your head.
+
+The full calendar-style proportional layout (block heights pixel-proportional to duration; meeting events overlaid as fixed-height blocks) is a deferred follow-up; it's the natural next step once this signal proves itself in real use.
+
 ---
 
 ## 7. Object Linking & Capture
@@ -331,8 +416,28 @@ The Inbox holds:
 - Newly-assigned tasks from teammates (Q4)
 - Brain dump captures (Q18 side)
 - Quick-captures where the user didn't set a category
+- **Anything not yet placed.** A task that isn't pinned to Top 3, isn't in a block schedule, and wasn't explicitly marked triaged stays in the Inbox — even if it has a category, due date, or High flag.
 
-Triage flow during planning: scan inbox, for each — set category, set Top-3 if any, drop into tomorrow's block (or future day), or delete. Untriaged items stay until next session.
+#### 7.4.1 Inbox-exit rule (revised 2026-05-10)
+
+`is_inbox` is a derived signal. A task is in the Inbox iff **none** of the following placement signals exist:
+
+| Action | Stays in Inbox? |
+|---|---|
+| Set category alone | Yes — naming isn't a plan |
+| Set due date alone | Yes — that's a constraint, not a plan |
+| Set High flag alone | Yes — importance, not placement |
+| Pin to Top 3 (today or any future date) | No — placed |
+| Schedule into a time block (today or any future date) | No — placed |
+| Click ✓ Mark Triaged | No — explicit "I've decided" |
+| Click ⏸ Awaiting (set blocked_at) | No — placed in Awaiting lane (see §6.9) |
+| Reassigned to another user | No (leaves your inbox; lands in theirs) |
+
+Removing the last placement signal (e.g., unpinning Top 3 when the task isn't in any block and wasn't explicitly triaged) **restores `is_inbox = true`** so the task isn't lost.
+
+The `task.triaged_at timestamptz NULL` column distinguishes intentional "I've decided" triage from the side-effect inbox-clearing of placement. Set when ✓ Mark Triaged is clicked; checked by inbox-recompute to avoid auto-restoring tasks the user explicitly removed from the inbox.
+
+Triage flow during planning: scan inbox, for each — pin Top 3, schedule into a block, click ✓ to acknowledge, or delete. Untriaged items stay until next session.
 
 ---
 
@@ -431,10 +536,10 @@ The morning dashboard is the home view. Same layout flips to "Tomorrow" mode for
 │  [Quick capture: type a task...]              [+ Task] [↻ Sync] │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  TOP 3 TODAY              INBOX (3)            CONFLICTS (1)   │
-│  ☐ Pinned task A          [open triage]        [resolve]       │
-│  ☐ Pinned task B                                                │
-│  ☐ Pinned task C                                                │
+│  OVERDUE (2)   TOP 3 TODAY      INBOX (3)      CONFLICTS (1)   │
+│  ⚑ 4d overdue  ☐ Pinned task A  [open triage]  [resolve]       │
+│  ⚑ 1d overdue  ☐ Pinned task B                                 │
+│                ☐ Pinned task C                                 │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  TODAY'S TIMELINE                                               │
@@ -448,6 +553,11 @@ The morning dashboard is the home view. Same layout flips to "Tomorrow" mode for
 │  ▍ 4:30  — 5:00  Email                                          │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
+│  ▾ AWAITING (3 blocked, oldest first)                           │
+│      ⏸ Waiting on attorney to review LOI — blocked 6d           │
+│      ⏸ Waiting on Sarah for survey signature — blocked 2d       │
+│      ...                                                        │
+├─────────────────────────────────────────────────────────────────┤
 │  ▾ WATCHING (5 delegated, oldest first)                         │
 │      ☐ Task you assigned to Arty — 4 days                      │
 │      ☐ Task you assigned to Noree — 2 days                     │
@@ -456,13 +566,20 @@ The morning dashboard is the home view. Same layout flips to "Tomorrow" mode for
                                                   [Plan Tomorrow →]
 ```
 
+Layout (revised 2026-05-10): two-column on `lg` and wider, single-column below.
+
+- **Left column (~60% on `lg`+)**: Today's Timeline as the primary work surface. Block-driven planners spend their day here, so it's always in view and never gets pushed below the fold.
+- **Right column (~40% on `lg`+, vertical stack)**: Overdue → Top 3 → Inbox → Conflicts. Each lane internally caps its own scroll height (e.g., Inbox at `60vh`, Overdue at `40vh`) so a long Inbox can't push other lanes off-screen.
+- **Below both columns** (full width, hidden when empty): Awaiting (`blocked_at IS NOT NULL`) and Watching (delegated). Secondary surfaces — don't crowd active work.
+
 Lanes:
-1. **Quick capture** bar — always visible at top.
-2. **Top 3 / Inbox / Conflicts** — three small panels in a row.
+1. **Quick capture** bar — always visible at top. Single-line input → Enter → task lands in Inbox.
+2. **Overdue / Top 3 / Inbox / Conflicts** — vertical stack on the right column (was a horizontal row before 2026-05-10). Overdue is at top so it's the first thing you see. Inbox and Top 3 share a `DragDropContext` so tasks can be dragged between them: Inbox → Top 3 pins for the viewed date (sets `top3_date = viewDate`); Top 3 → Inbox unpins (clears `top3_date`; the inbox-recompute helper restores `is_inbox = true` unless another placement holds it out). Each draggable row has a `⠿` handle on the left.
 3. **Today's Timeline** — blocks chronologically, calendar meetings interleaved as fixed events. Current/next block highlighted. Each block expands to show its task queue.
 4. **Pipeline block view-mode toggle** — Flat (manual rank) vs. Grouped by client. Per-user persisted preference.
-5. **Watching lane** — collapsible, secondary. Only uncompleted delegated tasks.
-6. **Plan Tomorrow** button — flips the same view to tomorrow's date.
+5. **Awaiting lane** — collapsible, secondary. Only blocked tasks (`blocked_at IS NOT NULL`). Hidden when empty. See §6.9.
+6. **Watching lane** — collapsible, secondary. Only uncompleted delegated tasks. Hidden when empty.
+7. **Plan Tomorrow** button — flips the same view to tomorrow's date.
 
 ### 11.1 Adaptive layout for non-blocking users
 

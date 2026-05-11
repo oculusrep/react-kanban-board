@@ -218,6 +218,35 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
   try {
+    // Custom dual-auth: deployed with verify_jwt=false so the cron can
+    // reach the function without a Bearer JWT. The function then accepts
+    // EITHER a valid user JWT (the in-app "Sync now" button — Supabase
+    // auto-attaches the user's session token) OR an X-Cron-Secret header
+    // matching the CRON_SECRET env var (the pg_cron tick every 5 min).
+    // Anything else is rejected.
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const cronHeader = req.headers.get('X-Cron-Secret');
+    const isCronCall = !!cronSecret && cronHeader === cronSecret;
+
+    const authHeader = req.headers.get('Authorization');
+    let isUserCall = false;
+    if (!isCronCall && authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload?.email) isUserCall = true;
+      } catch {
+        // Invalid JWT shape — fall through to 401.
+      }
+    }
+
+    if (!isCronCall && !isUserCall) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);

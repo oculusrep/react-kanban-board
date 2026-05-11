@@ -56,18 +56,6 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 5
-              },
-              networkTimeoutSeconds: 10
-            }
-          },
-          {
             urlPattern: /^https:\/\/maps\.googleapis\.com\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {

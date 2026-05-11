@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { useAuth } from '../contexts/AuthContext';
+import { updateTask } from '../hooks/useTasks';
 import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
 import Top3Lane from '../components/tasks/dashboard/Top3Lane';
 import InboxLane from '../components/tasks/dashboard/InboxLane';
 import WatchingLane from '../components/tasks/dashboard/WatchingLane';
 import ConflictsLane from '../components/tasks/dashboard/ConflictsLane';
+import OverdueLane from '../components/tasks/dashboard/OverdueLane';
+import AwaitingLane from '../components/tasks/dashboard/AwaitingLane';
 import BrainDumpModal from '../components/tasks/BrainDumpModal';
+import QuickCaptureBar from '../components/tasks/QuickCaptureBar';
 import { triggerSyncNow, useGoogleCalendarConnection } from '../hooks/useGoogleCalendar';
 import { localDateString } from '../types/taskBlock';
 
@@ -43,13 +48,46 @@ export const TasksDashboardPage: React.FC = () => {
   const today = localDateString();
   const [viewDate, setViewDate] = useState(today);
   const [brainDumpOpen, setBrainDumpOpen] = useState(false);
-  // Bumped after Brain Dump saves so the InboxLane keys-remount and pulls
-  // the new tasks. Cheap; the lane is small.
-  const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
+  // Single shared signal: any lane (or Brain Dump / Quick Capture) bumps
+  // this after a mutation, every lane re-keys, every useTaskList re-runs.
+  // Cheap; lanes are small. Slideouts keep using local refetch so editing
+  // in a slideout doesn't close it.
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+  const bumpDashboardRefresh = useCallback(
+    () => setDashboardRefreshKey((k) => k + 1),
+    []
+  );
   const [syncing, setSyncing] = useState(false);
   const { connection: calendarConnection } = useGoogleCalendarConnection(userTableId);
   const isViewingToday = viewDate === today;
   const headerLabel = isViewingToday ? "Today's Timeline" : "Tomorrow's Plan";
+
+  // Top-row drag-and-drop. Each lane is a Droppable with the well-known
+  // ids 'inbox-zone' / 'top3-zone'. Draggables carry the bare task.id as
+  // their draggableId — a task is only ever in one of the two lanes at a
+  // time, so the global Draggable-id-uniqueness rule isn't violated.
+  // Drag into the *other* lane triggers a placement change; drag back to
+  // the same lane is a no-op (no manual_rank concept yet on either lane).
+  const handleTopRowDragEnd = useCallback(async (result: DropResult) => {
+    if (!result.destination) return;
+    const { draggableId, source, destination } = result;
+    if (source.droppableId === destination.droppableId) return;
+    try {
+      if (destination.droppableId === 'top3-zone' && source.droppableId === 'inbox-zone') {
+        await updateTask(draggableId, { top3_date: viewDate });
+      } else if (destination.droppableId === 'inbox-zone' && source.droppableId === 'top3-zone') {
+        // Unpin Top 3. recomputeIsInbox restores is_inbox=true unless
+        // another placement (block / triaged_at) holds the task out.
+        await updateTask(draggableId, { top3_date: null });
+      } else {
+        return;
+      }
+      bumpDashboardRefresh();
+    } catch (err) {
+      console.error('[Dashboard] drag move failed:', err);
+      alert(err instanceof Error ? err.message : 'Move failed');
+    }
+  }, [viewDate, bumpDashboardRefresh]);
 
   const handleSyncCalendar = async () => {
     if (!userTableId) return;
@@ -66,7 +104,7 @@ export const TasksDashboardPage: React.FC = () => {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: COLORS.bg }}>
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-baseline justify-between mb-4">
           <h1 className="text-2xl font-bold" style={{ color: COLORS.midnight }}>
             {headerLabel}
@@ -137,17 +175,58 @@ export const TasksDashboardPage: React.FC = () => {
 
         {userTableId ? (
           <>
-            {/* Planning lanes — Top 3 / Inbox / Conflicts above the timeline (spec §11). */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <Top3Lane ownerId={userTableId} viewDate={viewDate} />
-              <InboxLane key={inboxRefreshKey} ownerId={userTableId} viewDate={viewDate} />
-              <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
-            </div>
+            <QuickCaptureBar ownerId={userTableId} onSaved={bumpDashboardRefresh} />
 
-            <TodaysTimeline key={viewDate} ownerId={userTableId} onDate={viewDate} />
+            {/* Two-column dashboard (spec §11): Today's Timeline as the primary
+                column on the left so it's always in view; planning lanes stack
+                vertically on the right. The shared DragDropContext spans both
+                columns so Inbox ⇆ Top 3 drag still works. Each right-column
+                lane internally caps its own scroll height — see InboxLane —
+                so a tall Inbox can't push other lanes off-screen. */}
+            <DragDropContext onDragEnd={handleTopRowDragEnd}>
+              <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
+                <div>
+                  <TodaysTimeline
+                    key={`timeline-${viewDate}-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    onDate={viewDate}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <OverdueLane
+                    key={`overdue-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    viewDate={viewDate}
+                    onTaskChanged={bumpDashboardRefresh}
+                  />
+                  <Top3Lane
+                    key={`top3-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    viewDate={viewDate}
+                    onTaskChanged={bumpDashboardRefresh}
+                  />
+                  <InboxLane
+                    key={`inbox-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    viewDate={viewDate}
+                    onTaskChanged={bumpDashboardRefresh}
+                  />
+                  <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
+                </div>
+              </div>
+            </DragDropContext>
 
-            {/* Watching lane below the timeline — collapsible, hides when empty. */}
-            <WatchingLane assignerId={userTableId} />
+            {/* Awaiting + Watching span the full width below — both secondary,
+                hide entirely when empty. */}
+            <AwaitingLane
+              key={`awaiting-${dashboardRefreshKey}`}
+              ownerId={userTableId}
+              onTaskChanged={bumpDashboardRefresh}
+            />
+            <WatchingLane
+              key={`watching-${dashboardRefreshKey}`}
+              assignerId={userTableId}
+            />
           </>
         ) : (
           <div className="text-sm" style={{ color: COLORS.slate }}>
@@ -159,7 +238,7 @@ export const TasksDashboardPage: React.FC = () => {
       <BrainDumpModal
         isOpen={brainDumpOpen}
         onClose={() => setBrainDumpOpen(false)}
-        onSaved={() => setInboxRefreshKey((k) => k + 1)}
+        onSaved={bumpDashboardRefresh}
       />
     </div>
   );

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { Draggable, Droppable } from '@hello-pangea/dnd';
 import {
+  blockTask,
   deleteTask,
   markTaskTriaged,
   updateTask,
@@ -9,7 +11,10 @@ import {
   scheduleTaskInBlock,
   useBlockInstancesForDate,
 } from '../../../hooks/useTaskBlocks';
-import { TaskCategory, TaskWithRelations } from '../../../types/task';
+import { TaskWithRelations } from '../../../types/task';
+import { isOverdue } from '../../../lib/taskOverdue';
+import BlockTaskModal from '../BlockTaskModal';
+import CategoryDropdown from '../CategoryDropdown';
 import TaskDetailSlideout from '../TaskDetailSlideout';
 
 // Inbox lane (spec §7.4). Holds untriaged tasks: brand-new assignments,
@@ -22,14 +27,15 @@ const COLORS = {
   slate: '#8FA9C8',
   white: '#FFFFFF',
   bg: '#F8FAFC',
+  warning: '#A27B5C',
 } as const;
-
-const CATEGORIES: TaskCategory[] = ['prospecting', 'pipeline', 'ovis', 'email', 'personal', 'other'];
 
 interface InboxLaneProps {
   ownerId: string;
   /** Local YYYY-MM-DD — used to populate the inline schedule-into-block dropdown. */
   viewDate: string;
+  /** Bump shared dashboard refresh signal so peer lanes refetch. */
+  onTaskChanged?: () => void;
 }
 
 const ageDays = (createdAt: string): number => {
@@ -44,8 +50,9 @@ const ageLabel = (createdAt: string): string => {
   return `${days}d ago`;
 };
 
-export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
+export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskChanged }) => {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [blockTarget, setBlockTarget] = useState<TaskWithRelations | null>(null);
   const { tasks, loading, error, refetch } = useTaskList({
     owner_id: ownerId,
     is_inbox: true,
@@ -53,22 +60,33 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
   });
   const { instances } = useBlockInstancesForDate({ ownerId, onDate: viewDate });
 
-  const handleSetCategory = async (task: TaskWithRelations, category: TaskCategory) => {
+  const handleSetCategory = async (task: TaskWithRelations, categoryId: string) => {
     try {
-      await updateTask(task.id, { category });
-      // updateTask clears is_inbox automatically when category is in the patch.
-      refetch();
+      // Category alone no longer leaves the inbox (revised §7.4 rule);
+      // task stays here until pinned, scheduled, or explicitly triaged.
+      // updateTask backfills the legacy category text from category_id.
+      await updateTask(task.id, { category_id: categoryId });
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Set category failed');
     }
   };
 
+  const handleSetDueAt = async (task: TaskWithRelations, dueAt: string | null) => {
+    try {
+      await updateTask(task.id, { due_at: dueAt });
+      onTaskChanged?.();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Set due date failed');
+    }
+  };
+
   const handleSchedule = async (task: TaskWithRelations, blockId: string) => {
     try {
       await scheduleTaskInBlock({ blockInstanceId: blockId, taskId: task.id });
-      // scheduleTaskInBlock fires an inbox-clear update internally.
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Schedule failed');
@@ -78,7 +96,7 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
   const handlePinTop3 = async (task: TaskWithRelations) => {
     try {
       await updateTask(task.id, { top3_date: viewDate });
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Pin failed');
@@ -88,10 +106,22 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
   const handleTriaged = async (task: TaskWithRelations) => {
     try {
       await markTaskTriaged(task.id);
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Mark triaged failed');
+    }
+  };
+
+  const handleBlockSubmit = async (reason: string) => {
+    if (!blockTarget) return;
+    try {
+      await blockTask(blockTarget.id, reason);
+      onTaskChanged?.();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Block failed');
+      throw err;
     }
   };
 
@@ -99,7 +129,7 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
     if (!confirm(`Delete task: "${task.subject}"?`)) return;
     try {
       await deleteTask(task.id);
-      refetch();
+      onTaskChanged?.();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Delete failed');
@@ -130,22 +160,56 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
             Loading…
           </div>
         )}
-        {!loading && tasks.length === 0 && (
-          <div className="text-xs italic" style={{ color: COLORS.slate }}>
-            Inbox zero. Brain dumps and new assignments land here.
-          </div>
-        )}
-        {!loading &&
-          tasks.map((task) => {
-            const assignerName = task.assigned_by
-              ? [task.assigned_by.first_name, task.assigned_by.last_name].filter(Boolean).join(' ')
-              : null;
-            return (
-              <div
-                key={task.id}
-                className="py-1.5 px-1 border-b last:border-b-0"
-                style={{ borderColor: COLORS.slate + '22' }}
-              >
+        <Droppable droppableId="inbox-zone">
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className="rounded transition-colors overflow-y-auto pr-1"
+              style={{
+                minHeight: tasks.length === 0 ? 60 : undefined,
+                // Cap height so a long inbox doesn't push peer lanes
+                // (Top 3 / Conflicts / etc.) off-screen in the right
+                // column of the two-column layout.
+                maxHeight: '60vh',
+                backgroundColor: snapshot.isDraggingOver ? COLORS.slate + '15' : undefined,
+              }}
+            >
+              {!loading && tasks.length === 0 && (
+                <div className="text-xs italic" style={{ color: COLORS.slate }}>
+                  Inbox zero. Brain dumps and new assignments land here.
+                </div>
+              )}
+              {!loading &&
+                tasks.map((task, idx) => {
+                  const assignerName = task.assigned_by
+                    ? [task.assigned_by.first_name, task.assigned_by.last_name].filter(Boolean).join(' ')
+                    : null;
+                  return (
+                    <Draggable key={task.id} draggableId={task.id} index={idx}>
+                      {(dragProvided, dragSnapshot) => (
+                        <div
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
+                          className="py-1.5 px-1 border-b last:border-b-0"
+                          style={{
+                            borderColor: COLORS.slate + '22',
+                            backgroundColor: dragSnapshot.isDragging ? COLORS.bg : undefined,
+                            boxShadow: dragSnapshot.isDragging ? '0 2px 6px rgba(0,0,0,0.12)' : undefined,
+                            ...dragProvided.draggableProps.style,
+                          }}
+                        >
+                          <div className="flex items-start gap-1.5">
+                            <span
+                              {...dragProvided.dragHandleProps}
+                              className="text-[11px] cursor-grab select-none mt-0.5"
+                              style={{ color: COLORS.slate }}
+                              title="Drag to Top 3"
+                              aria-label="Drag handle"
+                            >
+                              ⠿
+                            </span>
+                            <div className="flex-1 min-w-0">
                 <div
                   className="text-sm cursor-pointer truncate"
                   style={{ color: COLORS.midnight }}
@@ -160,23 +224,29 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
                   {ageLabel(task.created_at)}
                 </div>
                 <div className="flex items-center gap-1 mt-1 flex-wrap">
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) handleSetCategory(task, e.target.value as TaskCategory);
-                    }}
+                  <CategoryDropdown
+                    value={task.category_id ?? null}
+                    onChange={(catId) => handleSetCategory(task, catId)}
+                  />
+                  <input
+                    type="date"
+                    value={task.due_at ? task.due_at.slice(0, 10) : ''}
+                    onChange={(e) => handleSetDueAt(task, e.target.value || null)}
                     className="text-[11px] px-1 py-0.5 rounded border"
-                    style={{ borderColor: COLORS.slate, color: COLORS.steel }}
-                  >
-                    <option value="" disabled>
-                      Category…
-                    </option>
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                    style={{
+                      borderColor: isOverdue(task.due_at)
+                        ? COLORS.warning
+                        : COLORS.slate,
+                      color: isOverdue(task.due_at)
+                        ? COLORS.warning
+                        : COLORS.steel,
+                    }}
+                    title={
+                      isOverdue(task.due_at)
+                        ? `Overdue (was due ${task.due_at?.slice(0, 10)})`
+                        : 'Set due date'
+                    }
+                  />
                   {instances.length > 0 && (
                     <select
                       value=""
@@ -207,6 +277,15 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setBlockTarget(task)}
+                    className="text-[11px] px-1.5 py-0.5 rounded hover:bg-gray-100"
+                    style={{ color: COLORS.steel }}
+                    title="Awaiting (waiting on someone external)"
+                  >
+                    ⏸
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleTriaged(task)}
                     className="text-[11px] px-1.5 py-0.5 rounded hover:bg-gray-100"
                     style={{ color: COLORS.steel }}
@@ -224,15 +303,30 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate }) => {
                     ×
                   </button>
                 </div>
-              </div>
-            );
-          })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  );
+                })}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
       </div>
 
       <TaskDetailSlideout
         taskId={openTaskId}
         onClose={() => setOpenTaskId(null)}
         onChanged={refetch}
+      />
+
+      <BlockTaskModal
+        isOpen={blockTarget !== null}
+        onClose={() => setBlockTarget(null)}
+        onSubmit={handleBlockSubmit}
+        taskSubject={blockTarget?.subject}
       />
     </>
   );

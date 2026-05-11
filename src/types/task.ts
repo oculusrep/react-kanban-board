@@ -8,6 +8,30 @@ export type TaskUpdate = Database['public']['Tables']['task']['Update'];
 export type TaskProject = Database['public']['Tables']['task_project']['Row'];
 export type TaskProjectInsert = Database['public']['Tables']['task_project']['Insert'];
 
+// task_category table — categories live here. Each row is either
+// scope='global' (visible to everyone, originally the 6 seeded values)
+// or scope='personal' (visible only to created_by_id). Users add more
+// inline from the Inbox dropdown. Soft-deletable via archived_at.
+export type TaskCategoryRow = Database['public']['Tables']['task_category']['Row'];
+export type TaskCategoryRowInsert = Database['public']['Tables']['task_category']['Insert'];
+export type TaskCategoryRowUpdate = Database['public']['Tables']['task_category']['Update'];
+
+export type TaskCategoryScope = 'global' | 'personal';
+
+// Palette keys for task_category.color — must match the CHECK constraint.
+export type TaskCategoryColor =
+  | 'amber'
+  | 'blue'
+  | 'indigo'
+  | 'gray'
+  | 'green'
+  | 'slate'
+  | 'red'
+  | 'teal';
+export const TASK_CATEGORY_COLORS: TaskCategoryColor[] = [
+  'amber', 'blue', 'indigo', 'gray', 'green', 'slate', 'red', 'teal',
+];
+
 type User = Database['public']['Tables']['user']['Row'];
 type Client = Database['public']['Tables']['client']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
@@ -16,9 +40,11 @@ type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type Assignment = Database['public']['Tables']['assignment']['Row'];
 type Contact = Database['public']['Tables']['contact']['Row'];
 
-// String-literal narrowings of the CHECK-constrained columns. The generated
-// schema types these as `string`; these aliases let callers get autocompletion
-// and exhaustive switch checks without changing the storage type.
+// Legacy string-literal type for the original 6 hardcoded categories.
+// Retained only because the task.category text column still exists as
+// a fallback during the user-defined-categories migration. Prefer
+// task.category_id (UUID FK) + the joined `category_record` relation
+// for new code; this union will be removed when the text column drops.
 export type TaskCategory =
   | 'prospecting'
   | 'pipeline'
@@ -49,6 +75,10 @@ export interface TaskWithRelations extends Task {
   created_by?: User;
   parent_task?: Task;
   project?: TaskProject;
+  /** Joined task_category row (UUID FK on task.category_id). Aliased
+   *  `category_record` so it doesn't collide with the legacy `category`
+   *  text column. Once the text column is dropped this can be renamed. */
+  category_record?: TaskCategoryRow;
   client?: Client;
   deal?: Deal;
   property?: Property;
@@ -83,7 +113,11 @@ export interface QuickAddTaskInput {
 // Filters for the all-tasks view (spec §15.3) and the dashboard lanes (Phase 2.5).
 export interface TaskListFilters {
   status?: TaskStatus | TaskStatus[];
-  category?: TaskCategory | TaskCategory[];
+  // Plain string: categories are user-extensible (since 2026-05-10), so the
+  // legacy TaskCategory union no longer covers all valid values. Filter
+  // matches against the legacy task.category text column which updateTask
+  // keeps in sync with the FK.
+  category?: string | string[];
   owner_id?: string;
   high_flag?: boolean;
   has_parent?: boolean;
@@ -108,6 +142,8 @@ export interface TaskListFilters {
   assigned_by_id?: string;
   /** "Tasks where owner_id is not this user" — for the Watching lane (delegated to others). */
   owner_id_not?: string;
+  /** When true, only tasks with blocked_at IS NOT NULL (Awaiting lane). When false, only blocked_at IS NULL. */
+  blocked?: boolean;
 }
 
 // Default category mapping when quick-capturing from an object page (spec §7.2).

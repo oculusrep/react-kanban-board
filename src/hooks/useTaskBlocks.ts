@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { recomputeIsInbox } from '../lib/taskInbox';
 import {
   BlockInstanceWithTasks,
   IsoWeekday,
@@ -249,16 +250,23 @@ export async function ensureInstancesForDate(args: {
   const localDate = new Date(y, m - 1, d);
   const weekday: IsoWeekday = isoWeekday(localDate);
 
-  // Pull active templates that run on this weekday. Postgres array contains
-  // operator (`@>`) maps to .contains() in the supabase-js client.
-  const { data: templates, error: tplError } = await supabase
+  // Pull active templates and filter by weekday client-side. We previously
+  // used PostgREST `.contains('byweekday', [weekday])`, but `byweekday` is
+  // `smallint[]` in the DB while supabase-js sends a plain `int[]`. Postgres
+  // has no `smallint[] @> int[]` operator, so the query silently returned
+  // zero rows and no instances were ever generated. Per-user template counts
+  // are tiny (handful at most) — client-side filter is fine and avoids
+  // type-cast brittleness.
+  const { data: allTemplates, error: tplError } = await supabase
     .from('task_block_template')
-    .select('id, name, category, start_time, duration_minutes')
+    .select('id, name, category, start_time, duration_minutes, byweekday')
     .eq('owner_id', args.ownerId)
-    .eq('active', true)
-    .contains('byweekday', [weekday]);
+    .eq('active', true);
   if (tplError) throw tplError;
-  if (!templates || templates.length === 0) return { generated: 0 };
+  const templates = (allTemplates ?? []).filter(
+    (t) => Array.isArray(t.byweekday) && (t.byweekday as number[]).includes(weekday)
+  );
+  if (templates.length === 0) return { generated: 0 };
 
   const rows = templates.map((t) => ({
     template_id: t.id,
@@ -294,7 +302,7 @@ export async function ensureInstancesForDate(args: {
 // `rank` defaults to (current max in target block) + MANUAL_RANK_STEP so the
 // task lands at the bottom of the queue.
 //
-// Side effect: clears task.is_inbox (Phase 2.5) — scheduling is triage.
+// Side effect: recomputes task.is_inbox — scheduling is a placement signal.
 export async function scheduleTaskInBlock(args: {
   blockInstanceId: string;
   taskId: string;
@@ -314,27 +322,20 @@ export async function scheduleTaskInBlock(args: {
     .select()
     .single();
   if (error) throw error;
-  // Fire-and-forget inbox clear. Failure is logged but doesn't undo the
-  // scheduling — the task is in the block, that's the user-visible win.
-  supabase
-    .from('task')
-    .update({ is_inbox: false })
-    .eq('id', args.taskId)
-    .then(({ error: clearError }) => {
-      if (clearError) {
-        console.warn('[scheduleTaskInBlock] failed to clear is_inbox:', clearError);
-      }
-    });
+  await recomputeIsInbox(args.taskId);
   return data as TaskBlockScheduledTask;
 }
 
 // Removes a task from whatever block it's in (lookup is by unique task_id).
+// Recomputes is_inbox so an unplaced task returns to the Inbox unless the
+// user previously clicked ✓ Mark Triaged.
 export async function unscheduleTask(taskId: string): Promise<void> {
   const { error } = await supabase
     .from('task_block_scheduled_task')
     .delete()
     .eq('task_id', taskId);
   if (error) throw error;
+  await recomputeIsInbox(taskId);
 }
 
 export async function updateScheduledTaskRank(

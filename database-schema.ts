@@ -12827,7 +12827,10 @@ export type Database = {
         Row: {
           assigned_by_id: string | null
           assignment_id: string | null
+          blocked_at: string | null
+          blocked_reason: string | null
           category: string
+          category_id: string
           client_id: string | null
           completed_at: string | null
           completion_note: string | null
@@ -12854,12 +12857,16 @@ export type Database = {
           status: string
           subject: string
           top3_date: string | null
+          triaged_at: string | null
           updated_at: string
         }
         Insert: {
           assigned_by_id?: string | null
           assignment_id?: string | null
+          blocked_at?: string | null
+          blocked_reason?: string | null
           category?: string
+          category_id?: string
           client_id?: string | null
           completed_at?: string | null
           completion_note?: string | null
@@ -12886,12 +12893,16 @@ export type Database = {
           status?: string
           subject: string
           top3_date?: string | null
+          triaged_at?: string | null
           updated_at?: string
         }
         Update: {
           assigned_by_id?: string | null
           assignment_id?: string | null
+          blocked_at?: string | null
+          blocked_reason?: string | null
           category?: string
+          category_id?: string
           client_id?: string | null
           completed_at?: string | null
           completion_note?: string | null
@@ -12918,6 +12929,7 @@ export type Database = {
           status?: string
           subject?: string
           top3_date?: string | null
+          triaged_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -12933,6 +12945,13 @@ export type Database = {
             columns: ["assignment_id"]
             isOneToOne: false
             referencedRelation: "assignment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "task_category"
             referencedColumns: ["id"]
           },
           {
@@ -13242,6 +13261,47 @@ export type Database = {
           {
             foreignKeyName: "task_block_template_owner_id_fkey"
             columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_category: {
+        Row: {
+          archived_at: string | null
+          color: string
+          created_at: string
+          created_by_id: string | null
+          id: string
+          name: string
+          scope: string
+          sort_order: number
+        }
+        Insert: {
+          archived_at?: string | null
+          color?: string
+          created_at?: string
+          created_by_id?: string | null
+          id?: string
+          name: string
+          scope?: string
+          sort_order?: number
+        }
+        Update: {
+          archived_at?: string | null
+          color?: string
+          created_at?: string
+          created_by_id?: string | null
+          id?: string
+          name?: string
+          scope?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_category_created_by_id_fkey"
+            columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]

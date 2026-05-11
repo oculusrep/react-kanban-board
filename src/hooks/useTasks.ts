@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { getCategoryById, getCategoryByName } from '../lib/taskCategory';
+import { recomputeIsInbox } from '../lib/taskInbox';
 import { postTaskCompletionToTimelines } from '../lib/taskTimelinePost';
 import {
   Task,
@@ -28,6 +30,7 @@ const RELATIONS_SELECT = `
   assigned_by:user!task_assigned_by_id_fkey(*),
   created_by:user!task_created_by_id_fkey(*),
   project:task_project(*),
+  category_record:task_category!task_category_id_fkey(*),
   client(*),
   deal(*),
   property(*),
@@ -85,6 +88,8 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
         if (filters?.top3_date) query = query.eq('top3_date', filters.top3_date);
         if (filters?.assigned_by_id) query = query.eq('assigned_by_id', filters.assigned_by_id);
         if (filters?.owner_id_not) query = query.neq('owner_id', filters.owner_id_not);
+        if (filters?.blocked === true) query = query.not('blocked_at', 'is', null);
+        if (filters?.blocked === false) query = query.is('blocked_at', null);
         if (filters?.search) {
           const term = `%${filters.search}%`;
           query = query.or(`subject.ilike.${term},description.ilike.${term}`);
@@ -140,6 +145,7 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
     filters?.assigned_by_id,
     filters?.owner_id_not,
     filters?.search,
+    filters?.blocked,
   ]);
 
   useEffect(() => {
@@ -177,14 +183,20 @@ export async function createTask(input: TaskInsert): Promise<Task> {
 }
 
 export async function updateTask(id: string, patch: TaskUpdate): Promise<Task> {
-  // Phase 2.5: any explicit category change or Top-3 pin counts as triage —
-  // clear is_inbox unless the caller already specified a value.
+  // Bidirectional sync of category text ↔ category_id during the
+  // user-defined-categories migration window. Either field alone is
+  // enough; we resolve the other from task_category so legacy callers
+  // (slideout's text <select>) and new callers (CategoryDropdown using
+  // category_id) both keep the row consistent.
   const finalPatch: TaskUpdate = { ...patch };
-  const categoryChanged = patch.category !== undefined;
-  const top3Pinned = patch.top3_date !== undefined && patch.top3_date !== null;
-  if ((categoryChanged || top3Pinned) && finalPatch.is_inbox === undefined) {
-    finalPatch.is_inbox = false;
+  if (patch.category_id !== undefined && patch.category === undefined) {
+    const row = await getCategoryById(patch.category_id);
+    if (row) finalPatch.category = row.name;
+  } else if (patch.category !== undefined && patch.category_id === undefined) {
+    const row = await getCategoryByName(patch.category);
+    if (row) finalPatch.category_id = row.id;
   }
+
   const { data, error } = await supabase
     .from('task')
     .update(finalPatch)
@@ -192,14 +204,56 @@ export async function updateTask(id: string, patch: TaskUpdate): Promise<Task> {
     .select()
     .single();
   if (error) throw error;
+
+  // Inbox is a derived signal off placement (top3_date, block schedules,
+  // triaged_at, blocked_at). If the caller mutated a placement field and
+  // didn't set is_inbox explicitly, recompute and re-fetch so the returned
+  // row is accurate. Category, due_at, and high_flag changes never affect
+  // inbox.
+  const placementChanged =
+    patch.top3_date !== undefined ||
+    patch.triaged_at !== undefined ||
+    patch.blocked_at !== undefined;
+  if (placementChanged && patch.is_inbox === undefined) {
+    await recomputeIsInbox(id);
+    const { data: refreshed } = await supabase
+      .from('task')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (refreshed) return refreshed as Task;
+  }
   return data as Task;
 }
 
-// Explicit "Mark triaged" action used by the Inbox lane row when the user
-// is fine with the task as-is and wants it out of the inbox without
-// changing category, scheduling, or pinning.
+// Explicit "I've decided to leave this in All Tasks without scheduling."
+// Sets triaged_at so subsequent unpin/unschedule of any later placement
+// won't auto-restore the task to inbox.
 export async function markTaskTriaged(id: string): Promise<Task> {
-  return updateTask(id, { is_inbox: false });
+  return updateTask(id, {
+    is_inbox: false,
+    triaged_at: new Date().toISOString(),
+  });
+}
+
+// Park a task in the Awaiting lane. Blocking is a placement signal —
+// updateTask + recomputeIsInbox will clear is_inbox automatically.
+// Reason is free text (e.g., "Waiting on attorney to review LOI").
+export async function blockTask(id: string, reason: string): Promise<Task> {
+  return updateTask(id, {
+    blocked_at: new Date().toISOString(),
+    blocked_reason: reason,
+  });
+}
+
+// Clear the Awaiting state. Inbox-recompute fires via updateTask so the
+// task returns to the Inbox unless it has another placement signal
+// (Top 3, schedule, or triaged_at).
+export async function unblockTask(id: string): Promise<Task> {
+  return updateTask(id, {
+    blocked_at: null,
+    blocked_reason: null,
+  });
 }
 
 export interface CompleteTaskOptions {
