@@ -137,6 +137,10 @@ export const OverdueLane: React.FC<OverdueLaneProps> = ({
             Nothing overdue. Nice.
           </div>
         )}
+        <div
+          className="overflow-y-auto pr-1"
+          style={{ maxHeight: '40vh' }}
+        >
         {!loading &&
           overdue.map((task) => (
             <div
@@ -187,6 +191,7 @@ export const OverdueLane: React.FC<OverdueLaneProps> = ({
               </div>
             </div>
           ))}
+        </div>
       </div>
 
       <TaskDetailSlideout

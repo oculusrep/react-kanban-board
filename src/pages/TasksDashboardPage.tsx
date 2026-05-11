@@ -177,39 +177,47 @@ export const TasksDashboardPage: React.FC = () => {
           <>
             <QuickCaptureBar ownerId={userTableId} onSaved={bumpDashboardRefresh} />
 
-            {/* Planning lanes — Overdue / Top 3 / Inbox / Conflicts above the timeline (spec §11).
-                Top 3 ⇆ Inbox supports drag-and-drop via the shared DragDropContext below. */}
+            {/* Two-column dashboard (spec §11): Today's Timeline as the primary
+                column on the left so it's always in view; planning lanes stack
+                vertically on the right. The shared DragDropContext spans both
+                columns so Inbox ⇆ Top 3 drag still works. Each right-column
+                lane internally caps its own scroll height — see InboxLane —
+                so a tall Inbox can't push other lanes off-screen. */}
             <DragDropContext onDragEnd={handleTopRowDragEnd}>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <OverdueLane
-                  key={`overdue-${dashboardRefreshKey}`}
-                  ownerId={userTableId}
-                  viewDate={viewDate}
-                  onTaskChanged={bumpDashboardRefresh}
-                />
-                <Top3Lane
-                  key={`top3-${dashboardRefreshKey}`}
-                  ownerId={userTableId}
-                  viewDate={viewDate}
-                  onTaskChanged={bumpDashboardRefresh}
-                />
-                <InboxLane
-                  key={`inbox-${dashboardRefreshKey}`}
-                  ownerId={userTableId}
-                  viewDate={viewDate}
-                  onTaskChanged={bumpDashboardRefresh}
-                />
-                <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
+              <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
+                <div>
+                  <TodaysTimeline
+                    key={`timeline-${viewDate}-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    onDate={viewDate}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <OverdueLane
+                    key={`overdue-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    viewDate={viewDate}
+                    onTaskChanged={bumpDashboardRefresh}
+                  />
+                  <Top3Lane
+                    key={`top3-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    viewDate={viewDate}
+                    onTaskChanged={bumpDashboardRefresh}
+                  />
+                  <InboxLane
+                    key={`inbox-${dashboardRefreshKey}`}
+                    ownerId={userTableId}
+                    viewDate={viewDate}
+                    onTaskChanged={bumpDashboardRefresh}
+                  />
+                  <ConflictsLane ownerId={userTableId} viewDate={viewDate} />
+                </div>
               </div>
             </DragDropContext>
 
-            <TodaysTimeline
-              key={`timeline-${viewDate}-${dashboardRefreshKey}`}
-              ownerId={userTableId}
-              onDate={viewDate}
-            />
-
-            {/* Awaiting + Watching below the timeline — both secondary, hide when empty. */}
+            {/* Awaiting + Watching span the full width below — both secondary,
+                hide entirely when empty. */}
             <AwaitingLane
               key={`awaiting-${dashboardRefreshKey}`}
               ownerId={userTableId}

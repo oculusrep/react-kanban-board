@@ -165,9 +165,13 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
             <div
               ref={provided.innerRef}
               {...provided.droppableProps}
-              className="rounded transition-colors"
+              className="rounded transition-colors overflow-y-auto pr-1"
               style={{
                 minHeight: tasks.length === 0 ? 60 : undefined,
+                // Cap height so a long inbox doesn't push peer lanes
+                // (Top 3 / Conflicts / etc.) off-screen in the right
+                // column of the two-column layout.
+                maxHeight: '60vh',
                 backgroundColor: snapshot.isDraggingOver ? COLORS.slate + '15' : undefined,
               }}
             >
