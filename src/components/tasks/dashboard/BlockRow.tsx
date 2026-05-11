@@ -316,7 +316,11 @@ export const BlockRow: React.FC<BlockRowProps> = ({
                   {instance.scheduled_tasks.map((st, idx) => {
                     const completed = st.task.status === 'completed';
                     return (
-                      <Draggable key={st.id} draggableId={st.id} index={idx}>
+                      <Draggable
+                        key={st.id}
+                        draggableId={`block:${st.id}:${st.task.id}`}
+                        index={idx}
+                      >
                         {(dragProvided, dragSnapshot) => (
                           <div
                             ref={dragProvided.innerRef}

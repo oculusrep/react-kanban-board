@@ -186,7 +186,11 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
                     ? [task.assigned_by.first_name, task.assigned_by.last_name].filter(Boolean).join(' ')
                     : null;
                   return (
-                    <Draggable key={task.id} draggableId={task.id} index={idx}>
+                    <Draggable
+                      key={task.id}
+                      draggableId={`inbox:${task.id}`}
+                      index={idx}
+                    >
                       {(dragProvided, dragSnapshot) => (
                         <div
                           ref={dragProvided.innerRef}

@@ -3,6 +3,13 @@ import { Link } from 'react-router-dom';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { useAuth } from '../contexts/AuthContext';
 import { updateTask } from '../hooks/useTasks';
+import {
+  moveScheduledTask,
+  scheduleTaskInBlock,
+  unscheduleTask,
+  useBlockInstancesForDate,
+} from '../hooks/useTaskBlocks';
+import { MANUAL_RANK_STEP } from '../types/taskBlock';
 import TodaysTimeline from '../components/tasks/dashboard/TodaysTimeline';
 import Top3Lane from '../components/tasks/dashboard/Top3Lane';
 import InboxLane from '../components/tasks/dashboard/InboxLane';
@@ -59,26 +66,108 @@ export const TasksDashboardPage: React.FC = () => {
   );
   const [syncing, setSyncing] = useState(false);
   const { connection: calendarConnection } = useGoogleCalendarConnection(userTableId);
+  // Lifted here so the unified drag handler can compute manual_rank when
+  // moving across blocks. TodaysTimeline still has its own instance of
+  // the same hook; both refetch in sync via dashboardRefreshKey.
+  const { instances } = useBlockInstancesForDate({
+    ownerId: userTableId,
+    onDate: viewDate,
+  });
   const isViewingToday = viewDate === today;
   const headerLabel = isViewingToday ? "Today's Timeline" : "Tomorrow's Plan";
 
-  // Top-row drag-and-drop. Each lane is a Droppable with the well-known
-  // ids 'inbox-zone' / 'top3-zone'. Draggables carry the bare task.id as
-  // their draggableId — a task is only ever in one of the two lanes at a
-  // time, so the global Draggable-id-uniqueness rule isn't violated.
-  // Drag into the *other* lane triggers a placement change; drag back to
-  // the same lane is a no-op (no manual_rank concept yet on either lane).
-  const handleTopRowDragEnd = useCallback(async (result: DropResult) => {
+  // Unified drag-and-drop. One DragDropContext spans the right-column lanes
+  // (Overdue / Top 3 / Inbox / Conflicts) AND the left-column TodaysTimeline,
+  // so a task can be dragged from the Inbox directly into a time block.
+  //
+  // Draggable id scheme is prefix-encoded so a task that's BOTH pinned to
+  // Top 3 AND scheduled into a block (legal under spec §7.4.1 multi-
+  // placement) doesn't collide:
+  //   inbox:<task.id>
+  //   top3:<task.id>
+  //   block:<scheduled_task.id>:<task.id>
+  //
+  // Droppable ids:
+  //   inbox-zone, top3-zone, <block_instance.id>
+  const handleDragEnd = useCallback(async (result: DropResult) => {
     if (!result.destination) return;
     const { draggableId, source, destination } = result;
-    if (source.droppableId === destination.droppableId) return;
+    if (
+      source.droppableId === destination.droppableId &&
+      source.index === destination.index
+    ) {
+      return;
+    }
+
+    // Parse the draggable id. block: carries both scheduled and task ids.
+    const parts = draggableId.split(':');
+    const sourceKind = parts[0]; // 'inbox' | 'top3' | 'block'
+    let taskId: string;
+    let scheduledTaskId: string | undefined;
+    if (sourceKind === 'block') {
+      scheduledTaskId = parts[1];
+      taskId = parts[2];
+    } else {
+      taskId = parts[1];
+    }
+
+    // Identify destination. A block droppableId is a UUID (any string that's
+    // not one of the two well-known zones).
+    const dest = destination.droppableId;
+    const destIsBlock = dest !== 'inbox-zone' && dest !== 'top3-zone';
+
     try {
-      if (destination.droppableId === 'top3-zone' && source.droppableId === 'inbox-zone') {
-        await updateTask(draggableId, { top3_date: viewDate });
-      } else if (destination.droppableId === 'inbox-zone' && source.droppableId === 'top3-zone') {
-        // Unpin Top 3. recomputeIsInbox restores is_inbox=true unless
-        // another placement (block / triaged_at) holds the task out.
-        await updateTask(draggableId, { top3_date: null });
+      if (sourceKind === 'inbox' || sourceKind === 'top3') {
+        if (dest === 'top3-zone' && sourceKind === 'inbox') {
+          await updateTask(taskId, { top3_date: viewDate });
+        } else if (dest === 'inbox-zone' && sourceKind === 'top3') {
+          // recomputeIsInbox restores is_inbox=true unless another
+          // placement (block / triaged_at) holds the task out.
+          await updateTask(taskId, { top3_date: null });
+        } else if (destIsBlock) {
+          // Drop into a block. scheduleTaskInBlock auto-appends at the
+          // bottom; multi-placement (Top 3 + block) is legal per spec, so
+          // pin stays even when source was Top 3.
+          await scheduleTaskInBlock({ blockInstanceId: dest, taskId });
+        } else {
+          return;
+        }
+      } else if (sourceKind === 'block') {
+        if (destIsBlock) {
+          // Move within or across blocks — compute rank from destination
+          // neighbors. Same logic that used to live in TodaysTimeline.
+          const destBlock = instances.find((i) => i.id === dest);
+          if (!destBlock || !scheduledTaskId) return;
+          const destTasks = (destBlock.scheduled_tasks ?? []).filter(
+            (st) => st.id !== scheduledTaskId
+          );
+          let newRank: number;
+          if (destTasks.length === 0) {
+            newRank = MANUAL_RANK_STEP;
+          } else if (destination.index <= 0) {
+            newRank = destTasks[0].manual_rank - MANUAL_RANK_STEP;
+          } else if (destination.index >= destTasks.length) {
+            newRank = destTasks[destTasks.length - 1].manual_rank + MANUAL_RANK_STEP;
+          } else {
+            const prev = destTasks[destination.index - 1].manual_rank;
+            const next = destTasks[destination.index].manual_rank;
+            newRank = Math.floor((prev + next) / 2);
+            if (newRank === prev) newRank = prev - 1;
+          }
+          await moveScheduledTask({
+            scheduledTaskId,
+            newBlockInstanceId: dest,
+            newRank,
+          });
+        } else if (dest === 'inbox-zone' || dest === 'top3-zone') {
+          // Out of the block. recomputeIsInbox handles inbox restore.
+          await unscheduleTask(taskId);
+          if (dest === 'top3-zone') {
+            await updateTask(taskId, { top3_date: viewDate });
+          }
+        } else {
+          return;
+        }
       } else {
         return;
       }
@@ -87,7 +176,7 @@ export const TasksDashboardPage: React.FC = () => {
       console.error('[Dashboard] drag move failed:', err);
       alert(err instanceof Error ? err.message : 'Move failed');
     }
-  }, [viewDate, bumpDashboardRefresh]);
+  }, [viewDate, instances, bumpDashboardRefresh]);
 
   const handleSyncCalendar = async () => {
     if (!userTableId) return;
@@ -183,7 +272,7 @@ export const TasksDashboardPage: React.FC = () => {
                 columns so Inbox ⇆ Top 3 drag still works. Each right-column
                 lane internally caps its own scroll height — see InboxLane —
                 so a tall Inbox can't push other lanes off-screen. */}
-            <DragDropContext onDragEnd={handleTopRowDragEnd}>
+            <DragDropContext onDragEnd={handleDragEnd}>
               <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
                 <div>
                   <TodaysTimeline

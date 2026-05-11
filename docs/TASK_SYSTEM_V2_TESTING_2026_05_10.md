@@ -73,6 +73,18 @@ Run tests in order. Each one is independent enough that a failure on test N does
 
 ---
 
+## PR 8 — Drag across all surfaces (Inbox / Top 3 / time blocks)
+
+- [ ] **8.1** Drag an Inbox row directly onto a time block (drop on the block's task list area). Task disappears from Inbox AND appears in that block's queue. Block capacity bar updates.
+- [ ] **8.2** Drag a Top 3 row onto a block. Task is scheduled into the block AND stays pinned in Top 3 (multi-placement allowed).
+- [ ] **8.3** Drag a scheduled task out of a block onto the Inbox panel. Task leaves the block AND reappears in Inbox.
+- [ ] **8.4** Drag a scheduled task out of a block onto Top 3. Task leaves the block AND pins to Top 3.
+- [ ] **8.5** Existing in-block reorder still works (drag a task up/down within the same block).
+- [ ] **8.6** Cross-block drag still works (drag a task from one block into another's queue).
+- [ ] **8.7** No console errors during any of the above.
+
+---
+
 ## PR 5 — Drag-and-drop between Inbox and Top 3
 
 - [ ] **5.1** Each Inbox row has a `⠿` handle on the left.
