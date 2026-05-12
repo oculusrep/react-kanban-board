@@ -173,6 +173,21 @@ export async function createTask(input: TaskInsert): Promise<Task> {
   ) {
     finalInput.is_inbox = true;
   }
+
+  // category_id is NOT NULL since the 2026-05-10 user-defined-categories
+  // migration. Legacy callers still pass `category` text only — resolve
+  // the FK here so the insert satisfies the constraint. Mirrors the
+  // bidirectional logic in updateTask.
+  if (finalInput.category_id === undefined || finalInput.category_id === null) {
+    if (finalInput.category) {
+      const row = await getCategoryByName(finalInput.category);
+      if (row) finalInput.category_id = row.id;
+    }
+  } else if (finalInput.category === undefined) {
+    const row = await getCategoryById(finalInput.category_id);
+    if (row) finalInput.category = row.name;
+  }
+
   const { data, error } = await supabase
     .from('task')
     .insert(finalInput)
