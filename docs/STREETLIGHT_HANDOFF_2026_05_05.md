@@ -1,9 +1,63 @@
 # StreetLight Integration — Handoff
 
-**Status:** ⏸️ **BLOCKED** on StreetLight enabling AGPS source on the account
-**Branch:** `main` (feature/streetlight-integration was merged)
-**Edge function deployed version:** `28` (AGPS-targeted code; live but every call returns 401 until support enables AGPS)
-**Database cache:** empty (wiped 2026-05-09 when switching from CVD+ to AGPS)
+**Status:** ✅ **SHIPPED** — AGPS live, full state-of-Georgia catalog backfilled
+**Branch:** `main`
+**Edge function `streetlight` deployed version:** `32` (AGPS column-by-name parser + `osm_vintage` in `/metrics` fields)
+**Edge function `streetlight-backfill`:** deployed (admin-only, resumable, tile-driven catalog pre-warmer)
+**Database cache:** populated for region=`georgia` (~3,744 tiles, ~900K segments)
+
+See **"Update 2026-05-12"** below for the full sequence; the original 2026-05-05 / 2026-05-09 notes are kept for historical context.
+
+---
+
+## Update 2026-05-12 — AGPS enabled, response-shape bug, metrics fields, GA backfill
+
+### Sequence
+
+1. **StreetLight support enabled AGPS** on the Oculus Real Estate Partners / CRE API account.
+2. **Re-ran the entitlement probe** via `streetlight-test` against the Crosstown Drive bbox `(33.380, -84.590, 33.400, -84.560)`. All AGPS calls returned 200 with 342 segments (vs. 70 for CVD+ in the same bbox). Entitlement confirmed.
+3. **Bug 1 — `/geometry` parser silently dropped every segment.** v28-30 deployed `handleGeometry` returned 200 but the cache stayed empty. Diagnostics revealed AGPS responses are 3-column (`segment_id, osm_vintage, line_geometry`) versus CVD+'s 2-column (`segment_id, line_geometry`). The existing parser destructured `[id, geom]` positionally, so for AGPS `geom` was actually the integer osm_vintage and `geom.coordinates` was undefined. Filter dropped them all.
+   - **Fix (v31):** column-index lookup by name (`columns.indexOf('segment_id')` / `'line_geometry'`). Works for either source; backwards-compatible. See [supabase/functions/streetlight/index.ts](../supabase/functions/streetlight/index.ts) `handleGeometry`.
+4. **Bug 2 — `/metrics` returned 403 "No osm_vintage found within fields".** AGPS rejected metric requests because `osm_vintage` was missing from the `fields:` array (it was only at top-level).
+   - **Fix (v32):** added `'osm_vintage'` to `fields: ['segment_id', 'osm_vintage', 'year_month', 'trips_volume']` in `handleMetrics`.
+5. **Frontend behaviour validated.** With v32 deployed, the user confirmed segments rendered on Crosstown Drive (the original gap) and a click → $0.50 AADT fetch succeeded end-to-end.
+6. **Catalog backfill — `streetlight-backfill` edge function.** Built a tile-driven backfill that walks pre-defined regions (`georgia`, `atlanta_metro`, `peachtree_city`) in 0.065° × 0.095° tiles, calls `/geometry` per tile at 1 req/sec, upserts into `streetlight_segment`. Resumable via `streetlight_backfill_progress`. Each invocation caps at 50 tiles / 130s to stay under Supabase's 150s edge-function gateway idle timeout. Geometry is unbilled, so the only "cost" is wall time (~2.5–3 h for whole GA).
+7. **Internal-token auth path** added to the backfill function so it can be triggered server-side without a user JWT. Token in single-row `streetlight_backfill_config`. **Deploy is currently `verify_jwt: false`** while the backfill runs; will be reverted to `verify_jwt: true` and the internal_token row cleared once GA is complete.
+
+### What got deployed
+
+| Layer | Deployed state | Repo state |
+|---|---|---|
+| Edge fn `streetlight` | v32 — AGPS column-by-name parser + `osm_vintage` in `/metrics` fields | `main` matches (committed in this update) |
+| Edge fn `streetlight-backfill` | NEW. v3+ — internal_token auth path, 50-tile / 130s budget per run, resumable | NEW in `main` |
+| Edge fn `streetlight-test` | Still deployed (v7), `verify_jwt:false` — used to dump the raw AGPS response shape that caught Bug 1 | n/a — **DELETE** once GA backfill is fully confirmed shipped |
+| Migration `streetlight_backfill_progress` | applied | NEW in `main` |
+| Migration `streetlight_backfill_internal_auth` | applied (singleton `streetlight_backfill_config` table) | NEW in `main` |
+
+### Known follow-ups when next picking this up
+
+- [ ] **After GA backfill completes:** redeploy `streetlight-backfill` with `verify_jwt: true` and remove the `internal_token` body path from `requireAdmin` (or just clear the token row so the path becomes inert — the simpler option). Document is open while the backfill is still mid-run.
+- [ ] **Delete `streetlight-test` edge function** once AGPS path is fully confirmed. It served its purpose catching the response-shape bug.
+- [ ] **Server-side permission check in `handleMetrics`** (`requireAuth` only validates JWT, doesn't check `can_consume_traffic_quota`). A user with view-only access could craft a direct call. ~5 lines. *(Still open from prior session.)*
+- [ ] **"Data is N years old" warning** in the popup for segments where `year_month` is older than 2 years. *(Still open from prior session.)*
+
+### Useful queries / commands
+
+```sql
+-- Backfill progress
+SELECT * FROM streetlight_backfill_progress;
+
+-- Catalog size
+SELECT COUNT(*) FROM streetlight_segment;
+```
+
+```bash
+# Drive a region backfill via the internal-token path while verify_jwt:false is in effect.
+# Token lives in streetlight_backfill_config; rotate / clear after use.
+curl -s -X POST 'https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/streetlight-backfill' \
+  -H 'Content-Type: application/json' \
+  -d '{"region":"georgia","internal_token":"<uuid-from-streetlight_backfill_config>"}' | jq
+```
 
 ---
 
