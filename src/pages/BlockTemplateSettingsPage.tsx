@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   createBlockTemplate,
@@ -260,6 +261,13 @@ export const BlockTemplateSettingsPage: React.FC = () => {
   return (
     <div className="min-h-screen" style={{ backgroundColor: COLORS.bg }}>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <Link
+          to="/tasks"
+          className="text-xs font-medium hover:underline inline-block mb-2"
+          style={{ color: COLORS.steel }}
+        >
+          ← Back to Task Dashboard
+        </Link>
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold" style={{ color: COLORS.midnight }}>
             Time Blocks
