@@ -155,6 +155,60 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
   // src/pages/TasksDashboardPage.tsx for the routing logic — moves, pin to
   // Top 3, schedule from Inbox, etc. all flow through one place.
 
+  // Split events: all-day stays in the strip above; timed events overlay
+  // the proportional timeline at their actual start time. Computed up
+  // here (before early returns) so the useMemo / useEffect below it stay
+  // in a stable hook position across loading / loaded renders — without
+  // that, React throws #310 because the early-return branches skip these
+  // hooks on first render.
+  const allDayEvents = calendarEvents.filter((e) => e.is_all_day);
+  const timedEvents = calendarEvents.filter((e) => !e.is_all_day);
+
+  // Compute the visible time window. Default 8 AM – 8 PM; extend outward
+  // (floor / ceil to the hour) so any block or event that falls outside
+  // the default still renders.
+  const { startHour, endHour } = useMemo(() => {
+    let earliestMin = DEFAULT_START_HOUR * 60;
+    let latestMin = DEFAULT_END_HOUR * 60;
+    for (const inst of instances) {
+      const [sh, sm] = inst.start_time.split(':').map((s) => parseInt(s, 10));
+      const sMin = sh * 60 + sm;
+      const eMin = sMin + inst.duration_minutes;
+      if (sMin < earliestMin) earliestMin = sMin;
+      if (eMin > latestMin) latestMin = eMin;
+    }
+    for (const ev of timedEvents) {
+      const start = new Date(ev.start_at);
+      const end = new Date(ev.end_at);
+      const sMin = start.getHours() * 60 + start.getMinutes();
+      const eMin = end.getHours() * 60 + end.getMinutes();
+      if (sMin < earliestMin) earliestMin = sMin;
+      if (eMin > latestMin) latestMin = eMin;
+    }
+    return {
+      startHour: Math.max(0, Math.floor(earliestMin / 60)),
+      endHour: Math.min(24, Math.ceil(latestMin / 60)),
+    };
+  }, [instances, timedEvents]);
+
+  const totalMins = (endHour - startHour) * 60;
+  const totalPx = totalMins * PIXELS_PER_MIN;
+  const minsFromTop = (minOfDay: number) =>
+    (minOfDay - startHour * 60) * PIXELS_PER_MIN;
+
+  const nowTopPx = isToday ? minsFromTop(nowMin) : -1;
+  const showNowLine = isToday && nowTopPx >= 0 && nowTopPx <= totalPx;
+
+  // Auto-scroll so "now" sits ~1/3 down the visible viewport. Runs once
+  // after first render with content; re-runs when flipping back to today.
+  useEffect(() => {
+    if (!scrollRef.current || !isToday) return;
+    const target = Math.max(0, nowTopPx - scrollRef.current.clientHeight / 3);
+    scrollRef.current.scrollTop = target;
+    // Only on initial mount per date — don't snap back every tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToday, onDate]);
+
   if (error) {
     return (
       <div
@@ -214,56 +268,6 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
       </>
     );
   }
-
-  // Split events: all-day stays in the strip above; timed events overlay
-  // the proportional timeline at their actual start time.
-  const allDayEvents = calendarEvents.filter((e) => e.is_all_day);
-  const timedEvents = calendarEvents.filter((e) => !e.is_all_day);
-
-  // Compute the visible time window. Default 8 AM – 8 PM; extend outward
-  // (floor / ceil to the hour) so any block or event that falls outside
-  // the default still renders.
-  const { startHour, endHour } = useMemo(() => {
-    let earliestMin = DEFAULT_START_HOUR * 60;
-    let latestMin = DEFAULT_END_HOUR * 60;
-    for (const inst of instances) {
-      const [sh, sm] = inst.start_time.split(':').map((s) => parseInt(s, 10));
-      const sMin = sh * 60 + sm;
-      const eMin = sMin + inst.duration_minutes;
-      if (sMin < earliestMin) earliestMin = sMin;
-      if (eMin > latestMin) latestMin = eMin;
-    }
-    for (const ev of timedEvents) {
-      const start = new Date(ev.start_at);
-      const end = new Date(ev.end_at);
-      const sMin = start.getHours() * 60 + start.getMinutes();
-      const eMin = end.getHours() * 60 + end.getMinutes();
-      if (sMin < earliestMin) earliestMin = sMin;
-      if (eMin > latestMin) latestMin = eMin;
-    }
-    return {
-      startHour: Math.max(0, Math.floor(earliestMin / 60)),
-      endHour: Math.min(24, Math.ceil(latestMin / 60)),
-    };
-  }, [instances, timedEvents]);
-
-  const totalMins = (endHour - startHour) * 60;
-  const totalPx = totalMins * PIXELS_PER_MIN;
-  const minsFromTop = (minOfDay: number) =>
-    (minOfDay - startHour * 60) * PIXELS_PER_MIN;
-
-  const nowTopPx = isToday ? minsFromTop(nowMin) : -1;
-  const showNowLine = isToday && nowTopPx >= 0 && nowTopPx <= totalPx;
-
-  // Auto-scroll so "now" sits ~1/3 down the visible viewport. Runs once
-  // after first render with content; re-runs when flipping back to today.
-  useEffect(() => {
-    if (!scrollRef.current || !isToday) return;
-    const target = Math.max(0, nowTopPx - scrollRef.current.clientHeight / 3);
-    scrollRef.current.scrollTop = target;
-    // Only on initial mount per date — don't snap back every tick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isToday, onDate]);
 
   return (
     <>
