@@ -379,7 +379,21 @@ Below the bar:
 
 This is a visual-only safeguard — nothing prevents an overbook (the user might intentionally cluster a lot of small tasks knowing some will slip). It just makes the situation visible without doing math in your head.
 
-The full calendar-style proportional layout (block heights pixel-proportional to duration; meeting events overlaid as fixed-height blocks) is a deferred follow-up; it's the natural next step once this signal proves itself in real use.
+### 6.11 Proportional timeline view (added 2026-05-13)
+
+`TodaysTimeline` renders as a Google-Calendar-style proportional view: a vertical column with a fixed time axis on the left, blocks position-absolute by start time with height proportional to duration (1 px per minute = 60 px/hour). Empty hours show as empty space, so gaps are visually obvious — the user's stated goal when planning when to add ad-hoc blocks.
+
+Components:
+- **Time axis** on the left (56 px wide) with hour labels ("8 AM", "9 AM", …). Light dashed half-hour rules between for visual density.
+- **Block column** takes most of the width. Each block is an absolutely-positioned slot containing the existing `BlockRow` (header / capacity bar / task list). Content that exceeds the slot's height gets clipped (`overflow: hidden`) — for very short blocks the user sees just the header and capacity bar.
+- **Calendar event sidecar column** on the right (38% width). Timed Google Calendar events render here at their actual start time, height proportional to duration (min 22 px so 15-min events stay readable). Sits beside blocks so a meeting that overlaps a block remains visible.
+- **All-day events** keep their existing strip above the timeline.
+- **"Now" line** — a red horizontal rule + dot at the current local time. Re-renders every minute via a setInterval tick. Only shows when viewing today.
+- **Auto-scroll** brings the "now" line ~1/3 down the viewport on mount. Re-runs when the user flips back to today after viewing tomorrow.
+
+Time-window bounds default to 8 AM – 8 PM (12-hour window). If any block or event falls outside, the bounds extend outward (floor / ceil to the hour). The container caps at `70vh` with internal scroll.
+
+This replaces the previous chronological-list render. All existing drag-and-drop, capacity bar, BlockRow features continue to work — only the positioning changed.
 
 ---
 
