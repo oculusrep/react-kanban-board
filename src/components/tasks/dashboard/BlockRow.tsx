@@ -69,6 +69,15 @@ interface BlockRowProps {
   isPast?: boolean;
   onTaskClick?: (taskId: string) => void;
   onChanged: () => void;
+  /** Compact render: header + capacity bar only, no task list / + Add row.
+   *  Used inside the proportional timeline so a block sized to its actual
+   *  duration doesn't have to fit a full task list. Click the block to
+   *  open the BlockDetailModal for the full view. */
+  compact?: boolean;
+  /** Called when the user clicks anywhere on the block surface in compact
+   *  mode (except interactive children which stopPropagation). The parent
+   *  decides what to do — typically open a detail modal. */
+  onBlockClick?: () => void;
 }
 
 export const BlockRow: React.FC<BlockRowProps> = ({
@@ -79,6 +88,8 @@ export const BlockRow: React.FC<BlockRowProps> = ({
   isPast,
   onTaskClick,
   onChanged,
+  compact = false,
+  onBlockClick,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -133,7 +144,8 @@ export const BlockRow: React.FC<BlockRowProps> = ({
 
   return (
     <div
-      className="bg-white rounded-lg border mb-2 overflow-hidden"
+      className={`bg-white rounded-lg border overflow-hidden ${compact ? 'h-full cursor-pointer hover:shadow-sm transition-shadow' : 'mb-2'}`}
+      onClick={compact ? onBlockClick : undefined}
       style={{
         borderColor: isCurrent ? COLORS.accent : COLORS.slate + '66',
         opacity: dim ? 0.55 : 1,
@@ -213,7 +225,7 @@ export const BlockRow: React.FC<BlockRowProps> = ({
               >
                 ✎
               </button>
-              {!isSkipped && (
+              {!isSkipped && !compact && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -227,7 +239,7 @@ export const BlockRow: React.FC<BlockRowProps> = ({
                   + Add
                 </button>
               )}
-              {pickerOpen && (
+              {pickerOpen && !compact && (
                 <BlockTaskPicker
                   ownerId={ownerId}
                   blockInstanceId={instance.id}
@@ -291,8 +303,10 @@ export const BlockRow: React.FC<BlockRowProps> = ({
           )}
 
           {/* Pipeline grouped-by-client view — drag-rank disabled here per
-              spec §15.2 (visual rollup only; toggle to Flat to reorder). */}
-          {!isSkipped && isPipeline && grouped && (
+              spec §15.2 (visual rollup only; toggle to Flat to reorder).
+              Hidden in compact mode (proportional timeline); click the
+              block to open the detail modal instead. */}
+          {!isSkipped && !compact && isPipeline && grouped && (
             <PipelineGroupedView
               instance={instance}
               onTaskClick={onTaskClick}
@@ -300,20 +314,23 @@ export const BlockRow: React.FC<BlockRowProps> = ({
             />
           )}
 
-          {/* Flat (default) view — droppable so cross-block drags can land in empty blocks */}
+          {/* Flat (default) view — droppable so cross-block drags can land in
+              empty blocks. In compact mode the Droppable still renders (so
+              Inbox→block drag has a target) but task rows are skipped — the
+              detail modal is the surface for working with individual tasks. */}
           {!isSkipped && !(isPipeline && grouped) && (
             <Droppable droppableId={instance.id}>
               {(provided, snapshot) => (
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className="mt-2 space-y-1 rounded transition-colors"
+                  className={`${compact ? 'mt-1' : 'mt-2 space-y-1'} rounded transition-colors`}
                   style={{
                     minHeight: taskCount === 0 ? 32 : undefined,
                     backgroundColor: snapshot.isDraggingOver ? COLORS.accent + '11' : undefined,
                   }}
                 >
-                  {instance.scheduled_tasks.map((st, idx) => {
+                  {!compact && instance.scheduled_tasks.map((st, idx) => {
                     const completed = st.task.status === 'completed';
                     return (
                       <Draggable

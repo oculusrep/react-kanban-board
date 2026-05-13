@@ -7,6 +7,7 @@ import {
 } from '../../../hooks/useTaskBlocks';
 import { localDateString } from '../../../types/taskBlock';
 import AdHocBlockCreator from './AdHocBlockCreator';
+import BlockDetailModal from './BlockDetailModal';
 import BlockRow from './BlockRow';
 import EventRow from './EventRow';
 import TaskDetailSlideout from '../TaskDetailSlideout';
@@ -74,6 +75,9 @@ const useCurrentBlockId = (
 export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate }) => {
   const [generating, setGenerating] = useState(true);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Block detail modal — opens when the user clicks a compact block in the
+  // proportional timeline so they can see / edit the task list at full size.
+  const [openBlockId, setOpenBlockId] = useState<string | null>(null);
   const { instances, loading, error, refetch } = useBlockInstancesForDate({
     ownerId,
     onDate,
@@ -372,6 +376,8 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
                   isPast={isPast}
                   onTaskClick={setOpenTaskId}
                   onChanged={refetch}
+                  compact
+                  onBlockClick={() => setOpenBlockId(inst.id)}
                 />
               </div>
             );
@@ -428,6 +434,23 @@ export const TodaysTimeline: React.FC<TodaysTimelineProps> = ({ ownerId, onDate 
       <TaskDetailSlideout
         taskId={openTaskId}
         onClose={() => setOpenTaskId(null)}
+        onChanged={refetch}
+      />
+
+      <BlockDetailModal
+        isOpen={openBlockId !== null}
+        instance={instances.find((i) => i.id === openBlockId) ?? null}
+        ownerId={ownerId}
+        scheduledTaskIdsAcrossDay={scheduledTaskIdsAcrossDay}
+        isCurrent={openBlockId === currentBlockId}
+        isPast={isToday && (() => {
+          const inst = instances.find((i) => i.id === openBlockId);
+          if (!inst) return false;
+          const [sh, sm] = inst.start_time.split(':').map((s) => parseInt(s, 10));
+          return sh * 60 + sm + inst.duration_minutes <= nowMin;
+        })()}
+        onClose={() => setOpenBlockId(null)}
+        onTaskClick={setOpenTaskId}
         onChanged={refetch}
       />
     </>
