@@ -3,8 +3,9 @@
 **Status:** ✅ **SHIPPED** — AGPS live, full state-of-Georgia catalog backfilled
 **Branch:** `main`
 **Edge function `streetlight` deployed version:** `32` (AGPS column-by-name parser + `osm_vintage` in `/metrics` fields)
-**Edge function `streetlight-backfill`:** deployed (admin-only, resumable, tile-driven catalog pre-warmer)
-**Database cache:** populated for region=`georgia` (~3,744 tiles, ~900K segments)
+**Edge function `streetlight-backfill` deployed version:** `5` (verify_jwt=true, internal_token row cleared)
+**Edge function `streetlight-test`:** **deleted** 2026-05-12 — purpose served catching the AGPS response-shape bug
+**Database cache:** **1,225,445 segments** indexed across the whole state of Georgia (region=`georgia` backfill row shows `tiles_processed=3744/3744, completed=true`)
 
 See **"Update 2026-05-12"** below for the full sequence; the original 2026-05-05 / 2026-05-09 notes are kept for historical context.
 
@@ -36,10 +37,12 @@ See **"Update 2026-05-12"** below for the full sequence; the original 2026-05-05
 
 ### Known follow-ups when next picking this up
 
-- [ ] **After GA backfill completes:** redeploy `streetlight-backfill` with `verify_jwt: true` and remove the `internal_token` body path from `requireAdmin` (or just clear the token row so the path becomes inert — the simpler option). Document is open while the backfill is still mid-run.
-- [ ] **Delete `streetlight-test` edge function** once AGPS path is fully confirmed. It served its purpose catching the response-shape bug.
+- [x] ~~After GA backfill completes: redeploy `streetlight-backfill` with `verify_jwt: true` and clear the internal_token row.~~ **Done 2026-05-12** — backfill is `verify_jwt:true`, and `streetlight_backfill_config` was emptied (`DELETE FROM streetlight_backfill_config WHERE id=1;`). Future operator invocations can re-insert a row to mint a new token if needed.
+- [x] ~~Delete `streetlight-test` edge function.~~ **Done 2026-05-12.** Source preserved in git history (v7 lived only in deployed Supabase state, was never tracked locally — see [STREETLIGHT_AGPS_ENABLEMENT_EMAIL_2026_05_09.md](STREETLIGHT_AGPS_ENABLEMENT_EMAIL_2026_05_09.md) for the kind of probes it ran).
 - [ ] **Server-side permission check in `handleMetrics`** (`requireAuth` only validates JWT, doesn't check `can_consume_traffic_quota`). A user with view-only access could craft a direct call. ~5 lines. *(Still open from prior session.)*
 - [ ] **"Data is N years old" warning** in the popup for segments where `year_month` is older than 2 years. *(Still open from prior session.)*
+- [ ] **Optional: catalog backfill for other Southeast states** (Florida, South Carolina, Tennessee, Alabama) as Mike's CRE coverage expands. The `streetlight-backfill` function is generic — just add bbox entries to `REGIONS` and invoke with that region name. ~2.5h wall-clock per state of similar size to GA.
+- [ ] **Optional: index integrity check on `streetlight_segment`.** With 1.2M rows in the catalog, the GiST index (`idx_streetlight_segment_geom`) was built when there were ~2K rows; consider `REINDEX INDEX CONCURRENTLY idx_streetlight_segment_geom` if frontend bbox queries get slow. Not observed slow yet.
 
 ### Useful queries / commands
 
