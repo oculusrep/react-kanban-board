@@ -139,20 +139,36 @@ async function handleGeometry(
     },
   }) as unknown;
 
-  // StreetLight response: { columns: ['segment_id', 'line_geometry'], data: [[id, geometry], ...], status, query_rows }
-  const dataObj = data as { columns?: string[]; data?: Array<[number, { type: string; coordinates: number[][] }]>; status?: string; message?: string };
+  // StreetLight response columns differ by source:
+  //   CVD+ : ['segment_id', 'line_geometry']
+  //   AGPS : ['segment_id', 'osm_vintage', 'line_geometry']
+  // Resolve column positions by name so the parser works for either shape.
+  const dataObj = data as { columns?: string[]; data?: unknown[][]; status?: string; message?: string };
 
   // Check for API error response
   if (dataObj.status === 'error') {
     throw new Error(`StreetLight error: ${dataObj.message ?? 'Unknown error'}`);
   }
 
+  const cols = dataObj.columns ?? [];
+  const idIdx = cols.indexOf('segment_id');
+  const geomIdx = cols.indexOf('line_geometry');
+  if (idIdx < 0 || geomIdx < 0) {
+    throw new Error(`StreetLight /geometry response missing expected columns; got: ${JSON.stringify(cols)}`);
+  }
+
   const rows = dataObj.data ?? [];
   const segments = rows
-    .filter(([, geom]) => geom && geom.coordinates)
-    .map(([id, geom]) => ({
-      id: String(id),
-      geometry: geom,
+    .map((row) => ({
+      id: row[idIdx] as number | string,
+      geometry: row[geomIdx] as { type?: string; coordinates?: number[][] } | undefined,
+    }))
+    .filter((s): s is { id: number | string; geometry: { type?: string; coordinates: number[][] } } =>
+      !!s.geometry && Array.isArray(s.geometry.coordinates)
+    )
+    .map((s) => ({
+      id: String(s.id),
+      geometry: s.geometry,
     }));
 
   if (segments.length > 0) {
@@ -502,7 +518,9 @@ async function handleMetrics(
         day_type: cacheDayType,
         day_part: cacheDayPart,
         direction: resolvedDateSpec.direction,
-        fields: ['segment_id', 'year_month', 'trips_volume'],
+        // AGPS requires osm_vintage in fields, not just as a top-level param —
+        // SATC returns 403 "No osm_vintage found within fields" otherwise.
+        fields: ['segment_id', 'osm_vintage', 'year_month', 'trips_volume'],
       }) as { columns?: string[]; data?: Array<[number, string, number]>; status?: string; message?: string };
 
       if (metricsData.status === 'error') {
