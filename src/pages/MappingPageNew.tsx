@@ -7,6 +7,9 @@ import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
+import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
+import StarbucksTargetAreaToggle from '../components/mapping/layers/StarbucksTargetAreaToggle';
+import { useStarbucksTargetAreaStyles } from '../hooks/useStarbucksTargetAreaStyles';
 import TrafficCountLayer from '../components/mapping/TrafficCountLayer';
 import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
@@ -76,6 +79,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 }) => {
   const { userRole } = useAuth();
   const { hasPermission } = usePermissions();
+  const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const [searchAddress, setSearchAddress] = useState('');
@@ -2504,6 +2508,26 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       </div>
                     )}
 
+                    {/* Starbucks GA target areas — same permission gate as Starbucks stores.
+                        Toggle + inline style editor (per-priority color/opacity, localStorage-backed).
+                        Re-enabling the master toggle resets all bucket checkboxes to visible so the
+                        user always sees "everything" when turning the layer on. */}
+                    {hasPermission('can_view_starbucks_layer') && (
+                      <StarbucksTargetAreaToggle
+                        isVisible={layerState.starbucks_target_areas?.isVisible || false}
+                        onToggle={() => {
+                          const wasVisible = layerState.starbucks_target_areas?.isVisible || false;
+                          toggleLayer('starbucks_target_areas');
+                          if (!wasVisible) {
+                            starbucksTargetAreaStyles.showAllBuckets();
+                          }
+                        }}
+                        styles={starbucksTargetAreaStyles.styles}
+                        updateStyle={starbucksTargetAreaStyles.updateStyle}
+                        resetToDefaults={starbucksTargetAreaStyles.resetToDefaults}
+                      />
+                    )}
+
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
@@ -2805,6 +2829,13 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setSelectedPinType('starbucks');
                 setSelectedStarbucksStore(store);
               }}
+            />
+
+            {/* Starbucks Target Areas (polygons) — same permission gate as Starbucks Stores */}
+            <StarbucksTargetAreaLayer
+              map={mapInstance}
+              isVisible={layerState.starbucks_target_areas?.isVisible || false}
+              styles={starbucksTargetAreaStyles.styles}
             />
 
             {/* Closed Business Search Results Layer (live search) */}

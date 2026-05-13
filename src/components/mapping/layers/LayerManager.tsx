@@ -117,6 +117,16 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     isSystemLayer: true,
     requiresPermission: 'can_view_starbucks_layer',
   },
+  {
+    id: 'starbucks_target_areas',
+    name: 'Starbucks: GA Target Areas',
+    type: 'starbucks',
+    icon: '🎯',
+    description: 'Starbucks GA market target-area polygons (319 features)',
+    defaultVisible: false,
+    isSystemLayer: true,
+    requiresPermission: 'can_view_starbucks_layer',
+  },
 ];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
