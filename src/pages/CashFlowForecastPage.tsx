@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
+import CashflowDashboard from "../components/reports/CashflowDashboard";
 import {
   ArrowLeft,
   RefreshCw,
@@ -18,6 +19,9 @@ import {
   ArrowDownRight
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Line, ComposedChart, ReferenceLine } from 'recharts';
+
+// Broker IDs (matches CashflowDashboard.tsx)
+const MIKE_BROKER_ID = '38d4b67c-841d-4590-a909-523d3a4c6e4b';
 
 // Stage IDs for deal classification
 const STAGE_IDS = {
@@ -65,6 +69,7 @@ interface PaymentDetail {
   paymentAmount: number;      // Gross check amount
   referralFee: number;        // Referral fee (COGS outflow)
   brokerSplits: number;       // Broker commissions (COGS outflow)
+  mikeSplit: number;          // Mike's portion of brokerSplits (from payment_split)
   houseNet: number;           // What house keeps = payment - referral - brokers
   gci: number;                // GCI = payment - referral (for reference)
   estimatedDate: string | null;
@@ -79,14 +84,16 @@ interface MonthlyForecast {
   invoicedIncome: number;
   pipelineIncome: number;
   ucContingentIncome: number;
-  totalIncome: number;
+  totalIncome: number;       // House Net (already excludes broker splits + referrals)
   // Outflows (from budget)
-  budgetedExpenses: number;
+  budgetedExpenses: number;  // operating + cogs (shown for reference; NOT subtracted in net profit)
   cogsExpenses: number;
   operatingExpenses: number;
-  // Net
-  netCashFlow: number;
+  // Net profit (House Net − Operating Only; COGS already netted out of houseNet)
+  netCashFlow: number;       // kept as field name; now represents Net Profit
   cumulativeCashFlow: number;
+  // Mike's split totals for the month
+  mikeNet: number;
   // For drill-down
   payments: PaymentDetail[];
   expenseDetails: { category: string; amount: number }[];
@@ -95,9 +102,20 @@ interface MonthlyForecast {
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 
+type TabKey = 'forecast' | 'splits';
+
 export default function CashFlowForecastPage() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTab: TabKey = searchParams.get('tab') === 'splits' ? 'splits' : 'forecast';
+  const setActiveTab = (key: TabKey) => {
+    const next = new URLSearchParams(searchParams);
+    if (key === 'forecast') next.delete('tab');
+    else next.set('tab', key);
+    setSearchParams(next, { replace: true });
+  };
 
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -144,6 +162,24 @@ export default function CashFlowForecastPage() {
 
       if (paymentError) throw paymentError;
 
+      // Fetch Mike's split per payment for the per-payment breakdown
+      const paymentIds = (paymentData || []).map(p => p.id);
+      let mikeSplitByPayment = new Map<string, number>();
+      if (paymentIds.length > 0) {
+        const { data: splitData, error: splitError } = await supabase
+          .from('payment_split')
+          .select('payment_id, split_broker_total')
+          .in('payment_id', paymentIds)
+          .eq('broker_id', MIKE_BROKER_ID);
+        if (splitError) {
+          console.warn('Could not fetch Mike payment splits:', splitError.message);
+        } else {
+          mikeSplitByPayment = new Map(
+            (splitData || []).map(s => [s.payment_id, s.split_broker_total || 0])
+          );
+        }
+      }
+
       // Process payments
       // GCI = Payment Amount - Referral Fee
       // AGCI = GCI - House$ (what goes to brokers - from DB trigger)
@@ -172,6 +208,7 @@ export default function CashFlowForecastPage() {
           const agci = p.agci || 0;  // AGCI = GCI - House$ (calculated by DB trigger)
           const houseNet = gci - agci;  // House$ = GCI - AGCI
           const brokerSplits = agci;  // What brokers split = AGCI
+          const mikeSplit = mikeSplitByPayment.get(p.id) || 0;
 
           return {
             id: p.id,
@@ -182,6 +219,7 @@ export default function CashFlowForecastPage() {
             paymentAmount,
             referralFee,
             brokerSplits,
+            mikeSplit,
             gci,
             houseNet,
             estimatedDate: p.payment_date_estimated,
@@ -298,9 +336,14 @@ export default function CashFlowForecastPage() {
       const operatingExpenses = expensesByMonth[monthIdx].operating;
       const budgetedExpenses = cogsExpenses + operatingExpenses;
 
-      // Net cash flow
-      const netCashFlow = totalIncome - budgetedExpenses;
+      // Net profit: House Net (already nets out broker splits + referrals as COGS)
+      // minus operating expenses only. Do NOT also subtract budget COGS line items
+      // (referrals/broker payouts) — that would double-count.
+      const netCashFlow = totalIncome - operatingExpenses;
       cumulativeCash += netCashFlow;
+
+      // Mike's net commissions for this month (sum of payment_split rows for Mike)
+      const mikeNet = monthPayments.reduce((sum, p) => sum + p.mikeSplit, 0);
 
       forecasts.push({
         month: MONTH_NAMES[monthIdx],
@@ -314,6 +357,7 @@ export default function CashFlowForecastPage() {
         budgetedExpenses,
         netCashFlow,
         cumulativeCashFlow: cumulativeCash,
+        mikeNet,
         payments: monthPayments,
         expenseDetails: expenseDetailsByMonth[monthIdx].sort((a, b) => b.amount - a.amount)
       });
@@ -328,12 +372,15 @@ export default function CashFlowForecastPage() {
     const totalPipeline = monthlyForecasts.reduce((sum, m) => sum + m.pipelineIncome, 0);
     const totalUcContingent = monthlyForecasts.reduce((sum, m) => sum + m.ucContingentIncome, 0);
     const totalExpenses = monthlyForecasts.reduce((sum, m) => sum + m.budgetedExpenses, 0);
+    const totalOperatingExpenses = monthlyForecasts.reduce((sum, m) => sum + m.operatingExpenses, 0);
+    const totalMikeNet = monthlyForecasts.reduce((sum, m) => sum + m.mikeNet, 0);
 
     let totalIncome = totalInvoiced;
     if (includePipeline) totalIncome += totalPipeline;
     if (includeUcContingent) totalIncome += totalUcContingent;
 
-    const netCashFlow = totalIncome - totalExpenses;
+    // Net profit = House Net − Operating only (broker/referral already in House Net)
+    const netCashFlow = totalIncome - totalOperatingExpenses;
 
     // Find heaviest and lightest expense months
     const sortedByExpense = [...monthlyForecasts].sort((a, b) => b.budgetedExpenses - a.budgetedExpenses);
@@ -350,6 +397,8 @@ export default function CashFlowForecastPage() {
       totalUcContingent,
       totalIncome,
       totalExpenses,
+      totalOperatingExpenses,
+      totalMikeNet,
       netCashFlow,
       heaviestMonths,
       lightestMonths,
@@ -357,6 +406,12 @@ export default function CashFlowForecastPage() {
       deficitMonths
     };
   }, [monthlyForecasts, includePipeline, includeUcContingent]);
+
+  // Default "answer card" month: current calendar month if viewing current year, else January
+  const answerMonthIdx = useMemo(() => {
+    const now = new Date();
+    return now.getFullYear() === selectedYear ? now.getMonth() : 0;
+  }, [selectedYear]);
 
   // Chart data
   const chartData = useMemo(() => {
@@ -420,26 +475,93 @@ export default function CashFlowForecastPage() {
               <p className="text-sm text-gray-500">Projected income vs budgeted expenses</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm"
-            >
-              <option value={2024}>2024</option>
-              <option value={2025}>2025</option>
-              <option value={2026}>2026</option>
-            </select>
-            <button
-              onClick={fetchData}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </button>
-          </div>
+          {activeTab === 'forecast' && (
+            <div className="flex items-center gap-4">
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm"
+              >
+                <option value={2024}>2024</option>
+                <option value={2025}>2025</option>
+                <option value={2026}>2026</option>
+              </select>
+              <button
+                onClick={fetchData}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </button>
+            </div>
+          )}
         </div>
 
+        {/* Cash Position Answer Card — the primary question this page answers */}
+        {monthlyForecasts[answerMonthIdx] && (() => {
+          const m = monthlyForecasts[answerMonthIdx];
+          const companyColor = m.netCashFlow >= 0 ? '#002147' : '#A27B5C';
+          return (
+            <div className="bg-white rounded-lg shadow mb-6 border-l-4" style={{ borderColor: '#002147' }}>
+              <div className="px-6 py-5">
+                <p className="text-xs uppercase tracking-wider font-semibold mb-3" style={{ color: '#4A6B94' }}>
+                  Cash Position — {MONTH_NAMES[answerMonthIdx]} {selectedYear}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide font-medium" style={{ color: '#4A6B94' }}>Company Net Profit</p>
+                    <p className="text-4xl font-bold mt-1" style={{ color: companyColor }}>
+                      {formatCurrency(m.netCashFlow)}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      House Net {formatCurrency(m.totalIncome)} − Operating {formatCurrency(m.operatingExpenses)}
+                    </p>
+                  </div>
+                  <div className="md:border-l md:pl-6" style={{ borderColor: '#8FA9C8' }}>
+                    <p className="text-xs uppercase tracking-wide font-medium" style={{ color: '#4A6B94' }}>Mike's Net Commissions</p>
+                    <p className="text-4xl font-bold mt-1" style={{ color: '#002147' }}>
+                      {formatCurrency(m.mikeNet)}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">From payment_split for this month</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Tab Nav */}
+        <div className="mb-6 border-b border-gray-200">
+          <nav className="-mb-px flex gap-6" aria-label="Tabs">
+            <button
+              onClick={() => setActiveTab('forecast')}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
+                activeTab === 'forecast'
+                  ? 'border-blue-600 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              style={activeTab === 'forecast' ? { borderColor: '#002147', color: '#002147' } : undefined}
+            >
+              Cash Flow Forecast
+            </button>
+            <button
+              onClick={() => setActiveTab('splits')}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
+                activeTab === 'splits'
+                  ? 'border-blue-600 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              style={activeTab === 'splits' ? { borderColor: '#002147', color: '#002147' } : undefined}
+            >
+              Broker Splits
+            </button>
+          </nav>
+        </div>
+
+        {activeTab === 'splits' ? (
+          <CashflowDashboard embedded />
+        ) : (
+        <>
         {message && (
           <div className={`mb-4 p-3 rounded-lg ${message.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
             {message.text}
@@ -489,20 +611,20 @@ export default function CashFlowForecastPage() {
               <ArrowDownRight className="h-5 w-5 text-red-500" />
               <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Operating Expenses</p>
             </div>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summaryTotals.totalExpenses)}</p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summaryTotals.totalOperatingExpenses)}</p>
             <p className="text-xs text-gray-500 mt-1">Budgeted (excl. COGS)</p>
           </div>
 
-          {/* Net Cash Flow */}
+          {/* Net Profit */}
           <div className={`bg-white rounded-lg shadow p-6 border-l-4 ${summaryTotals.netCashFlow >= 0 ? 'border-blue-500' : 'border-orange-500'}`}>
             <div className="flex items-center gap-2 mb-2">
               <Wallet className="h-5 w-5 text-blue-500" />
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Net Cash Flow</p>
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Net Profit</p>
             </div>
             <p className={`text-2xl font-bold ${summaryTotals.netCashFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
               {formatCurrency(summaryTotals.netCashFlow)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Available for debt/distributions</p>
+            <p className="text-xs text-gray-500 mt-1">House Net − Operating Expenses</p>
           </div>
 
           {/* Heaviest Month */}
@@ -673,7 +795,8 @@ export default function CashFlowForecastPage() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-red-600 uppercase bg-red-50">COGS</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-red-600 uppercase bg-red-50">Operating</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase bg-gray-100">Total Expenses</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-blue-600 uppercase bg-blue-50">Net Cash</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase bg-blue-50" style={{ color: '#002147' }}>Net Profit</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase bg-blue-50" style={{ color: '#002147' }}>Mike's Net</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-purple-600 uppercase bg-purple-50">Cumulative</th>
                 </tr>
               </thead>
@@ -727,6 +850,9 @@ export default function CashFlowForecastPage() {
                       <td className={`px-4 py-3 text-sm text-right font-semibold bg-blue-50/50 ${forecast.netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {forecast.netCashFlow >= 0 ? '+' : ''}{formatCurrency(forecast.netCashFlow)}
                       </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold bg-blue-50/50" style={{ color: '#002147' }}>
+                        {formatCurrency(forecast.mikeNet)}
+                      </td>
                       <td className={`px-4 py-3 text-sm text-right font-semibold bg-purple-50/50 ${forecast.cumulativeCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
                         {formatCurrency(forecast.cumulativeCashFlow)}
                       </td>
@@ -734,7 +860,7 @@ export default function CashFlowForecastPage() {
                     {/* Expanded Details */}
                     {expandedMonths.has(idx) && (
                       <tr className="bg-gray-50">
-                        <td colSpan={10} className="px-4 py-4">
+                        <td colSpan={11} className="px-4 py-4">
                           <div className="grid grid-cols-2 gap-6">
                             {/* Income Details */}
                             <div>
@@ -773,6 +899,10 @@ export default function CashFlowForecastPage() {
                                             <span>-{formatCurrency(p.brokerSplits)}</span>
                                           </div>
                                         )}
+                                        <div className="flex justify-between font-medium" style={{ color: '#002147' }}>
+                                          <span>Mike's Split:</span>
+                                          <span>{formatCurrency(p.mikeSplit)}</span>
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
@@ -835,6 +965,9 @@ export default function CashFlowForecastPage() {
                   <td className={`px-4 py-3 text-sm text-right font-semibold ${summaryTotals.netCashFlow >= 0 ? 'text-green-300' : 'text-red-300'}`}>
                     {summaryTotals.netCashFlow >= 0 ? '+' : ''}{formatCurrency(summaryTotals.netCashFlow)}
                   </td>
+                  <td className="px-4 py-3 text-sm text-right font-semibold text-blue-200">
+                    {formatCurrency(summaryTotals.totalMikeNet)}
+                  </td>
                   <td className="px-4 py-3 text-sm text-right font-semibold text-purple-300">
                     {formatCurrency(monthlyForecasts[11]?.cumulativeCashFlow || 0)}
                   </td>
@@ -877,12 +1010,15 @@ export default function CashFlowForecastPage() {
         {/* Footer Notes */}
         <div className="bg-white rounded-lg shadow px-6 py-3">
           <div className="text-xs text-gray-500 space-y-1">
-            <p><strong>House Net Income:</strong> Check Amount - Referral Fee (COGS) - Broker Splits (COGS) = What the house keeps from each payment</p>
+            <p><strong>House Net Income:</strong> Check Amount − Referral Fee − Broker Splits = What the company keeps from each payment (broker/referral are COGS, already deducted here)</p>
             <p><strong>Income Sources:</strong> Expected payments from deals in Booked/Executed Payable (Invoiced), LOI/PSA (Pipeline 50%+), and Under Contract (UC/Contingent) stages</p>
-            <p><strong>Expense Sources:</strong> Monthly budgeted amounts from the Budget Setup page ({selectedYear}) - excludes COGS already deducted from income</p>
-            <p><strong>Net Cash Flow:</strong> House Net Income - Budgeted Operating Expenses = Available for debt payments, profit distributions, or reinvestment</p>
+            <p><strong>Expense Sources:</strong> Monthly budgeted amounts from the Budget Setup page ({selectedYear}). The COGS column is shown for reference but is NOT subtracted in Net Profit — it's already netted out of House Net.</p>
+            <p><strong>Net Profit:</strong> House Net − Operating Expenses. The company's bottom-line for the month after all costs.</p>
+            <p><strong>Mike's Net:</strong> Mike's payment_split totals for payments due that month — his personal commission take-home before any personal taxes/deductions.</p>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

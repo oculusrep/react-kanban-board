@@ -539,17 +539,6 @@ export default function Navbar() {
                       🎯 Goal Dashboard
                     </button>
                   )}
-                  {hasPermission('can_view_goal_dashboard') && (
-                    <button
-                      onClick={() => {
-                        navigate('/reports/cashflow-dashboard');
-                        setIsReportsMenuOpen(false);
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                    >
-                      💰 Cashflow Dashboard
-                    </button>
-                  )}
                   <button
                     onClick={() => {
                       navigate('/notes-debug');
@@ -1140,17 +1129,6 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     🎯 Goal Dashboard
-                  </button>
-                )}
-                {hasPermission('can_view_goal_dashboard') && (
-                  <button
-                    onClick={() => {
-                      navigate('/reports/cashflow-dashboard');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                  >
-                    💰 Cashflow Dashboard
                   </button>
                 )}
                 <button
