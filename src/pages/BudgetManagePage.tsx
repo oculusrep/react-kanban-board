@@ -141,7 +141,7 @@ export default function BudgetManagePage() {
         .select('account_id, transaction_date, amount')
         .gte('transaction_date', `${budgetYear}-01-01`)
         .lte('transaction_date', `${budgetYear}-12-31`)
-        .in('transaction_type', ['Purchase', 'Bill']);
+        .in('transaction_type', ['Purchase', 'Bill', 'CreditCardCredit', 'VendorCredit', 'Deposit']);
 
       if (expensesError) throw expensesError;
 
@@ -357,37 +357,48 @@ export default function BudgetManagePage() {
   };
 
   // Calculate totals for a parent node (sum of all children)
+  // In QBO, a parent account can have its own direct transactions/budget AND child accounts
+  // with their own budgets. The parent row's total is the aggregate (own + all descendants).
   const getNodeBudgetTotal = (node: AccountNode): number => {
+    let sum = 0;
     if (node.account) {
       const budget = getBudget(node.account.qb_account_id);
-      return MONTHS.reduce((sum, month) => sum + (budget[month] || 0), 0);
+      sum += MONTHS.reduce((s, month) => s + (budget[month] || 0), 0);
     }
-    return node.children.reduce((sum, child) => sum + getNodeBudgetTotal(child), 0);
+    sum += node.children.reduce((s, child) => s + getNodeBudgetTotal(child), 0);
+    return sum;
   };
 
   const getNodeActualTotal = (node: AccountNode): number => {
+    let sum = 0;
     if (node.account) {
       const actual = actuals.get(node.account.qb_account_id);
-      if (!actual) return 0;
-      return MONTHS.reduce((sum, month) => sum + (actual[month] || 0), 0);
+      if (actual) {
+        sum += MONTHS.reduce((s, month) => s + (actual[month] || 0), 0);
+      }
     }
-    return node.children.reduce((sum, child) => sum + getNodeActualTotal(child), 0);
+    sum += node.children.reduce((s, child) => s + getNodeActualTotal(child), 0);
+    return sum;
   };
 
   const getNodeMonthBudget = (node: AccountNode, month: typeof MONTHS[number]): number => {
+    let sum = 0;
     if (node.account) {
       const budget = getBudget(node.account.qb_account_id);
-      return budget[month] || 0;
+      sum += budget[month] || 0;
     }
-    return node.children.reduce((sum, child) => sum + getNodeMonthBudget(child, month), 0);
+    sum += node.children.reduce((s, child) => s + getNodeMonthBudget(child, month), 0);
+    return sum;
   };
 
   const getNodeMonthActual = (node: AccountNode, month: typeof MONTHS[number]): number => {
+    let sum = 0;
     if (node.account) {
       const actual = actuals.get(node.account.qb_account_id);
-      return actual?.[month] || 0;
+      sum += actual?.[month] || 0;
     }
-    return node.children.reduce((sum, child) => sum + getNodeMonthActual(child, month), 0);
+    sum += node.children.reduce((s, child) => s + getNodeMonthActual(child, month), 0);
+    return sum;
   };
 
   const saveAllBudgets = async () => {
