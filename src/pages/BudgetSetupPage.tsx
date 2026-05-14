@@ -91,10 +91,12 @@ export default function BudgetSetupPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Operating expenses only. We do NOT budget Cost of Goods Sold —
+      // broker splits + referral fees scale mechanically with each commission check.
       const { data: expenseAccounts, error: accountsError } = await supabase
         .from('qb_account')
         .select('*')
-        .in('account_type', ['Expense', 'Other Expense', 'Cost of Goods Sold'])
+        .in('account_type', ['Expense', 'Other Expense'])
         .eq('active', true)
         .order('fully_qualified_name');
 
@@ -491,12 +493,8 @@ export default function BudgetSetupPage() {
                             <div className="font-semibold text-gray-900 text-sm truncate" title={account.fully_qualified_name}>
                               {account.name}
                             </div>
-                            <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
-                              account.account_type === 'Cost of Goods Sold'
-                                ? 'bg-orange-100 text-orange-700'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}>
-                              {account.account_type === 'Cost of Goods Sold' ? 'COGS' : 'Exp'}
+                            <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 bg-gray-100 text-gray-600">
+                              Exp
                             </span>
                           </div>
                         </td>

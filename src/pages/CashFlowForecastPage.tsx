@@ -85,12 +85,10 @@ interface MonthlyForecast {
   pipelineIncome: number;
   ucContingentIncome: number;
   totalIncome: number;       // House Net (already excludes broker splits + referrals)
-  // Outflows (from budget)
-  budgetedExpenses: number;  // operating + cogs (shown for reference; NOT subtracted in net profit)
-  cogsExpenses: number;
+  // Outflows (operating only — COGS is not budgeted)
   operatingExpenses: number;
-  // Net profit (House Net − Operating Only; COGS already netted out of houseNet)
-  netCashFlow: number;       // kept as field name; now represents Net Profit
+  // Net profit: House Net − Operating Expenses
+  netCashFlow: number;
   cumulativeCashFlow: number;
   // Mike's split totals for the month
   mikeNet: number;
@@ -273,28 +271,28 @@ export default function CashFlowForecastPage() {
       accountTypeByQbId.set(account.qb_account_id, account.account_type);
     }
 
-    // Calculate expense budgets by month and type
-    const expensesByMonth: { cogs: number; operating: number }[] = Array.from({ length: 12 }, () => ({ cogs: 0, operating: 0 }));
+    // Calculate operating expense budgets by month.
+    // We do NOT budget COGS — broker splits + referrals come out automatically
+    // when commission checks come in, so they're already netted out of House Net.
+    const expensesByMonth: { operating: number }[] = Array.from({ length: 12 }, () => ({ operating: 0 }));
     const expenseDetailsByMonth: { category: string; amount: number }[][] = Array.from({ length: 12 }, () => []);
 
     for (const [qbAccountId, budget] of accountBudgets) {
       const accountType = accountTypeByQbId.get(qbAccountId);
       const account = accounts.find(a => a.qb_account_id === qbAccountId);
 
-      // Skip income accounts - we only want expenses
-      if (accountType === 'Income' || accountType === 'Other Income') continue;
-
-      const isCogs = accountType === 'Cost of Goods Sold';
+      // Only operating expenses: skip Income, Other Income, and Cost of Goods Sold
+      if (
+        accountType === 'Income' ||
+        accountType === 'Other Income' ||
+        accountType === 'Cost of Goods Sold'
+      ) continue;
 
       for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
         const monthKey = MONTH_KEYS[monthIdx];
         const budgetAmount = budget[monthKey] || 0;
         if (budgetAmount > 0) {
-          if (isCogs) {
-            expensesByMonth[monthIdx].cogs += budgetAmount;
-          } else {
-            expensesByMonth[monthIdx].operating += budgetAmount;
-          }
+          expensesByMonth[monthIdx].operating += budgetAmount;
           expenseDetailsByMonth[monthIdx].push({
             category: account?.name || qbAccountId,
             amount: budgetAmount
@@ -331,14 +329,11 @@ export default function CashFlowForecastPage() {
       if (includePipeline) totalIncome += pipelineIncome;
       if (includeUcContingent) totalIncome += ucContingentIncome;
 
-      // Total expenses
-      const cogsExpenses = expensesByMonth[monthIdx].cogs;
+      // We only budget operating expenses (COGS = broker splits + referrals,
+      // already netted out of House Net mechanically when a check comes in)
       const operatingExpenses = expensesByMonth[monthIdx].operating;
-      const budgetedExpenses = cogsExpenses + operatingExpenses;
 
-      // Net profit: House Net (already nets out broker splits + referrals as COGS)
-      // minus operating expenses only. Do NOT also subtract budget COGS line items
-      // (referrals/broker payouts) — that would double-count.
+      // Net profit: House Net minus operating expenses.
       const netCashFlow = totalIncome - operatingExpenses;
       cumulativeCash += netCashFlow;
 
@@ -352,9 +347,7 @@ export default function CashFlowForecastPage() {
         pipelineIncome,
         ucContingentIncome,
         totalIncome,
-        cogsExpenses,
         operatingExpenses,
-        budgetedExpenses,
         netCashFlow,
         cumulativeCashFlow: cumulativeCash,
         mikeNet,
@@ -371,7 +364,6 @@ export default function CashFlowForecastPage() {
     const totalInvoiced = monthlyForecasts.reduce((sum, m) => sum + m.invoicedIncome, 0);
     const totalPipeline = monthlyForecasts.reduce((sum, m) => sum + m.pipelineIncome, 0);
     const totalUcContingent = monthlyForecasts.reduce((sum, m) => sum + m.ucContingentIncome, 0);
-    const totalExpenses = monthlyForecasts.reduce((sum, m) => sum + m.budgetedExpenses, 0);
     const totalOperatingExpenses = monthlyForecasts.reduce((sum, m) => sum + m.operatingExpenses, 0);
     const totalMikeNet = monthlyForecasts.reduce((sum, m) => sum + m.mikeNet, 0);
 
@@ -379,13 +371,13 @@ export default function CashFlowForecastPage() {
     if (includePipeline) totalIncome += totalPipeline;
     if (includeUcContingent) totalIncome += totalUcContingent;
 
-    // Net profit = House Net − Operating only (broker/referral already in House Net)
+    // Net profit = House Net − Operating expenses
     const netCashFlow = totalIncome - totalOperatingExpenses;
 
-    // Find heaviest and lightest expense months
-    const sortedByExpense = [...monthlyForecasts].sort((a, b) => b.budgetedExpenses - a.budgetedExpenses);
-    const heaviestMonths = sortedByExpense.slice(0, 3).filter(m => m.budgetedExpenses > 0);
-    const lightestMonths = sortedByExpense.slice(-3).filter(m => m.budgetedExpenses > 0).reverse();
+    // Find heaviest and lightest operating-expense months
+    const sortedByExpense = [...monthlyForecasts].sort((a, b) => b.operatingExpenses - a.operatingExpenses);
+    const heaviestMonths = sortedByExpense.slice(0, 3).filter(m => m.operatingExpenses > 0);
+    const lightestMonths = sortedByExpense.slice(-3).filter(m => m.operatingExpenses > 0).reverse();
 
     // Find surplus and deficit months - sorted chronologically by monthIndex
     const surplusMonths = monthlyForecasts.filter(m => m.netCashFlow > 0).sort((a, b) => a.monthIndex - b.monthIndex);
@@ -396,7 +388,6 @@ export default function CashFlowForecastPage() {
       totalPipeline,
       totalUcContingent,
       totalIncome,
-      totalExpenses,
       totalOperatingExpenses,
       totalMikeNet,
       netCashFlow,
@@ -418,8 +409,8 @@ export default function CashFlowForecastPage() {
     return monthlyForecasts.map(m => ({
       month: m.month,
       Income: m.totalIncome,
-      Expenses: m.budgetedExpenses,
-      'Net Cash': m.netCashFlow,
+      Expenses: m.operatingExpenses,
+      'Net Profit': m.netCashFlow,
       Cumulative: m.cumulativeCashFlow
     }));
   }, [monthlyForecasts]);
@@ -638,7 +629,7 @@ export default function CashFlowForecastPage() {
                 {summaryTotals.heaviestMonths.map(m => (
                   <div key={m.month} className="flex justify-between text-sm">
                     <span className="font-medium text-gray-900">{m.month}</span>
-                    <span className="text-amber-600">{formatCurrency(m.budgetedExpenses)}</span>
+                    <span className="text-amber-600">{formatCurrency(m.operatingExpenses)}</span>
                   </div>
                 ))}
               </div>
@@ -658,7 +649,7 @@ export default function CashFlowForecastPage() {
                 {summaryTotals.lightestMonths.map(m => (
                   <div key={m.month} className="flex justify-between text-sm">
                     <span className="font-medium text-gray-900">{m.month}</span>
-                    <span className="text-emerald-600">{formatCurrency(m.budgetedExpenses)}</span>
+                    <span className="text-emerald-600">{formatCurrency(m.operatingExpenses)}</span>
                   </div>
                 ))}
               </div>
@@ -683,7 +674,7 @@ export default function CashFlowForecastPage() {
                     <div>
                       <span className="font-medium text-gray-900">{m.month}</span>
                       <span className="text-xs text-gray-500 ml-2">
-                        (In: {formatCurrency(m.totalIncome)} / Out: {formatCurrency(m.budgetedExpenses)})
+                        (In: {formatCurrency(m.totalIncome)} / Out: {formatCurrency(m.operatingExpenses)})
                       </span>
                     </div>
                     <span className="font-semibold text-green-600">+{formatCurrency(m.netCashFlow)}</span>
@@ -708,7 +699,7 @@ export default function CashFlowForecastPage() {
                     <div>
                       <span className="font-medium text-gray-900">{m.month}</span>
                       <span className="text-xs text-gray-500 ml-2">
-                        (In: {formatCurrency(m.totalIncome)} / Out: {formatCurrency(m.budgetedExpenses)})
+                        (In: {formatCurrency(m.totalIncome)} / Out: {formatCurrency(m.operatingExpenses)})
                       </span>
                     </div>
                     <span className="font-semibold text-red-600">{formatCurrency(m.netCashFlow)}</span>
@@ -738,7 +729,7 @@ export default function CashFlowForecastPage() {
                   <ReferenceLine y={0} stroke="#666" strokeDasharray="3 3" />
                   <Bar dataKey="Income" fill="#22C55E" />
                   <Bar dataKey="Expenses" fill="#EF4444" />
-                  <Line type="monotone" dataKey="Net Cash" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6' }} />
+                  <Line type="monotone" dataKey="Net Profit" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6' }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -792,9 +783,7 @@ export default function CashFlowForecastPage() {
                     <th className="px-4 py-3 text-right text-xs font-medium text-yellow-600 uppercase bg-yellow-50">UC/Contingent</th>
                   )}
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase bg-gray-100">Total Income</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-red-600 uppercase bg-red-50">COGS</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-red-600 uppercase bg-red-50">Operating</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase bg-gray-100">Total Expenses</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-red-600 uppercase bg-red-50">Operating Expenses</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase bg-blue-50" style={{ color: '#002147' }}>Net Profit</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase bg-blue-50" style={{ color: '#002147' }}>Mike's Net</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-purple-600 uppercase bg-purple-50">Cumulative</th>
@@ -838,14 +827,8 @@ export default function CashFlowForecastPage() {
                       <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900 bg-gray-50">
                         {formatCurrency(forecast.totalIncome)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-right text-red-600 bg-red-50/50">
-                        {formatCurrency(forecast.cogsExpenses)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-red-600 bg-red-50/50">
+                      <td className="px-4 py-3 text-sm text-right font-semibold text-red-700 bg-red-50/50">
                         {formatCurrency(forecast.operatingExpenses)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right font-semibold text-red-700 bg-gray-50">
-                        {formatCurrency(forecast.budgetedExpenses)}
                       </td>
                       <td className={`px-4 py-3 text-sm text-right font-semibold bg-blue-50/50 ${forecast.netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {forecast.netCashFlow >= 0 ? '+' : ''}{formatCurrency(forecast.netCashFlow)}
@@ -860,7 +843,7 @@ export default function CashFlowForecastPage() {
                     {/* Expanded Details */}
                     {expandedMonths.has(idx) && (
                       <tr className="bg-gray-50">
-                        <td colSpan={11} className="px-4 py-4">
+                        <td colSpan={7 + (includePipeline ? 1 : 0) + (includeUcContingent ? 1 : 0)} className="px-4 py-4">
                           <div className="grid grid-cols-2 gap-6">
                             {/* Income Details */}
                             <div>
@@ -957,10 +940,8 @@ export default function CashFlowForecastPage() {
                   <td className="px-4 py-3 text-sm text-right font-semibold">
                     {formatCurrency(summaryTotals.totalIncome)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold bg-red-900/50" colSpan={2}>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold">
-                    {formatCurrency(summaryTotals.totalExpenses)}
+                  <td className="px-4 py-3 text-sm text-right font-semibold bg-red-900/50">
+                    {formatCurrency(summaryTotals.totalOperatingExpenses)}
                   </td>
                   <td className={`px-4 py-3 text-sm text-right font-semibold ${summaryTotals.netCashFlow >= 0 ? 'text-green-300' : 'text-red-300'}`}>
                     {summaryTotals.netCashFlow >= 0 ? '+' : ''}{formatCurrency(summaryTotals.netCashFlow)}
@@ -977,11 +958,11 @@ export default function CashFlowForecastPage() {
           </div>
         </div>
 
-        {/* Budget Analysis Section */}
+        {/* Operating Expense by Month */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Budget Expense Analysis by Month</h2>
-            <p className="text-sm text-gray-500">Compare budgeted expenses across months to identify seasonal patterns</p>
+            <h2 className="text-lg font-semibold text-gray-900">Operating Expenses by Month</h2>
+            <p className="text-sm text-gray-500">Budgeted operating spend across the year</p>
           </div>
           <div className="p-6">
             <div className="h-64">
@@ -989,7 +970,6 @@ export default function CashFlowForecastPage() {
                 <BarChart
                   data={monthlyForecasts.map(m => ({
                     month: m.month,
-                    COGS: m.cogsExpenses,
                     Operating: m.operatingExpenses
                   }))}
                   margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
@@ -999,8 +979,7 @@ export default function CashFlowForecastPage() {
                   <YAxis tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
                   <Tooltip formatter={(value: number) => [formatCurrency(value), '']} />
                   <Legend />
-                  <Bar dataKey="COGS" fill="#F59E0B" stackId="a" name="Cost of Goods Sold" />
-                  <Bar dataKey="Operating" fill="#EF4444" stackId="a" name="Operating Expenses" />
+                  <Bar dataKey="Operating" fill="#EF4444" name="Operating Expenses" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1010,10 +989,10 @@ export default function CashFlowForecastPage() {
         {/* Footer Notes */}
         <div className="bg-white rounded-lg shadow px-6 py-3">
           <div className="text-xs text-gray-500 space-y-1">
-            <p><strong>House Net Income:</strong> Check Amount − Referral Fee − Broker Splits = What the company keeps from each payment (broker/referral are COGS, already deducted here)</p>
+            <p><strong>House Net Income:</strong> Check Amount − Referral Fee − Broker Splits = What the company keeps from each payment. Referrals and broker splits (COGS) come out automatically when checks come in, so they're already netted out here.</p>
             <p><strong>Income Sources:</strong> Expected payments from deals in Booked/Executed Payable (Invoiced), LOI/PSA (Pipeline 50%+), and Under Contract (UC/Contingent) stages</p>
-            <p><strong>Expense Sources:</strong> Monthly budgeted amounts from the Budget Setup page ({selectedYear}). The COGS column is shown for reference but is NOT subtracted in Net Profit — it's already netted out of House Net.</p>
-            <p><strong>Net Profit:</strong> House Net − Operating Expenses. The company's bottom-line for the month after all costs.</p>
+            <p><strong>Operating Expenses:</strong> Monthly budgeted operating spend from the Budget Setup page ({selectedYear}). COGS is not budgeted — it scales mechanically with each commission check.</p>
+            <p><strong>Net Profit:</strong> House Net − Operating Expenses. The company's bottom-line for the month.</p>
             <p><strong>Mike's Net:</strong> Mike's payment_split totals for payments due that month — his personal commission take-home before any personal taxes/deductions.</p>
           </div>
         </div>

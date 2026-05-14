@@ -86,12 +86,47 @@ The `Expected Income (N payments)` heading count should also use the filtered le
 
 ---
 
+## Follow-up: COGS removed from budgeting tools (same day)
+
+Confirmed the brokerage accounting principle: **OVIS budget = Operating Expenses only.** COGS is not budgeted because broker splits + referral fees fire mechanically when a commission check arrives — there's no planning decision to make.
+
+### Forecast page
+
+- Dropped `cogsExpenses` and `budgetedExpenses` from `MonthlyForecast`.
+- Data fetch now skips `Cost of Goods Sold` account types alongside Income/Other Income.
+- Monthly Breakdown table no longer has COGS / Total Expenses columns — just Operating Expenses sits between Total Income and Net Profit.
+- Heaviest / Lightest Months cards now sort by `operatingExpenses` (not the combined total).
+- Surplus / Deficit month cards show `operatingExpenses` in their "Out:" breakdown.
+- Bottom chart "Budget Expense Analysis by Month" (was stacked COGS+Operating) replaced with a single-series "Operating Expenses by Month" bar chart.
+- "Net Cash" line in the monthly cash-flow chart relabeled to "Net Profit".
+- Footer notes rewritten to explain why COGS is absent.
+
+### Budget Setup ([src/pages/BudgetSetupPage.tsx](../src/pages/BudgetSetupPage.tsx))
+
+- `qb_account` query now fetches only `['Expense', 'Other Expense']` — COGS removed.
+- COGS/Exp badge UI collapsed to just "Exp".
+
+### Budget Manager ([src/pages/BudgetManagePage.tsx](../src/pages/BudgetManagePage.tsx))
+
+- Removed the "Cost of Goods Sold" section from `SECTION_DEFINITIONS`.
+- `qb_account` query now fetches only `['Expense', 'Other Expense']`.
+
+### Budget Dashboard ([src/pages/BudgetDashboardPage.tsx](../src/pages/BudgetDashboardPage.tsx)) — intentionally NOT changed
+
+This page is the actuals/reporting view (full P&L with QB actuals + budget comparison). COGS legitimately appears there as actuals (commission payouts post through COGS accounts in QuickBooks). The budget column for COGS will naturally read as $0 since no one can input COGS budgets anymore. Worth a separate pass to clean up the visual treatment of "COGS budget" columns if they show prominently in this view — flagged for a follow-up.
+
+### Memory saved
+
+`/Users/mike/.claude/.../memory/project_budget_no_cogs.md` — preserves this domain rule for future sessions so the next person/agent doesn't reintroduce COGS into a budget query.
+
 ## Files touched this session
 
-- [src/pages/CashFlowForecastPage.tsx](../src/pages/CashFlowForecastPage.tsx) — tab nav, answer card, net profit math, Mike's Net column, Mike's Split line in drill-down, `payment_split` fetch.
+- [src/pages/CashFlowForecastPage.tsx](../src/pages/CashFlowForecastPage.tsx) — tab nav, answer card, net profit math, Mike's Net column, Mike's Split line in drill-down, `payment_split` fetch, **COGS removed from forecast page**.
 - [src/components/reports/CashflowDashboard.tsx](../src/components/reports/CashflowDashboard.tsx) — `embedded` prop, compact Lens selector, weekly rollup with month-expansion, per-payment Mike/Arty/Greg detail.
 - [src/pages/CashflowDashboardPage.tsx](../src/pages/CashflowDashboardPage.tsx) — replaced with redirect.
 - [src/components/Navbar.tsx](../src/components/Navbar.tsx) — removed Cashflow Dashboard entries (desktop + mobile).
+- [src/pages/BudgetSetupPage.tsx](../src/pages/BudgetSetupPage.tsx) — COGS removed from account fetch + badge UI.
+- [src/pages/BudgetManagePage.tsx](../src/pages/BudgetManagePage.tsx) — COGS section + COGS from account fetch removed.
 
 ## Pre-existing issues not addressed
 

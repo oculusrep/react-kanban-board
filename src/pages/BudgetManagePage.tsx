@@ -82,9 +82,10 @@ interface PLSection {
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// P&L section definitions (order matters)
+// P&L section definitions (order matters).
+// We do NOT budget Cost of Goods Sold — broker splits + referral fees scale
+// mechanically with each commission check, so they're not under our planning control.
 const SECTION_DEFINITIONS = [
-  { title: 'Cost of Goods Sold', accountTypes: ['Cost of Goods Sold'] },
   { title: 'Operating Expenses', accountTypes: ['Expense'] },
   { title: 'Other Expenses', accountTypes: ['Other Expense'] },
 ];
@@ -125,11 +126,11 @@ export default function BudgetManagePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch expense accounts
+      // Fetch operating expense accounts only (COGS is not budgeted — see SECTION_DEFINITIONS)
       const { data: expenseAccounts, error: accountsError } = await supabase
         .from('qb_account')
         .select('*')
-        .in('account_type', ['Expense', 'Other Expense', 'Cost of Goods Sold'])
+        .in('account_type', ['Expense', 'Other Expense'])
         .eq('active', true)
         .order('fully_qualified_name');
 
