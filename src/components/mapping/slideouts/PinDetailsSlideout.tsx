@@ -1597,7 +1597,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         // For existing, use the selectedPropertyUnit state
         const propertyUnitForInsert = siteSubmit.property_unit_id ?? selectedPropertyUnit ?? null;
 
-        const insertData = {
+        // Snapshot property + unit economics onto the new site submit so they
+        // live independently of the property going forward. See migration
+        // 20260514000000_add_site_submit_economics.sql.
+        const prop = siteSubmit.property;
+        let unitForSnapshot: { sqft: number | null; rent: number | null; nnn: number | null } | null = null;
+        if (propertyUnitForInsert) {
+          const { data: unitData } = await supabase
+            .from('property_unit')
+            .select('sqft, rent, nnn')
+            .eq('id', propertyUnitForInsert)
+            .single();
+          unitForSnapshot = unitData ?? null;
+        }
+
+        const insertData: any = {
           site_submit_name: siteSubmitName,
           property_id: siteSubmit.property_id,
           client_id: selectedClient.id,
@@ -1610,6 +1624,15 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           customer_comments: formData.customerComments || null,
           verified_latitude: propertyCoords.lat,  // User-verified coordinates from map pin
           verified_longitude: propertyCoords.lng, // User-verified coordinates from map pin
+          available_sqft: unitForSnapshot?.sqft ?? prop?.available_sqft ?? null,
+          building_sqft: prop?.building_sqft ?? null,
+          acres: prop?.acres ?? null,
+          asking_lease_price: prop?.asking_lease_price ?? null,
+          rent_psf: unitForSnapshot?.rent ?? prop?.rent_psf ?? null,
+          nnn_psf: unitForSnapshot?.nnn ?? prop?.nnn_psf ?? null,
+          all_in_rent: (prop as any)?.all_in_rent ?? null,
+          asking_purchase_price: prop?.asking_purchase_price ?? null,
+          asking_ground_lease_price: prop?.asking_lease_price ?? null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
           // created_by_id and updated_by_id set automatically by auth.uid() defaults

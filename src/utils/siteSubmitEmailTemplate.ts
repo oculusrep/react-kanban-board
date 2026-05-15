@@ -85,39 +85,50 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   // Build address
   const address = [property?.address, property?.city, property?.state, property?.zip].filter(Boolean).join(', ');
 
-  // Determine size info
+  // Determine size info. Prefer site_submit snapshot economics (the values the
+  // client was actually shown / negotiated against); fall back to property /
+  // property_unit for older records where the snapshot may not be backfilled.
   let sizeInfo = '';
-  if (propertyUnit?.sqft) {
+  if (siteSubmit?.available_sqft) {
+    sizeInfo = `${formatNumber(siteSubmit.available_sqft)} SF`;
+  } else if (propertyUnit?.sqft) {
     sizeInfo = `${formatNumber(propertyUnit.sqft)} SF`;
   } else if (property?.available_sqft) {
     sizeInfo = `${formatNumber(property.available_sqft)} SF`;
-  } else if (property?.acres) {
-    sizeInfo = `${property.acres} Acres`;
-    if (property?.building_sqft) {
-      sizeInfo += ` (${formatNumber(property.building_sqft)} SF building)`;
+  } else if (siteSubmit?.acres || property?.acres) {
+    const acresVal = siteSubmit?.acres ?? property?.acres;
+    sizeInfo = `${acresVal} Acres`;
+    const buildingSqft = siteSubmit?.building_sqft ?? property?.building_sqft;
+    if (buildingSqft) {
+      sizeInfo += ` (${formatNumber(buildingSqft)} SF building)`;
     }
   }
 
-  // Determine pricing info
+  // Determine pricing info — site_submit snapshot first, then property/unit.
   let pricingLabel = '';
   let pricingValue = '';
-  if (propertyUnit?.rent) {
+  if (siteSubmit?.rent_psf) {
+    pricingLabel = 'Base Rent';
+    pricingValue = formatCurrency(siteSubmit.rent_psf) || '';
+  } else if (propertyUnit?.rent) {
     pricingLabel = 'Base Rent';
     pricingValue = formatCurrency(propertyUnit.rent) || '';
   } else if (property?.rent_psf) {
     pricingLabel = 'Base Rent';
     pricingValue = formatCurrency(property.rent_psf) || '';
-  } else if (property?.asking_lease_price) {
+  } else if (siteSubmit?.asking_lease_price ?? property?.asking_lease_price) {
     pricingLabel = 'Ground Lease';
-    pricingValue = formatCurrency(property.asking_lease_price) || '';
-  } else if (property?.asking_purchase_price) {
+    pricingValue = formatCurrency(siteSubmit?.asking_lease_price ?? property?.asking_lease_price) || '';
+  } else if (siteSubmit?.asking_purchase_price ?? property?.asking_purchase_price) {
     pricingLabel = 'Purchase Price';
-    pricingValue = formatCurrency(property.asking_purchase_price) || '';
+    pricingValue = formatCurrency(siteSubmit?.asking_purchase_price ?? property?.asking_purchase_price) || '';
   }
 
-  // NNN info
+  // NNN info — site_submit snapshot first.
   let nnnValue = '';
-  if (propertyUnit?.nnn) {
+  if (siteSubmit?.nnn_psf) {
+    nnnValue = formatCurrency(siteSubmit.nnn_psf) || '';
+  } else if (propertyUnit?.nnn) {
     nnnValue = formatCurrency(propertyUnit.nnn) || '';
   } else if (property?.nnn_psf) {
     nnnValue = formatCurrency(property.nnn_psf) || '';

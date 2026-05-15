@@ -85,6 +85,10 @@ The `activity` table has both `user_id` and `owner_id` columns:
 - Use TypeScript strict mode
 - Follow existing patterns in the codebase for consistency
 
+## Site Submit / Deal Data Ownership
+
+**Economic fields (sqft, acres, lease/purchase price, rent, NNN, TI, delivery timeframe) live on three records — property, site_submit, deal — each with its own column. Snapshots flow forward at creation; edits never propagate back.** See [docs/SITE_SUBMIT_DEAL_DATA_OWNERSHIP.md](docs/SITE_SUBMIT_DEAL_DATA_OWNERSHIP.md) before editing any code that reads/writes these fields in a site-submit or deal context. Don't assume `site_submit.property.asking_lease_price` is the right source for an editable field on the site submit sidebar — it isn't, the value lives on `site_submit` directly.
+
 ## UX: Overlay-first object interactions
 
 **Build cross-object interaction features as composable, drop-in components — not page-bound UI.** OVIS is moving toward a model where you can drill into any deal / contact / client / property / site_submit / assignment from wherever you are (map pin slideout, kanban card slideout, dashboard) without navigating away. See [docs/OVIS_OVERLAY_UX.md](docs/OVIS_OVERLAY_UX.md) for the full principle and rationale.

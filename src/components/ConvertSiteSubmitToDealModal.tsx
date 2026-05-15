@@ -284,45 +284,54 @@ export default function ConvertSiteSubmitToDealModal({
       const currentUserId = user?.id || null;
       const now = new Date().toISOString();
 
-      // Step 4: Fetch property data to inherit fields
-      let propertyData: {
+      // Step 4: Fetch site submit snapshot economics + property record type.
+      // Source values from site_submit (not property) because each site submit
+      // owns its own snapshot since 20260514000000_add_site_submit_economics.sql.
+      // The property is only consulted for record_type (to pick land vs. building fields).
+      let submitEconomics: {
         available_sqft?: number | null;
         building_sqft?: number | null;
         acres?: number | null;
         asking_lease_price?: number | null;
         asking_purchase_price?: number | null;
+        asking_ground_lease_price?: number | null;
         rent_psf?: number | null;
         nnn_psf?: number | null;
         nnn?: number | null;
         all_in_rent?: number | null;
-        property_record_type?: { label?: string | null } | null;
+        ti?: number | null;
+        delivery_timeframe?: string | null;
       } | null = null;
 
+      const { data: fetchedSubmit } = await supabase
+        .from('site_submit')
+        .select(`
+          available_sqft,
+          building_sqft,
+          acres,
+          asking_lease_price,
+          asking_purchase_price,
+          asking_ground_lease_price,
+          rent_psf,
+          nnn_psf,
+          nnn,
+          all_in_rent,
+          ti,
+          delivery_timeframe
+        `)
+        .eq('id', siteSubmitId)
+        .single();
+      submitEconomics = fetchedSubmit;
+
+      let propertyTypeLabel = '';
       if (propertyId) {
-        const { data: fetchedProperty } = await supabase
+        const { data: propertyRecord } = await supabase
           .from('property')
-          .select(`
-            available_sqft,
-            building_sqft,
-            acres,
-            asking_lease_price,
-            asking_purchase_price,
-            rent_psf,
-            nnn_psf,
-            nnn,
-            all_in_rent,
-            property_record_type:property_record_type_id (
-              label
-            )
-          `)
+          .select('property_record_type:property_record_type_id ( label )')
           .eq('id', propertyId)
           .single();
-
-        propertyData = fetchedProperty;
+        propertyTypeLabel = (propertyRecord as any)?.property_record_type?.label?.toLowerCase() || '';
       }
-
-      // Determine property type for field mapping
-      const propertyTypeLabel = propertyData?.property_record_type?.label?.toLowerCase() || '';
       const isLand = propertyTypeLabel.includes('land');
 
       // Step 5: Create the new deal with inherited property fields
@@ -357,23 +366,24 @@ export default function ConvertSiteSubmitToDealModal({
         updated_by_id: currentUserId,
       };
 
-      // Add inherited property fields based on property type
-      if (propertyData) {
+      // Copy snapshot economics from site_submit (not property) onto the new deal.
+      if (submitEconomics) {
         if (isLand) {
-          // Land-specific fields
-          dealPayload.deal_acres = propertyData.acres;
-          dealPayload.deal_asking_purchase_price = propertyData.asking_purchase_price;
-          dealPayload.deal_asking_ground_lease_price = propertyData.asking_lease_price;
-          dealPayload.deal_nnn = propertyData.nnn;
+          dealPayload.deal_acres = submitEconomics.acres;
+          dealPayload.deal_asking_purchase_price = submitEconomics.asking_purchase_price;
+          dealPayload.deal_asking_ground_lease_price = submitEconomics.asking_ground_lease_price;
+          dealPayload.deal_nnn = submitEconomics.nnn;
         } else {
-          // Building types (Shopping Center, Office, Industrial, etc.)
-          dealPayload.deal_available_sqft = propertyData.available_sqft;
-          dealPayload.deal_building_sqft = propertyData.building_sqft;
-          dealPayload.deal_asking_lease_price = propertyData.asking_lease_price;
-          dealPayload.deal_rent_psf = propertyData.rent_psf;
-          dealPayload.deal_nnn_psf = propertyData.nnn_psf;
-          dealPayload.deal_all_in_rent = propertyData.all_in_rent;
+          dealPayload.deal_available_sqft = submitEconomics.available_sqft;
+          dealPayload.deal_building_sqft = submitEconomics.building_sqft;
+          dealPayload.deal_asking_lease_price = submitEconomics.asking_lease_price;
+          dealPayload.deal_rent_psf = submitEconomics.rent_psf;
+          dealPayload.deal_nnn_psf = submitEconomics.nnn_psf;
+          dealPayload.deal_all_in_rent = submitEconomics.all_in_rent;
         }
+        // Deal terms — apply to both land and building deals.
+        dealPayload.deal_ti = submitEconomics.ti;
+        dealPayload.deal_delivery_timeframe = submitEconomics.delivery_timeframe;
       }
 
       const { data: newDeal, error: dealError } = await supabase

@@ -24,6 +24,8 @@ interface DealData {
   deal_asking_purchase_price: number | null;
   deal_asking_ground_lease_price: number | null;
   deal_nnn: number | null;
+  deal_ti: number | null;
+  deal_delivery_timeframe: string | null;
 }
 
 interface DealDataTabProps {
@@ -297,7 +299,9 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
             deal_all_in_rent,
             deal_asking_purchase_price,
             deal_asking_ground_lease_price,
-            deal_nnn
+            deal_nnn,
+            deal_ti,
+            deal_delivery_timeframe
           `)
           .eq('id', dealId)
           .single();
@@ -420,7 +424,7 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
             />
             <Field
               {...fieldProps}
-              label="Asking Purchase Price"
+              label="Purchase Price"
               value={deal.deal_asking_purchase_price}
               type="number"
               isCurrency
@@ -428,7 +432,7 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
             />
             <Field
               {...fieldProps}
-              label="Asking Ground Lease"
+              label="Ground Lease Price"
               value={deal.deal_asking_ground_lease_price}
               type="number"
               isCurrency
@@ -466,7 +470,7 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
             />
             <Field
               {...fieldProps}
-              label="Asking Lease Price"
+              label="Annual Lease Price"
               value={deal.deal_asking_lease_price}
               type="number"
               isCurrency
@@ -515,6 +519,23 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
             })()}
           </>
         )}
+
+        {/* Deal terms — shown for both land and building types */}
+        <Field
+          {...fieldProps}
+          label="TI (Tenant Improvement)"
+          value={deal.deal_ti}
+          type="number"
+          isCurrency
+          fieldKey="deal_ti"
+        />
+        <Field
+          {...fieldProps}
+          label="Delivery Timeframe"
+          value={deal.deal_delivery_timeframe}
+          type="text"
+          fieldKey="deal_delivery_timeframe"
+        />
       </FieldGroup>
 
       {/* Demographics (includes client-specific enrichment) */}
@@ -524,72 +545,71 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
         onUpdate={onUpdate}
       />
 
-      {/* Original Property Values - Collapsible */}
+      {/* Original Site Submit Values - Collapsible.
+          Shows the snapshot the site submit captured at creation (and any edits
+          made pre-LOI), so the negotiated deal values above can be compared
+          against the baseline that was actually offered to the client.
+          Source: site_submit columns, not property — the property may have
+          drifted independently since this submit was created. */}
       <FieldGroup
-        title="Original Property Values"
+        title="Original Site Submit Values"
         collapsible
         defaultCollapsed
         headerColor="#e5e7eb"
         textColor="#6b7280"
       >
-        {siteSubmit.property && (
+        {isLand ? (
           <>
-            {isLand ? (
-              // Land original values
-              <>
-                <ReadOnlyField
-                  label="Acres"
-                  value={siteSubmit.property.acres}
-                  isNumber
-                />
-                <ReadOnlyField
-                  label="Asking Purchase Price"
-                  value={siteSubmit.property.asking_purchase_price}
-                  isCurrency
-                />
-                <ReadOnlyField
-                  label="Asking Lease Price"
-                  value={siteSubmit.property.asking_lease_price}
-                  isCurrency
-                />
-              </>
-            ) : (
-              // Building original values
-              <>
-                <ReadOnlyField
-                  label="Available Sqft"
-                  value={siteSubmit.property.available_sqft}
-                  isNumber
-                  suffix="sqft"
-                />
-                <ReadOnlyField
-                  label="Building Sqft"
-                  value={siteSubmit.property.building_sqft}
-                  isNumber
-                  suffix="sqft"
-                />
-                <ReadOnlyField
-                  label="Asking Lease Price"
-                  value={siteSubmit.property.asking_lease_price}
-                  isCurrency
-                />
-                <ReadOnlyField
-                  label="Rent PSF"
-                  value={siteSubmit.property.rent_psf}
-                  isCurrency
-                />
-                <ReadOnlyField
-                  label="NNN PSF"
-                  value={siteSubmit.property.nnn_psf}
-                  isCurrency
-                />
-                <ReadOnlyField
-                  label="All-in Rent"
-                  value={siteSubmit.property.all_in_rent}
-                  isCurrency
-                />
-              </>
-            )}
+            <ReadOnlyField
+              label="Acres"
+              value={siteSubmit.acres}
+              isNumber
+            />
+            <ReadOnlyField
+              label="Purchase Price"
+              value={siteSubmit.asking_purchase_price}
+              isCurrency
+            />
+            <ReadOnlyField
+              label="Annual Lease Price"
+              value={siteSubmit.asking_lease_price}
+              isCurrency
+            />
+          </>
+        ) : (
+          <>
+            <ReadOnlyField
+              label="Available Sqft"
+              value={siteSubmit.available_sqft}
+              isNumber
+              suffix="sqft"
+            />
+            <ReadOnlyField
+              label="Building Sqft"
+              value={siteSubmit.building_sqft}
+              isNumber
+              suffix="sqft"
+            />
+            <ReadOnlyField
+              label="Annual Lease Price"
+              value={siteSubmit.asking_lease_price}
+              isCurrency
+            />
+            <ReadOnlyField
+              label="Rent PSF"
+              value={siteSubmit.rent_psf}
+              isCurrency
+            />
+            <ReadOnlyField
+              label="NNN PSF"
+              value={siteSubmit.nnn_psf}
+              isCurrency
+            />
+            <ReadOnlyField
+              label="All-in Rent"
+              value={siteSubmit.all_in_rent}
+              isCurrency
+            />
           </>
         )}
 
