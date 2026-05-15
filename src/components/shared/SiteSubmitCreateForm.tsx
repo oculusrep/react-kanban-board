@@ -252,6 +252,20 @@ export default function SiteSubmitCreateForm({
 
     setSaving(true);
     try {
+      // Snapshot property + unit economics onto the site submit so they live
+      // independently of the property going forward. See migration
+      // 20260514000000_add_site_submit_economics.sql.
+      const property = initialData.property;
+      let selectedUnit: { sqft: number | null; rent: number | null; nnn: number | null } | null = null;
+      if (selectedPropertyUnitId) {
+        const { data: unitData } = await supabase
+          .from('property_unit')
+          .select('sqft, rent, nnn')
+          .eq('id', selectedPropertyUnitId)
+          .single();
+        selectedUnit = unitData ?? null;
+      }
+
       const newSiteSubmit = {
         property_id: initialData.property_id,
         client_id: selectedClient.id,
@@ -261,6 +275,18 @@ export default function SiteSubmitCreateForm({
         submit_stage_id: selectedStageId || null,
         date_submitted: dateSubmitted || null,
         notes: notes || null,
+        available_sqft: selectedUnit?.sqft ?? property?.available_sqft ?? null,
+        building_sqft: property?.building_sqft ?? null,
+        acres: property?.acres ?? null,
+        asking_lease_price: property?.asking_lease_price ?? null,
+        rent_psf: selectedUnit?.rent ?? property?.rent_psf ?? null,
+        nnn_psf: selectedUnit?.nnn ?? property?.nnn_psf ?? null,
+        all_in_rent: property?.all_in_rent ?? null,
+        asking_purchase_price: property?.asking_purchase_price ?? null,
+        asking_ground_lease_price: property?.asking_lease_price ?? null,
+        // site_submit.nnn (land flat NNN, parallel to deal.deal_nnn) has no
+        // corresponding column on property — left null at creation, editable later.
+        nnn: null,
       };
 
       const insertData = prepareInsert(newSiteSubmit);
@@ -276,6 +302,16 @@ export default function SiteSubmitCreateForm({
           delivery_timeframe,
           ti,
           year_1_rent,
+          available_sqft,
+          building_sqft,
+          acres,
+          asking_lease_price,
+          rent_psf,
+          nnn_psf,
+          all_in_rent,
+          asking_purchase_price,
+          asking_ground_lease_price,
+          nnn,
           competitor_data,
           property_id,
           property_unit_id,

@@ -17,6 +17,17 @@ interface SiteSubmitData {
   delivery_timeframe: string | null;
   ti: number | null;
   year_1_rent: number | null;
+  // Snapshot economics (see migration 20260514000000_add_site_submit_economics.sql)
+  available_sqft: number | null;
+  building_sqft: number | null;
+  acres: number | null;
+  asking_lease_price: number | null;
+  rent_psf: number | null;
+  nnn_psf: number | null;
+  all_in_rent: number | null;
+  asking_purchase_price: number | null;
+  asking_ground_lease_price: number | null;
+  nnn: number | null;
   competitor_data: string | null;
   property_id: string | null;
   property_unit_id: string | null;
@@ -167,6 +178,16 @@ export default function PortalDetailSidebar({
             delivery_timeframe,
             ti,
             year_1_rent,
+            available_sqft,
+            building_sqft,
+            acres,
+            asking_lease_price,
+            rent_psf,
+            nnn_psf,
+            all_in_rent,
+            asking_purchase_price,
+            asking_ground_lease_price,
+            nnn,
             competitor_data,
             property_id,
             property_unit_id,

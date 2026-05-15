@@ -35,6 +35,18 @@ export interface SiteSubmitData {
   delivery_timeframe: string | null;
   ti: number | null;
   year_1_rent: number | null;
+  // Snapshot economics (populated from property/property_unit at site submit creation,
+  // edited independently after that). See migration 20260514000000_add_site_submit_economics.sql.
+  available_sqft: number | null;
+  building_sqft: number | null;
+  acres: number | null;
+  asking_lease_price: number | null;
+  rent_psf: number | null;
+  nnn_psf: number | null;
+  all_in_rent: number | null;
+  asking_purchase_price: number | null;
+  asking_ground_lease_price: number | null;
+  nnn: number | null;
   competitor_data: string | null;
   property_id: string | null;
   property_unit_id: string | null;
@@ -343,6 +355,16 @@ export default function SiteSubmitSidebar({
             delivery_timeframe,
             ti,
             year_1_rent,
+            available_sqft,
+            building_sqft,
+            acres,
+            asking_lease_price,
+            rent_psf,
+            nnn_psf,
+            all_in_rent,
+            asking_purchase_price,
+            asking_ground_lease_price,
+            nnn,
             competitor_data,
             property_id,
             property_unit_id,
@@ -506,6 +528,16 @@ export default function SiteSubmitSidebar({
         delivery_timeframe: null,
         ti: initialData.ti || null,
         year_1_rent: initialData.year_1_rent || null,
+        available_sqft: null,
+        building_sqft: null,
+        acres: null,
+        asking_lease_price: null,
+        rent_psf: null,
+        nnn_psf: null,
+        all_in_rent: null,
+        asking_purchase_price: null,
+        asking_ground_lease_price: null,
+        nnn: null,
         competitor_data: null,
         property_id: initialData.property_id || null,
         property_unit_id: initialData.property_unit_id || null,

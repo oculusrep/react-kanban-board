@@ -453,29 +453,16 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
           <>
             {/* Available Sqft */}
             {!isLand && (
-              hasUnit && siteSubmit.property_unit?.sqft != null ? (
-                <Field
-                  {...fieldProps}
-                  label="Available Sqft"
-                  value={siteSubmit.property_unit.sqft}
-                  type="number"
-                  isNumber
-                  suffix="sqft"
-                  table="property_unit"
-                  field="sqft"
-                />
-              ) : (
-                <Field
-                  {...fieldProps}
-                  label="Available Sqft"
-                  value={siteSubmit.property.available_sqft}
-                  type="number"
-                  isNumber
-                  suffix="sqft"
-                  table="property"
-                  field="available_sqft"
-                />
-              )
+              <Field
+                {...fieldProps}
+                label="Available Sqft"
+                value={siteSubmit.available_sqft}
+                type="number"
+                isNumber
+                suffix="sqft"
+                table="site_submit"
+                field="available_sqft"
+              />
             )}
 
             {/* Building Sqft - Hide for Shopping Center */}
@@ -483,11 +470,11 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
               <Field
                 {...fieldProps}
                 label="Building Sqft"
-                value={siteSubmit.property.building_sqft}
+                value={siteSubmit.building_sqft}
                 type="number"
                 isNumber
                 suffix="sqft"
-                table="property"
+                table="site_submit"
                 field="building_sqft"
               />
             )}
@@ -497,10 +484,10 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
               <Field
                 {...fieldProps}
                 label="Acres"
-                value={siteSubmit.property.acres}
+                value={siteSubmit.acres}
                 type="number"
                 isNumber
-                table="property"
+                table="site_submit"
                 field="acres"
               />
             )}
@@ -510,10 +497,10 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
               <Field
                 {...fieldProps}
                 label="Asking Lease Price"
-                value={siteSubmit.property.asking_lease_price}
+                value={siteSubmit.asking_lease_price}
                 type="number"
                 isCurrency
-                table="property"
+                table="site_submit"
                 field="asking_lease_price"
               />
             )}
@@ -523,77 +510,49 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
               <Field
                 {...fieldProps}
                 label="Asking Purchase Price"
-                value={siteSubmit.property.asking_purchase_price}
+                value={siteSubmit.asking_purchase_price}
                 type="number"
                 isCurrency
-                table="property"
+                table="site_submit"
                 field="asking_purchase_price"
               />
             )}
 
             {/* Rent PSF */}
             {!isLand && (
-              hasUnit && siteSubmit.property_unit?.rent != null ? (
-                <Field
-                  {...fieldProps}
-                  label="Rent PSF"
-                  value={siteSubmit.property_unit.rent}
-                  type="number"
-                  isCurrency
-                  table="property_unit"
-                  field="rent"
-                />
-              ) : (
-                <Field
-                  {...fieldProps}
-                  label="Rent PSF"
-                  value={siteSubmit.property.rent_psf}
-                  type="number"
-                  isCurrency
-                  table="property"
-                  field="rent_psf"
-                />
-              )
+              <Field
+                {...fieldProps}
+                label="Rent PSF"
+                value={siteSubmit.rent_psf}
+                type="number"
+                isCurrency
+                table="site_submit"
+                field="rent_psf"
+              />
             )}
 
             {/* NNN PSF */}
             {!isLand && (
-              hasUnit && siteSubmit.property_unit?.nnn != null ? (
-                <Field
-                  {...fieldProps}
-                  label="NNN PSF"
-                  value={siteSubmit.property_unit.nnn}
-                  type="number"
-                  isCurrency
-                  table="property_unit"
-                  field="nnn"
-                />
-              ) : (
-                <Field
-                  {...fieldProps}
-                  label="NNN PSF"
-                  value={siteSubmit.property.nnn_psf}
-                  type="number"
-                  isCurrency
-                  table="property"
-                  field="nnn_psf"
-                />
-              )
+              <Field
+                {...fieldProps}
+                label="NNN PSF"
+                value={siteSubmit.nnn_psf}
+                type="number"
+                isCurrency
+                table="site_submit"
+                field="nnn_psf"
+              />
             )}
 
             {/* All-in Rent - calculated, not editable */}
             {!isLand && (() => {
               let allInRent: number | null = null;
-              if (hasUnit && siteSubmit.property_unit?.rent != null && siteSubmit.property_unit?.nnn != null) {
-                allInRent = siteSubmit.property_unit.rent + siteSubmit.property_unit.nnn;
-              } else if (siteSubmit.property.rent_psf != null && siteSubmit.property.nnn_psf != null) {
-                allInRent = siteSubmit.property.rent_psf + siteSubmit.property.nnn_psf;
+              if (siteSubmit.rent_psf != null && siteSubmit.nnn_psf != null) {
+                allInRent = siteSubmit.rent_psf + siteSubmit.nnn_psf;
               } else {
-                allInRent = siteSubmit.property.all_in_rent;
+                allInRent = siteSubmit.all_in_rent;
               }
-              const availableSqft = hasUnit && siteSubmit.property_unit?.sqft != null
-                ? siteSubmit.property_unit.sqft
-                : siteSubmit.property.available_sqft;
+              const availableSqft = siteSubmit.available_sqft;
 
               return (
                 <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">

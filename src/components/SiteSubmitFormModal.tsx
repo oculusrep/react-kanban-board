@@ -443,9 +443,42 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         if (error) throw error;
         onUpdate?.(data);
       } else {
+        // Snapshot property + unit economics onto the new site submit so they
+        // live independently of the property going forward. See migration
+        // 20260514000000_add_site_submit_economics.sql.
+        let propertyEconomics: any = {};
+        if (formData.property_id) {
+          const { data: prop } = await supabase
+            .from('property')
+            .select('available_sqft, building_sqft, acres, asking_lease_price, asking_purchase_price, rent_psf, nnn_psf, all_in_rent')
+            .eq('id', formData.property_id)
+            .single();
+          let unit: { sqft: number | null; rent: number | null; nnn: number | null } | null = null;
+          if (formData.property_unit_id) {
+            const { data: unitData } = await supabase
+              .from('property_unit')
+              .select('sqft, rent, nnn')
+              .eq('id', formData.property_unit_id)
+              .single();
+            unit = unitData ?? null;
+          }
+          propertyEconomics = {
+            available_sqft: unit?.sqft ?? prop?.available_sqft ?? null,
+            building_sqft: prop?.building_sqft ?? null,
+            acres: prop?.acres ?? null,
+            asking_lease_price: prop?.asking_lease_price ?? null,
+            rent_psf: unit?.rent ?? prop?.rent_psf ?? null,
+            nnn_psf: unit?.nnn ?? prop?.nnn_psf ?? null,
+            all_in_rent: prop?.all_in_rent ?? null,
+            asking_purchase_price: prop?.asking_purchase_price ?? null,
+            asking_ground_lease_price: prop?.asking_lease_price ?? null,
+          };
+        }
+
         // Create new site submit - convert empty date strings to null
         const submitData: SiteSubmitInsert = {
           ...formData,
+          ...propertyEconomics,
           // Convert empty date strings to null for database compatibility
           date_submitted: formData.date_submitted || null,
           loi_date: formData.loi_date || null,
