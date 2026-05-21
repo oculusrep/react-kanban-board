@@ -175,6 +175,34 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
 
   const completed = task?.status === 'completed';
 
+  // Builds the patch from the current form state. Shared by Save (explicit
+  // commit) and by Mark Complete / Reopen (so unsaved edits aren't silently
+  // discarded when the user takes a status action).
+  const buildPatch = (currentTask: TaskWithRelations): Parameters<typeof updateTask>[1] => {
+    const patch: Parameters<typeof updateTask>[1] = {
+      subject: subject.trim(),
+      description: description || null,
+      // updateTask backfills the legacy category text from category_id
+      // via lib/taskCategory, so the text column stays in sync.
+      category_id: categoryId ?? currentTask.category_id,
+      owner_id: ownerId || currentTask.owner_id,
+      assigned_by_id:
+        ownerId && ownerId !== userTableId && userTableId !== currentTask.assigned_by_id
+          ? userTableId
+          : currentTask.assigned_by_id,
+      due_at: inputToIso(dueDate),
+      duration_minutes: durationMinutes,
+      high_flag: highFlag,
+      top3_date: top3Date,
+      completion_note: completionNote || null,
+    };
+    if (currentTask.status === 'completed') {
+      const newCompletedAt = datetimeLocalToIso(completedAtInput);
+      if (newCompletedAt) patch.completed_at = newCompletedAt;
+    }
+    return patch;
+  };
+
   const handleSave = async () => {
     if (!task) return;
     if (!subject.trim()) {
@@ -184,47 +212,13 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     setSaving(true);
     setError(null);
     try {
-      // For completed tasks, allow editing completed_at (e.g., backdating).
-      // The DB CHECK constraint task_completed_consistency requires that
-      // completed_at stays non-null while status='completed', so we never
-      // null it out here.
-      const patch: Parameters<typeof updateTask>[1] = {
-        subject: subject.trim(),
-        description: description || null,
-        // updateTask backfills the legacy category text from category_id
-        // via lib/taskCategory, so the text column stays in sync.
-        category_id: categoryId ?? task.category_id,
-        owner_id: ownerId || task.owner_id,
-        assigned_by_id:
-          ownerId && ownerId !== userTableId && userTableId !== task.assigned_by_id
-            ? userTableId
-            : task.assigned_by_id,
-        due_at: inputToIso(dueDate),
-        duration_minutes: durationMinutes,
-        high_flag: highFlag,
-        top3_date: top3Date,
-        completion_note: completionNote || null,
-      };
-      if (completed) {
-        const newCompletedAt = datetimeLocalToIso(completedAtInput);
-        if (newCompletedAt) {
-          patch.completed_at = newCompletedAt;
-        }
-      }
-      await updateTask(task.id, patch);
+      await updateTask(task.id, buildPatch(task));
       setDirty(false);
       onChanged?.();
-      // Re-fetch by setting task to reflect persisted state
-      const { data } = await supabase
-        .from('task')
-        .select(RELATIONS_SELECT)
-        .eq('id', task.id)
-        .single();
-      if (data) setTask(data as unknown as TaskWithRelations);
+      onClose();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Save failed');
-    } finally {
       setSaving(false);
     }
   };
@@ -235,9 +229,18 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
       setError('Not authenticated');
       return;
     }
+    if (!subject.trim()) {
+      setError('Subject is required');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
+      // Persist any unsaved form edits first so they aren't lost when the
+      // slideout closes after completion.
+      if (dirty) {
+        await updateTask(task.id, buildPatch(task));
+      }
       // completeTask handles status + completed_at + timeline post in one
       // call. If the user picked a custom datetime, pass it through;
       // otherwise the helper defaults to now().
@@ -248,21 +251,10 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
         ...(userPicked ? { completed_at: userPicked } : {}),
       });
       onChanged?.();
-      // Refresh
-      const { data } = await supabase
-        .from('task')
-        .select(RELATIONS_SELECT)
-        .eq('id', task.id)
-        .single();
-      if (data) {
-        const t = data as unknown as TaskWithRelations;
-        setTask(t);
-        setCompletedAtInput(isoToDatetimeLocal(t.completed_at));
-      }
+      onClose();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Complete failed');
-    } finally {
       setSaving(false);
     }
   };
@@ -272,18 +264,15 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     setSaving(true);
     setError(null);
     try {
+      if (dirty) {
+        await updateTask(task.id, buildPatch(task));
+      }
       await reopenTask(task.id);
       onChanged?.();
-      const { data } = await supabase
-        .from('task')
-        .select(RELATIONS_SELECT)
-        .eq('id', task.id)
-        .single();
-      if (data) setTask(data as unknown as TaskWithRelations);
+      onClose();
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Reopen failed');
-    } finally {
       setSaving(false);
     }
   };
@@ -322,10 +311,10 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
       >
         {/* Header */}
         <div
-          className="px-4 py-3 border-b flex items-center justify-between"
+          className="px-4 py-3 border-b flex items-center justify-between gap-2"
           style={{ borderColor: COLORS.slate + '66', backgroundColor: COLORS.bg }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span
               className="text-xs px-2 py-0.5 rounded-full"
               style={
@@ -336,6 +325,24 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
             >
               {task?.status ?? '—'}
             </span>
+            {/* Status-change action sits in the header (not next to Save) so
+                an accidental click while saving edits won't complete a task. */}
+            {task && (
+              <button
+                type="button"
+                onClick={completed ? handleReopen : handleComplete}
+                disabled={saving}
+                className="text-xs px-2 py-1 rounded border bg-white disabled:opacity-50 hover:bg-gray-50"
+                style={
+                  completed
+                    ? { borderColor: COLORS.slate, color: COLORS.steel }
+                    : { borderColor: '#166534', color: '#166534' }
+                }
+                title={completed ? 'Reopen this task' : 'Mark this task as completed'}
+              >
+                {saving ? '…' : completed ? '↺ Reopen task' : '✓ Mark complete'}
+              </button>
+            )}
             {completed && task?.completed_at && (
               <span className="text-xs" style={{ color: '#166534' }}>
                 ✓ {new Date(task.completed_at).toLocaleString('en-US', {
@@ -590,7 +597,10 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
           )}
         </div>
 
-        {/* Footer actions */}
+        {/* Footer actions — Save is the only primary action here. Mark
+            complete / Reopen live in the header so they can't be mistaken
+            for Save. Save closes the slideout on success so the parent
+            list visibly reflects the change. */}
         {task && !loading && (
           <div
             className="px-4 py-3 border-t flex items-center justify-between gap-2"
@@ -605,40 +615,16 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
             >
               Delete
             </button>
-            <div className="flex items-center gap-2">
-              {dirty && (
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="text-sm px-3 py-1.5 rounded border disabled:opacity-50"
-                  style={{ borderColor: COLORS.slate, color: COLORS.midnight }}
-                >
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-              )}
-              {completed ? (
-                <button
-                  type="button"
-                  onClick={handleReopen}
-                  disabled={saving}
-                  className="text-sm px-3 py-1.5 rounded font-medium disabled:opacity-50"
-                  style={{ backgroundColor: COLORS.steel, color: COLORS.white }}
-                >
-                  Reopen
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleComplete}
-                  disabled={saving}
-                  className="text-sm px-3 py-1.5 rounded font-medium disabled:opacity-50"
-                  style={{ backgroundColor: COLORS.midnight, color: COLORS.white }}
-                >
-                  {saving ? 'Working…' : 'Complete'}
-                </button>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className="text-sm px-4 py-1.5 rounded font-medium disabled:opacity-50"
+              style={{ backgroundColor: COLORS.midnight, color: COLORS.white }}
+              title={dirty ? 'Save changes and close' : 'No changes to save'}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
           </div>
         )}
       </div>

@@ -46,9 +46,12 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTasks = useCallback(async () => {
+  // `silent` skips the loading flag so post-mutation refetches don't flash
+  // a "Loading…" placeholder over the existing list. Initial mount fetches
+  // are non-silent so consumers can render a loading state on first paint.
+  const fetchTasks = useCallback(async (silent: boolean = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
 
       const allResults: TaskWithRelations[] = [];
@@ -123,7 +126,7 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
       console.error('useTaskList error:', err);
       setError(err instanceof Error ? err.message : 'Unknown error fetching tasks');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [
     filters?.status,
@@ -149,10 +152,16 @@ export function useTaskList(filters?: TaskListFilters): UseTaskListResult {
   ]);
 
   useEffect(() => {
-    fetchTasks();
+    fetchTasks(false);
   }, [fetchTasks]);
 
-  return { tasks, loading, error, refetch: fetchTasks };
+  // Stable wrapper so consumers can rely on a fixed identity for refetch.
+  // Silent so post-mutation refreshes don't blank the list.
+  const refetch = useCallback(() => {
+    fetchTasks(true);
+  }, [fetchTasks]);
+
+  return { tasks, loading, error, refetch };
 }
 
 // ---------------------------------------------------------------------------

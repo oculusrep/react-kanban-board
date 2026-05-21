@@ -372,6 +372,8 @@ export const TasksPage: React.FC = () => {
                           checked={completed}
                           onChange={() => handleToggleComplete(task)}
                           aria-label={completed ? 'Reopen task' : 'Complete task'}
+                          title={completed ? 'Click to reopen' : 'Click to mark complete'}
+                          className="cursor-pointer"
                         />
                       </td>
                       <td className="px-3 py-2 align-top" style={{ color: COLORS.midnight }}>
