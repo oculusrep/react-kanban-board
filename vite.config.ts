@@ -38,7 +38,7 @@ export default defineConfig({
         ]
       },
       workbox: {
-        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 8 MB - main bundle is ~6 MB
+        maximumFileSizeToCacheInBytes: 16 * 1024 * 1024, // 16 MB — Vercel's production bundle is ~9 MB and growing; bump gives headroom until we code-split
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         runtimeCaching: [
           {
