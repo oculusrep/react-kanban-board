@@ -1,8 +1,19 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // `email-reply-parser` optionally requires the native `re2` module and
+      // falls back to RegExp on failure. In a browser bundle re2 can't be
+      // resolved, and Rollup's runtime stub throws before the library's
+      // try/catch catches it. Alias to an empty stub so the require resolves
+      // and the RegExp fallback kicks in.
+      re2: fileURLToPath(new URL('./src/stubs/re2-stub.js', import.meta.url)),
+    },
+  },
   plugins: [
     react(),
     VitePWA({
