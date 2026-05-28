@@ -6,6 +6,12 @@ import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/laye
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
+import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../components/mapping/layers/MunicipalProjectLayer';
+import MunicipalProjectInlineFilters from '../components/mapping/layers/MunicipalProjectInlineFilters';
+import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
+import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
+import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
+import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
 import StarbucksTargetAreaToggle from '../components/mapping/layers/StarbucksTargetAreaToggle';
@@ -90,6 +96,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [verifyingPropertyId, setVerifyingPropertyId] = useState<string | null>(null);
   const [verifyingRestaurantStoreNo, setVerifyingRestaurantStoreNo] = useState<string | null>(null);
+  const [selectedMunicipalProject, setSelectedMunicipalProject] = useState<MunicipalProjectMapRow | null>(null);
+  const [drawingMunicipalProjectId, setDrawingMunicipalProjectId] = useState<string | null>(null);
+  const [verifyingMunicipalProjectId, setVerifyingMunicipalProjectId] = useState<string | null>(null);
+  const [showMunicipalProjectModal, setShowMunicipalProjectModal] = useState(false);
+  const [municipalProjectContextMenu, setMunicipalProjectContextMenu] = useState<{
+    isVisible: boolean;
+    x: number;
+    y: number;
+    project: MunicipalProjectMapRow | null;
+  }>({ isVisible: false, x: 0, y: 0, project: null });
 
   // Check if user can verify restaurant locations (permission-based)
   const canVerifyRestaurantLocations = hasPermission('can_verify_restaurant_locations');
@@ -324,7 +340,20 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   }, [recentlyCreatedPropertyIds]);
 
   // Get layer state from context
-  const { layerState, setLayerCount, setLayerLoading, createMode, refreshLayer, toggleLayer, customLayers, customLayerVisibility, toggleCustomLayer, refreshCustomLayers } = useLayerManager();
+  const { layerState, setLayerCount, setLayerLoading, createMode, setCreateMode, refreshLayer, toggleLayer, customLayers, customLayerVisibility, toggleCustomLayer, refreshCustomLayers } = useLayerManager();
+
+  // Refs that mirror state so the map's click listener (a closure attached in handleMapLoad)
+  // can read the latest values. GoogleMapContainer re-invokes onMapLoad whenever the
+  // onMapLoad reference changes, stacking listeners with stale closures over time — these
+  // refs give all of them a consistent way to read current state.
+  const drawingMunicipalProjectIdRef = useRef<string | null>(null);
+  const createModeRef = useRef<typeof createMode>(null);
+  useEffect(() => {
+    drawingMunicipalProjectIdRef.current = drawingMunicipalProjectId;
+  }, [drawingMunicipalProjectId]);
+  useEffect(() => {
+    createModeRef.current = createMode;
+  }, [createMode]);
 
   // Custom layer editing state
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
@@ -779,18 +808,29 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
       setSiteSubmitContextMenu(prev => ({ ...prev, isVisible: false }));
 
-      if (createMode && event.latLng) {
+      // Don't intercept clicks while a municipal-project polygon is being drawn — those
+      // clicks belong to terra-draw. Without this guard, every draw click also opens the
+      // "new project" modal because of stale createMode in stacked listeners.
+      if (drawingMunicipalProjectIdRef.current) return;
+
+      // Read createMode from the ref so stacked stale listeners (one per render) all see
+      // the current value rather than whatever was set when their closure was captured.
+      const currentCreateMode = createModeRef.current;
+      if (currentCreateMode && event.latLng) {
         const lat = event.latLng.lat();
         const lng = event.latLng.lng();
-        console.log(`📍 Pin dropped for ${createMode}:`, { lat, lng });
+        console.log(`📍 Pin dropped for ${currentCreateMode}:`, { lat, lng });
 
-        // Handle different create modes
-        switch (createMode) {
+        switch (currentCreateMode) {
           case 'property':
             openPropertyCreationModal(lat, lng);
             break;
           case 'site_submit':
             openSiteSubmitCreationModal(lat, lng);
+            break;
+          case 'municipal_project':
+            setPinDropCoordinates({ lat, lng });
+            setShowMunicipalProjectModal(true);
             break;
         }
       }
@@ -2528,6 +2568,38 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       />
                     )}
 
+                    {/* Municipal Projects system layer */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('municipal_projects')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.municipal_projects?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.municipal_projects?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>🏗️</span>
+                          <span className="text-sm font-medium text-gray-900">Municipal Projects</span>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.municipal_projects?.count ?? 0}
+                        </span>
+                      </div>
+
+                      {/* Filters appear when the layer is on */}
+                      {layerState.municipal_projects?.isVisible && (
+                        <div className="mt-2 pl-11 pr-1">
+                          <MunicipalProjectInlineFilters />
+                        </div>
+                      )}
+                    </div>
+
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
@@ -2743,6 +2815,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   <span className="font-medium">
                     {createMode === 'property' ? 'Click map to create Property' :
                      createMode === 'site_submit' ? 'Click map to create Site Submit' :
+                     createMode === 'municipal_project' ? 'Click map to create Municipal Project' :
                      'Click map to create item'}
                   </span>
                 </div>
@@ -2816,6 +2889,38 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setSelectedPinType('restaurant');
                 setSelectedPinData(restaurant);
                 setIsPinDetailsOpen(true);
+              }}
+            />
+
+            {/* Municipal Projects Layer — imported development tracking from cities */}
+            <MunicipalProjectLayer
+              map={mapInstance}
+              isVisible={layerState.municipal_projects?.isVisible || false}
+              selectedProjectId={selectedMunicipalProject?.id ?? null}
+              verifyingProjectId={verifyingMunicipalProjectId}
+              onPinClick={(project) => setSelectedMunicipalProject(project)}
+              onPinRightClick={(project, x, y) =>
+                setMunicipalProjectContextMenu({ isVisible: true, x, y, project })
+              }
+              onLocationVerified={async (id, lat, lng) => {
+                try {
+                  const { error } = await supabase
+                    .from('municipal_project')
+                    .update({ centroid: `SRID=4326;POINT(${lng} ${lat})` })
+                    .eq('id', id);
+                  if (error) throw error;
+                  setVerifyingMunicipalProjectId(null);
+                  // Update local selected-project state so the slideout reflects the new position.
+                  setSelectedMunicipalProject((prev) =>
+                    prev && prev.id === id
+                      ? { ...prev, centroid_lat: lat, centroid_lng: lng }
+                      : prev
+                  );
+                  refreshLayer('municipal_projects');
+                } catch (e) {
+                  console.error('Failed to save verified municipal_project location:', e);
+                  setVerifyingMunicipalProjectId(null);
+                }
               }}
             />
 
@@ -2957,6 +3062,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               isVisible={contextMenu.isVisible}
               coordinates={contextMenu.coordinates}
               onCreateProperty={handleContextMenuCreateProperty}
+              onCreateMunicipalProject={() => {
+                if (!contextMenu.coordinates) return;
+                setPinDropCoordinates(contextMenu.coordinates);
+                setShowMunicipalProjectModal(true);
+              }}
               onClose={handleContextMenuClose}
             />
 
@@ -3258,6 +3368,120 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           }}
           topOffset={showPropertySearch ? 45 : 0}
         />
+      )}
+
+      {/* Municipal Project Slideout */}
+      <MunicipalProjectSlideout
+        isOpen={!!selectedMunicipalProject}
+        project={selectedMunicipalProject}
+        onClose={() => setSelectedMunicipalProject(null)}
+        onProjectUpdated={(updated) => {
+          setSelectedMunicipalProject((prev) =>
+            prev && prev.id === updated.id ? { ...prev, ...updated } : prev
+          );
+          // Reload the layer so the pin re-colors or refreshes against the saved edits.
+          refreshLayer('municipal_projects');
+        }}
+        onProjectDeleted={() => {
+          setSelectedMunicipalProject(null);
+          refreshLayer('municipal_projects');
+        }}
+        onStartDrawingPolygon={(id) => setDrawingMunicipalProjectId(id)}
+        isDrawingPolygon={drawingMunicipalProjectId === selectedMunicipalProject?.id}
+      />
+
+      {/* Municipal Project Drawer — only mounted while drawing */}
+      {drawingMunicipalProjectId && (
+        <MunicipalProjectDrawer
+          map={mapInstance}
+          projectId={drawingMunicipalProjectId}
+          onCancel={() => setDrawingMunicipalProjectId(null)}
+          onSaved={() => {
+            setDrawingMunicipalProjectId(null);
+            refreshLayer('municipal_projects');
+          }}
+        />
+      )}
+
+      {/* Municipal Project right-click context menu */}
+      <MunicipalProjectContextMenu
+        isVisible={municipalProjectContextMenu.isVisible}
+        x={municipalProjectContextMenu.x}
+        y={municipalProjectContextMenu.y}
+        projectName={
+          municipalProjectContextMenu.project
+            ? `${municipalProjectContextMenu.project.project_name || municipalProjectContextMenu.project.address}${
+                municipalProjectContextMenu.project.phase_label
+                  ? ' — ' + municipalProjectContextMenu.project.phase_label
+                  : ''
+              }`
+            : ''
+        }
+        onClose={() =>
+          setMunicipalProjectContextMenu((prev) => ({ ...prev, isVisible: false }))
+        }
+        onOpenDetails={() => {
+          if (municipalProjectContextMenu.project) {
+            setSelectedMunicipalProject(municipalProjectContextMenu.project);
+          }
+        }}
+        onVerifyLocation={() => {
+          if (municipalProjectContextMenu.project) {
+            setVerifyingMunicipalProjectId(municipalProjectContextMenu.project.id);
+          }
+        }}
+      />
+
+      {/* New Municipal Project modal */}
+      <NewMunicipalProjectModal
+        isOpen={showMunicipalProjectModal}
+        coordinates={pinDropCoordinates}
+        onClose={() => {
+          setShowMunicipalProjectModal(false);
+          setPinDropCoordinates(null);
+          // Exit create mode after the modal closes so the user doesn't keep dropping pins.
+          setCreateMode(null);
+        }}
+        onCreated={async ({ id }) => {
+          setShowMunicipalProjectModal(false);
+          setPinDropCoordinates(null);
+          setCreateMode(null);
+          refreshLayer('municipal_projects');
+          // Fetch the new project and open the slideout for it.
+          try {
+            const { data } = await supabase
+              .from('municipal_project_v')
+              .select('*')
+              .eq('id', id)
+              .single();
+            if (data) setSelectedMunicipalProject(data as unknown as MunicipalProjectMapRow);
+          } catch {
+            /* non-fatal — user can click the pin */
+          }
+        }}
+      />
+
+      {/* Verify-location banner */}
+      {verifyingMunicipalProjectId && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2.5 rounded-lg shadow-xl"
+          style={{ backgroundColor: '#FFFFFF', border: `2px solid #002147` }}
+        >
+          <span className="text-sm font-semibold" style={{ color: '#002147' }}>
+            Verifying pin location
+          </span>
+          <span className="text-xs" style={{ color: '#4A6B94' }}>
+            Drag the pin to its correct spot — release to save
+          </span>
+          <button
+            type="button"
+            onClick={() => setVerifyingMunicipalProjectId(null)}
+            className="px-2 py-1 text-xs rounded border"
+            style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+          >
+            Cancel
+          </button>
+        </div>
       )}
 
       {/* Property Details Slideout (for "View Full Details" from site submit) */}

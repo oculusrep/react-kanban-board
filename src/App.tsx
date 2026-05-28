@@ -40,6 +40,7 @@ import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
 import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
 import DropboxSyncAdminPage from "./pages/DropboxSyncAdminPage";
+import MunicipalImportPage from "./pages/MunicipalImportPage";
 import TasksPage from "./pages/TasksPage";
 import BlockTemplateSettingsPage from "./pages/BlockTemplateSettingsPage";
 import TasksDashboardPage from "./pages/TasksDashboardPage";
@@ -206,6 +207,7 @@ function App() {
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />
           <Route path="admin/layers" element={<AdminRoute><LayerManagementPage /></AdminRoute>} />
           <Route path="admin/merchants" element={<AdminRoute><MerchantAdminPage /></AdminRoute>} />
+          <Route path="admin/municipal-import" element={<AdminRoute><MunicipalImportPage /></AdminRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />

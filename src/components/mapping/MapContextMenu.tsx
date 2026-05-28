@@ -6,6 +6,7 @@ interface MapContextMenuProps {
   isVisible: boolean;
   coordinates: { lat: number; lng: number } | null;
   onCreateProperty: () => void;
+  onCreateMunicipalProject?: () => void;
   onClose: () => void;
 }
 
@@ -15,6 +16,7 @@ const MapContextMenu: React.FC<MapContextMenuProps> = ({
   isVisible,
   coordinates,
   onCreateProperty,
+  onCreateMunicipalProject,
   onClose,
 }) => {
   if (!isVisible || !coordinates) return null;
@@ -62,6 +64,20 @@ const MapContextMenu: React.FC<MapContextMenuProps> = ({
             <span>🏢</span>
             <span>Create Property Here</span>
           </button>
+
+          {onCreateMunicipalProject && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCreateMunicipalProject();
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center space-x-2"
+            >
+              <span>🏗️</span>
+              <span>Create Municipal Project Here</span>
+            </button>
+          )}
 
           <button
             onClick={(e) => {

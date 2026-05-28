@@ -15,7 +15,7 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -65,9 +65,32 @@ export interface LayerManagerContextType {
   customLayersLoading: boolean;
   toggleCustomLayer: (layerId: string) => void;
   refreshCustomLayers: () => Promise<void>;
+
+  // Municipal Projects layer — per-municipality visibility + per-status filter.
+  // Stored as Sets of IDs that are EXCLUDED. An empty set = show everything (default).
+  // Using "excluded" keeps the default behavior (show all) without us pre-loading
+  // the full list of muni / stage IDs into state on first render.
+  municipalProjectsHiddenMunicipalityIds: Set<string>;
+  toggleMunicipalProjectsMunicipality: (municipalityId: string) => void;
+  // `null` represents projects with no computed status (the "Planning fallback" bucket).
+  municipalProjectsHiddenStageIds: Set<string | null>;
+  toggleMunicipalProjectsStage: (stageId: string | null) => void;
+
+  // Numeric filter on total_housing_units. null = unbounded on that side.
+  // When either bound is set, projects with total_housing_units = NULL are also hidden.
+  municipalProjectsMinUnits: number | null;
+  municipalProjectsMaxUnits: number | null;
+  setMunicipalProjectsMinUnits: (n: number | null) => void;
+  setMunicipalProjectsMaxUnits: (n: number | null) => void;
+
+  // Independent pin / polygon visibility (both default true). Turn one off to declutter.
+  municipalProjectsShowPins: boolean;
+  municipalProjectsShowPolygons: boolean;
+  setMunicipalProjectsShowPins: (v: boolean) => void;
+  setMunicipalProjectsShowPolygons: (v: boolean) => void;
 }
 
-export type CreateMode = 'property' | 'site_submit';
+export type CreateMode = 'property' | 'site_submit' | 'municipal_project';
 
 // Default system layers
 const DEFAULT_LAYERS: LayerConfig[] = [
@@ -127,6 +150,15 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     isSystemLayer: true,
     requiresPermission: 'can_view_starbucks_layer',
   },
+  {
+    id: 'municipal_projects',
+    name: 'Municipal Projects',
+    type: 'municipal_project',
+    icon: '🏗️',
+    description: 'Development projects imported from municipality CSVs',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
 ];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
@@ -154,6 +186,16 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const [customLayers, setCustomLayers] = useState<MapLayer[]>([]);
   const [customLayerVisibility, setCustomLayerVisibility] = useState<{ [layerId: string]: boolean }>({});
   const [customLayersLoading, setCustomLayersLoading] = useState(false);
+
+  // Municipal Projects filter state (per-muni, per-status). Excluded-by-default model.
+  const [municipalProjectsHiddenMunicipalityIds, setMunicipalProjectsHiddenMunicipalityIds] =
+    useState<Set<string>>(new Set());
+  const [municipalProjectsHiddenStageIds, setMunicipalProjectsHiddenStageIds] =
+    useState<Set<string | null>>(new Set());
+  const [municipalProjectsMinUnits, setMunicipalProjectsMinUnits] = useState<number | null>(null);
+  const [municipalProjectsMaxUnits, setMunicipalProjectsMaxUnits] = useState<number | null>(null);
+  const [municipalProjectsShowPins, setMunicipalProjectsShowPins] = useState<boolean>(true);
+  const [municipalProjectsShowPolygons, setMunicipalProjectsShowPolygons] = useState<boolean>(true);
 
   // Initialize layer state once
   useEffect(() => {
@@ -275,6 +317,24 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     await fetchCustomLayers();
   }, [fetchCustomLayers]);
 
+  const toggleMunicipalProjectsMunicipality = useCallback((municipalityId: string) => {
+    setMunicipalProjectsHiddenMunicipalityIds(prev => {
+      const next = new Set(prev);
+      if (next.has(municipalityId)) next.delete(municipalityId);
+      else next.add(municipalityId);
+      return next;
+    });
+  }, []);
+
+  const toggleMunicipalProjectsStage = useCallback((stageId: string | null) => {
+    setMunicipalProjectsHiddenStageIds(prev => {
+      const next = new Set(prev);
+      if (next.has(stageId)) next.delete(stageId);
+      else next.add(stageId);
+      return next;
+    });
+  }, []);
+
   const memoizedRefreshTrigger = useMemo(() => refreshTrigger, [
     JSON.stringify(refreshTrigger)
   ]);
@@ -297,6 +357,18 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     customLayersLoading,
     toggleCustomLayer,
     refreshCustomLayers,
+    municipalProjectsHiddenMunicipalityIds,
+    toggleMunicipalProjectsMunicipality,
+    municipalProjectsHiddenStageIds,
+    toggleMunicipalProjectsStage,
+    municipalProjectsMinUnits,
+    municipalProjectsMaxUnits,
+    setMunicipalProjectsMinUnits,
+    setMunicipalProjectsMaxUnits,
+    municipalProjectsShowPins,
+    municipalProjectsShowPolygons,
+    setMunicipalProjectsShowPins,
+    setMunicipalProjectsShowPolygons,
   }), [
     layers,
     layerState,
@@ -315,6 +387,14 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     customLayersLoading,
     toggleCustomLayer,
     refreshCustomLayers,
+    municipalProjectsHiddenMunicipalityIds,
+    toggleMunicipalProjectsMunicipality,
+    municipalProjectsHiddenStageIds,
+    toggleMunicipalProjectsStage,
+    municipalProjectsMinUnits,
+    municipalProjectsMaxUnits,
+    municipalProjectsShowPins,
+    municipalProjectsShowPolygons,
   ]);
 
   return (

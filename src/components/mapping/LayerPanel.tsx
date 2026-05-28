@@ -2,6 +2,7 @@ import React from 'react';
 import { useLayerManager, CreateMode } from './layers/LayerManager';
 import { usePermissions } from '../../hooks/usePermissions';
 import { Link } from 'react-router-dom';
+import { supabase } from '../../lib/supabaseClient';
 
 interface CreateModeButtonProps {
   layerId: string;
@@ -171,6 +172,105 @@ const LayerGroup: React.FC<LayerGroupProps> = ({
           </div>
         </div>
       )}
+
+      {/* Municipal Projects filter controls */}
+      {isVisible && layerId === 'municipal_projects' && (
+        <div className="border-t border-gray-100 px-3 py-3 bg-gray-50">
+          <MunicipalProjectFilters />
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface MuniRow { id: string; name: string; state: string; display_color: string | null; }
+interface StageRow { id: string; name: string; color: string | null; sort_order: number; }
+
+const MunicipalProjectFilters: React.FC = () => {
+  const {
+    municipalProjectsHiddenMunicipalityIds,
+    toggleMunicipalProjectsMunicipality,
+    municipalProjectsHiddenStageIds,
+    toggleMunicipalProjectsStage,
+  } = useLayerManager();
+
+  const [munis, setMunis] = React.useState<MuniRow[]>([]);
+  const [stages, setStages] = React.useState<StageRow[]>([]);
+
+  React.useEffect(() => {
+    void (async () => {
+      const [{ data: m }, { data: s }] = await Promise.all([
+        supabase.from('municipality').select('id, name, state, display_color').order('name'),
+        supabase.from('project_stage').select('id, name, color, sort_order').order('sort_order'),
+      ]);
+      setMunis((m ?? []) as MuniRow[]);
+      setStages((s ?? []) as StageRow[]);
+    })();
+  }, []);
+
+  return (
+    <div className="space-y-3 text-xs">
+      <div>
+        <div className="font-semibold text-gray-700 mb-1.5">Municipalities</div>
+        {munis.length === 0 ? (
+          <div className="text-gray-500">No municipalities yet — import a CSV first.</div>
+        ) : (
+          <ul className="space-y-1">
+            {munis.map(m => {
+              const visible = !municipalProjectsHiddenMunicipalityIds.has(m.id);
+              return (
+                <li key={m.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={visible}
+                    onChange={() => toggleMunicipalProjectsMunicipality(m.id)}
+                    className="h-3.5 w-3.5"
+                  />
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: m.display_color || '#8FA9C8' }}
+                  />
+                  <span className="text-gray-800">{m.name}, {m.state}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <div className="font-semibold text-gray-700 mb-1.5">Status filter</div>
+        <ul className="space-y-1">
+          {stages.map(s => {
+            const visible = !municipalProjectsHiddenStageIds.has(s.id);
+            return (
+              <li key={s.id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={visible}
+                  onChange={() => toggleMunicipalProjectsStage(s.id)}
+                  className="h-3.5 w-3.5"
+                />
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: s.color || '#8FA9C8' }}
+                />
+                <span className="text-gray-800">{s.name}</span>
+              </li>
+            );
+          })}
+          <li className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!municipalProjectsHiddenStageIds.has(null)}
+              onChange={() => toggleMunicipalProjectsStage(null)}
+              className="h-3.5 w-3.5"
+            />
+            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#CBD5E1' }} />
+            <span className="text-gray-500 italic">Planning (no status set)</span>
+          </li>
+        </ul>
+      </div>
     </div>
   );
 };

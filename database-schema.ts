@@ -3107,12 +3107,14 @@ export type Database = {
           deal_asking_purchase_price: number | null
           deal_available_sqft: number | null
           deal_building_sqft: number | null
+          deal_delivery_timeframe: string | null
           deal_name: string | null
           deal_nnn: number | null
           deal_nnn_psf: number | null
           deal_percent: number | null
           deal_rent_psf: number | null
           deal_team_id: string | null
+          deal_ti: number | null
           deal_type_id: string | null
           deal_usd: number | null
           deal_value: number | null
@@ -3235,12 +3237,14 @@ export type Database = {
           deal_asking_purchase_price?: number | null
           deal_available_sqft?: number | null
           deal_building_sqft?: number | null
+          deal_delivery_timeframe?: string | null
           deal_name?: string | null
           deal_nnn?: number | null
           deal_nnn_psf?: number | null
           deal_percent?: number | null
           deal_rent_psf?: number | null
           deal_team_id?: string | null
+          deal_ti?: number | null
           deal_type_id?: string | null
           deal_usd?: number | null
           deal_value?: number | null
@@ -3363,12 +3367,14 @@ export type Database = {
           deal_asking_purchase_price?: number | null
           deal_available_sqft?: number | null
           deal_building_sqft?: number | null
+          deal_delivery_timeframe?: string | null
           deal_name?: string | null
           deal_nnn?: number | null
           deal_nnn_psf?: number | null
           deal_percent?: number | null
           deal_rent_psf?: number | null
           deal_team_id?: string | null
+          deal_ti?: number | null
           deal_type_id?: string | null
           deal_usd?: number | null
           deal_value?: number | null
@@ -6565,6 +6571,288 @@ export type Database = {
           },
         ]
       }
+      municipal_import: {
+        Row: {
+          column_mapping: Json
+          error_log: Json
+          file_name: string
+          file_sha256: string | null
+          id: string
+          inserted_count: number
+          municipality_id: string
+          row_count: number
+          skipped_count: number
+          status: string
+          updated_count: number
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          column_mapping?: Json
+          error_log?: Json
+          file_name: string
+          file_sha256?: string | null
+          id?: string
+          inserted_count?: number
+          municipality_id: string
+          row_count?: number
+          skipped_count?: number
+          status?: string
+          updated_count?: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          column_mapping?: Json
+          error_log?: Json
+          file_name?: string
+          file_sha256?: string | null
+          id?: string
+          inserted_count?: number
+          municipality_id?: string
+          row_count?: number
+          skipped_count?: number
+          status?: string
+          updated_count?: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "municipal_import_municipality_id_fkey"
+            columns: ["municipality_id"]
+            isOneToOne: false
+            referencedRelation: "municipality"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_import_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      municipal_project: {
+        Row: {
+          address: string
+          apt_units: number | null
+          centroid: unknown
+          cottage_units: number | null
+          created_at: string
+          duplex_units: number | null
+          geocoded_address: string | null
+          geometry: unknown
+          id: string
+          municipality_id: string
+          notes: string | null
+          parcel_numbers: string[]
+          phase_label: string
+          project_name: string
+          property_id: string | null
+          raw_stages: Json
+          single_family_lots: number | null
+          source_import_id: string | null
+          source_row_number: number | null
+          status_override_id: string | null
+          status_stage_id: string | null
+          total_housing_units: number | null
+          townhouse_units: number | null
+          updated_at: string
+          zoning: string | null
+          zoning_approval_date: string | null
+        }
+        Insert: {
+          address: string
+          apt_units?: number | null
+          centroid?: unknown
+          cottage_units?: number | null
+          created_at?: string
+          duplex_units?: number | null
+          geocoded_address?: string | null
+          geometry?: unknown
+          id?: string
+          municipality_id: string
+          notes?: string | null
+          parcel_numbers?: string[]
+          phase_label?: string
+          project_name?: string
+          property_id?: string | null
+          raw_stages?: Json
+          single_family_lots?: number | null
+          source_import_id?: string | null
+          source_row_number?: number | null
+          status_override_id?: string | null
+          status_stage_id?: string | null
+          total_housing_units?: number | null
+          townhouse_units?: number | null
+          updated_at?: string
+          zoning?: string | null
+          zoning_approval_date?: string | null
+        }
+        Update: {
+          address?: string
+          apt_units?: number | null
+          centroid?: unknown
+          cottage_units?: number | null
+          created_at?: string
+          duplex_units?: number | null
+          geocoded_address?: string | null
+          geometry?: unknown
+          id?: string
+          municipality_id?: string
+          notes?: string | null
+          parcel_numbers?: string[]
+          phase_label?: string
+          project_name?: string
+          property_id?: string | null
+          raw_stages?: Json
+          single_family_lots?: number | null
+          source_import_id?: string | null
+          source_row_number?: number | null
+          status_override_id?: string | null
+          status_stage_id?: string | null
+          total_housing_units?: number | null
+          townhouse_units?: number | null
+          updated_at?: string
+          zoning?: string | null
+          zoning_approval_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "municipal_project_municipality_id_fkey"
+            columns: ["municipality_id"]
+            isOneToOne: false
+            referencedRelation: "municipality"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_source_import_id_fkey"
+            columns: ["source_import_id"]
+            isOneToOne: false
+            referencedRelation: "municipal_import"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_status_override_id_fkey"
+            columns: ["status_override_id"]
+            isOneToOne: false
+            referencedRelation: "project_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_status_stage_id_fkey"
+            columns: ["status_stage_id"]
+            isOneToOne: false
+            referencedRelation: "project_stage"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      municipality: {
+        Row: {
+          created_at: string
+          default_visible: boolean
+          display_color: string | null
+          id: string
+          name: string
+          state: string
+        }
+        Insert: {
+          created_at?: string
+          default_visible?: boolean
+          display_color?: string | null
+          id?: string
+          name: string
+          state: string
+        }
+        Update: {
+          created_at?: string
+          default_visible?: boolean
+          display_color?: string | null
+          id?: string
+          name?: string
+          state?: string
+        }
+        Relationships: []
+      }
+      municipality_stage_mapping: {
+        Row: {
+          completion_values: string[]
+          created_at: string
+          date_column: boolean
+          id: string
+          municipality_id: string
+          priority: number
+          project_stage_id: string
+          source_column_name: string
+        }
+        Insert: {
+          completion_values?: string[]
+          created_at?: string
+          date_column?: boolean
+          id?: string
+          municipality_id: string
+          priority?: number
+          project_stage_id: string
+          source_column_name: string
+        }
+        Update: {
+          completion_values?: string[]
+          created_at?: string
+          date_column?: boolean
+          id?: string
+          municipality_id?: string
+          priority?: number
+          project_stage_id?: string
+          source_column_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "municipality_stage_mapping_municipality_id_fkey"
+            columns: ["municipality_id"]
+            isOneToOne: false
+            referencedRelation: "municipality"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipality_stage_mapping_project_stage_id_fkey"
+            columns: ["project_stage_id"]
+            isOneToOne: false
+            referencedRelation: "project_stage"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       negotiation_logs: {
         Row: {
           clause_type_id: string | null
@@ -8306,6 +8594,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      project_stage: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
       }
       property: {
         Row: {
@@ -11506,7 +11818,14 @@ export type Database = {
       }
       site_submit: {
         Row: {
+          acres: number | null
+          all_in_rent: number | null
+          asking_ground_lease_price: number | null
+          asking_lease_price: number | null
+          asking_purchase_price: number | null
           assignment_id: string | null
+          available_sqft: number | null
+          building_sqft: number | null
           client_demographics: Json | null
           client_id: string | null
           code: string | null
@@ -11524,10 +11843,13 @@ export type Database = {
           loi_date: string | null
           loi_written: boolean | null
           monitor: boolean | null
+          nnn: number | null
+          nnn_psf: number | null
           notes: string | null
           property_id: string | null
           property_unit_id: string | null
           record_type_id: string | null
+          rent_psf: number | null
           sf_account: string | null
           sf_created_by_id: string | null
           sf_deal_type: string | null
@@ -11553,7 +11875,14 @@ export type Database = {
           year_1_rent: number | null
         }
         Insert: {
+          acres?: number | null
+          all_in_rent?: number | null
+          asking_ground_lease_price?: number | null
+          asking_lease_price?: number | null
+          asking_purchase_price?: number | null
           assignment_id?: string | null
+          available_sqft?: number | null
+          building_sqft?: number | null
           client_demographics?: Json | null
           client_id?: string | null
           code?: string | null
@@ -11571,10 +11900,13 @@ export type Database = {
           loi_date?: string | null
           loi_written?: boolean | null
           monitor?: boolean | null
+          nnn?: number | null
+          nnn_psf?: number | null
           notes?: string | null
           property_id?: string | null
           property_unit_id?: string | null
           record_type_id?: string | null
+          rent_psf?: number | null
           sf_account?: string | null
           sf_created_by_id?: string | null
           sf_deal_type?: string | null
@@ -11600,7 +11932,14 @@ export type Database = {
           year_1_rent?: number | null
         }
         Update: {
+          acres?: number | null
+          all_in_rent?: number | null
+          asking_ground_lease_price?: number | null
+          asking_lease_price?: number | null
+          asking_purchase_price?: number | null
           assignment_id?: string | null
+          available_sqft?: number | null
+          building_sqft?: number | null
           client_demographics?: Json | null
           client_id?: string | null
           code?: string | null
@@ -11618,10 +11957,13 @@ export type Database = {
           loi_date?: string | null
           loi_written?: boolean | null
           monitor?: boolean | null
+          nnn?: number | null
+          nnn_psf?: number | null
           notes?: string | null
           property_id?: string | null
           property_unit_id?: string | null
           record_type_id?: string | null
+          rent_psf?: number | null
           sf_account?: string | null
           sf_created_by_id?: string | null
           sf_deal_type?: string | null
@@ -12303,6 +12645,207 @@ export type Database = {
         }
         Relationships: []
       }
+      starbucks_target_area: {
+        Row: {
+          cbsa: string | null
+          cbsa_name: string | null
+          country: string | null
+          created_at: string
+          geom: unknown
+          id: string
+          imported_at: string
+          market_id: number | null
+          market_name: string | null
+          minimarket_id: string | null
+          minimarket_name: string | null
+          model_cann_risk: string | null
+          model_last_update_date: string | null
+          model_other_occ: number | null
+          model_rent: number | null
+          model_store_cost: number | null
+          model_tc_per: number | null
+          model_yr1_sales: number | null
+          model_yr1_tc: number | null
+          name: string
+          notes: string | null
+          planned_ops_area_id: number | null
+          planned_ops_area_name: string | null
+          priority: number | null
+          re_availability: string | null
+          re_constraint_primary: string | null
+          re_constraint_secondary: string | null
+          re_constraint_tertiary: string | null
+          recommendation_distance: number | null
+          recommendation_id: string | null
+          region_id: number | null
+          sdm_mdm: string | null
+          state_province: string | null
+          store_type: string | null
+          target_area_created_dt: string | null
+          target_area_created_user: string | null
+          target_area_id: string
+          target_area_proximity_alert: string | null
+          target_area_secondary_concept: string | null
+          target_area_store_format: string | null
+          target_area_update_date: string | null
+          target_area_update_user: string | null
+          target_open_date: string | null
+          updated_at: string
+          urbanity_code: string | null
+          urbanity_description: string | null
+        }
+        Insert: {
+          cbsa?: string | null
+          cbsa_name?: string | null
+          country?: string | null
+          created_at?: string
+          geom: unknown
+          id?: string
+          imported_at?: string
+          market_id?: number | null
+          market_name?: string | null
+          minimarket_id?: string | null
+          minimarket_name?: string | null
+          model_cann_risk?: string | null
+          model_last_update_date?: string | null
+          model_other_occ?: number | null
+          model_rent?: number | null
+          model_store_cost?: number | null
+          model_tc_per?: number | null
+          model_yr1_sales?: number | null
+          model_yr1_tc?: number | null
+          name: string
+          notes?: string | null
+          planned_ops_area_id?: number | null
+          planned_ops_area_name?: string | null
+          priority?: number | null
+          re_availability?: string | null
+          re_constraint_primary?: string | null
+          re_constraint_secondary?: string | null
+          re_constraint_tertiary?: string | null
+          recommendation_distance?: number | null
+          recommendation_id?: string | null
+          region_id?: number | null
+          sdm_mdm?: string | null
+          state_province?: string | null
+          store_type?: string | null
+          target_area_created_dt?: string | null
+          target_area_created_user?: string | null
+          target_area_id: string
+          target_area_proximity_alert?: string | null
+          target_area_secondary_concept?: string | null
+          target_area_store_format?: string | null
+          target_area_update_date?: string | null
+          target_area_update_user?: string | null
+          target_open_date?: string | null
+          updated_at?: string
+          urbanity_code?: string | null
+          urbanity_description?: string | null
+        }
+        Update: {
+          cbsa?: string | null
+          cbsa_name?: string | null
+          country?: string | null
+          created_at?: string
+          geom?: unknown
+          id?: string
+          imported_at?: string
+          market_id?: number | null
+          market_name?: string | null
+          minimarket_id?: string | null
+          minimarket_name?: string | null
+          model_cann_risk?: string | null
+          model_last_update_date?: string | null
+          model_other_occ?: number | null
+          model_rent?: number | null
+          model_store_cost?: number | null
+          model_tc_per?: number | null
+          model_yr1_sales?: number | null
+          model_yr1_tc?: number | null
+          name?: string
+          notes?: string | null
+          planned_ops_area_id?: number | null
+          planned_ops_area_name?: string | null
+          priority?: number | null
+          re_availability?: string | null
+          re_constraint_primary?: string | null
+          re_constraint_secondary?: string | null
+          re_constraint_tertiary?: string | null
+          recommendation_distance?: number | null
+          recommendation_id?: string | null
+          region_id?: number | null
+          sdm_mdm?: string | null
+          state_province?: string | null
+          store_type?: string | null
+          target_area_created_dt?: string | null
+          target_area_created_user?: string | null
+          target_area_id?: string
+          target_area_proximity_alert?: string | null
+          target_area_secondary_concept?: string | null
+          target_area_store_format?: string | null
+          target_area_update_date?: string | null
+          target_area_update_user?: string | null
+          target_open_date?: string | null
+          updated_at?: string
+          urbanity_code?: string | null
+          urbanity_description?: string | null
+        }
+        Relationships: []
+      }
+      streetlight_backfill_config: {
+        Row: {
+          created_at: string
+          id: number
+          internal_token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          internal_token?: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          internal_token?: string
+        }
+        Relationships: []
+      }
+      streetlight_backfill_progress: {
+        Row: {
+          completed_at: string | null
+          last_error: string | null
+          last_run_at: string
+          next_tile_index: number
+          region: string
+          segments_added: number
+          started_at: string
+          tiles_processed: number
+          tiles_total: number
+        }
+        Insert: {
+          completed_at?: string | null
+          last_error?: string | null
+          last_run_at?: string
+          next_tile_index?: number
+          region: string
+          segments_added?: number
+          started_at?: string
+          tiles_processed?: number
+          tiles_total: number
+        }
+        Update: {
+          completed_at?: string | null
+          last_error?: string | null
+          last_run_at?: string
+          next_tile_index?: number
+          region?: string
+          segments_added?: number
+          started_at?: string
+          tiles_processed?: number
+          tiles_total?: number
+        }
+        Relationships: []
+      }
       streetlight_quota_config: {
         Row: {
           annual_segment_quota: number
@@ -12866,7 +13409,7 @@ export type Database = {
           blocked_at?: string | null
           blocked_reason?: string | null
           category?: string
-          category_id?: string
+          category_id: string
           client_id?: string | null
           completed_at?: string | null
           completion_note?: string | null
@@ -14189,6 +14732,104 @@ export type Database = {
           qb_invoice_id: string | null
         }
         Relationships: []
+      }
+      municipal_project_v: {
+        Row: {
+          address: string | null
+          apt_units: number | null
+          centroid: unknown
+          centroid_lat: number | null
+          centroid_lng: number | null
+          computed_stage_name: string | null
+          cottage_units: number | null
+          created_at: string | null
+          duplex_units: number | null
+          effective_stage_color: string | null
+          effective_stage_id: string | null
+          effective_stage_name: string | null
+          geocoded_address: string | null
+          geometry: unknown
+          geometry_geojson: Json | null
+          id: string | null
+          municipality_display_color: string | null
+          municipality_id: string | null
+          municipality_name: string | null
+          municipality_state: string | null
+          notes: string | null
+          parcel_numbers: string[] | null
+          phase_label: string | null
+          project_name: string | null
+          property_id: string | null
+          raw_stages: Json | null
+          single_family_lots: number | null
+          source_import_id: string | null
+          source_row_number: number | null
+          status_override_id: string | null
+          status_stage_id: string | null
+          total_housing_units: number | null
+          townhouse_units: number | null
+          updated_at: string | null
+          zoning: string | null
+          zoning_approval_date: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "municipal_project_municipality_id_fkey"
+            columns: ["municipality_id"]
+            isOneToOne: false
+            referencedRelation: "municipality"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_source_import_id_fkey"
+            columns: ["source_import_id"]
+            isOneToOne: false
+            referencedRelation: "municipal_import"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_status_override_id_fkey"
+            columns: ["status_override_id"]
+            isOneToOne: false
+            referencedRelation: "project_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_status_stage_id_fkey"
+            columns: ["status_stage_id"]
+            isOneToOne: false
+            referencedRelation: "project_stage"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       portal_site_submit_status: {
         Row: {
@@ -15652,6 +16293,27 @@ export type Database = {
         Returns: {
           client_id: string
           client_name: string
+        }[]
+      }
+      get_starbucks_target_areas_in_bbox: {
+        Args: {
+          p_east: number
+          p_north: number
+          p_south: number
+          p_west: number
+        }
+        Returns: {
+          geom_geojson: Json
+          id: string
+          market_name: string
+          model_yr1_sales: number
+          name: string
+          notes: string
+          priority: number
+          re_availability: string
+          sdm_mdm: string
+          store_type: string
+          target_area_id: string
         }[]
       }
       get_streetlight_segments_in_bbox: {
