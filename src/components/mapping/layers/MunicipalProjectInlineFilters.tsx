@@ -33,6 +33,49 @@ const MunicipalProjectInlineFilters: React.FC = () => {
   const [newMuniState, setNewMuniState] = useState('');
   const [muniError, setMuniError] = useState<string>('');
   const [savingMuni, setSavingMuni] = useState(false);
+  const [deletingMuniId, setDeletingMuniId] = useState<string | null>(null);
+
+  async function deleteMunicipality(muni: MuniRow) {
+    setDeletingMuniId(muni.id);
+    setMuniError('');
+    try {
+      // Show what will cascade so the user can decide knowingly.
+      const [{ count: projectCount }, { count: importCount }] = await Promise.all([
+        supabase
+          .from('municipal_project')
+          .select('id', { count: 'exact', head: true })
+          .eq('municipality_id', muni.id),
+        supabase
+          .from('municipal_import')
+          .select('id', { count: 'exact', head: true })
+          .eq('municipality_id', muni.id),
+      ]);
+
+      const lines = [`Delete ${muni.name}, ${muni.state}?`, ''];
+      if (projectCount && projectCount > 0) {
+        lines.push(`This will also delete ${projectCount} project${projectCount === 1 ? '' : 's'} (including any drawn polygons).`);
+      }
+      if (importCount && importCount > 0) {
+        lines.push(`${importCount} import log${importCount === 1 ? '' : 's'} will also be removed.`);
+      }
+      if ((projectCount ?? 0) === 0 && (importCount ?? 0) === 0) {
+        lines.push('No projects or imports are attached.');
+      }
+      lines.push('', 'This cannot be undone.');
+
+      if (!confirm(lines.join('\n'))) return;
+
+      const { error } = await supabase.from('municipality').delete().eq('id', muni.id);
+      if (error) throw error;
+
+      setMunis((prev) => prev.filter((m) => m.id !== muni.id));
+      refreshLayer('municipal_projects');
+    } catch (e) {
+      setMuniError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingMuniId(null);
+    }
+  }
 
   async function createMunicipality() {
     const name = newMuniName.trim();
@@ -277,8 +320,9 @@ const MunicipalProjectInlineFilters: React.FC = () => {
           <ul className="space-y-0.5">
             {munis.map((m) => {
               const visible = !municipalProjectsHiddenMunicipalityIds.has(m.id);
+              const isDeleting = deletingMuniId === m.id;
               return (
-                <li key={m.id} className="flex items-center gap-2">
+                <li key={m.id} className="flex items-center gap-2 group">
                   <input
                     type="checkbox"
                     checked={visible}
@@ -289,9 +333,19 @@ const MunicipalProjectInlineFilters: React.FC = () => {
                     className="inline-block w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: m.display_color || '#8FA9C8' }}
                   />
-                  <span className="text-gray-800">
+                  <span className="flex-1 text-gray-800">
                     {m.name}, {m.state}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteMunicipality(m)}
+                    disabled={isDeleting}
+                    title={`Delete ${m.name}, ${m.state}`}
+                    aria-label={`Delete ${m.name}, ${m.state}`}
+                    className="text-gray-300 hover:text-[#A27B5C] disabled:opacity-40 px-1 leading-none"
+                  >
+                    {isDeleting ? '…' : '×'}
+                  </button>
                 </li>
               );
             })}
