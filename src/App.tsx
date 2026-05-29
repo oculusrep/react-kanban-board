@@ -8,6 +8,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
 import GmailRoute from "./components/GmailRoute";
+import MunicipalRoute from "./components/MunicipalRoute";
 import PortalRoute from "./components/PortalRoute";
 import CoachNavbar from "./components/CoachNavbar";
 import PortalLayout from "./components/portal/PortalLayout";
@@ -207,7 +208,7 @@ function App() {
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />
           <Route path="admin/layers" element={<AdminRoute><LayerManagementPage /></AdminRoute>} />
           <Route path="admin/merchants" element={<AdminRoute><MerchantAdminPage /></AdminRoute>} />
-          <Route path="admin/municipal-import" element={<AdminRoute><MunicipalImportPage /></AdminRoute>} />
+          <Route path="admin/municipal-import" element={<MunicipalRoute><MunicipalImportPage /></MunicipalRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />

@@ -510,7 +510,7 @@ export default function Navbar() {
                       🏪 Merchants (Logos)
                     </button>
                   )}
-                  {userRole === 'admin' && (
+                  {(userRole === 'admin' || hasPermission('can_access_municipal_import')) && (
                     <button
                       onClick={() => {
                         navigate('/admin/municipal-import');
@@ -1102,7 +1102,7 @@ export default function Navbar() {
                     👥 User Management
                   </button>
                 )}
-                {userRole === 'admin' && (
+                {(userRole === 'admin' || hasPermission('can_access_municipal_import')) && (
                   <button
                     onClick={() => {
                       navigate('/admin/municipal-import');

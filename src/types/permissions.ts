@@ -105,6 +105,7 @@ export interface RolePermissions {
   can_access_budget_pl?: boolean;
   can_access_cfo_dashboard?: boolean;
   can_access_finance_hub?: boolean;
+  can_access_municipal_import?: boolean;
 
   // Traffic Data (StreetLight SATC)
   can_view_traffic_data?: boolean;
@@ -620,6 +621,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_access_finance_hub',
     label: 'Access Finance Hub',
     description: 'Access the Finance Hub with all financial tools, CFO Agent, Bookkeeper, and reports',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_municipal_import',
+    label: 'Access Municipal Projects',
+    description: 'Access the Municipal Project Import tool (CSV import, map layer, polygon drawing, KML export)',
     category: 'system_admin',
     defaultValue: false,
   },
