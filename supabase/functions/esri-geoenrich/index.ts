@@ -25,6 +25,7 @@ interface GeoenrichRequest {
   force_refresh?: boolean;
   custom_radii?: number[];
   custom_drive_times?: number[];
+  include_education?: boolean;
 }
 
 /**
@@ -74,6 +75,19 @@ const TAPESTRY_VARIABLES = [
   'TLIFENAME',
 ];
 
+// Educational attainment variables (Pop Age 25+). Same data collection as the
+// demographic variables above, so they can be appended to the same request.
+// Only sent when the caller passes include_education=true (keeps the property
+// enrichment flow unchanged). "Some college or higher" is computed as
+// (SMCOLL + ASSCDEG + BACHDEG + GRADDEG) / EDUCBASECY.
+const EDUCATION_VARIABLES = [
+  'EDUCBASECY', // Educational Attainment Base (Pop Age 25+)
+  'SMCOLL_CY',  // Some College, No Degree
+  'ASSCDEG_CY', // Associate's Degree
+  'BACHDEG_CY', // Bachelor's Degree
+  'GRADDEG_CY', // Graduate/Professional Degree
+];
+
 interface EsriEnrichmentResult {
   tapestry: {
     code: string | null;
@@ -104,6 +118,10 @@ interface EsriEnrichmentResult {
     daytime_pop_1_mile: number | null;
     daytime_pop_3_mile: number | null;
     daytime_pop_5_mile: number | null;
+    // Education: % of pop age 25+ with some college or higher (only when include_education)
+    educ_some_college_plus_pct_1_mile: number | null;
+    educ_some_college_plus_pct_3_mile: number | null;
+    educ_some_college_plus_pct_5_mile: number | null;
     // 10-minute drive time demographics
     pop_10min_drive: number | null;
     households_10min_drive: number | null;
@@ -112,7 +130,14 @@ interface EsriEnrichmentResult {
     employees_10min_drive: number | null;
     median_age_10min_drive: number | null;
     daytime_pop_10min_drive: number | null;
+    educ_some_college_plus_pct_10min_drive: number | null;
+    // Additional drive-time / ring keys are written dynamically when custom
+    // radii / drive times are supplied (e.g. educ_some_college_plus_pct_5min_drive).
+    [key: string]: number | null;
   };
+  // Drive-time service-area polygons as GeoJSON, keyed like "5min_drive"/"10min_drive".
+  // Used downstream to count nearby stores within a drive-time catchment.
+  isochrones: Record<string, { type: 'Polygon'; coordinates: number[][][] }>;
   raw_response: unknown;
 }
 
@@ -194,7 +219,8 @@ async function enrichRingBuffersDemographics(
   apiKey: string,
   latitude: number,
   longitude: number,
-  radii: number[] = [1, 3, 5]
+  radii: number[] = [1, 3, 5],
+  extraVariables: string[] = []
 ): Promise<{ results: unknown; raw: unknown }> {
   // Study areas with ring buffers at specified radii
   const studyAreas = [
@@ -213,7 +239,7 @@ async function enrichRingBuffersDemographics(
     f: 'json',
     token: apiKey,
     studyAreas: JSON.stringify(studyAreas),
-    analysisVariables: JSON.stringify(DEMOGRAPHIC_VARIABLES),
+    analysisVariables: JSON.stringify([...DEMOGRAPHIC_VARIABLES, ...extraVariables]),
     returnGeometry: 'false',
   });
 
@@ -305,7 +331,8 @@ async function enrichDriveTime(
   apiKey: string,
   latitude: number,
   longitude: number,
-  driveTimes: number[] = [10]
+  driveTimes: number[] = [10],
+  extraVariables: string[] = []
 ): Promise<{ results: unknown; raw: unknown }> {
   // Study area with NetworkServiceArea for drive time
   // All drive time parameters must be inside the studyAreas object, not in studyAreasOptions
@@ -327,7 +354,7 @@ async function enrichDriveTime(
     f: 'json',
     token: apiKey,
     studyAreas: JSON.stringify(studyAreas),
-    analysisVariables: JSON.stringify(DEMOGRAPHIC_VARIABLES),
+    analysisVariables: JSON.stringify([...DEMOGRAPHIC_VARIABLES, ...extraVariables]),
     returnGeometry: 'true', // Required for NetworkServiceArea to work properly
   });
 
@@ -444,6 +471,33 @@ function parseAndStoreDemographics(
   if (daytimePop !== null) {
     (result.demographics as Record<string, number | null>)[`daytime_pop_${radius}`] = daytimePop;
   }
+
+  // Education: % of pop age 25+ with some college or higher
+  const educPct = computeSomeCollegePlusPct(attrs);
+  if (educPct !== null) {
+    (result.demographics as Record<string, number | null>)[`educ_some_college_plus_pct_${radius}`] = educPct;
+  }
+}
+
+/**
+ * Compute "some college or higher" as a percentage of the education base
+ * (population age 25+). Returns null if the base or all components are missing.
+ */
+function computeSomeCollegePlusPct(attrs: Record<string, unknown>): number | null {
+  const base = extractValue(attrs, 'EDUCBASECY', 'EDUCBASE_CY', 'EDUCBASE');
+  if (base === null || base <= 0) return null;
+
+  const someCollege = extractValue(attrs, 'SMCOLL_CY', 'SMCOLL');
+  const associate = extractValue(attrs, 'ASSCDEG_CY', 'ASSCDEG');
+  const bachelor = extractValue(attrs, 'BACHDEG_CY', 'BACHDEG');
+  const graduate = extractValue(attrs, 'GRADDEG_CY', 'GRADDEG');
+
+  if (someCollege === null && associate === null && bachelor === null && graduate === null) {
+    return null;
+  }
+
+  const total = (someCollege ?? 0) + (associate ?? 0) + (bachelor ?? 0) + (graduate ?? 0);
+  return Math.round((total / base) * 1000) / 10; // one decimal place
 }
 
 /**
@@ -487,64 +541,34 @@ function parseRingBufferDemographicsResponse(data: unknown, result: EsriEnrichme
       }
     });
 
-    // ESRI can return data in two ways:
-    // 1. Multiple FeatureSets (one per radius) - each with 1 feature
-    // 2. Single FeatureSet with multiple features (one per radius)
-    // We need to handle both cases
-
+    // ESRI may return data as multiple FeatureSets (one per radius, each with one
+    // feature) or as a single FeatureSet containing one feature per radius. Flatten
+    // all features and map them to radii by request order, refined by the bufferRadii
+    // attribute when present. This handles any number of radii (e.g. [1,3] or [1,3,5]).
     const radiusMap = radii.map(r => `${r}_mile`);
-    const radiusValues = radii;
 
-    // Check if we have multiple feature sets (one per radius) or single feature set with multiple features
-    if (featureSets.length >= 3) {
-      // Multiple FeatureSets - one per radius
-      console.log('[ESRI] Parsing multiple FeatureSets (one per radius)');
-      featureSets.forEach((featureSet, index) => {
-        if (index >= radiusMap.length) return; // Skip if more than 3
-        const radius = radiusMap[index];
-        const features = featureSet.features;
-
-        if (!features || features.length === 0) {
-          console.log(`[ESRI] Ring ${radius}: No features found`);
-          return;
-        }
-
-        const attrs = features[0].attributes || {};
-        parseAndStoreDemographics(attrs, radius, result);
-      });
-    } else if (featureSets.length === 1 && featureSets[0].features) {
-      // Single FeatureSet - check if it has multiple features (one per radius)
-      const features = featureSets[0].features;
-      console.log(`[ESRI] Single FeatureSet with ${features.length} features`);
-
-      if (features.length >= 3) {
-        // Multiple features - one per radius
-        features.forEach((feature, index) => {
-          if (index >= radiusMap.length) return;
-          const attrs = feature.attributes || {};
-
-          // Try to detect radius from bufferRadii attribute
-          const bufferRadii = attrs.bufferRadii;
-          let radius: string;
-          if (bufferRadii !== undefined) {
-            const radiusVal = Number(bufferRadii);
-            const radiusIndex = radiusValues.indexOf(radiusVal);
-            radius = radiusIndex >= 0 ? radiusMap[radiusIndex] : radiusMap[index];
-            console.log(`[ESRI] Feature ${index} bufferRadii=${bufferRadii}, using radius=${radius}`);
-          } else {
-            radius = radiusMap[index];
-            console.log(`[ESRI] Feature ${index} no bufferRadii, assuming radius=${radius}`);
-          }
-
-          parseAndStoreDemographics(attrs, radius, result);
-        });
-      } else {
-        // Just one feature - assume it's 1 mile
-        const attrs = features[0].attributes || {};
-        console.log('[ESRI] Single feature, assuming 1_mile');
-        parseAndStoreDemographics(attrs, '1_mile', result);
+    const allFeatures: Array<Record<string, unknown>> = [];
+    for (const fs of featureSets) {
+      if (fs.features) {
+        for (const f of fs.features) allFeatures.push(f.attributes || {});
       }
     }
+
+    console.log(`[ESRI] Ring buffer: ${allFeatures.length} feature(s) for ${radii.length} radii`);
+
+    allFeatures.forEach((attrs, index) => {
+      // Prefer matching by the radius value ESRI echoes back; fall back to order.
+      const echoed = attrs.bufferRadii ?? attrs.bufferRadius ?? attrs.AreaID;
+      const echoedNum = echoed !== undefined ? Number(echoed) : NaN;
+      const matchIdx = !isNaN(echoedNum) ? radii.indexOf(echoedNum) : -1;
+      const radius = matchIdx >= 0 ? radiusMap[matchIdx] : radiusMap[index];
+
+      if (!radius) {
+        console.log(`[ESRI] Ring feature ${index}: no matching radius, skipping`);
+        return;
+      }
+      parseAndStoreDemographics(attrs, radius, result);
+    });
 
   } catch (err) {
     console.error('[ESRI] Error parsing ring buffer demographics response:', err);
@@ -626,7 +650,7 @@ function parseTapestryResponse(data: unknown, result: EsriEnrichmentResult): voi
  */
 function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult, driveTimes: number[] = [10]): void {
   try {
-    const response = data as { results?: Array<{ value?: { FeatureSet?: Array<{ features?: Array<{ attributes?: Record<string, unknown> }> }> } }> };
+    const response = data as { results?: Array<{ value?: { FeatureSet?: Array<{ features?: Array<{ attributes?: Record<string, unknown>; geometry?: { rings?: number[][][] } }> }> } }> };
     const results = response.results;
 
     if (!results || results.length === 0) {
@@ -641,11 +665,12 @@ function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult, dri
       return;
     }
 
-    // Handle multiple drive times - each may be a separate feature or feature set
-    const allFeatures: Array<{ attributes: Record<string, unknown> }> = [];
+    // Handle multiple drive times - each may be a separate feature or feature set.
+    // Capture geometry too (ESRI returns the service-area polygon as `rings`).
+    const allFeatures: Array<{ attributes: Record<string, unknown>; geometry?: { rings?: number[][][] } }> = [];
     for (const fs of featureSets) {
       if (fs.features) {
-        allFeatures.push(...fs.features.map(f => ({ attributes: f.attributes || {} })));
+        allFeatures.push(...fs.features.map(f => ({ attributes: f.attributes || {}, geometry: f.geometry })));
       }
     }
 
@@ -682,6 +707,15 @@ function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult, dri
 
       const daytimePop = extractValue(attrs, 'DPOP_CY', 'DPOP');
       if (daytimePop !== null) demographics[`daytime_pop_${driveTimeKey}`] = daytimePop;
+
+      const educPct = computeSomeCollegePlusPct(attrs);
+      if (educPct !== null) demographics[`educ_some_college_plus_pct_${driveTimeKey}`] = educPct;
+
+      // ESRI polygon `rings` map directly to GeoJSON Polygon coordinates ([lng,lat]).
+      const rings = allFeatures[i].geometry?.rings;
+      if (rings && rings.length > 0) {
+        result.isochrones[driveTimeKey] = { type: 'Polygon', coordinates: rings };
+      }
     }
 
   } catch (err) {
@@ -700,7 +734,8 @@ async function enrichLocation(
   latitude: number,
   longitude: number,
   customRadii?: number[],
-  customDriveTimes?: number[]
+  customDriveTimes?: number[],
+  includeEducation = false
 ): Promise<EsriEnrichmentResult> {
   const result: EsriEnrichmentResult = {
     tapestry: {
@@ -731,6 +766,9 @@ async function enrichLocation(
       daytime_pop_1_mile: null,
       daytime_pop_3_mile: null,
       daytime_pop_5_mile: null,
+      educ_some_college_plus_pct_1_mile: null,
+      educ_some_college_plus_pct_3_mile: null,
+      educ_some_college_plus_pct_5_mile: null,
       pop_10min_drive: null,
       households_10min_drive: null,
       hh_income_median_10min_drive: null,
@@ -738,25 +776,28 @@ async function enrichLocation(
       employees_10min_drive: null,
       median_age_10min_drive: null,
       daytime_pop_10min_drive: null,
+      educ_some_college_plus_pct_10min_drive: null,
     },
+    isochrones: {},
     raw_response: {},
   };
 
   const radii = customRadii || [1, 3, 5];
   const driveTimes = customDriveTimes || [10];
+  const extraVars = includeEducation ? EDUCATION_VARIABLES : [];
 
   // Call all three APIs in parallel for efficiency
   // - Demographics ring buffers (custom or default radii)
   // - Tapestry (1 mile only, must be separate from demographics)
   // - Drive time (custom or default drive times)
   const [ringBufferDemoResult, tapestryResult, driveTimeResult] = await Promise.all([
-    enrichRingBuffersDemographics(apiKey, latitude, longitude, radii),
+    enrichRingBuffersDemographics(apiKey, latitude, longitude, radii, extraVars),
     enrichTapestry(apiKey, latitude, longitude).catch(err => {
       // Tapestry may fail in some areas - don't fail the whole request
       console.warn('[ESRI] Tapestry enrichment failed (continuing without):', err.message);
       return null;
     }),
-    enrichDriveTime(apiKey, latitude, longitude, driveTimes).catch(err => {
+    enrichDriveTime(apiKey, latitude, longitude, driveTimes, extraVars).catch(err => {
       // Drive time may fail in some areas - don't fail the whole request
       console.warn('[ESRI] Drive time enrichment failed (continuing without):', err.message);
       return null;
@@ -860,7 +901,8 @@ serve(async (req) => {
       request.latitude,
       request.longitude,
       request.custom_radii,
-      request.custom_drive_times
+      request.custom_drive_times,
+      request.include_education ?? false
     );
 
     return new Response(

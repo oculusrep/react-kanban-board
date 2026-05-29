@@ -114,6 +114,7 @@ export interface RolePermissions {
 
   // Starbucks Layer (confidential — per-user override only, never role default)
   can_view_starbucks_layer?: boolean;
+  can_view_site_analysis?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -660,6 +661,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_view_starbucks_layer',
     label: 'View Starbucks Layer',
     description: 'Access the confidential Starbucks store map layer and sales data',
+    category: 'starbucks_layer',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_site_analysis',
+    label: 'Starbucks Site Analysis',
+    description: 'Use the Site Analysis report (analogous-store comparison for a proposed site)',
     category: 'starbucks_layer',
     defaultValue: false,
   },

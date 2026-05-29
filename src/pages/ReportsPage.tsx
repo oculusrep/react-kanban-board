@@ -153,6 +153,14 @@ export default function ReportsPage() {
       route: "/reports/prospecting-scorecard",
       icon: "🎯",
       permission: "can_view_prospecting_scorecard"
+    },
+    {
+      id: "site-analysis",
+      name: "Starbucks Site Analysis",
+      description: "Compare a proposed site to the top demographically analogous Starbucks stores of the same type",
+      route: "/site-analysis",
+      icon: "☕",
+      permission: "can_view_site_analysis"
     }
   ];
 

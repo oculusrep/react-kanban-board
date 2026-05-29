@@ -33,6 +33,7 @@ import NotesDebugPage from "./pages/NotesDebugPage";
 import MappingPage from "./pages/MappingPage";
 import MappingWorkspace from "./pages/MappingWorkspace";
 import ReportsPage from "./pages/ReportsPage";
+import SiteAnalysisPage from "./pages/SiteAnalysisPage";
 import DealReconciliationPage from "./pages/DealReconciliationPage";
 import PaymentReconciliationPage from "./pages/PaymentReconciliationPage";
 import DealCompareReportPage from "./pages/DealCompareReportPage";
@@ -168,6 +169,7 @@ function App() {
           <Route path="search-debug" element={<CoachRoute><SearchDebugPage /></CoachRoute>} />
           <Route path="notes-debug" element={<CoachRoute><NotesDebugPage /></CoachRoute>} />
           <Route path="mapping" element={<CoachRoute><MappingWorkspace /></CoachRoute>} />
+          <Route path="site-analysis" element={<CoachRoute><SiteAnalysisPage /></CoachRoute>} />
           <Route path="mapping-old" element={<CoachRoute><MappingPage /></CoachRoute>} />
           <Route path="reports" element={<CoachRoute><ReportsPage /></CoachRoute>} />
           <Route path="reports/deal-reconciliation" element={<CoachRoute><DealReconciliationPage /></CoachRoute>} />
