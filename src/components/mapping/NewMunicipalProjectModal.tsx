@@ -32,6 +32,16 @@ const BRAND = {
   terracotta: '#A27B5C',
 };
 
+// Supabase/PostgREST errors are plain objects ({ message, details, hint, code }),
+// not Error instances — so String(e) renders "[object Object]". Pull a real message.
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in e) {
+    return String((e as { message: unknown }).message);
+  }
+  return String(e);
+}
+
 const NewMunicipalProjectModal: React.FC<Props> = ({ isOpen, coordinates, onClose, onCreated }) => {
   const [munis, setMunis] = useState<Municipality[]>([]);
   const [stages, setStages] = useState<ProjectStage[]>([]);
@@ -79,7 +89,7 @@ const NewMunicipalProjectModal: React.FC<Props> = ({ isOpen, coordinates, onClos
       setNewMuniName('');
       setNewMuniState('');
     } catch (e) {
-      setMuniError(e instanceof Error ? e.message : String(e));
+      setMuniError(errMessage(e));
     } finally {
       setMuniSaving(false);
     }
@@ -184,7 +194,7 @@ const NewMunicipalProjectModal: React.FC<Props> = ({ isOpen, coordinates, onClos
 
       onCreated({ id: data.id as string });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errMessage(e));
     } finally {
       setSaving(false);
     }

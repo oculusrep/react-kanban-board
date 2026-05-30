@@ -19,6 +19,8 @@ interface Props {
     effective_stage_id?: string | null;
     effective_stage_name?: string | null;
     effective_stage_color?: string | null;
+    project_name?: string;
+    total_housing_units?: number | null;
     notes?: string | null;
     geometry_geojson?: MunicipalProjectMapRow['geometry_geojson'];
     centroid_lat?: number;
@@ -39,6 +41,16 @@ const BRAND = {
   terracotta: '#A27B5C',
 };
 
+// Supabase/PostgREST errors are plain objects, not Error instances — String(e) would
+// render "[object Object]". Pull out a real message.
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in e) {
+    return String((e as { message: unknown }).message);
+  }
+  return String(e);
+}
+
 const MunicipalProjectSlideout: React.FC<Props> = ({
   isOpen,
   project,
@@ -57,6 +69,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [notesDraft, setNotesDraft] = useState<string>('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesError, setNotesError] = useState<string>('');
+  const [nameDraft, setNameDraft] = useState<string>('');
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string>('');
+  const [unitsDraft, setUnitsDraft] = useState<string>('');
+  const [savingUnits, setSavingUnits] = useState(false);
+  const [unitsError, setUnitsError] = useState<string>('');
   const [removingPolygon, setRemovingPolygon] = useState(false);
   const [polygonError, setPolygonError] = useState<string>('');
 
@@ -78,7 +96,17 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setShowRawStages(false);
     setNotesDraft(project?.notes ?? '');
     setNotesError('');
-  }, [project?.id, project?.status_override_id, project?.notes]);
+    setNameDraft(project?.project_name ?? '');
+    setNameError('');
+    setUnitsDraft(project?.total_housing_units != null ? String(project.total_housing_units) : '');
+    setUnitsError('');
+  }, [
+    project?.id,
+    project?.status_override_id,
+    project?.notes,
+    project?.project_name,
+    project?.total_housing_units,
+  ]);
 
   if (!isOpen || !project) return null;
 
@@ -126,6 +154,49 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     ['Cottages', project.cottage_units],
   ];
   const hasUnits = units.some(([, n]) => n != null && n > 0);
+
+  async function saveName() {
+    if (!project) return;
+    const next = nameDraft.trim();
+    setSavingName(true);
+    setNameError('');
+    try {
+      const { error } = await supabase
+        .from('municipal_project')
+        .update({ project_name: next })
+        .eq('id', project.id);
+      if (error) throw error;
+      onProjectUpdated?.({ id: project.id, project_name: next });
+    } catch (e) {
+      setNameError(errMessage(e));
+    } finally {
+      setSavingName(false);
+    }
+  }
+
+  async function saveUnits() {
+    if (!project) return;
+    const trimmed = unitsDraft.trim();
+    const next = trimmed === '' ? null : Number(trimmed);
+    if (next != null && (!Number.isFinite(next) || next < 0)) {
+      setUnitsError('Enter a valid number of units.');
+      return;
+    }
+    setSavingUnits(true);
+    setUnitsError('');
+    try {
+      const { error } = await supabase
+        .from('municipal_project')
+        .update({ total_housing_units: next })
+        .eq('id', project.id);
+      if (error) throw error;
+      onProjectUpdated?.({ id: project.id, total_housing_units: next });
+    } catch (e) {
+      setUnitsError(errMessage(e));
+    } finally {
+      setSavingUnits(false);
+    }
+  }
 
   async function saveNotes() {
     if (!project) return;
@@ -242,6 +313,35 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Project name — editable */}
+          <section>
+            <SectionLabel>Project name</SectionLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="text"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                placeholder="(unnamed)"
+                className="flex-1 border rounded px-2 py-1.5 text-sm"
+                style={{ borderColor: BRAND.slate, color: BRAND.midnight }}
+              />
+              <button
+                type="button"
+                onClick={saveName}
+                disabled={savingName || nameDraft.trim() === (project.project_name ?? '')}
+                className="px-3 py-1.5 rounded text-white text-xs font-semibold disabled:opacity-40"
+                style={{ backgroundColor: BRAND.midnight }}
+              >
+                {savingName ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {nameError && (
+              <div className="mt-1 text-xs" style={{ color: BRAND.terracotta }}>
+                {nameError}
+              </div>
+            )}
+          </section>
+
           {/* Status block */}
           <section>
             <SectionLabel>Status</SectionLabel>
@@ -313,10 +413,10 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
             )}
           </section>
 
-          {/* Units */}
-          {(hasUnits || project.total_housing_units != null) && (
-            <section>
-              <SectionLabel>Housing units</SectionLabel>
+          {/* Units — total is always editable; per-unit breakdown shown read-only when imported */}
+          <section>
+            <SectionLabel>Housing units</SectionLabel>
+            {hasUnits && (
               <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                 {units
                   .filter(([, n]) => n != null && n > 0)
@@ -328,22 +428,41 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                       </span>
                     </React.Fragment>
                   ))}
-                {project.total_housing_units != null && (
-                  <React.Fragment>
-                    <span className="font-semibold" style={{ color: BRAND.midnight }}>
-                      Total
-                    </span>
-                    <span
-                      className="text-right font-mono font-semibold"
-                      style={{ color: BRAND.midnight }}
-                    >
-                      {project.total_housing_units}
-                    </span>
-                  </React.Fragment>
-                )}
               </div>
-            </section>
-          )}
+            )}
+            <div className="mt-1.5 flex items-center gap-2">
+              <label className="text-sm whitespace-nowrap font-semibold" style={{ color: BRAND.midnight }}>
+                Total units
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={unitsDraft}
+                onChange={(e) => setUnitsDraft(e.target.value)}
+                placeholder="—"
+                className="w-24 border rounded px-2 py-1 text-sm text-right font-mono"
+                style={{ borderColor: BRAND.slate, color: BRAND.midnight }}
+              />
+              <button
+                type="button"
+                onClick={saveUnits}
+                disabled={
+                  savingUnits ||
+                  unitsDraft.trim() ===
+                    (project.total_housing_units != null ? String(project.total_housing_units) : '')
+                }
+                className="px-3 py-1 rounded text-white text-xs font-semibold disabled:opacity-40"
+                style={{ backgroundColor: BRAND.midnight }}
+              >
+                {savingUnits ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {unitsError && (
+              <div className="mt-1 text-xs" style={{ color: BRAND.terracotta }}>
+                {unitsError}
+              </div>
+            )}
+          </section>
 
           {/* Zoning */}
           {(project.zoning || project.zoning_approval_date) && (
