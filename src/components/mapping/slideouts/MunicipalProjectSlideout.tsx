@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { geocodingService } from '../../../services/geocodingService';
 import type { MunicipalProjectMapRow } from '../layers/MunicipalProjectLayer';
+import { formatUnitsLabel } from '../../../utils/municipalProjectUnitsLabel';
 
 interface ProjectStageOption {
   id: string;
   name: string;
   sort_order: number;
+  abbreviation: string | null;
 }
 
 interface Props {
@@ -83,7 +85,7 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     void (async () => {
       const { data } = await supabase
         .from('project_stage')
-        .select('id, name, sort_order')
+        .select('id, name, sort_order, abbreviation')
         .order('sort_order');
       setStages((data ?? []) as ProjectStageOption[]);
     })();
@@ -110,9 +112,13 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
 
   if (!isOpen || !project) return null;
 
-  const computedStageName = stages.find((s) => s.id === project.status_stage_id)?.name ?? 'Planning';
-  const overrideStageName = overrideId ? stages.find((s) => s.id === overrideId)?.name ?? null : null;
+  const computedStage = stages.find((s) => s.id === project.status_stage_id) ?? null;
+  const overrideStage = overrideId ? stages.find((s) => s.id === overrideId) ?? null : null;
+  const computedStageName = computedStage?.name ?? 'Planning';
+  const overrideStageName = overrideStage?.name ?? null;
   const effectiveName = overrideStageName ?? computedStageName;
+  const effectiveAbbreviation = (overrideStage?.abbreviation ?? computedStage?.abbreviation) ?? null;
+  const unitsLabel = formatUnitsLabel(project.total_housing_units, effectiveAbbreviation);
   const overrideChanged = (project.status_override_id ?? null) !== overrideId;
 
   async function saveOverride() {
@@ -462,6 +468,26 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                 {unitsError}
               </div>
             )}
+            <div className="mt-2 flex items-center gap-2">
+              <label
+                className="text-xs whitespace-nowrap font-semibold uppercase tracking-wide"
+                style={{ color: BRAND.steel }}
+              >
+                Units label
+              </label>
+              <span
+                className="text-sm font-mono"
+                style={{ color: unitsLabel ? BRAND.midnight : BRAND.slate }}
+                title="Auto-generated from total units and status abbreviation. Exported in KML."
+              >
+                {unitsLabel || '—'}
+              </span>
+              {!effectiveAbbreviation && (
+                <span className="text-[10px]" style={{ color: BRAND.terracotta }}>
+                  set status abbreviation in layer panel
+                </span>
+              )}
+            </div>
           </section>
 
           {/* Zoning */}

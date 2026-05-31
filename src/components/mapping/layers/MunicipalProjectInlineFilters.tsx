@@ -6,7 +6,7 @@ import MunicipalProjectExportModal from '../MunicipalProjectExportModal';
 import type { MunicipalProjectMapRow } from './MunicipalProjectLayer';
 
 interface MuniRow { id: string; name: string; state: string; display_color: string | null; }
-interface StageRow { id: string; name: string; color: string | null; sort_order: number; }
+interface StageRow { id: string; name: string; color: string | null; sort_order: number; abbreviation: string | null; }
 
 interface Props {
   // Called when the user clicks a search result. Parent typically pans the map
@@ -200,11 +200,33 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     }
   }
 
+  async function saveStageAbbreviation(stageId: string, raw: string) {
+    const next = raw.trim() === '' ? null : raw.trim();
+    const current = stages.find((s) => s.id === stageId)?.abbreviation ?? null;
+    if (next === current) return;
+    setSavingStageId(stageId);
+    setStageColorError('');
+    setStages((prev) => prev.map((s) => (s.id === stageId ? { ...s, abbreviation: next } : s)));
+    try {
+      const { error } = await supabase
+        .from('project_stage')
+        .update({ abbreviation: next })
+        .eq('id', stageId);
+      if (error) throw error;
+      // Units Label in slideouts derives from this; refresh so any open layer reflects the change.
+      refreshLayer('municipal_projects');
+    } catch (e) {
+      setStageColorError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingStageId(null);
+    }
+  }
+
   useEffect(() => {
     void (async () => {
       const [{ data: m }, { data: s }] = await Promise.all([
         supabase.from('municipality').select('id, name, state, display_color').order('name'),
-        supabase.from('project_stage').select('id, name, color, sort_order').order('sort_order'),
+        supabase.from('project_stage').select('id, name, color, sort_order, abbreviation').order('sort_order'),
       ]);
       setMunis((m ?? []) as MuniRow[]);
       setStages((s ?? []) as StageRow[]);
@@ -386,11 +408,12 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
               Reset to defaults ({Math.round(DEFAULT_POLYGON_STYLE.fillOpacity * 100)}% fill, {Math.round(DEFAULT_POLYGON_STYLE.strokeOpacity * 100)}% line, {DEFAULT_POLYGON_STYLE.strokeWeight}px)
             </button>
 
-            {/* Per-stage color pickers — writes to project_stage.color (shared across users). */}
+            {/* Per-stage color + abbreviation editors — writes to project_stage (shared across users).
+                Abbreviation feeds the Units Label shown on the slideout and in KML exports. */}
             <div className="border-t pt-2 mt-2" style={{ borderColor: '#EAEEF3' }}>
-              <div className="text-gray-700 font-semibold mb-1">Stage colors</div>
+              <div className="text-gray-700 font-semibold mb-1">Stage colors &amp; abbreviations</div>
               <div className="text-[10px] text-gray-500 mb-1.5">
-                Shared across all users.
+                Shared across all users. Abbreviation appears in Units Label (e.g. "+50 UR").
               </div>
               <div className="space-y-1">
                 {stages.map((s) => (
@@ -403,7 +426,20 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
                       className="w-8 h-5 border border-gray-300 rounded cursor-pointer disabled:opacity-40"
                       title={`Edit color for ${s.name}`}
                     />
-                    <span className="text-gray-800 flex-1">{s.name}</span>
+                    <span className="text-gray-800 flex-1 truncate" title={s.name}>{s.name}</span>
+                    <input
+                      type="text"
+                      defaultValue={s.abbreviation ?? ''}
+                      onBlur={(e) => saveStageAbbreviation(s.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      }}
+                      placeholder="abbr"
+                      maxLength={16}
+                      disabled={savingStageId === s.id}
+                      className="w-16 border border-gray-300 rounded px-1 py-0.5 text-[11px] disabled:opacity-40"
+                      title={`Abbreviation for ${s.name} (used in Units Label)`}
+                    />
                     {savingStageId === s.id && (
                       <span className="text-[10px] text-gray-500">saving…</span>
                     )}

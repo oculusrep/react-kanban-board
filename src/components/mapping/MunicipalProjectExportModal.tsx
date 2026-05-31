@@ -194,7 +194,7 @@ const MunicipalProjectExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
               Export polygons to KML
             </h2>
             <div className="text-xs mt-0.5" style={{ color: BRAND.slate }}>
-              Includes project name, address, units, status, zoning, and notes.
+              Includes project name, address, units, units label, status, zoning, and notes.
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">

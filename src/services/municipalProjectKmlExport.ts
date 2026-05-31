@@ -10,6 +10,7 @@
  */
 
 import { supabase } from '../lib/supabaseClient';
+import { formatUnitsLabel } from '../utils/municipalProjectUnitsLabel';
 
 export interface MunicipalProjectExportRow {
   id: string;
@@ -29,8 +30,10 @@ export interface MunicipalProjectExportRow {
   municipality_id: string;
   municipality_name: string | null;
   municipality_state: string | null;
+  effective_stage_id: string | null;
   effective_stage_name: string | null;
   effective_stage_color: string | null;
+  effective_stage_abbreviation: string | null;
   geometry_geojson: { type: string; coordinates: unknown } | null;
 }
 
@@ -136,6 +139,7 @@ function buildStyles(rows: MunicipalProjectExportRow[]): string {
 }
 
 function extendedData(r: MunicipalProjectExportRow): string {
+  const unitsLabel = formatUnitsLabel(r.total_housing_units, r.effective_stage_abbreviation);
   const fields: Array<[string, string | number | null]> = [
     ['project_name', r.project_name],
     ['phase_label', r.phase_label],
@@ -143,6 +147,8 @@ function extendedData(r: MunicipalProjectExportRow): string {
     ['parcel_numbers', r.parcel_numbers ? r.parcel_numbers.join('; ') : null],
     ['municipality', r.municipality_name ? `${r.municipality_name}, ${r.municipality_state}` : null],
     ['status', r.effective_stage_name],
+    ['status_abbreviation', r.effective_stage_abbreviation],
+    ['units_label', unitsLabel || null],
     ['single_family_lots', r.single_family_lots],
     ['townhouse_units', r.townhouse_units],
     ['duplex_units', r.duplex_units],
@@ -170,6 +176,8 @@ function descriptionHtml(r: MunicipalProjectExportRow): string {
     lines.push(`<b>Municipality:</b> ${xmlEscape(r.municipality_name + ', ' + (r.municipality_state ?? ''))}`);
   if (r.effective_stage_name) lines.push(`<b>Status:</b> ${xmlEscape(r.effective_stage_name)}`);
   if (r.total_housing_units != null) lines.push(`<b>Total units:</b> ${r.total_housing_units}`);
+  const unitsLabel = formatUnitsLabel(r.total_housing_units, r.effective_stage_abbreviation);
+  if (unitsLabel) lines.push(`<b>Units label:</b> ${xmlEscape(unitsLabel)}`);
   if (r.zoning) lines.push(`<b>Zoning:</b> ${xmlEscape(r.zoning)}`);
   if (r.notes) lines.push(`<br/><i>${xmlEscape(r.notes)}</i>`);
   // CDATA so HTML renders in Google Earth's balloon
@@ -251,7 +259,7 @@ export async function fetchProjectsForExport(projectIds?: string[]): Promise<Mun
     let q = supabase
       .from('municipal_project_v')
       .select(
-        'id, project_name, phase_label, address, parcel_numbers, single_family_lots, townhouse_units, duplex_units, apt_units, cottage_units, total_housing_units, zoning, zoning_approval_date, notes, municipality_id, municipality_name, municipality_state, effective_stage_name, effective_stage_color, geometry_geojson'
+        'id, project_name, phase_label, address, parcel_numbers, single_family_lots, townhouse_units, duplex_units, apt_units, cottage_units, total_housing_units, zoning, zoning_approval_date, notes, municipality_id, municipality_name, municipality_state, effective_stage_id, effective_stage_name, effective_stage_color, geometry_geojson'
       )
       .not('geometry_geojson', 'is', null)
       .range(offset, offset + PAGE - 1);
@@ -261,6 +269,21 @@ export async function fetchProjectsForExport(projectIds?: string[]): Promise<Mun
     out.push(...((data ?? []) as unknown as MunicipalProjectExportRow[]));
     if (!data || data.length < PAGE) break;
     offset += PAGE;
+  }
+
+  // Join the per-stage abbreviation client-side. The view doesn't expose it, and
+  // adding a column to the view would require touching an untracked view def.
+  // Cheap: one extra SELECT, ~5 rows.
+  const { data: stages, error: stagesErr } = await supabase
+    .from('project_stage')
+    .select('id, abbreviation');
+  if (stagesErr) throw stagesErr;
+  const abbrById = new Map<string, string | null>();
+  for (const s of stages ?? []) {
+    abbrById.set((s as { id: string }).id, ((s as { abbreviation: string | null }).abbreviation) ?? null);
+  }
+  for (const r of out) {
+    r.effective_stage_abbreviation = r.effective_stage_id ? abbrById.get(r.effective_stage_id) ?? null : null;
   }
   return out;
 }
