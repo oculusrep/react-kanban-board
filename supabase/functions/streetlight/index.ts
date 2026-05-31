@@ -27,8 +27,21 @@ const STREETLIGHT_BASE_URL = 'https://api.streetlightdata.com/satc/v1';
 const SATC_SOURCE = 'agps';
 
 // OSM vintage paired with AGPS, per StreetLight product support guidance.
-// Format is YYYYMM as a single-element array. Bump when a newer vintage ships.
+// Format is YYYYMM as a single-element array. Used for geometry/cache lookups.
 const OSM_VINTAGE: number[] = [202501];
+
+// SATC rejects a metrics query when the osm_vintage doesn't match the data year.
+// AGPS publishes only a few OSM vintages, not one per year. Valid vintages per
+// SATC validation error: [202302, 202501, 202601]. Observed year → vintage pairing:
+//   - vintage 202501 is rejected for 2024/2023/2022 ("not available for year X")
+//   - vintage 202501 is valid for 2025 (returned empty rather than 403)
+//   - so vintage 202302 must cover the 2024-and-earlier panel
+//   - vintage 202601 covers 2026
+const vintageForYear = (year: number): number[] => {
+  if (year >= 2026) return [202601];
+  if (year === 2025) return [202501];
+  return [202302]; // 2024, 2023, 2022
+};
 
 // ─── Request/Response Types ───────────────────────────────────────────────────
 
@@ -506,11 +519,12 @@ async function handleMetrics(
     // StreetLight rate limit is 1 request/second. Pause between attempts on the year fallback.
     if (i > 0) await new Promise(r => setTimeout(r, 1100));
     try {
+      const vintage = vintageForYear(year);
       const metricsData = await slFetch('/metrics', apiKey, {
         country: 'us',
         mode: 'vehicle',
         source: SATC_SOURCE,
-        osm_vintage: OSM_VINTAGE,
+        osm_vintage: vintage,
         geometry: {
           segment_id: finalSegmentIds.map((id) => parseInt(id, 10)),
         },
