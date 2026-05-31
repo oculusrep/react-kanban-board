@@ -11,6 +11,6 @@ COMMENT ON COLUMN project_stage.abbreviation IS
 
 -- Seed the four known stages. Match by name; safe to re-run.
 UPDATE project_stage SET abbreviation = 'UR'       WHERE name = 'Planning'           AND abbreviation IS NULL;
-UPDATE project_stage SET abbreviation = 'Approved' WHERE name = 'Approved'           AND abbreviation IS NULL;
+UPDATE project_stage SET abbreviation = 'AP'       WHERE name = 'Approved'           AND abbreviation IS NULL;
 UPDATE project_stage SET abbreviation = 'UC'       WHERE name = 'Under Construction' AND abbreviation IS NULL;
 UPDATE project_stage SET abbreviation = 'RC'       WHERE name = 'Built Out'          AND abbreviation IS NULL;
