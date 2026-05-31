@@ -1,13 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { useMunicipalProjectPolygonStyle, DEFAULT_POLYGON_STYLE } from '../../../hooks/useMunicipalProjectPolygonStyle';
 import MunicipalProjectExportModal from '../MunicipalProjectExportModal';
+import type { MunicipalProjectMapRow } from './MunicipalProjectLayer';
 
 interface MuniRow { id: string; name: string; state: string; display_color: string | null; }
 interface StageRow { id: string; name: string; color: string | null; sort_order: number; }
 
-const MunicipalProjectInlineFilters: React.FC = () => {
+interface Props {
+  // Called when the user clicks a search result. Parent typically pans the map
+  // and opens the project slideout. Optional so the panel still renders when
+  // search wiring isn't needed (e.g. tests).
+  onSelectSearchResult?: (project: MunicipalProjectMapRow) => void;
+}
+
+const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }) => {
   const {
     municipalProjectsHiddenMunicipalityIds,
     toggleMunicipalProjectsMunicipality,
@@ -109,6 +117,70 @@ const MunicipalProjectInlineFilters: React.FC = () => {
   const [savingStageId, setSavingStageId] = useState<string | null>(null);
   const [stageColorError, setStageColorError] = useState<string>('');
 
+  // Search: "do we already have this project?" — matches name / address / municipality
+  // across all projects, ignoring the visibility filters so dupes can't hide behind them.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<MunicipalProjectMapRow[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchError, setSearchError] = useState<string>('');
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const term = searchQuery.trim();
+    if (term.length < 2) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setSearchError('');
+    const timer = setTimeout(async () => {
+      // PostgREST or() splits on commas, so strip chars that would break the filter syntax.
+      const safe = term.replace(/[,()*]/g, ' ').trim();
+      if (!safe) {
+        setSearchResults([]);
+        setSearching(false);
+        return;
+      }
+      const like = `%${safe}%`;
+      const { data, error } = await supabase
+        .from('municipal_project_v')
+        .select('*')
+        .or(
+          `project_name.ilike.${like},address.ilike.${like},geocoded_address.ilike.${like},municipality_name.ilike.${like}`
+        )
+        .limit(10);
+      if (error) {
+        setSearchError(error.message);
+        setSearchResults([]);
+      } else {
+        setSearchResults((data ?? []) as MunicipalProjectMapRow[]);
+      }
+      setSearching(false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Close the results dropdown on outside click so it doesn't linger over other UI.
+  useEffect(() => {
+    if (!searchOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (!searchContainerRef.current?.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [searchOpen]);
+
+  function handleSelectResult(project: MunicipalProjectMapRow) {
+    onSelectSearchResult?.(project);
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  }
+
   async function saveStageColor(stageId: string, newColor: string) {
     setSavingStageId(stageId);
     setStageColorError('');
@@ -141,8 +213,87 @@ const MunicipalProjectInlineFilters: React.FC = () => {
 
   const isCreateActive = createMode === 'municipal_project';
 
+  const trimmedQuery = searchQuery.trim();
+  const showSearchDropdown = searchOpen && trimmedQuery.length >= 2;
+
   return (
     <div className="space-y-3 text-xs">
+      {/* Search — "do we already have this project?" */}
+      <div ref={searchContainerRef} className="relative">
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setSearchOpen(true);
+            }}
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchOpen(false);
+                setSearchQuery('');
+              }
+            }}
+            placeholder="Search projects by name, address, or city"
+            className="w-full border border-[#8FA9C8] rounded pl-6 pr-6 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4A6B94]"
+          />
+          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[#8FA9C8] pointer-events-none">🔍</span>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setSearchResults([]);
+              }}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 leading-none"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {showSearchDropdown && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#8FA9C8] rounded shadow-lg z-50 max-h-64 overflow-y-auto">
+            {searching ? (
+              <div className="px-2 py-1.5 text-gray-500">Searching…</div>
+            ) : searchError ? (
+              <div className="px-2 py-1.5" style={{ color: '#A27B5C' }}>{searchError}</div>
+            ) : searchResults.length === 0 ? (
+              <div className="px-2 py-1.5 text-gray-500">
+                No matches — looks like a new project.
+              </div>
+            ) : (
+              searchResults.map((p) => {
+                const title = p.project_name || p.address || '(unnamed)';
+                const subParts: string[] = [];
+                if (p.address && p.address !== title) subParts.push(p.address);
+                if (p.municipality_name) {
+                  subParts.push(
+                    p.municipality_state ? `${p.municipality_name}, ${p.municipality_state}` : p.municipality_name
+                  );
+                }
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectResult(p)}
+                    className="block w-full text-left px-2 py-1.5 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                  >
+                    <div className="text-gray-900 font-medium truncate">{title}</div>
+                    {subParts.length > 0 && (
+                      <div className="text-[10px] text-gray-500 truncate">
+                        {subParts.join(' · ')}
+                      </div>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Click-to-create + Export buttons */}
       <div className="flex items-center gap-1.5">
         <button

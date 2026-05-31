@@ -2595,7 +2595,22 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       {/* Filters appear when the layer is on */}
                       {layerState.municipal_projects?.isVisible && (
                         <div className="mt-2 pl-11 pr-1">
-                          <MunicipalProjectInlineFilters />
+                          <MunicipalProjectInlineFilters
+                            onSelectSearchResult={(project) => {
+                              if (
+                                mapInstance &&
+                                typeof project.centroid_lat === 'number' &&
+                                typeof project.centroid_lng === 'number'
+                              ) {
+                                mapInstance.setCenter({
+                                  lat: project.centroid_lat,
+                                  lng: project.centroid_lng,
+                                });
+                                mapInstance.setZoom(17);
+                              }
+                              setSelectedMunicipalProject(project);
+                            }}
+                          />
                         </div>
                       )}
                     </div>
