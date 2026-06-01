@@ -24,6 +24,7 @@ import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideo
 import StarbucksSlideout from '../components/mapping/slideouts/StarbucksSlideout';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import MapContextMenu from '../components/mapping/MapContextMenu';
+import DemographicsAnalysisSlideout from '../components/mapping/slideouts/DemographicsAnalysisSlideout';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
@@ -245,6 +246,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     y: 0,
     coordinates: null,
   });
+
+  // Demographics analysis slideout (ad-hoc lat/lng → ESRI rings).
+  const [demographicsLocation, setDemographicsLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   // Property context menu state
   const [propertyContextMenu, setPropertyContextMenu] = useState<{
@@ -3082,7 +3089,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setPinDropCoordinates(contextMenu.coordinates);
                 setShowMunicipalProjectModal(true);
               }}
+              onShowDemographics={() => {
+                if (!contextMenu.coordinates) return;
+                setDemographicsLocation(contextMenu.coordinates);
+              }}
               onClose={handleContextMenuClose}
+            />
+
+            <DemographicsAnalysisSlideout
+              isOpen={!!demographicsLocation}
+              map={mapInstance}
+              coordinates={demographicsLocation}
+              onClose={() => setDemographicsLocation(null)}
             />
 
             {/* Property Context Menu for Right-Click on Properties */}

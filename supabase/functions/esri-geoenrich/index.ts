@@ -19,7 +19,10 @@ const corsHeaders = {
 const ESRI_ENRICH_URL = 'https://geoenrich.arcgis.com/arcgis/rest/services/World/geoenrichmentserver/Geoenrichment/Enrich';
 
 interface GeoenrichRequest {
-  property_id: string;
+  // property_id is optional. When omitted, the function returns demographics
+  // for the given lat/lng without any DB write — used by the on-map
+  // "Demographics here" slideout for ad-hoc locations.
+  property_id?: string;
   latitude: number;
   longitude: number;
   force_refresh?: boolean;
@@ -866,14 +869,6 @@ serve(async (req) => {
 
     const request = await req.json() as GeoenrichRequest;
 
-    // Validate request
-    if (!request.property_id) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'property_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     if (!request.latitude || !request.longitude) {
       return new Response(
         JSON.stringify({ success: false, error: 'latitude and longitude are required' }),
@@ -889,7 +884,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[ESRI Geoenrich] Enriching property ${request.property_id}:`, {
+    console.log(`[ESRI Geoenrich] Enriching ${request.property_id ?? '(ad-hoc location)'}:`, {
       latitude: request.latitude,
       longitude: request.longitude,
       force_refresh: request.force_refresh,
@@ -908,7 +903,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        property_id: request.property_id,
+        property_id: request.property_id ?? null,
         radii: request.custom_radii || [1, 3, 5],
         drive_times: request.custom_drive_times || [10],
         ...enrichmentResult,

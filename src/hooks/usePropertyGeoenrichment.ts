@@ -48,15 +48,22 @@ export interface DemographicData {
 }
 
 /**
+ * Drive-time isochrone polygon as GeoJSON, keyed by "<minutes>min_drive".
+ * Returned alongside demographics so callers can render the catchment polygon.
+ */
+export type IsochronePolygon = { type: 'Polygon'; coordinates: number[][][] };
+
+/**
  * Full enrichment result from ESRI GeoEnrichment API
  */
 export interface GeoenrichmentResult {
   success: boolean;
-  property_id: string;
+  property_id: string | null;
   tapestry: TapestrySegment;
   demographics: DemographicData;
   radii?: number[];
   drive_times?: number[];
+  isochrones?: Record<string, IsochronePolygon>;
   raw_response?: unknown;
   error?: string;
 }
@@ -94,6 +101,12 @@ interface UsePropertyGeoenrichmentReturn {
     longitude: number,
     radii: number[],
     driveTimes: number[]
+  ) => Promise<GeoenrichmentResult | null>;
+  enrichLocation: (
+    latitude: number,
+    longitude: number,
+    radii?: number[],
+    driveTimes?: number[]
   ) => Promise<GeoenrichmentResult | null>;
   saveClientDemographicsToSiteSubmit: (
     siteSubmitId: string,
@@ -350,12 +363,63 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
     []
   );
 
+  /**
+   * Enrich an ad-hoc lat/lng — no property record involved, nothing persisted.
+   * Used by the on-map "Demographics here" slideout. Returns ring-buffer demographics,
+   * Tapestry, and drive-time isochrone polygons for the requested catchments.
+   */
+  const enrichLocation = useCallback(
+    async (
+      latitude: number,
+      longitude: number,
+      radii: number[] = [1, 3, 5],
+      driveTimes: number[] = [10]
+    ): Promise<GeoenrichmentResult | null> => {
+      setIsEnriching(true);
+      setEnrichError(null);
+
+      try {
+        const { data, error } = await supabase.functions.invoke('esri-geoenrich', {
+          body: {
+            latitude,
+            longitude,
+            custom_radii: radii,
+            custom_drive_times: driveTimes,
+          },
+        });
+
+        if (error) {
+          console.error('[Geoenrichment] Location enrichment error:', error);
+          setEnrichError(error.message || 'Failed to enrich location');
+          return null;
+        }
+
+        if (!data.success) {
+          console.error('[Geoenrichment] Location enrichment API error:', data.error);
+          setEnrichError(data.error || 'Location enrichment failed');
+          return null;
+        }
+
+        return data as GeoenrichmentResult;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error during location enrichment';
+        console.error('[Geoenrichment] Location enrichment error:', err);
+        setEnrichError(errorMessage);
+        return null;
+      } finally {
+        setIsEnriching(false);
+      }
+    },
+    []
+  );
+
   return {
     isEnriching,
     enrichError,
     enrichProperty,
     saveEnrichmentToProperty,
     enrichForClient,
+    enrichLocation,
     saveClientDemographicsToSiteSubmit,
     clearError,
   };
