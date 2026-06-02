@@ -7,6 +7,7 @@ import {
 import DemographicRingsOverlay from '../layers/DemographicRingsOverlay';
 import DemographicIsochronesOverlay from '../layers/DemographicIsochronesOverlay';
 import DemographicPolygonOverlay from '../layers/DemographicPolygonOverlay';
+import DemographicsAnalysisModal from './DemographicsAnalysisModal';
 
 // All three modes of the demographic-layers feature:
 //   - rings (around the right-clicked point)
@@ -26,6 +27,13 @@ const DEFAULT_RADII = [1, 3, 5];
 
 const AVAILABLE_DRIVE_TIMES = [5, 10, 15] as const;
 const DEFAULT_DRIVE_TIMES = [5, 10, 15];
+
+// All ring + drive-time overlays default to red. The user can recolor
+// per-item via the Layer style panel.
+const DEFAULT_OVERLAY_COLOR = '#DC2626';
+const DEFAULT_STROKE_OPACITY = 0.85;
+const DEFAULT_FILL_OPACITY = 0.1;
+const DEFAULT_STROKE_WEIGHT = 2;
 
 const METRIC_ROWS: Array<{
   label: string;
@@ -113,6 +121,20 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const [polygonDrawing, setPolygonDrawing] = useState(false);
   const [polygonCoords, setPolygonCoords] = useState<number[][][] | null>(null);
   const [polygonResult, setPolygonResult] = useState<GeoenrichmentResult | null>(null);
+
+  // Per-item colors keyed by selector value (ring radius or drive-time
+  // minutes). Unset keys fall back to DEFAULT_OVERLAY_COLOR. Persisting
+  // across selection toggles means re-checking a ring keeps your chosen
+  // color.
+  const [ringColors, setRingColors] = useState<Record<number, string>>({});
+  const [driveTimeColors, setDriveTimeColors] = useState<Record<number, string>>({});
+  const [polygonColor, setPolygonColor] = useState(DEFAULT_OVERLAY_COLOR);
+  const [strokeOpacity, setStrokeOpacity] = useState(DEFAULT_STROKE_OPACITY);
+  const [fillOpacity, setFillOpacity] = useState(DEFAULT_FILL_OPACITY);
+  const [strokeWeight, setStrokeWeight] = useState(DEFAULT_STROKE_WEIGHT);
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
   const { isEnriching, enrichError, enrichLocation, enrichPolygon, clearError } =
     usePropertyGeoenrichment();
 
@@ -125,6 +147,14 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
       setPolygonDrawing(false);
       setPolygonCoords(null);
       setPolygonResult(null);
+      setRingColors({});
+      setDriveTimeColors({});
+      setPolygonColor(DEFAULT_OVERLAY_COLOR);
+      setStrokeOpacity(DEFAULT_STROKE_OPACITY);
+      setFillOpacity(DEFAULT_FILL_OPACITY);
+      setStrokeWeight(DEFAULT_STROKE_WEIGHT);
+      setShowStylePanel(false);
+      setShowModal(false);
       clearError();
     }
   }, [isOpen, coordinates?.lat, coordinates?.lng]);
@@ -137,6 +167,24 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const sortedDriveTimes = useMemo(
     () => [...selectedDriveTimes].sort((a, b) => a - b),
     [selectedDriveTimes],
+  );
+
+  const ringStyles = useMemo(
+    () =>
+      sortedRadii.map((miles) => ({
+        miles,
+        color: ringColors[miles] ?? DEFAULT_OVERLAY_COLOR,
+      })),
+    [sortedRadii, ringColors],
+  );
+
+  const driveTimeStyles = useMemo(
+    () =>
+      sortedDriveTimes.map((minutes) => ({
+        minutes,
+        color: driveTimeColors[minutes] ?? DEFAULT_OVERLAY_COLOR,
+      })),
+    [sortedDriveTimes, driveTimeColors],
   );
 
   if (!isOpen || !coordinates) return null;
@@ -200,20 +248,40 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
       <DemographicRingsOverlay
         map={map}
         center={coordinates}
-        radiiMiles={sortedRadii}
+        rings={ringStyles}
+        fillOpacity={fillOpacity}
+        strokeOpacity={strokeOpacity}
+        strokeWeight={strokeWeight}
         isVisible
       />
       <DemographicIsochronesOverlay
         map={map}
         isochrones={result?.isochrones ?? null}
-        selectedDriveTimes={sortedDriveTimes}
+        bands={driveTimeStyles}
+        fillOpacity={fillOpacity}
+        strokeOpacity={strokeOpacity}
+        strokeWeight={strokeWeight}
         isVisible
       />
       <DemographicPolygonOverlay
         map={map}
         drawingActive={polygonDrawing}
         coordinates={polygonCoords}
+        color={polygonColor}
+        fillOpacity={fillOpacity}
+        strokeOpacity={strokeOpacity}
+        strokeWeight={strokeWeight}
         onComplete={handlePolygonComplete}
+      />
+
+      <DemographicsAnalysisModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        coordinates={coordinates}
+        ringResult={result}
+        polygonResult={polygonResult}
+        selectedRadii={sortedRadii}
+        selectedDriveTimes={sortedDriveTimes}
       />
 
       <aside
@@ -244,13 +312,25 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
               {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-700 text-2xl leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-3">
+            {(result || polygonResult) && (
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className="text-xs font-medium hover:underline"
+                style={{ color: BRAND.steel }}
+              >
+                View All →
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-700 text-2xl leading-none"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
@@ -330,6 +410,139 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
             >
               Drive-time polygons cost more ESRI credits than rings — keep this list
               tight.
+            </div>
+
+            {/* Collapsible layer-style panel: per-item colors + global opacity/weight. */}
+            <div className="mt-4 border-t pt-3" style={{ borderColor: BRAND.border }}>
+              <button
+                type="button"
+                onClick={() => setShowStylePanel((v) => !v)}
+                className="text-xs font-semibold uppercase tracking-wide hover:underline"
+                style={{ color: BRAND.steel }}
+              >
+                {showStylePanel ? '▾' : '▸'} Layer style
+              </button>
+
+              {showStylePanel && (
+                <div className="mt-2 space-y-3">
+                  {sortedRadii.length > 0 && (
+                    <div>
+                      <div className="text-[11px] mb-1" style={{ color: BRAND.slate }}>
+                        Ring colors
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {sortedRadii.map((r) => (
+                          <label
+                            key={r}
+                            className="flex items-center gap-1.5 text-xs"
+                            style={{ color: BRAND.steel }}
+                          >
+                            <input
+                              type="color"
+                              value={ringColors[r] ?? DEFAULT_OVERLAY_COLOR}
+                              onChange={(e) =>
+                                setRingColors((prev) => ({ ...prev, [r]: e.target.value }))
+                              }
+                              className="w-7 h-5 border border-gray-300 rounded cursor-pointer"
+                            />
+                            {r} mi
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {sortedDriveTimes.length > 0 && (
+                    <div>
+                      <div className="text-[11px] mb-1" style={{ color: BRAND.slate }}>
+                        Drive-time colors
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {sortedDriveTimes.map((m) => (
+                          <label
+                            key={m}
+                            className="flex items-center gap-1.5 text-xs"
+                            style={{ color: BRAND.steel }}
+                          >
+                            <input
+                              type="color"
+                              value={driveTimeColors[m] ?? DEFAULT_OVERLAY_COLOR}
+                              onChange={(e) =>
+                                setDriveTimeColors((prev) => ({ ...prev, [m]: e.target.value }))
+                              }
+                              className="w-7 h-5 border border-gray-300 rounded cursor-pointer"
+                            />
+                            {m} min
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-[11px] mb-1" style={{ color: BRAND.slate }}>
+                      Polygon color
+                    </div>
+                    <input
+                      type="color"
+                      value={polygonColor}
+                      onChange={(e) => setPolygonColor(e.target.value)}
+                      className="w-7 h-5 border border-gray-300 rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-xs" style={{ color: BRAND.steel }}>
+                      Fill opacity: {Math.round(fillOpacity * 100)}%
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(fillOpacity * 100)}
+                        onChange={(e) => setFillOpacity(Number(e.target.value) / 100)}
+                        className="w-full"
+                      />
+                    </label>
+                    <label className="text-xs" style={{ color: BRAND.steel }}>
+                      Line opacity: {Math.round(strokeOpacity * 100)}%
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(strokeOpacity * 100)}
+                        onChange={(e) => setStrokeOpacity(Number(e.target.value) / 100)}
+                        className="w-full"
+                      />
+                    </label>
+                    <label className="text-xs" style={{ color: BRAND.steel }}>
+                      Line weight: {strokeWeight}px
+                      <input
+                        type="range"
+                        min={1}
+                        max={6}
+                        value={strokeWeight}
+                        onChange={(e) => setStrokeWeight(Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRingColors({});
+                        setDriveTimeColors({});
+                        setPolygonColor(DEFAULT_OVERLAY_COLOR);
+                        setStrokeOpacity(DEFAULT_STROKE_OPACITY);
+                        setFillOpacity(DEFAULT_FILL_OPACITY);
+                        setStrokeWeight(DEFAULT_STROKE_WEIGHT);
+                      }}
+                      className="text-[10px] underline self-end"
+                      style={{ color: BRAND.slate }}
+                    >
+                      Reset to red
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button

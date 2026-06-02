@@ -4,12 +4,8 @@ import React, { useEffect, useRef } from 'react';
 // enrichment. When drawingActive is true (and no coordinates yet) the
 // component activates google.maps.drawing.DrawingManager in POLYGON
 // mode and fires onComplete with the GeoJSON-style ring coordinates.
-// Otherwise it renders the saved polygon as a static overlay.
-//
-// Uses Steel Blue to distinguish from rings (Midnight) and isochrones
-// (Midnight → Slate gradient).
-
-const BRAND_STEEL = '#4A6B94';
+// Otherwise it renders the saved polygon as a static overlay. Color +
+// opacity + stroke weight come from the slideout's style state.
 
 export interface DemographicPolygonOverlayProps {
   map: google.maps.Map | null;
@@ -18,6 +14,10 @@ export interface DemographicPolygonOverlayProps {
   // Each ring is [[lng, lat], ...]. First/last point of each ring match.
   // null = no polygon yet.
   coordinates: number[][][] | null;
+  color: string;
+  fillOpacity: number;
+  strokeOpacity: number;
+  strokeWeight: number;
   onComplete: (coordinates: number[][][]) => void;
 }
 
@@ -25,6 +25,10 @@ const DemographicPolygonOverlay: React.FC<DemographicPolygonOverlayProps> = ({
   map,
   drawingActive,
   coordinates,
+  color,
+  fillOpacity,
+  strokeOpacity,
+  strokeWeight,
   onComplete,
 }) => {
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
@@ -54,11 +58,11 @@ const DemographicPolygonOverlay: React.FC<DemographicPolygonOverlayProps> = ({
         drawingMode: google.maps.drawing.OverlayType.POLYGON,
         drawingControl: false,
         polygonOptions: {
-          strokeColor: BRAND_STEEL,
-          strokeOpacity: 0.9,
-          strokeWeight: 2,
-          fillColor: BRAND_STEEL,
-          fillOpacity: 0.12,
+          strokeColor: color,
+          strokeOpacity,
+          strokeWeight,
+          fillColor: color,
+          fillOpacity,
           clickable: false,
           editable: false,
         },
@@ -111,11 +115,11 @@ const DemographicPolygonOverlay: React.FC<DemographicPolygonOverlayProps> = ({
     polygonRef.current = new google.maps.Polygon({
       paths,
       map,
-      strokeColor: BRAND_STEEL,
-      strokeOpacity: 0.9,
-      strokeWeight: 2,
-      fillColor: BRAND_STEEL,
-      fillOpacity: 0.12,
+      strokeColor: color,
+      strokeOpacity,
+      strokeWeight,
+      fillColor: color,
+      fillOpacity,
       clickable: false,
       zIndex: 300,
     });
@@ -126,7 +130,7 @@ const DemographicPolygonOverlay: React.FC<DemographicPolygonOverlayProps> = ({
         polygonRef.current = null;
       }
     };
-  }, [map, coordinates]);
+  }, [map, coordinates, color, fillOpacity, strokeOpacity, strokeWeight]);
 
   return null;
 };
