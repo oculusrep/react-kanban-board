@@ -5,10 +5,11 @@ import {
   DemographicData,
 } from '../../../hooks/usePropertyGeoenrichment';
 import DemographicRingsOverlay from '../layers/DemographicRingsOverlay';
+import DemographicIsochronesOverlay from '../layers/DemographicIsochronesOverlay';
 
-// Phase 1 of the demographic-layers feature: rings only. Drive-time and
-// custom-polygon modes will be added as additional tabs in this same shell.
-// See docs/DEMOGRAPHIC_RING_LAYERS_PLAN.md.
+// Phases 1+2 of the demographic-layers feature: rings and drive-time
+// isochrones. Custom-polygon mode will be added as a third selector in
+// this same shell. See docs/DEMOGRAPHIC_RING_LAYERS_PLAN.md.
 
 const BRAND = {
   midnight: '#002147',
@@ -19,6 +20,23 @@ const BRAND = {
 
 const AVAILABLE_RADII = [1, 2, 3, 5, 10] as const;
 const DEFAULT_RADII = [1, 3, 5];
+
+const AVAILABLE_DRIVE_TIMES = [5, 10, 15] as const;
+const DEFAULT_DRIVE_TIMES = [5, 10, 15];
+
+const METRIC_ROWS: Array<{
+  label: string;
+  prefix: string;
+  format: (n: number | null | undefined) => string;
+}> = [
+  { label: 'Population', prefix: 'pop', format: (n) => formatNumber(n) },
+  { label: 'Daytime pop', prefix: 'daytime_pop', format: (n) => formatNumber(n) },
+  { label: 'Households', prefix: 'households', format: (n) => formatNumber(n) },
+  { label: 'Median HH inc.', prefix: 'hh_income_median', format: (n) => formatCurrency(n) },
+  { label: 'Avg HH inc.', prefix: 'hh_income_avg', format: (n) => formatCurrency(n) },
+  { label: 'Employees', prefix: 'employees', format: (n) => formatNumber(n) },
+  { label: 'Median age', prefix: 'median_age', format: (n) => formatAge(n) },
+];
 
 interface Props {
   isOpen: boolean;
@@ -54,6 +72,18 @@ function getRingValue(
   return v ?? null;
 }
 
+function getDriveTimeValue(
+  demographics: DemographicData | null,
+  prefix: string,
+  minutes: number,
+): number | null {
+  if (!demographics) return null;
+  const v = (demographics as unknown as Record<string, number | null>)[
+    `${prefix}_${minutes}min_drive`
+  ];
+  return v ?? null;
+}
+
 const DemographicsAnalysisSlideout: React.FC<Props> = ({
   isOpen,
   map,
@@ -61,6 +91,8 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   onClose,
 }) => {
   const [selectedRadii, setSelectedRadii] = useState<number[]>(DEFAULT_RADII);
+  const [selectedDriveTimes, setSelectedDriveTimes] =
+    useState<number[]>(DEFAULT_DRIVE_TIMES);
   const [result, setResult] = useState<GeoenrichmentResult | null>(null);
   const { isEnriching, enrichError, enrichLocation, clearError } =
     usePropertyGeoenrichment();
@@ -70,6 +102,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     if (isOpen && coordinates) {
       setResult(null);
       setSelectedRadii(DEFAULT_RADII);
+      setSelectedDriveTimes(DEFAULT_DRIVE_TIMES);
       clearError();
     }
   }, [isOpen, coordinates?.lat, coordinates?.lng]);
@@ -77,6 +110,11 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const sortedRadii = useMemo(
     () => [...selectedRadii].sort((a, b) => a - b),
     [selectedRadii],
+  );
+
+  const sortedDriveTimes = useMemo(
+    () => [...selectedDriveTimes].sort((a, b) => a - b),
+    [selectedDriveTimes],
   );
 
   if (!isOpen || !coordinates) return null;
@@ -89,14 +127,26 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     setResult(null);
   };
 
+  const toggleDriveTime = (m: number) => {
+    setSelectedDriveTimes((prev) =>
+      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
+    );
+    // Drive-time polygons + stats both depend on the API response, so a
+    // selection change after a fetch only filters what's already loaded;
+    // we don't invalidate the result here (unlike radii, which would
+    // require a re-fetch to draw a new ring set).
+  };
+
   const handleFetch = async () => {
-    if (!coordinates || selectedRadii.length === 0) return;
+    if (!coordinates || (selectedRadii.length === 0 && selectedDriveTimes.length === 0)) {
+      return;
+    }
     clearError();
     const r = await enrichLocation(
       coordinates.lat,
       coordinates.lng,
       sortedRadii,
-      [], // Phase 2 will add drive times
+      sortedDriveTimes,
     );
     if (r) setResult(r);
   };
@@ -110,6 +160,12 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
         map={map}
         center={coordinates}
         radiiMiles={sortedRadii}
+        isVisible
+      />
+      <DemographicIsochronesOverlay
+        map={map}
+        isochrones={result?.isochrones ?? null}
+        selectedDriveTimes={sortedDriveTimes}
         isVisible
       />
 
@@ -186,10 +242,56 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                 );
               })}
             </div>
+
+            <div
+              className="text-xs font-semibold uppercase tracking-wide mt-4 mb-2"
+              style={{ color: BRAND.steel }}
+            >
+              Drive times (minutes)
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {AVAILABLE_DRIVE_TIMES.map((m) => {
+                const active = selectedDriveTimes.includes(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => toggleDriveTime(m)}
+                    className="px-3 py-1.5 text-sm rounded-full border transition-colors"
+                    style={
+                      active
+                        ? {
+                            backgroundColor: BRAND.steel,
+                            color: '#FFFFFF',
+                            borderColor: BRAND.steel,
+                          }
+                        : {
+                            backgroundColor: 'transparent',
+                            color: BRAND.slate,
+                            borderColor: BRAND.slate,
+                          }
+                    }
+                  >
+                    {m} min
+                  </button>
+                );
+              })}
+            </div>
+            <div
+              className="text-[11px] mt-1.5"
+              style={{ color: BRAND.slate }}
+            >
+              Drive-time polygons cost more ESRI credits than rings — keep this list
+              tight.
+            </div>
+
             <button
               type="button"
               onClick={handleFetch}
-              disabled={isEnriching || selectedRadii.length === 0}
+              disabled={
+                isEnriching ||
+                (selectedRadii.length === 0 && selectedDriveTimes.length === 0)
+              }
               className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
               style={{ backgroundColor: BRAND.midnight, color: '#FFFFFF' }}
             >
@@ -257,7 +359,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
             </section>
           )}
 
-          {demographics && (
+          {demographics && sortedRadii.length > 0 && (
             <section>
               <div
                 className="text-xs font-semibold uppercase tracking-wide mb-2"
@@ -281,15 +383,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {[
-                      { label: 'Population', prefix: 'pop', format: formatNumber },
-                      { label: 'Daytime pop', prefix: 'daytime_pop', format: formatNumber },
-                      { label: 'Households', prefix: 'households', format: formatNumber },
-                      { label: 'Median HH inc.', prefix: 'hh_income_median', format: formatCurrency },
-                      { label: 'Avg HH inc.', prefix: 'hh_income_avg', format: formatCurrency },
-                      { label: 'Employees', prefix: 'employees', format: formatNumber },
-                      { label: 'Median age', prefix: 'median_age', format: formatAge },
-                    ].map((row) => (
+                    {METRIC_ROWS.map((row) => (
                       <tr
                         key={row.prefix}
                         className="border-t"
@@ -315,13 +409,66 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                   </tbody>
                 </table>
               </div>
+            </section>
+          )}
+
+          {demographics && sortedDriveTimes.length > 0 && (
+            <section>
               <div
-                className="text-[11px] mt-3"
-                style={{ color: BRAND.slate }}
+                className="text-xs font-semibold uppercase tracking-wide mb-2"
+                style={{ color: BRAND.steel }}
               >
-                Source: ESRI GeoEnrichment · ad-hoc lookup, nothing saved.
+                Demographics by drive time
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ color: BRAND.slate }}>
+                      <th className="text-left font-medium pb-1.5">Metric</th>
+                      {sortedDriveTimes.map((m) => (
+                        <th
+                          key={m}
+                          className="text-right font-medium pb-1.5 pl-2"
+                        >
+                          {m} min
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {METRIC_ROWS.map((row) => (
+                      <tr
+                        key={row.prefix}
+                        className="border-t"
+                        style={{ borderColor: BRAND.border }}
+                      >
+                        <td
+                          className="py-1.5 text-left"
+                          style={{ color: BRAND.steel }}
+                        >
+                          {row.label}
+                        </td>
+                        {sortedDriveTimes.map((m) => (
+                          <td
+                            key={m}
+                            className="py-1.5 text-right pl-2 font-medium"
+                            style={{ color: BRAND.midnight }}
+                          >
+                            {row.format(getDriveTimeValue(demographics, row.prefix, m))}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </section>
+          )}
+
+          {demographics && (
+            <div className="text-[11px]" style={{ color: BRAND.slate }}>
+              Source: ESRI GeoEnrichment · ad-hoc lookup, nothing saved.
+            </div>
           )}
 
           {!demographics && !isEnriching && !enrichError && (
