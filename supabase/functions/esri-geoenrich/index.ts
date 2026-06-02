@@ -23,13 +23,24 @@ interface GeoenrichRequest {
   // for the given lat/lng without any DB write — used by the on-map
   // "Demographics here" slideout for ad-hoc locations.
   property_id?: string;
-  latitude: number;
-  longitude: number;
+  // lat/lng are required for ring-buffer + drive-time mode. For polygon
+  // mode they are optional (the polygon defines the study area).
+  latitude?: number;
+  longitude?: number;
   force_refresh?: boolean;
   custom_radii?: number[];
   custom_drive_times?: number[];
+  // When supplied, the function skips ring/drive-time enrichment and
+  // instead enriches the polygon itself as the study area. GeoJSON
+  // polygon coordinates: outer ring first, then holes; first/last point
+  // of each ring must match.
+  custom_polygon?: { coordinates: number[][][] };
   include_education?: boolean;
 }
+
+// Hard cap to keep ESRI cost predictable. Larger polygons get rejected;
+// the user can split into smaller areas.
+const MAX_POLYGON_VERTICES = 200;
 
 /**
  * ESRI Analysis Variables
@@ -385,6 +396,59 @@ async function enrichDriveTime(
 }
 
 /**
+ * Call ESRI GeoEnrichment API with a custom polygon as the study area.
+ * No buffering — the polygon itself defines the area. Used by the
+ * "Custom polygon" mode in Demographics Here. Returns one feature whose
+ * attributes are the same demographic variables as the ring-buffer call.
+ */
+async function enrichCustomPolygon(
+  apiKey: string,
+  coordinates: number[][][],
+  variables: string[]
+): Promise<{ results: unknown; raw: unknown }> {
+  const studyAreas = [
+    {
+      geometry: {
+        rings: coordinates,
+        spatialReference: { wkid: 4326 },
+      },
+    },
+  ];
+
+  const params = new URLSearchParams({
+    f: 'json',
+    token: apiKey,
+    studyAreas: JSON.stringify(studyAreas),
+    analysisVariables: JSON.stringify(variables),
+    returnGeometry: 'false',
+  });
+
+  console.log('[ESRI] Calling GeoEnrichment API for custom polygon:', {
+    vertexCount: coordinates[0]?.length ?? 0,
+    variableCount: variables.length,
+  });
+
+  const response = await fetch(`${ESRI_ENRICH_URL}?${params.toString()}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[ESRI] Custom polygon API error:', response.status, errorText);
+    throw new Error(`ESRI GeoEnrichment custom polygon failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (data.error) {
+    console.error('[ESRI] Custom polygon error:', data.error);
+    throw new Error(`ESRI GeoEnrichment error: ${data.error.message || JSON.stringify(data.error)}`);
+  }
+
+  return { results: data, raw: data };
+}
+
+/**
  * Extract numeric value from attributes, trying multiple possible field names
  */
 function extractValue(attrs: Record<string, unknown>, ...fieldNames: string[]): number | null {
@@ -727,6 +791,93 @@ function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult, dri
 }
 
 /**
+ * Parse a single-feature GeoEnrichment response (used for custom polygon
+ * enrichment, where there are no rings). Writes attributes under the
+ * given suffix — e.g. "polygon" yields pop_polygon, households_polygon, …
+ */
+function parseSingleFeatureResponse(
+  data: unknown,
+  result: EsriEnrichmentResult,
+  suffix: string,
+): void {
+  try {
+    const response = data as { results?: Array<{ value?: { FeatureSet?: Array<{ features?: Array<{ attributes?: Record<string, unknown> }> }> } }> };
+    const featureSets = response.results?.[0]?.value?.FeatureSet;
+    const attrs = featureSets?.[0]?.features?.[0]?.attributes;
+    if (!attrs) {
+      console.log(`[ESRI] No feature in custom polygon response (suffix=${suffix})`);
+      return;
+    }
+    parseAndStoreDemographics(attrs, suffix, result);
+  } catch (err) {
+    console.error('[ESRI] Error parsing single-feature response:', err);
+  }
+}
+
+/**
+ * Parse Tapestry response for the custom polygon case (same single-feature
+ * shape as parseTapestryResponse, just no buffer context).
+ */
+function parsePolygonTapestryResponse(data: unknown, result: EsriEnrichmentResult): void {
+  // The existing parseTapestryResponse already handles a single-feature
+  // FeatureSet. Reuse it directly.
+  parseTapestryResponse(data, result);
+}
+
+/**
+ * Orchestrator for the polygon mode. Skips ring buffers and drive-time
+ * (the polygon IS the study area) and returns demographics + Tapestry
+ * under the "polygon" suffix in result.demographics.
+ */
+async function enrichPolygon(
+  apiKey: string,
+  coordinates: number[][][],
+  includeEducation: boolean
+): Promise<EsriEnrichmentResult> {
+  const result: EsriEnrichmentResult = {
+    tapestry: { code: null, name: null, description: null, lifemodes: null },
+    demographics: {
+      pop_1_mile: null, pop_3_mile: null, pop_5_mile: null,
+      households_1_mile: null, households_3_mile: null, households_5_mile: null,
+      hh_income_median_1_mile: null, hh_income_median_3_mile: null, hh_income_median_5_mile: null,
+      hh_income_avg_1_mile: null, hh_income_avg_3_mile: null, hh_income_avg_5_mile: null,
+      employees_1_mile: null, employees_3_mile: null, employees_5_mile: null,
+      median_age_1_mile: null, median_age_3_mile: null, median_age_5_mile: null,
+      daytime_pop_1_mile: null, daytime_pop_3_mile: null, daytime_pop_5_mile: null,
+      educ_some_college_plus_pct_1_mile: null, educ_some_college_plus_pct_3_mile: null, educ_some_college_plus_pct_5_mile: null,
+      pop_10min_drive: null, households_10min_drive: null,
+      hh_income_median_10min_drive: null, hh_income_avg_10min_drive: null,
+      employees_10min_drive: null, median_age_10min_drive: null,
+      daytime_pop_10min_drive: null, educ_some_college_plus_pct_10min_drive: null,
+    },
+    isochrones: {},
+    raw_response: {},
+  };
+
+  const extraVars = includeEducation ? EDUCATION_VARIABLES : [];
+
+  // Demographics + Tapestry must still be separate calls (same multi-hierarchy
+  // constraint as the ring-buffer flow).
+  const [demoResult, tapResult] = await Promise.all([
+    enrichCustomPolygon(apiKey, coordinates, [...DEMOGRAPHIC_VARIABLES, ...extraVars]),
+    enrichCustomPolygon(apiKey, coordinates, TAPESTRY_VARIABLES).catch((err) => {
+      console.warn('[ESRI] Polygon Tapestry failed (continuing without):', err.message);
+      return null;
+    }),
+  ]);
+
+  result.raw_response = {
+    polygonDemographics: demoResult.raw,
+    polygonTapestry: tapResult?.raw ?? null,
+  };
+
+  parseSingleFeatureResponse(demoResult.results, result, 'polygon');
+  if (tapResult) parsePolygonTapestryResponse(tapResult.results, result);
+
+  return result;
+}
+
+/**
  * Main enrichment function - calls demographics, Tapestry, and drive time APIs separately
  *
  * Note: ESRI requires separate API calls for Tapestry vs demographic variables in US data
@@ -868,6 +1019,47 @@ serve(async (req) => {
     }
 
     const request = await req.json() as GeoenrichRequest;
+
+    // Polygon mode: enrich a custom drawn polygon directly. lat/lng are
+    // optional in this mode — the polygon IS the study area.
+    if (request.custom_polygon) {
+      const coords = request.custom_polygon.coordinates;
+      const outerRing = coords?.[0];
+      if (!outerRing || outerRing.length < 4) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'custom_polygon must have an outer ring with at least 4 points (3 distinct + closing point)' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      const totalVertices = coords.reduce((sum, ring) => sum + ring.length, 0);
+      if (totalVertices > MAX_POLYGON_VERTICES) {
+        return new Response(
+          JSON.stringify({ success: false, error: `Polygon has ${totalVertices} vertices; max allowed is ${MAX_POLYGON_VERTICES}. Simplify or split into smaller polygons.` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('[ESRI Geoenrich] Enriching custom polygon:', {
+        rings: coords.length,
+        vertices: totalVertices,
+      });
+
+      const polygonResult = await enrichPolygon(
+        apiKey,
+        coords,
+        request.include_education ?? false,
+      );
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          property_id: request.property_id ?? null,
+          mode: 'polygon',
+          ...polygonResult,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!request.latitude || !request.longitude) {
       return new Response(

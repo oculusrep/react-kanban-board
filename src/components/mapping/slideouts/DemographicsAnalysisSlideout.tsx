@@ -6,10 +6,13 @@ import {
 } from '../../../hooks/usePropertyGeoenrichment';
 import DemographicRingsOverlay from '../layers/DemographicRingsOverlay';
 import DemographicIsochronesOverlay from '../layers/DemographicIsochronesOverlay';
+import DemographicPolygonOverlay from '../layers/DemographicPolygonOverlay';
 
-// Phases 1+2 of the demographic-layers feature: rings and drive-time
-// isochrones. Custom-polygon mode will be added as a third selector in
-// this same shell. See docs/DEMOGRAPHIC_RING_LAYERS_PLAN.md.
+// All three modes of the demographic-layers feature:
+//   - rings (around the right-clicked point)
+//   - drive-time isochrones (ESRI Service Area polygons)
+//   - custom polygon (user-drawn arbitrary shape)
+// See docs/DEMOGRAPHIC_RING_LAYERS_PLAN.md.
 
 const BRAND = {
   midnight: '#002147',
@@ -84,6 +87,17 @@ function getDriveTimeValue(
   return v ?? null;
 }
 
+function getPolygonValue(
+  demographics: DemographicData | null,
+  prefix: string,
+): number | null {
+  if (!demographics) return null;
+  const v = (demographics as unknown as Record<string, number | null>)[
+    `${prefix}_polygon`
+  ];
+  return v ?? null;
+}
+
 const DemographicsAnalysisSlideout: React.FC<Props> = ({
   isOpen,
   map,
@@ -94,7 +108,12 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const [selectedDriveTimes, setSelectedDriveTimes] =
     useState<number[]>(DEFAULT_DRIVE_TIMES);
   const [result, setResult] = useState<GeoenrichmentResult | null>(null);
-  const { isEnriching, enrichError, enrichLocation, clearError } =
+  // Polygon-mode state lives separately from rings/drive-times so the
+  // two flows don't clobber each other's results.
+  const [polygonDrawing, setPolygonDrawing] = useState(false);
+  const [polygonCoords, setPolygonCoords] = useState<number[][][] | null>(null);
+  const [polygonResult, setPolygonResult] = useState<GeoenrichmentResult | null>(null);
+  const { isEnriching, enrichError, enrichLocation, enrichPolygon, clearError } =
     usePropertyGeoenrichment();
 
   // Reset state whenever a new location is opened.
@@ -103,6 +122,9 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
       setResult(null);
       setSelectedRadii(DEFAULT_RADII);
       setSelectedDriveTimes(DEFAULT_DRIVE_TIMES);
+      setPolygonDrawing(false);
+      setPolygonCoords(null);
+      setPolygonResult(null);
       clearError();
     }
   }, [isOpen, coordinates?.lat, coordinates?.lng]);
@@ -151,6 +173,25 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     if (r) setResult(r);
   };
 
+  const handlePolygonComplete = (coords: number[][][]) => {
+    setPolygonDrawing(false);
+    setPolygonCoords(coords);
+    setPolygonResult(null);
+  };
+
+  const handleClearPolygon = () => {
+    setPolygonDrawing(false);
+    setPolygonCoords(null);
+    setPolygonResult(null);
+  };
+
+  const handleFetchPolygon = async () => {
+    if (!polygonCoords) return;
+    clearError();
+    const r = await enrichPolygon(polygonCoords);
+    if (r) setPolygonResult(r);
+  };
+
   const tapestry = result?.tapestry;
   const demographics = result?.demographics ?? null;
 
@@ -167,6 +208,12 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
         isochrones={result?.isochrones ?? null}
         selectedDriveTimes={sortedDriveTimes}
         isVisible
+      />
+      <DemographicPolygonOverlay
+        map={map}
+        drawingActive={polygonDrawing}
+        coordinates={polygonCoords}
+        onComplete={handlePolygonComplete}
       />
 
       <aside
@@ -480,6 +527,150 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
               call ESRI.
             </div>
           )}
+
+          {/* ───── Custom polygon (Phase 3) ───── */}
+          <section
+            className="pt-4 border-t"
+            style={{ borderColor: BRAND.border }}
+          >
+            <div
+              className="text-xs font-semibold uppercase tracking-wide mb-2"
+              style={{ color: BRAND.steel }}
+            >
+              Custom polygon
+            </div>
+            <div
+              className="text-[11px] mb-2"
+              style={{ color: BRAND.slate }}
+            >
+              Draw any shape on the map and get demographics for the exact area.
+              Polygons over 200 vertices are rejected — keep it simple.
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {!polygonCoords && !polygonDrawing && (
+                <button
+                  type="button"
+                  onClick={() => setPolygonDrawing(true)}
+                  className="px-3 py-1.5 text-sm rounded-md border transition-colors"
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: BRAND.steel,
+                    borderColor: BRAND.steel,
+                  }}
+                >
+                  Draw polygon
+                </button>
+              )}
+              {polygonDrawing && (
+                <>
+                  <span
+                    className="px-3 py-1.5 text-sm italic"
+                    style={{ color: BRAND.steel }}
+                  >
+                    Click on the map to add points · double-click to finish
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPolygonDrawing(false)}
+                    className="px-3 py-1.5 text-sm rounded-md border"
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: BRAND.slate,
+                      borderColor: BRAND.slate,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+              {polygonCoords && !polygonDrawing && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleFetchPolygon}
+                    disabled={isEnriching}
+                    className="px-3 py-1.5 text-sm rounded-md transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: BRAND.midnight, color: '#FFFFFF' }}
+                  >
+                    {isEnriching
+                      ? 'Fetching…'
+                      : polygonResult
+                        ? 'Refresh polygon stats'
+                        : 'Fetch polygon demographics'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearPolygon}
+                    disabled={isEnriching}
+                    className="px-3 py-1.5 text-sm rounded-md border disabled:opacity-50"
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: BRAND.slate,
+                      borderColor: BRAND.slate,
+                    }}
+                  >
+                    Clear
+                  </button>
+                </>
+              )}
+            </div>
+
+            {polygonCoords && (
+              <div
+                className="text-[11px] mt-2 font-mono"
+                style={{ color: BRAND.slate }}
+              >
+                {(polygonCoords[0]?.length ?? 1) - 1} vertices
+              </div>
+            )}
+
+            {polygonResult?.demographics && (
+              <div className="overflow-x-auto mt-3">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ color: BRAND.slate }}>
+                      <th className="text-left font-medium pb-1.5">Metric</th>
+                      <th className="text-right font-medium pb-1.5 pl-2">
+                        Polygon
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {METRIC_ROWS.map((row) => (
+                      <tr
+                        key={row.prefix}
+                        className="border-t"
+                        style={{ borderColor: BRAND.border }}
+                      >
+                        <td
+                          className="py-1.5 text-left"
+                          style={{ color: BRAND.steel }}
+                        >
+                          {row.label}
+                        </td>
+                        <td
+                          className="py-1.5 text-right pl-2 font-medium"
+                          style={{ color: BRAND.midnight }}
+                        >
+                          {row.format(getPolygonValue(polygonResult.demographics, row.prefix))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {polygonResult.tapestry?.code && (
+                  <div
+                    className="text-[11px] mt-2"
+                    style={{ color: BRAND.steel }}
+                  >
+                    Tapestry: <strong>{polygonResult.tapestry.code}</strong> —{' '}
+                    {polygonResult.tapestry.name}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
         </div>
       </aside>
     </>

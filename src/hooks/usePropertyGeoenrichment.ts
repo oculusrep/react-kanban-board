@@ -108,6 +108,9 @@ interface UsePropertyGeoenrichmentReturn {
     radii?: number[],
     driveTimes?: number[]
   ) => Promise<GeoenrichmentResult | null>;
+  enrichPolygon: (
+    coordinates: number[][][]
+  ) => Promise<GeoenrichmentResult | null>;
   saveClientDemographicsToSiteSubmit: (
     siteSubmitId: string,
     result: GeoenrichmentResult,
@@ -413,6 +416,48 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
     []
   );
 
+  /**
+   * Enrich a custom-drawn polygon. The polygon itself is the study area —
+   * no ring buffers, no drive-time isochrones. Demographics return under
+   * the `_polygon` suffix (pop_polygon, households_polygon, …).
+   */
+  const enrichPolygon = useCallback(
+    async (coordinates: number[][][]): Promise<GeoenrichmentResult | null> => {
+      setIsEnriching(true);
+      setEnrichError(null);
+
+      try {
+        const { data, error } = await supabase.functions.invoke('esri-geoenrich', {
+          body: {
+            custom_polygon: { coordinates },
+          },
+        });
+
+        if (error) {
+          console.error('[Geoenrichment] Polygon enrichment error:', error);
+          setEnrichError(error.message || 'Failed to enrich polygon');
+          return null;
+        }
+
+        if (!data.success) {
+          console.error('[Geoenrichment] Polygon enrichment API error:', data.error);
+          setEnrichError(data.error || 'Polygon enrichment failed');
+          return null;
+        }
+
+        return data as GeoenrichmentResult;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error during polygon enrichment';
+        console.error('[Geoenrichment] Polygon enrichment error:', err);
+        setEnrichError(errorMessage);
+        return null;
+      } finally {
+        setIsEnriching(false);
+      }
+    },
+    []
+  );
+
   return {
     isEnriching,
     enrichError,
@@ -420,6 +465,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
     saveEnrichmentToProperty,
     enrichForClient,
     enrichLocation,
+    enrichPolygon,
     saveClientDemographicsToSiteSubmit,
     clearError,
   };
