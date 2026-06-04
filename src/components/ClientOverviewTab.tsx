@@ -8,6 +8,7 @@ import ClientPortalUsersSection from './portal/ClientPortalUsersSection';
 import ClientBrokersSection from './portal/ClientBrokersSection';
 import ClientForecastingSection from './clients/ClientForecastingSection';
 import ClientDemographicsSection from './clients/ClientDemographicsSection';
+import { getDropboxPropertySyncService } from '../services/dropboxPropertySync';
 
 type Client = Database['public']['Tables']['client']['Row'];
 type ClientInsert = Database['public']['Tables']['client']['Insert'];
@@ -285,6 +286,27 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
 
         console.log('✅ Client saved successfully:', data);
         setHasChanges(false);
+
+        // Sync the linked Dropbox folder name if client_name changed
+        const oldName = originalFormData?.client_name?.trim();
+        const newName = formData.client_name.trim();
+        if (oldName && oldName !== newName && data?.id) {
+          const syncResult = await getDropboxPropertySyncService().syncClientName(data.id, oldName, newName);
+          if (!syncResult.success) {
+            console.warn('Dropbox sync failed:', syncResult.error);
+            setErrors(prev => ({
+              ...prev,
+              dropbox: `Client saved, but Dropbox folder rename failed: ${syncResult.error}`
+            }));
+          } else {
+            setOriginalFormData(prev => (prev ? { ...prev, client_name: newName } : prev));
+            setErrors(prev => {
+              const { dropbox, ...rest } = prev;
+              return rest;
+            });
+          }
+        }
+
         onSave(data);
       }
     } catch (error) {
@@ -794,6 +816,12 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
       {errors.submit && (
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
           <p className="text-sm text-red-600">{errors.submit}</p>
+        </div>
+      )}
+
+      {errors.dropbox && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
+          <p className="text-sm text-amber-700">{errors.dropbox}</p>
         </div>
       )}
 

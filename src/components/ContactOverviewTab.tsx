@@ -6,6 +6,7 @@ import { prepareInsert } from '../lib/supabaseHelpers';
 import { format, parseISO } from 'date-fns';
 import RecordMetadata from './RecordMetadata';
 import PortalAccessSection from './portal/PortalAccessSection';
+import { getDropboxPropertySyncService } from '../services/dropboxPropertySync';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -84,6 +85,9 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
 
     // Auto-save immediately on field change (inline editing pattern)
     if (!isNewContact && contact?.id) {
+      // Capture pre-edit name so we can sync Dropbox if first/last_name changes
+      const oldFullName = `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+
       try {
         setAutoSaveStatus('saving');
 
@@ -103,6 +107,18 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
 
         setAutoSaveStatus('saved');
         onSave(data);
+
+        // Sync the linked Dropbox folder when a name component changes
+        if ((field === 'first_name' || field === 'last_name') && data) {
+          const newFullName = `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim();
+          if (oldFullName && newFullName && oldFullName !== newFullName) {
+            const syncResult = await getDropboxPropertySyncService()
+              .syncContactName(contact.id, oldFullName, newFullName);
+            if (!syncResult.success) {
+              console.warn('Dropbox folder rename failed for contact:', syncResult.error);
+            }
+          }
+        }
 
         // Clear saved status after 2 seconds
         setTimeout(() => setAutoSaveStatus('idle'), 2000);
