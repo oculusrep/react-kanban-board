@@ -41,6 +41,7 @@ import {
 } from './types';
 import LogResponseModal from '../../hunter/LogResponseModal';
 import ContactTagsSection from '../ContactTagsSection';
+import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 
 // Activity icon component
 function ActivityIcon({ type, className = 'w-4 h-4' }: { type: string; className?: string }) {
@@ -279,6 +280,9 @@ export default function ContactDetailDrawer({
   const handleSaveContact = useCallback(async () => {
     if (!contact) return;
 
+    const oldFullName = `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+    const newFullName = `${contactForm.first_name ?? ''} ${contactForm.last_name ?? ''}`.trim();
+
     setSavingContact(true);
     try {
       const { error } = await supabase
@@ -303,6 +307,14 @@ export default function ContactDetailDrawer({
 
       setEditingContact(false);
       callbacks.onContactUpdate?.(updatedContact);
+
+      if (oldFullName && newFullName && oldFullName !== newFullName) {
+        const syncResult = await getDropboxPropertySyncService()
+          .syncContactName(contact.id, oldFullName, newFullName);
+        if (!syncResult.success) {
+          console.warn('Dropbox folder rename failed for contact:', syncResult.error);
+        }
+      }
     } catch (err) {
       console.error('Error saving contact:', err);
     } finally {

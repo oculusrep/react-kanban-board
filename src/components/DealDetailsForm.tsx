@@ -475,6 +475,23 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     }
   };
 
+  // Sync the deal name to its Dropbox folder if the saved name differs from the original.
+  // Called from every save path (handleSave + the stage-modal save paths) so a rename
+  // during a Lost/Closed/Booked transition still updates Dropbox.
+  const syncDealNameIfChanged = async (savedId: string | null | undefined, savedName: string | null | undefined) => {
+    if (!savedId || !savedName || !originalDealName) return;
+    if (originalDealName === savedName) return;
+    const result = await getDropboxPropertySyncService().syncDealName(savedId, originalDealName, savedName);
+    if (!result.success) {
+      setDropboxSyncError(result.error || 'Failed to sync folder name to Dropbox');
+      console.warn('Dropbox sync failed:', result.error);
+    } else {
+      setOriginalDealName(savedName);
+      setDropboxSyncError(null);
+      console.log('✅ Deal name synced to Dropbox successfully');
+    }
+  };
+
   const handleSave = useCallback(async () => {
     console.log('🔧 handleSave called with form:', form);
     const v = validateAll(form);
@@ -645,25 +662,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     console.log('✅ Deal saved successfully, data:', data);
 
     if (data) {
-      // If deal_name changed, sync to Dropbox
-      const nameChanged = originalDealName !== form.deal_name;
-      if (nameChanged && originalDealName && form.deal_name && data.id) {
-        const syncService = getDropboxPropertySyncService();
-        const result = await syncService.syncDealName(
-          data.id,
-          originalDealName,
-          form.deal_name
-        );
-
-        if (!result.success) {
-          setDropboxSyncError(result.error || 'Failed to sync folder name to Dropbox');
-          console.warn('Dropbox sync failed:', result.error);
-        } else {
-          setOriginalDealName(form.deal_name);
-          setDropboxSyncError(null);
-          console.log('✅ Deal name synced to Dropbox successfully');
-        }
-      }
+      await syncDealNameIfChanged(data.id, data.deal_name ?? form.deal_name);
 
       // Update original stage_id after successful save
       if (stageChanged) {
@@ -785,6 +784,8 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     }
 
     if (data) {
+      await syncDealNameIfChanged(data.id, data.deal_name ?? updatedForm.deal_name);
+
       // Update original stage_id after successful save
       if (stageChanged) {
         setOriginalStageId(updatedForm.stage_id);
@@ -884,6 +885,8 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     }
 
     if (data) {
+      await syncDealNameIfChanged(data.id, data.deal_name ?? updatedForm.deal_name);
+
       // Update original stage_id after successful save
       if (stageChanged) {
         setOriginalStageId(updatedForm.stage_id);
@@ -985,6 +988,8 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     }
 
     if (data) {
+      await syncDealNameIfChanged(data.id, data.deal_name ?? updatedForm.deal_name);
+
       // Update original stage_id after successful save
       if (stageChanged) {
         setOriginalStageId(updatedForm.stage_id);

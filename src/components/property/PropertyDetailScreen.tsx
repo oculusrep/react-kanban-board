@@ -251,6 +251,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
     const syncService = getDropboxPropertySyncService();
     const { currentFolderName } = await syncService.checkSyncStatus(
       propertyId,
+      'property',
       property.property_name || ''
     );
 
