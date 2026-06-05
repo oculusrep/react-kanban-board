@@ -161,6 +161,13 @@ export default function ReportsPage() {
       route: "/site-analysis",
       icon: "☕",
       permission: "can_view_site_analysis"
+    },
+    {
+      id: "starbucks-target-areas",
+      name: "Starbucks GA Target Areas",
+      description: "Market, priority, and Model Yr1 Sales for all GA target areas — sortable and filterable",
+      route: "/reports/starbucks-target-areas",
+      icon: "🎯"
     }
   ];
 

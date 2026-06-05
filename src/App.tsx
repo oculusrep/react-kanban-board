@@ -86,6 +86,7 @@ import LayerManagementPage from "./pages/LayerManagementPage";
 import ArtyDrawReportPage from "./pages/ArtyDrawReportPage";
 import MikeIsOwedReportPage from "./pages/MikeIsOwedReportPage";
 import UnpaidReferralFeesReportPage from "./pages/UnpaidReferralFeesReportPage";
+import StarbucksTargetAreasReportPage from "./pages/StarbucksTargetAreasReportPage";
 import TypographyTestPage from "./pages/TypographyTestPage";
 import VelocityAnalyticsPage from "./pages/VelocityAnalyticsPage";
 import HistoricalVelocityPage from "./pages/HistoricalVelocityPage";
@@ -188,6 +189,7 @@ function App() {
           <Route path="reports/arty-draw" element={<CoachRoute><ArtyDrawReportPage /></CoachRoute>} />
           <Route path="reports/mike-is-owed" element={<CoachRoute><MikeIsOwedReportPage /></CoachRoute>} />
           <Route path="reports/unpaid-referral-fees" element={<CoachRoute><UnpaidReferralFeesReportPage /></CoachRoute>} />
+          <Route path="reports/starbucks-target-areas" element={<CoachRoute><StarbucksTargetAreasReportPage /></CoachRoute>} />
           <Route path="reports/velocity-analytics" element={<CoachRoute><VelocityAnalyticsPage /></CoachRoute>} />
           <Route path="reports/historical-velocity" element={<CoachRoute><HistoricalVelocityPage /></CoachRoute>} />
           <Route path="reports/prospecting-scorecard" element={<CoachRoute><ProspectingScorecardPage /></CoachRoute>} />
