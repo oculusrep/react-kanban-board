@@ -165,7 +165,12 @@ interface SiteSubmitSidebarProps {
   siteSubmitId: string | null;
   isOpen: boolean;
   onClose: () => void;
-  context: 'map' | 'portal';
+  context: 'map' | 'portal' | 'deal';
+  // Deal-direct mode: open the sidebar for a deal that has no linked site_submit
+  // (most legacy / Salesforce-migrated deals). Mutually exclusive with siteSubmitId.
+  // The slideout fetches the deal + its property/client/assignment and renders the
+  // green DealDataTab. Submit-only affordances (email, status, convert) are hidden.
+  dealId?: string | null;
   isEditable?: boolean; // Override for permission-based access
   onStatusChange?: (siteSubmitId: string, newStageId: string, newStageName: string) => void;
   onCenterOnPin?: (lat: number, lng: number) => void; // Map only
@@ -193,6 +198,7 @@ export default function SiteSubmitSidebar({
   isOpen,
   onClose,
   context,
+  dealId: dealIdProp = null,
   isEditable: isEditableProp,
   onStatusChange,
   onCenterOnPin,
@@ -210,8 +216,13 @@ export default function SiteSubmitSidebar({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Determine if editable - map context is always editable, portal depends on prop
-  const isEditable = context === 'map' ? true : (isEditableProp ?? false);
+  // Deal-direct mode: opened with a dealId and no siteSubmitId (most legacy deals).
+  // In this mode we synthesize a SiteSubmitData object from the deal + property/client/assignment
+  // so DealDataTab can render unchanged.
+  const isDealDirectMode = !!dealIdProp && !siteSubmitId;
+
+  // Determine if editable - map and deal contexts are always editable, portal depends on prop
+  const isEditable = context === 'map' || context === 'deal' ? true : (isEditableProp ?? false);
 
   const [activeTab, setActiveTab] = useState<TabType>(initialTab || 'data');
 
@@ -510,12 +521,130 @@ export default function SiteSubmitSidebar({
       }
     }
 
+    // Deal-direct mode: opened by dealId (e.g. from the deal page) with no linked submit.
+    // Synthesize a SiteSubmitData object from the deal so DealDataTab + tab content render unchanged.
+    async function fetchByDeal() {
+      if (!dealIdProp) return;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const { data: dealRow, error: dealErr } = await supabase
+          .from('deal')
+          .select('id, deal_name, property_id, client_id, assignment_id')
+          .eq('id', dealIdProp)
+          .single();
+
+        if (!isMounted) return;
+        if (dealErr) throw dealErr;
+        if (!dealRow) {
+          setError('Deal not found');
+          setSiteSubmit(null);
+          return;
+        }
+
+        // Hydrate the related property (with full demographics block that DealDataTab/DemographicsSection expect)
+        let property: SiteSubmitData['property'] = null;
+        if (dealRow.property_id) {
+          const { data: propRow } = await supabase
+            .from('property')
+            .select(`
+              id, property_name, address, city, state, zip,
+              available_sqft, building_sqft, acres,
+              asking_lease_price, asking_purchase_price, rent_psf, nnn_psf, all_in_rent,
+              latitude, longitude, verified_latitude, verified_longitude,
+              esri_enriched_at, tapestry_segment_code, tapestry_segment_name,
+              tapestry_segment_description, tapestry_lifemodes,
+              pop_1_mile, pop_3_mile, pop_5_mile, pop_10min_drive,
+              households_1_mile, households_3_mile, households_5_mile, households_10min_drive,
+              hh_income_median_1_mile, hh_income_median_3_mile, hh_income_median_5_mile, hh_income_median_10min_drive,
+              hh_income_avg_1_mile, hh_income_avg_3_mile, hh_income_avg_5_mile, hh_income_avg_10min_drive,
+              daytime_pop_1_mile, daytime_pop_3_mile, daytime_pop_5_mile, daytime_pop_10min_drive,
+              employees_1_mile, employees_3_mile, employees_5_mile, employees_10min_drive,
+              median_age_1_mile, median_age_3_mile, median_age_5_mile, median_age_10min_drive,
+              property_record_type:property_record_type_id ( id, label )
+            `)
+            .eq('id', dealRow.property_id)
+            .single();
+          if (propRow) property = propRow as unknown as SiteSubmitData['property'];
+        }
+
+        let client: SiteSubmitData['client'] = null;
+        if (dealRow.client_id) {
+          const { data: clientRow } = await supabase
+            .from('client')
+            .select('id, client_name')
+            .eq('id', dealRow.client_id)
+            .single();
+          if (clientRow) client = clientRow;
+        }
+
+        let assignment: SiteSubmitData['assignment'] = null;
+        if (dealRow.assignment_id) {
+          const { data: asgnRow } = await supabase
+            .from('assignment')
+            .select('id, assignment_name')
+            .eq('id', dealRow.assignment_id)
+            .single();
+          if (asgnRow) assignment = asgnRow;
+        }
+
+        if (!isMounted) return;
+
+        // Synthetic SiteSubmitData. Submit-specific fields (asking prices, rent psf, dates,
+        // year_1_rent, notes, etc.) are intentionally null in deal-direct mode — the "Original
+        // Site Submit Values" panel will be empty, which is correct: there is no source submit.
+        const synthetic: SiteSubmitData = {
+          id: '',
+          code: null,
+          site_submit_name: dealRow.deal_name ?? null,
+          submit_stage_id: null,
+          date_submitted: null,
+          notes: null,
+          delivery_timeframe: null,
+          ti: null,
+          year_1_rent: null,
+          available_sqft: null,
+          building_sqft: null,
+          acres: null,
+          asking_lease_price: null,
+          rent_psf: null,
+          nnn_psf: null,
+          all_in_rent: null,
+          asking_purchase_price: null,
+          asking_ground_lease_price: null,
+          nnn: null,
+          competitor_data: null,
+          property_id: dealRow.property_id ?? null,
+          property_unit_id: null,
+          client_id: dealRow.client_id ?? null,
+          assignment_id: dealRow.assignment_id ?? null,
+          deal_id: dealRow.id,
+          property,
+          property_unit: null,
+          submit_stage: null,
+          client,
+          assignment,
+        };
+
+        setSiteSubmit(synthetic);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error('Error fetching deal for sidebar:', err);
+        setError('Failed to load deal details');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
     if (isOpen && siteSubmitId) {
       // For portal, wait for accessibleClients to be loaded
       if (context === 'portal' && accessibleClientIds === '') {
         return;
       }
       fetchSiteSubmit();
+    } else if (isOpen && isDealDirectMode) {
+      fetchByDeal();
     } else if (isOpen && initialData?._isNew && !siteSubmitId) {
       // Creating a new site submit - use initialData
       const newSiteSubmitData: SiteSubmitData = {
@@ -557,7 +686,7 @@ export default function SiteSubmitSidebar({
     return () => {
       isMounted = false;
     };
-  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger, context, accessibleClientIds, initialData]);
+  }, [siteSubmitId, dealIdProp, isDealDirectMode, isOpen, siteSubmitRefreshTrigger, context, accessibleClientIds, initialData]);
 
   // Handle view toggle (portal context)
   const handleToggleView = () => {
@@ -683,8 +812,8 @@ export default function SiteSubmitSidebar({
     },
   ];
 
-  // Add contacts tab for map context only
-  if (context === 'map') {
+  // Add contacts/tasks tabs for editable internal contexts (map page, deal page)
+  if (context === 'map' || context === 'deal') {
     tabs.push({
       id: 'contacts',
       label: 'CONTACTS',
@@ -748,8 +877,8 @@ export default function SiteSubmitSidebar({
 
           {/* Action icon buttons - matching old PinDetailsSlideout design */}
           <div className="flex items-center gap-1 ml-2">
-            {/* Email button (green) */}
-            {isEditable && siteSubmit && (
+            {/* Email button (green) - submit-context only */}
+            {isEditable && siteSubmit && !isDealDirectMode && (
               <button
                 onClick={handlePrepareEmail}
                 disabled={preparingEmail || !siteSubmit.client_id}
@@ -770,8 +899,8 @@ export default function SiteSubmitSidebar({
               </button>
             )}
 
-            {/* Notify Client button (bell) - sends portal digest */}
-            {isEditable && siteSubmit && (() => {
+            {/* Notify Client button (bell) - sends portal digest; submit-context only */}
+            {isEditable && siteSubmit && !isDealDirectMode && (() => {
               const currentStageName: string | null = siteSubmit.submit_stage?.name || null;
               const isClientVisibleStage = currentStageName ? CLIENT_VISIBLE_STAGES.includes(currentStageName) : false;
               const disabledReason = !siteSubmit.client_id
@@ -810,8 +939,8 @@ export default function SiteSubmitSidebar({
               </button>
             )}
 
-            {/* Delete button (red) - map context only */}
-            {context === 'map' && isEditable && siteSubmit && (
+            {/* Delete button (red) - map context only; site-submit delete, not available in deal-direct mode */}
+            {context === 'map' && isEditable && siteSubmit && !isDealDirectMode && (
               <button
                 onClick={handleDelete}
                 className="p-2 rounded-lg bg-red-500 hover:bg-red-600 transition-colors"
@@ -898,8 +1027,10 @@ export default function SiteSubmitSidebar({
 
         {/* Status Badge and portal buttons */}
         <div className="mt-3 flex items-center justify-between">
-          {/* Status Badge - clickable dropdown when editable */}
-          {siteSubmit ? (
+          {/* Status Badge - submit stage dropdown; hidden in deal-direct mode (no source submit to stage) */}
+          {isDealDirectMode ? (
+            <span /* empty spacer to keep right-side actions aligned */ />
+          ) : siteSubmit ? (
             <StatusBadgeDropdown
               currentStageId={siteSubmit.submit_stage_id}
               currentStageName={siteSubmit.submit_stage?.name || null}
@@ -1085,19 +1216,28 @@ export default function SiteSubmitSidebar({
                 isInternalUser={isEditable}
               />
             )}
-            {activeTab === 'contacts' && context === 'map' && (
+            {activeTab === 'contacts' && (context === 'map' || context === 'deal') && (
               <SiteSubmitContactsTab
                 propertyId={siteSubmit.property_id}
+                dealId={siteSubmit.deal_id}
                 isEditable={isEditable}
               />
             )}
-            {activeTab === 'tasks' && context === 'map' && (
+            {activeTab === 'tasks' && (context === 'map' || context === 'deal') && (
               <div className="p-4">
-                <OpenTasksPanel
-                  objectType="site_submit"
-                  objectId={siteSubmit.id}
-                  objectLabel={siteSubmit.site_submit_name || siteSubmit.property?.property_name || undefined}
-                />
+                {isDealDirectMode && dealIdProp ? (
+                  <OpenTasksPanel
+                    objectType="deal"
+                    objectId={dealIdProp}
+                    objectLabel={siteSubmit.site_submit_name || undefined}
+                  />
+                ) : (
+                  <OpenTasksPanel
+                    objectType="site_submit"
+                    objectId={siteSubmit.id}
+                    objectLabel={siteSubmit.site_submit_name || siteSubmit.property?.property_name || undefined}
+                  />
+                )}
               </div>
             )}
           </>
