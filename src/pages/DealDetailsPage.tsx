@@ -8,7 +8,8 @@ import PaymentTab from '../components/PaymentTab';
 import ActivityTab from '../components/ActivityTab';
 import CriticalDatesTab from '../components/CriticalDatesTab';
 import DealHeaderBar from '../components/DealHeaderBar';
-import DealSidebar from '../components/DealSidebar';
+import SharedSiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
+import DealNotesTab from '../components/deals/DealNotesTab';
 import SiteSubmitSidebar from '../components/SiteSubmitSidebar';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import { LayerManagerProvider } from '../components/mapping/layers/LayerManager';
@@ -27,7 +28,7 @@ export default function DealDetailsPage() {
   const [deal, setDeal] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isNewDeal, setIsNewDeal] = useState(false);
-  const [sidebarMinimized, setSidebarMinimized] = useState(false);
+  const [dealSidebarOpen, setDealSidebarOpen] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCreateDealPrompt, setShowCreateDealPrompt] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export default function DealDetailsPage() {
   // Check for tab query parameter and set active tab
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['overview', 'commission', 'payments', 'activity', 'files', 'critical-dates'].includes(tabParam)) {
+    if (tabParam && ['overview', 'commission', 'payments', 'activity', 'files', 'critical-dates', 'notes'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
@@ -524,7 +525,7 @@ export default function DealDetailsPage() {
                   onClick={() => {
                     handleTabChange('critical-dates');
                     if (!isNewDeal) {
-                      setSidebarMinimized(true); // Auto-collapse sidebar
+                      setDealSidebarOpen(false); // Auto-collapse sidebar
                     }
                   }}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -561,6 +562,16 @@ export default function DealDetailsPage() {
                   }`}
                 >
                   Files
+                </button>
+                <button
+                  onClick={() => handleTabChange('notes')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'notes'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Notes
                 </button>
               </nav>
             </div>
@@ -694,16 +705,52 @@ export default function DealDetailsPage() {
                 )}
               </>
             )}
+
+            {activeTab === 'notes' && (
+              <>
+                {isNewDeal || !deal.id ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <div className="flex">
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                        <div className="mt-2 text-sm text-yellow-700">
+                          <p>Please save the deal in the Details tab before adding notes.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <DealNotesTab dealId={deal.id} />
+                )}
+              </>
+            )}
           </div>
         </div>
 
-        {/* Deal Sidebar - Static right sidebar */}
+        {/* Deal Sidebar - the shared slideout in deal-direct mode (green DealDataTab) */}
         {actualDealId && actualDealId !== 'new' && (
-          <DealSidebar
-            dealId={actualDealId}
-            isMinimized={sidebarMinimized}
-            onMinimize={() => setSidebarMinimized(!sidebarMinimized)}
-          />
+          <>
+            <SharedSiteSubmitSidebar
+              context="deal"
+              dealId={actualDealId}
+              siteSubmitId={deal?.site_submit_id ?? null}
+              isOpen={dealSidebarOpen}
+              onClose={() => setDealSidebarOpen(false)}
+              topOffset={116}
+            />
+            {!dealSidebarOpen && (
+              <button
+                onClick={() => setDealSidebarOpen(true)}
+                className="fixed right-0 z-[10000] bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-l shadow-lg"
+                style={{ top: '50%', transform: 'translateY(-50%)' }}
+                title="Show deal sidebar"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
+          </>
         )}
 
         {/* Site Submit Sidebar - Shows on top of Deal Sidebar when opened */}
