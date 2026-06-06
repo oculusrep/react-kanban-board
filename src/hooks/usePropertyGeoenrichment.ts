@@ -66,6 +66,11 @@ export interface GeoenrichmentResult {
   isochrones?: Record<string, IsochronePolygon>;
   raw_response?: unknown;
   error?: string;
+  // Set when the edge function served this from esri_enrichment_log
+  // instead of calling ESRI fresh. UI uses these to render the
+  // "Cached · pulled <date> by <user>" badge + Refresh button.
+  cached_at?: string | null;
+  cached_by?: string | null;
 }
 
 /**
@@ -106,10 +111,12 @@ interface UsePropertyGeoenrichmentReturn {
     latitude: number,
     longitude: number,
     radii?: number[],
-    driveTimes?: number[]
+    driveTimes?: number[],
+    forceRefresh?: boolean
   ) => Promise<GeoenrichmentResult | null>;
   enrichPolygon: (
-    coordinates: number[][][]
+    coordinates: number[][][],
+    forceRefresh?: boolean
   ) => Promise<GeoenrichmentResult | null>;
   saveClientDemographicsToSiteSubmit: (
     siteSubmitId: string,
@@ -376,7 +383,8 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
       latitude: number,
       longitude: number,
       radii: number[] = [1, 3, 5],
-      driveTimes: number[] = [10]
+      driveTimes: number[] = [10],
+      forceRefresh = false
     ): Promise<GeoenrichmentResult | null> => {
       setIsEnriching(true);
       setEnrichError(null);
@@ -388,6 +396,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
             longitude,
             custom_radii: radii,
             custom_drive_times: driveTimes,
+            force_refresh: forceRefresh,
           },
         });
 
@@ -422,7 +431,10 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
    * the `_polygon` suffix (pop_polygon, households_polygon, …).
    */
   const enrichPolygon = useCallback(
-    async (coordinates: number[][][]): Promise<GeoenrichmentResult | null> => {
+    async (
+      coordinates: number[][][],
+      forceRefresh = false,
+    ): Promise<GeoenrichmentResult | null> => {
       setIsEnriching(true);
       setEnrichError(null);
 
@@ -430,6 +442,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
         const { data, error } = await supabase.functions.invoke('esri-geoenrich', {
           body: {
             custom_polygon: { coordinates },
+            force_refresh: forceRefresh,
           },
         });
 

@@ -110,6 +110,10 @@ const DemographicsAnalysisModal: React.FC<Props> = ({
   const tapestry =
     polygonResult?.tapestry?.code ? polygonResult.tapestry : ringResult?.tapestry;
 
+  const cachedNotes: string[] = [];
+  if (ringResult?.cached_at) cachedNotes.push(`rings cached`);
+  if (polygonResult?.cached_at) cachedNotes.push(`polygon cached`);
+
   return createPortal(
     <div
       className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/50"
@@ -218,6 +222,9 @@ const DemographicsAnalysisModal: React.FC<Props> = ({
 
           <div className="mt-4 text-xs text-gray-400 text-right">
             Source: ESRI GeoEnrichment · ad-hoc lookup, nothing saved.
+            {cachedNotes.length > 0 && (
+              <span style={{ color: '#065F46' }}> · {cachedNotes.join(', ')}</span>
+            )}
           </div>
         </div>
       </div>

@@ -10,6 +10,7 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,6 +18,16 @@ const corsHeaders = {
 };
 
 const ESRI_ENRICH_URL = 'https://geoenrich.arcgis.com/arcgis/rest/services/World/geoenrichmentserver/Geoenrichment/Enrich';
+
+// Cache TTL for the esri_enrichment_log lookup. Same (lat, lng, radii,
+// drive_times) within this window returns the cached row instead of
+// hitting ESRI. Polygon mode uses the same TTL.
+const CACHE_TTL_DAYS = 30;
+
+// Polygon coordinates are rounded to this many decimals when building
+// the cache key so a re-drawn polygon a few meters off still hits. 4
+// decimals ≈ 11m at the equator.
+const POLYGON_CACHE_PRECISION = 4;
 
 interface GeoenrichRequest {
   // property_id is optional. When omitted, the function returns demographics
@@ -41,6 +52,40 @@ interface GeoenrichRequest {
 // Hard cap to keep ESRI cost predictable. Larger polygons get rejected;
 // the user can split into smaller areas.
 const MAX_POLYGON_VERTICES = 200;
+
+// Round lat/lng to 6 decimals (~11cm) before all cache ops to avoid
+// floating-point misses on otherwise-identical coordinates.
+function roundCoord(n: number): number {
+  return Math.round(n * 1_000_000) / 1_000_000;
+}
+
+// Sorted copy of a numeric array so [1,3,5] and [3,5,1] share a cache.
+function canonicalNumberArray(arr: number[] | undefined): number[] {
+  return [...(arr ?? [])].sort((a, b) => a - b);
+}
+
+// Polygon caching: round to ~11m and use the rounded geometry as the
+// cache key. Same shape drawn ~10m differently still hits cache.
+function roundPolygon(coords: number[][][]): number[][][] {
+  const f = Math.pow(10, POLYGON_CACHE_PRECISION);
+  return coords.map((ring) =>
+    ring.map(([lng, lat]) => [Math.round(lng * f) / f, Math.round(lat * f) / f]),
+  );
+}
+
+function polygonCentroid(coords: number[][][]): { lat: number; lng: number } {
+  // Outer-ring centroid via arithmetic mean. Good enough for indexing —
+  // not used for any analytical purpose.
+  const ring = coords[0] ?? [];
+  if (ring.length === 0) return { lat: 0, lng: 0 };
+  let lat = 0;
+  let lng = 0;
+  for (const [x, y] of ring) {
+    lng += x;
+    lat += y;
+  }
+  return { lat: lat / ring.length, lng: lng / ring.length };
+}
 
 /**
  * ESRI Analysis Variables
@@ -999,6 +1044,151 @@ async function enrichLocation(
   return result;
 }
 
+/**
+ * Service-role Supabase client used to read/write esri_enrichment_log.
+ * Cached at module scope — Deno keeps the same isolate warm across
+ * requests when traffic is steady, so this is effectively one connect.
+ */
+let cachedSupabase: ReturnType<typeof createClient> | null = null;
+function getSupabase(): ReturnType<typeof createClient> | null {
+  if (cachedSupabase) return cachedSupabase;
+  const url = Deno.env.get('SUPABASE_URL');
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key) {
+    console.warn('[esri-geoenrich] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — cache + audit log disabled');
+    return null;
+  }
+  cachedSupabase = createClient(url, key, { auth: { persistSession: false } });
+  return cachedSupabase;
+}
+
+interface LogRowBase {
+  user_id: string | null;
+  mode: 'rings' | 'polygon';
+  demographics: unknown;
+  tapestry: unknown;
+  isochrones: unknown;
+  cache_hit: boolean;
+  success: boolean;
+  error?: string | null;
+}
+
+interface RingLogRow extends LogRowBase {
+  mode: 'rings';
+  latitude: number;
+  longitude: number;
+  radii: number[];
+  drive_times: number[];
+}
+
+interface PolygonLogRow extends LogRowBase {
+  mode: 'polygon';
+  polygon: number[][][];
+  polygon_centroid_lat: number;
+  polygon_centroid_lng: number;
+  polygon_vertex_count: number;
+}
+
+async function writeLog(row: RingLogRow | PolygonLogRow): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  try {
+    const { error } = await sb.from('esri_enrichment_log').insert(row);
+    if (error) console.warn('[esri-geoenrich] log insert failed:', error.message);
+  } catch (err) {
+    console.warn('[esri-geoenrich] log insert threw:', err);
+  }
+}
+
+/**
+ * Cache lookup for ring/drive-time mode. Returns the most recent
+ * successful fresh-from-ESRI row whose radii + drive_times cover the
+ * request's needs.
+ */
+async function lookupRingsCache(params: {
+  latitude: number;
+  longitude: number;
+  radii: number[];
+  driveTimes: number[];
+}): Promise<{ called_at: string; user_id: string | null; demographics: unknown; tapestry: unknown; isochrones: unknown } | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const since = new Date(Date.now() - CACHE_TTL_DAYS * 86400_000).toISOString();
+  try {
+    const { data, error } = await sb
+      .from('esri_enrichment_log')
+      .select('called_at, user_id, demographics, tapestry, isochrones, radii, drive_times')
+      .eq('mode', 'rings')
+      .eq('success', true)
+      .eq('cache_hit', false)
+      .eq('latitude', params.latitude)
+      .eq('longitude', params.longitude)
+      .contains('radii', params.radii)
+      .contains('drive_times', params.driveTimes)
+      .gte('called_at', since)
+      .order('called_at', { ascending: false })
+      .limit(1);
+    if (error) {
+      console.warn('[esri-geoenrich] cache lookup failed:', error.message);
+      return null;
+    }
+    return data?.[0] ?? null;
+  } catch (err) {
+    console.warn('[esri-geoenrich] cache lookup threw:', err);
+    return null;
+  }
+}
+
+async function lookupPolygonCache(
+  rounded: number[][][],
+  centroid: { lat: number; lng: number },
+): Promise<{ called_at: string; user_id: string | null; demographics: unknown; tapestry: unknown } | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const since = new Date(Date.now() - CACHE_TTL_DAYS * 86400_000).toISOString();
+  try {
+    const { data, error } = await sb
+      .from('esri_enrichment_log')
+      .select('called_at, user_id, demographics, tapestry, polygon')
+      .eq('mode', 'polygon')
+      .eq('success', true)
+      .eq('cache_hit', false)
+      .eq('polygon_centroid_lat', centroid.lat)
+      .eq('polygon_centroid_lng', centroid.lng)
+      .eq('polygon', rounded)
+      .gte('called_at', since)
+      .order('called_at', { ascending: false })
+      .limit(1);
+    if (error) {
+      console.warn('[esri-geoenrich] polygon cache lookup failed:', error.message);
+      return null;
+    }
+    return data?.[0] ?? null;
+  } catch (err) {
+    console.warn('[esri-geoenrich] polygon cache lookup threw:', err);
+    return null;
+  }
+}
+
+/**
+ * Pull the calling user's ID from the request JWT. Returns null for
+ * anonymous or invalid tokens — we still serve the request; we just
+ * write a NULL user_id in the audit log.
+ */
+async function getCallerUserId(req: Request): Promise<string | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const auth = req.headers.get('Authorization');
+  const jwt = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!jwt) return null;
+  try {
+    const { data } = await sb.auth.getUser(jwt);
+    return data?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -1019,6 +1209,7 @@ serve(async (req) => {
     }
 
     const request = await req.json() as GeoenrichRequest;
+    const callerUserId = await getCallerUserId(req);
 
     // Polygon mode: enrich a custom drawn polygon directly. lat/lng are
     // optional in this mode — the polygon IS the study area.
@@ -1039,26 +1230,99 @@ serve(async (req) => {
         );
       }
 
-      console.log('[ESRI Geoenrich] Enriching custom polygon:', {
+      const rounded = roundPolygon(coords);
+      const centroid = polygonCentroid(rounded);
+      const centroidLat = roundCoord(centroid.lat);
+      const centroidLng = roundCoord(centroid.lng);
+
+      if (!request.force_refresh) {
+        const cached = await lookupPolygonCache(rounded, { lat: centroidLat, lng: centroidLng });
+        if (cached) {
+          console.log('[esri-geoenrich] polygon cache HIT (called_at=' + cached.called_at + ')');
+          await writeLog({
+            user_id: callerUserId,
+            mode: 'polygon',
+            polygon: rounded,
+            polygon_centroid_lat: centroidLat,
+            polygon_centroid_lng: centroidLng,
+            polygon_vertex_count: totalVertices,
+            demographics: cached.demographics,
+            tapestry: cached.tapestry,
+            isochrones: null,
+            cache_hit: true,
+            success: true,
+          });
+          return new Response(
+            JSON.stringify({
+              success: true,
+              property_id: request.property_id ?? null,
+              mode: 'polygon',
+              demographics: cached.demographics,
+              tapestry: cached.tapestry,
+              isochrones: {},
+              raw_response: { cache_hit: true },
+              cached_at: cached.called_at,
+              cached_by: cached.user_id,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          );
+        }
+      }
+
+      console.log('[esri-geoenrich] polygon cache MISS — calling ESRI', {
         rings: coords.length,
         vertices: totalVertices,
       });
 
-      const polygonResult = await enrichPolygon(
-        apiKey,
-        coords,
-        request.include_education ?? false,
-      );
+      try {
+        const polygonResult = await enrichPolygon(
+          apiKey,
+          coords,
+          request.include_education ?? false,
+        );
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          property_id: request.property_id ?? null,
+        await writeLog({
+          user_id: callerUserId,
           mode: 'polygon',
-          ...polygonResult,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+          polygon: rounded,
+          polygon_centroid_lat: centroidLat,
+          polygon_centroid_lng: centroidLng,
+          polygon_vertex_count: totalVertices,
+          demographics: polygonResult.demographics,
+          tapestry: polygonResult.tapestry,
+          isochrones: polygonResult.isochrones,
+          cache_hit: false,
+          success: true,
+        });
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            property_id: request.property_id ?? null,
+            mode: 'polygon',
+            ...polygonResult,
+            cached_at: null,
+            cached_by: null,
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (err) {
+        await writeLog({
+          user_id: callerUserId,
+          mode: 'polygon',
+          polygon: rounded,
+          polygon_centroid_lat: centroidLat,
+          polygon_centroid_lng: centroidLng,
+          polygon_vertex_count: totalVertices,
+          demographics: {},
+          tapestry: null,
+          isochrones: null,
+          cache_hit: false,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
     }
 
     if (!request.latitude || !request.longitude) {
@@ -1076,32 +1340,110 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[ESRI Geoenrich] Enriching ${request.property_id ?? '(ad-hoc location)'}:`, {
-      latitude: request.latitude,
-      longitude: request.longitude,
+    const lat = roundCoord(request.latitude);
+    const lng = roundCoord(request.longitude);
+    const radii = canonicalNumberArray(request.custom_radii ?? [1, 3, 5]);
+    const driveTimes = canonicalNumberArray(request.custom_drive_times ?? [10]);
+
+    if (!request.force_refresh) {
+      const cached = await lookupRingsCache({
+        latitude: lat,
+        longitude: lng,
+        radii,
+        driveTimes,
+      });
+      if (cached) {
+        console.log('[esri-geoenrich] rings cache HIT (called_at=' + cached.called_at + ')');
+        await writeLog({
+          user_id: callerUserId,
+          mode: 'rings',
+          latitude: lat,
+          longitude: lng,
+          radii,
+          drive_times: driveTimes,
+          demographics: cached.demographics,
+          tapestry: cached.tapestry,
+          isochrones: cached.isochrones,
+          cache_hit: true,
+          success: true,
+        });
+        return new Response(
+          JSON.stringify({
+            success: true,
+            property_id: request.property_id ?? null,
+            radii,
+            drive_times: driveTimes,
+            demographics: cached.demographics,
+            tapestry: cached.tapestry,
+            isochrones: cached.isochrones ?? {},
+            raw_response: { cache_hit: true },
+            cached_at: cached.called_at,
+            cached_by: cached.user_id,
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+
+    console.log(`[esri-geoenrich] cache MISS — calling ESRI for ${request.property_id ?? '(ad-hoc location)'}:`, {
+      latitude: lat,
+      longitude: lng,
       force_refresh: request.force_refresh,
     });
 
-    // Call ESRI GeoEnrichment API (with optional custom radii/drive times)
-    const enrichmentResult = await enrichLocation(
-      apiKey,
-      request.latitude,
-      request.longitude,
-      request.custom_radii,
-      request.custom_drive_times,
-      request.include_education ?? false
-    );
+    try {
+      const enrichmentResult = await enrichLocation(
+        apiKey,
+        request.latitude,
+        request.longitude,
+        radii,
+        driveTimes,
+        request.include_education ?? false
+      );
 
-    return new Response(
-      JSON.stringify({
+      await writeLog({
+        user_id: callerUserId,
+        mode: 'rings',
+        latitude: lat,
+        longitude: lng,
+        radii,
+        drive_times: driveTimes,
+        demographics: enrichmentResult.demographics,
+        tapestry: enrichmentResult.tapestry,
+        isochrones: enrichmentResult.isochrones,
+        cache_hit: false,
         success: true,
-        property_id: request.property_id ?? null,
-        radii: request.custom_radii || [1, 3, 5],
-        drive_times: request.custom_drive_times || [10],
-        ...enrichmentResult,
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          property_id: request.property_id ?? null,
+          radii,
+          drive_times: driveTimes,
+          ...enrichmentResult,
+          cached_at: null,
+          cached_by: null,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (err) {
+      await writeLog({
+        user_id: callerUserId,
+        mode: 'rings',
+        latitude: lat,
+        longitude: lng,
+        radii,
+        drive_times: driveTimes,
+        demographics: {},
+        tapestry: null,
+        isochrones: null,
+        cache_hit: false,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
 
   } catch (error) {
     console.error('[ESRI Geoenrich] Error:', error);
