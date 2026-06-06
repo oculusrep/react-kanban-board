@@ -179,6 +179,111 @@ const LayerGroup: React.FC<LayerGroupProps> = ({
           <MunicipalProjectFilters />
         </div>
       )}
+
+      {/* Cached Demographics filter controls */}
+      {isVisible && layerId === 'cached_demographics' && (
+        <div className="border-t border-gray-100 px-3 py-3 bg-gray-50">
+          <CachedDemographicsFilters />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CachedDemographicsFilters: React.FC = () => {
+  const {
+    cachedDemographicsTimeRange,
+    setCachedDemographicsTimeRange,
+    cachedDemographicsScope,
+    setCachedDemographicsScope,
+    cachedDemographicsModes,
+    toggleCachedDemographicsMode,
+  } = useLayerManager();
+
+  const Pill: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({
+    active,
+    onClick,
+    children,
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
+        active
+          ? 'bg-blue-600 text-white border-blue-600'
+          : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+      }`}
+    >
+      {children}
+    </button>
+  );
+
+  return (
+    <div className="space-y-3 text-xs">
+      <div>
+        <div className="font-semibold text-gray-700 mb-1.5">Time range</div>
+        <div className="flex gap-1.5">
+          <Pill
+            active={cachedDemographicsTimeRange === '7d'}
+            onClick={() => setCachedDemographicsTimeRange('7d')}
+          >
+            7 days
+          </Pill>
+          <Pill
+            active={cachedDemographicsTimeRange === '30d'}
+            onClick={() => setCachedDemographicsTimeRange('30d')}
+          >
+            30 days
+          </Pill>
+          <Pill
+            active={cachedDemographicsTimeRange === 'all'}
+            onClick={() => setCachedDemographicsTimeRange('all')}
+          >
+            All
+          </Pill>
+        </div>
+      </div>
+
+      <div>
+        <div className="font-semibold text-gray-700 mb-1.5">Who</div>
+        <div className="flex gap-1.5">
+          <Pill
+            active={cachedDemographicsScope === 'mine'}
+            onClick={() => setCachedDemographicsScope('mine')}
+          >
+            Mine
+          </Pill>
+          <Pill
+            active={cachedDemographicsScope === 'all'}
+            onClick={() => setCachedDemographicsScope('all')}
+          >
+            All users
+          </Pill>
+        </div>
+      </div>
+
+      <div>
+        <div className="font-semibold text-gray-700 mb-1.5">Mode</div>
+        <div className="flex gap-1.5">
+          <Pill
+            active={cachedDemographicsModes.has('rings')}
+            onClick={() => toggleCachedDemographicsMode('rings')}
+          >
+            ● Rings
+          </Pill>
+          <Pill
+            active={cachedDemographicsModes.has('polygon')}
+            onClick={() => toggleCachedDemographicsMode('polygon')}
+          >
+            ■ Polygon
+          </Pill>
+        </div>
+      </div>
+
+      <div className="text-[10px] text-gray-500 italic">
+        Click any pin to reopen the slideout with the cached numbers — no
+        ESRI call.
+      </div>
     </div>
   );
 };

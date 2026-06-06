@@ -24,7 +24,10 @@ import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideo
 import StarbucksSlideout from '../components/mapping/slideouts/StarbucksSlideout';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import MapContextMenu from '../components/mapping/MapContextMenu';
-import DemographicsAnalysisSlideout from '../components/mapping/slideouts/DemographicsAnalysisSlideout';
+import DemographicsAnalysisSlideout, {
+  PrefilledCacheState,
+} from '../components/mapping/slideouts/DemographicsAnalysisSlideout';
+import CachedDemographicsLayer from '../components/mapping/layers/CachedDemographicsLayer';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
@@ -252,6 +255,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     lat: number;
     lng: number;
   } | null>(null);
+  // When opened from a cached-demographics pin click, this carries the
+  // cached result so the slideout can render immediately without an
+  // ESRI call.
+  const [demographicsPrefilled, setDemographicsPrefilled] =
+    useState<PrefilledCacheState | null>(null);
 
   // Property context menu state
   const [propertyContextMenu, setPropertyContextMenu] = useState<{
@@ -3091,6 +3099,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               }}
               onShowDemographics={() => {
                 if (!contextMenu.coordinates) return;
+                setDemographicsPrefilled(null);
                 setDemographicsLocation(contextMenu.coordinates);
               }}
               onClose={handleContextMenuClose}
@@ -3100,7 +3109,26 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               isOpen={!!demographicsLocation}
               map={mapInstance}
               coordinates={demographicsLocation}
-              onClose={() => setDemographicsLocation(null)}
+              prefilled={demographicsPrefilled}
+              onClose={() => {
+                setDemographicsLocation(null);
+                setDemographicsPrefilled(null);
+              }}
+            />
+
+            <CachedDemographicsLayer
+              map={mapInstance}
+              isVisible={layerState.cached_demographics?.isVisible || false}
+              onPinClick={(evt) => {
+                setDemographicsPrefilled({
+                  mode: evt.mode,
+                  result: evt.result,
+                  radii: evt.radii,
+                  driveTimes: evt.driveTimes,
+                  polygonCoordinates: evt.polygonCoordinates,
+                });
+                setDemographicsLocation(evt.coordinates);
+              }}
             />
 
             {/* Property Context Menu for Right-Click on Properties */}

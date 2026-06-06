@@ -54,6 +54,20 @@ interface Props {
   map: google.maps.Map | null;
   coordinates: { lat: number; lng: number } | null;
   onClose: () => void;
+  // Optional prefilled state when opened from a cached-demographics pin
+  // click. The slideout skips its initial reset and seeds rings or polygon
+  // state from the cached row.
+  prefilled?: PrefilledCacheState | null;
+}
+
+export interface PrefilledCacheState {
+  mode: 'rings' | 'polygon';
+  result: GeoenrichmentResult;
+  // Rings mode:
+  radii?: number[];
+  driveTimes?: number[];
+  // Polygon mode:
+  polygonCoordinates?: number[][][];
 }
 
 const formatNumber = (n: number | null | undefined) =>
@@ -160,6 +174,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   map,
   coordinates,
   onClose,
+  prefilled,
 }) => {
   const [selectedRadii, setSelectedRadii] = useState<number[]>(DEFAULT_RADII);
   const [selectedDriveTimes, setSelectedDriveTimes] =
@@ -187,26 +202,44 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const { isEnriching, enrichError, enrichLocation, enrichPolygon, clearError } =
     usePropertyGeoenrichment();
 
-  // Reset state whenever a new location is opened.
+  // Reset state whenever a new location is opened. Prefilled cache
+  // clicks seed the relevant slice of state instead of clearing it.
   useEffect(() => {
-    if (isOpen && coordinates) {
+    if (!isOpen || !coordinates) return;
+
+    setRingColors({});
+    setDriveTimeColors({});
+    setPolygonColor(DEFAULT_OVERLAY_COLOR);
+    setStrokeOpacity(DEFAULT_STROKE_OPACITY);
+    setFillOpacity(DEFAULT_FILL_OPACITY);
+    setStrokeWeight(DEFAULT_STROKE_WEIGHT);
+    setShowStylePanel(false);
+    setShowModal(false);
+    clearError();
+
+    if (prefilled?.mode === 'rings') {
+      setResult(prefilled.result);
+      setSelectedRadii(prefilled.radii ?? DEFAULT_RADII);
+      setSelectedDriveTimes(prefilled.driveTimes ?? []);
+      setPolygonDrawing(false);
+      setPolygonCoords(null);
+      setPolygonResult(null);
+    } else if (prefilled?.mode === 'polygon') {
+      setResult(null);
+      setSelectedRadii([]);
+      setSelectedDriveTimes([]);
+      setPolygonDrawing(false);
+      setPolygonCoords(prefilled.polygonCoordinates ?? null);
+      setPolygonResult(prefilled.result);
+    } else {
       setResult(null);
       setSelectedRadii(DEFAULT_RADII);
       setSelectedDriveTimes(DEFAULT_DRIVE_TIMES);
       setPolygonDrawing(false);
       setPolygonCoords(null);
       setPolygonResult(null);
-      setRingColors({});
-      setDriveTimeColors({});
-      setPolygonColor(DEFAULT_OVERLAY_COLOR);
-      setStrokeOpacity(DEFAULT_STROKE_OPACITY);
-      setFillOpacity(DEFAULT_FILL_OPACITY);
-      setStrokeWeight(DEFAULT_STROKE_WEIGHT);
-      setShowStylePanel(false);
-      setShowModal(false);
-      clearError();
     }
-  }, [isOpen, coordinates?.lat, coordinates?.lng]);
+  }, [isOpen, coordinates?.lat, coordinates?.lng, prefilled]);
 
   const sortedRadii = useMemo(
     () => [...selectedRadii].sort((a, b) => a - b),
