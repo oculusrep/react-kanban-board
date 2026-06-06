@@ -97,6 +97,8 @@ CREATE TABLE esri_enrichment_log (
 
 Edge function writes one row per call regardless of cache hit/miss. Bill-aware dashboard later. Apply via psql + manual `schema_migrations` INSERT per [reference_supabase_migration_workflow](../../.claude/projects/-Users-mike-Documents-GitHub-react-kanban-board/memory/reference_supabase_migration_workflow.md).
 
+> **Update 2026-06-03:** Phases 1–3 shipped. The audit-log / cache / "Cached demographics" map layer follow-on is spec'd separately in [DEMOGRAPHIC_CACHE_AND_LAYER_PLAN.md](DEMOGRAPHIC_CACHE_AND_LAYER_PLAN.md).
+
 ## Cost & rate-limiting strategy
 
 - **No auto-fetch.** Slideout opens with controls disabled until user clicks "Fetch demographics". Same for polygon mode — drawing the shape does not call ESRI.
