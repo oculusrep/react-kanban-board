@@ -29,20 +29,21 @@ No app-side TS or UI changes in this phase. Approval UI, MCP edge function, and 
 
 ## Apply the migration
 
-Follow the established workflow (per `reference_supabase_migration_workflow` memory — `supabase db push` is broken on this project):
+```bash
+supabase db push
+```
+
+That picks up `supabase/migrations/20260606120000_create_boundary_municipality.sql` and records it in `schema_migrations` automatically. The migration is additive only — creates one table, three indexes, one RLS policy, one trigger, one RPC. It does not touch any existing tables.
+
+If the CLI auth flakes (`failed SASL auth …`), fall back to psql:
 
 ```bash
-# 1) Apply the SQL
 psql "$DATABASE_URL" \
   -f supabase/migrations/20260606120000_create_boundary_municipality.sql
-
-# 2) Record it as applied
 psql "$DATABASE_URL" \
   -c "INSERT INTO supabase_migrations.schema_migrations (version, name)
       VALUES ('20260606120000','create_boundary_municipality');"
 ```
-
-The migration is additive only — creates one table, three indexes, one RLS policy, one trigger, one RPC. It does not touch any existing tables.
 
 ---
 
