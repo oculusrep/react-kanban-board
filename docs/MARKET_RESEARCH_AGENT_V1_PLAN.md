@@ -2,8 +2,20 @@
 
 **Branch:** `feature/market-research-agent` (off `main`)
 **Companion spec:** [`market-research-agent-spec.md`](market-research-agent-spec.md)
-**Status:** Awaiting build kickoff. All architecture decisions below confirmed with Mike on 2026-06-06.
 **Owner:** Mike Minihan
+
+## Phase progress
+
+| Phase | Status | Reference |
+|---|---|---|
+| **A — Boundary dataset** | ✅ Shipped 2026-06-06 (live: 159 GA counties + 538 places) | [`MARKET_RESEARCH_AGENT_PHASE_A.md`](MARKET_RESEARCH_AGENT_PHASE_A.md) |
+| **B — research_run + checklist + staging schema** | ✅ Shipped 2026-06-06 | [`MARKET_RESEARCH_AGENT_PHASE_B.md`](MARKET_RESEARCH_AGENT_PHASE_B.md) |
+| **C — MCP edge function + backing RPCs** | ✅ Shipped 2026-06-08 (deployed at `/functions/v1/ovis-research-mcp`) | [`MARKET_RESEARCH_AGENT_PHASE_C.md`](MARKET_RESEARCH_AGENT_PHASE_C.md) |
+| **D — "Start Research" trigger UI** | ⏳ Not started | — |
+| **E — Approval slideout + promotion RPC + auto-create municipality** | ⏳ Not started | — |
+| **F — Wire OpenClaw end-to-end** | ⏳ Blocked on OpenClaw URL/token | — |
+
+**Related work:** [`MIGRATION_HISTORY_CLEANUP_PLAN.md`](MIGRATION_HISTORY_CLEANUP_PLAN.md) (on branch `chore/migration-history-cleanup-plan`) — planning-only doc for the pre-May `schema_migrations` backlog that's still blocking `supabase db push` on this branch. Doesn't block any market-research phase; psql is the practical migration path until the cleanup runs.
 
 ---
 
@@ -26,6 +38,7 @@ OVIS-side build only. The OpenClaw subagent is a separate deliverable that consu
 | 7 | Trigger UI scope | **Starbucks site_submits, admin + broker roles** | §4 protocol is genuinely Starbucks-tuned. Limits surface area. |
 | 8 | OpenClaw status | **Deployed gateway** | Real URL + token configured via env. End-to-end test possible on day one. |
 | 9 | Radius semantics | **Per-run, picked at trigger time** | Modal presets: 3 / 5 / 10 / 15 mi (default 10). Urban-area override addresses the metro-Atlanta blowup problem (10mi pulls in 15–25 cities). |
+| 10 | `municipality` row bridging on promote (added 2026-06-07) | **Auto-create on Approve & Commit (option A)** | When a staging row has `municipality_id IS NULL`, Phase E's promotion RPC find-or-creates a `municipality` row by case-insensitive name match against `boundary_municipality.name`. Names follow the existing convention: counties = `"Barrow County"`, cities = `"Winder"` (no `" city"` suffix) — already what `boundary_municipality.name` stores, so the promotion is a verbatim copy. |
 
 ---
 
