@@ -11,7 +11,7 @@
 | **A — Boundary dataset** | ✅ Shipped 2026-06-06 (live: 159 GA counties + 538 places) | [`MARKET_RESEARCH_AGENT_PHASE_A.md`](MARKET_RESEARCH_AGENT_PHASE_A.md) |
 | **B — research_run + checklist + staging schema** | ✅ Shipped 2026-06-06 | [`MARKET_RESEARCH_AGENT_PHASE_B.md`](MARKET_RESEARCH_AGENT_PHASE_B.md) |
 | **C — MCP edge function + backing RPCs** | ✅ Shipped 2026-06-08 (deployed at `/functions/v1/ovis-research-mcp`) | [`MARKET_RESEARCH_AGENT_PHASE_C.md`](MARKET_RESEARCH_AGENT_PHASE_C.md) |
-| **D — "Start Research" trigger UI** | ✅ Shipped 2026-06-08 (button + modal + past-runs panel + `ovis-research-trigger` edge function) | [`MARKET_RESEARCH_AGENT_PHASE_D.md`](MARKET_RESEARCH_AGENT_PHASE_D.md) |
+| **D — "Start Research" trigger UI** | ✅ Shipped 2026-06-08, refined 2026-06-08 with preview + per-muni checkbox flow ("orchestration pivot" — OVIS creates the run, OpenClaw researches a frozen scope; layer-3 SQL guard rejects off-checklist findings) | [`MARKET_RESEARCH_AGENT_PHASE_D.md`](MARKET_RESEARCH_AGENT_PHASE_D.md) |
 | **E — Approval modal + promotion RPC + auto-create municipality** | ✅ Shipped 2026-06-08 (RPCs verified end-to-end; UI typechecks clean) | [`MARKET_RESEARCH_AGENT_PHASE_E.md`](MARKET_RESEARCH_AGENT_PHASE_E.md) |
 | **F — Wire OpenClaw end-to-end** | ⏳ Blocked on OpenClaw URL/token | — |
 

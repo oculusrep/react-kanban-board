@@ -1381,8 +1381,11 @@ export default function SiteSubmitSidebar({
             || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
           }
           onClose={() => setShowStartResearchModal(false)}
-          onStarted={() => {
-            showToast('Research started — OpenClaw is working on it.', { type: 'success', duration: 4000 });
+          onStarted={({ selected_count }) => {
+            showToast(
+              `Research started on ${selected_count} ${selected_count === 1 ? 'municipality' : 'municipalities'} — OpenClaw is working on it.`,
+              { type: 'success', duration: 4000 },
+            );
             setResearchRunsRefresh((n) => n + 1);
           }}
         />

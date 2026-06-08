@@ -1,22 +1,27 @@
 /**
  * OVIS Research Trigger — Edge Function
  *
- * Browser-facing endpoint behind the "Start Research" button on the Starbucks
- * site_submit sidebar. Proxies the trigger to OpenClaw's gateway so the
- * OpenClaw bearer token never touches the client.
+ * Two-mode endpoint behind the "Start Research" button on the Starbucks
+ * site_submit sidebar. Both modes require a Supabase user JWT (admin or
+ * broker role).
  *
- * Flow:
- *   1. Browser POST { site_submit_id, radius_miles } with the user's Supabase JWT.
- *   2. Function validates: user is admin or broker, site is a Starbucks site
- *      with lat/lng, radius in range.
- *   3. Function POSTs { ovis_site_submit_id, lat, lng, radius_miles } to
- *      OPENCLAW_TRIGGER_URL with bearer OPENCLAW_TRIGGER_TOKEN.
- *   4. Returns OpenClaw's response to the browser (typically { openclaw_run_id }).
+ *   1. PREVIEW mode { mode: 'preview', site_submit_id, radius_miles }
+ *      Returns the list of GA boundary_municipality rows within the radius,
+ *      so the modal can render checkboxes BEFORE the user commits to a run.
+ *      No write, no OpenClaw POST.
  *
- * If OPENCLAW_TRIGGER_URL is not set, returns 503 with a clear message — the
- * UI surfaces this as "OpenClaw not configured" rather than a generic failure.
+ *   2. COMMIT mode  { mode: 'commit', site_submit_id, radius_miles, municipality_ids[] }
+ *      - Cross-checks each supplied municipality_id against the in-radius set
+ *        (defense in depth — prevents a curl bypass from sneaking in
+ *        off-checklist munis).
+ *      - Creates the research_run + research_checklist_item rows up front
+ *        (server-side, NOT via OpenClaw) so OpenClaw is handed a frozen
+ *        scope and physically cannot expand it.
+ *      - POSTs to OPENCLAW_TRIGGER_URL with the run_id + selected munis.
+ *      - If OpenClaw rejects: marks the just-created run state='failed'.
  *
- * See docs/MARKET_RESEARCH_AGENT_V1_PLAN.md Phase D + spec §8 "Trigger endpoint".
+ * See docs/MARKET_RESEARCH_AGENT_V1_PLAN.md Phase D + the 2026-06-08
+ * orchestration-pivot note that moved checklist creation from OpenClaw to OVIS.
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -30,9 +35,14 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-interface TriggerRequest {
+interface BaseRequest {
+  mode?: 'preview' | 'commit';
   site_submit_id: string;
   radius_miles: number;
+}
+interface CommitRequest extends BaseRequest {
+  mode?: 'commit';
+  municipality_ids: string[];
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -43,19 +53,14 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS });
-  }
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405, headers: CORS });
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: CORS });
 
-  // ---- Auth: resolve the calling user from the JWT supplied by supabase-js ----
+  // ---- Auth: resolve the calling user from the JWT ----
   const authHeader = req.headers.get('Authorization') ?? '';
   const jwt = authHeader.replace(/^Bearer\s+/i, '');
   if (!jwt) return jsonResponse({ error: 'missing_jwt' }, 401);
 
-  // Use anon key to verify the JWT and resolve the auth user.
   const anonClient = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
@@ -65,14 +70,13 @@ serve(async (req) => {
   if (authErr || !authData?.user) return jsonResponse({ error: 'invalid_jwt' }, 401);
   const authUserId = authData.user.id;
 
-  // Service-role client for the rest of the lookups (bypasses RLS for the role/site queries).
   const service = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     { auth: { persistSession: false } },
   );
 
-  // ---- Role gate: only admin + broker may trigger ----
+  // ---- Role gate ----
   const { data: userRow, error: roleErr } = await service
     .from('user')
     .select('id, ovis_role')
@@ -85,18 +89,15 @@ serve(async (req) => {
   }
 
   // ---- Parse + validate body ----
-  let body: TriggerRequest;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonResponse({ error: 'bad_json' }, 400);
-  }
+  let body: BaseRequest;
+  try { body = await req.json(); } catch { return jsonResponse({ error: 'bad_json' }, 400); }
+  const mode = body.mode ?? 'commit';
   if (!body?.site_submit_id || typeof body.site_submit_id !== 'string') {
     return jsonResponse({ error: 'site_submit_id is required' }, 400);
   }
   const radius = Number(body.radius_miles);
   if (!Number.isInteger(radius) || radius < 1 || radius > 50) {
-    return jsonResponse({ error: 'radius_miles must be an integer between 1 and 50' }, 400);
+    return jsonResponse({ error: 'radius_miles must be an integer 1..50' }, 400);
   }
 
   // ---- Site_submit lookup: Starbucks client + has lat/lng ----
@@ -116,22 +117,96 @@ serve(async (req) => {
     return jsonResponse({ error: 'site_has_no_lat_lng' }, 400);
   }
 
-  // ---- OpenClaw forward ----
+  // ---- Resolve in-radius munis (used by both modes) ----
+  const { data: inRadius, error: radiusErr } = await service.rpc(
+    'get_municipalities_in_radius_for_site',
+    { p_site_id: body.site_submit_id, p_radius_miles: radius },
+  );
+  if (radiusErr) return jsonResponse({ error: 'radius_query_failed', detail: radiusErr.message }, 500);
+  const inRadiusList = (inRadius ?? []) as Array<{
+    boundary_municipality_id: string;
+    kind: string;
+    name: string;
+    geoid: string;
+    distance_mi: number;
+  }>;
+
+  // ===========================================================================
+  //  PREVIEW MODE
+  // ===========================================================================
+  if (mode === 'preview') {
+    return jsonResponse({
+      ok: true,
+      mode: 'preview',
+      site_submit_id: site.id,
+      radius_miles: radius,
+      count: inRadiusList.length,
+      municipalities: inRadiusList,
+    });
+  }
+
+  // ===========================================================================
+  //  COMMIT MODE
+  // ===========================================================================
+  const commitBody = body as CommitRequest;
+  const requested = commitBody.municipality_ids;
+  if (!Array.isArray(requested) || requested.length === 0) {
+    return jsonResponse({ error: 'municipality_ids must be a non-empty array in commit mode' }, 400);
+  }
+
+  // Defense-in-depth: every requested ID must be in radius.
+  const inRadiusSet = new Set(inRadiusList.map((m) => m.boundary_municipality_id));
+  const offChecklist = requested.filter((id) => !inRadiusSet.has(id));
+  if (offChecklist.length > 0) {
+    return jsonResponse({
+      error: 'off_radius_municipality_ids',
+      detail: `${offChecklist.length} requested muni id(s) are not within the radius`,
+      offending_ids: offChecklist,
+    }, 400);
+  }
+
+  // Preserve the in-radius distance ordering for priority assignment.
+  const orderedSelected = inRadiusList
+    .filter((m) => requested.includes(m.boundary_municipality_id))
+    .map((m) => m.boundary_municipality_id);
+
+  // Create the run + checklist server-side. After this, OpenClaw cannot
+  // expand scope — the only valid muni IDs are on the checklist row set.
+  const { data: runId, error: createErr } = await service.rpc(
+    'create_research_run_with_checklist',
+    {
+      p_site_id: body.site_submit_id,
+      p_radius_miles: radius,
+      p_boundary_muni_ids: orderedSelected,
+      p_openclaw_run_id: null,
+      p_triggered_by: authUserId,
+    },
+  );
+  if (createErr) return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
+  const researchRunId = runId as string;
+
+  // Now POST to OpenClaw. The agent receives the frozen scope as input.
   const openclawUrl = Deno.env.get('OPENCLAW_TRIGGER_URL');
   const openclawToken = Deno.env.get('OPENCLAW_TRIGGER_TOKEN');
   if (!openclawUrl || !openclawToken) {
+    // Mark the run as failed so it doesn't sit forever in 'running'.
+    await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
     return jsonResponse({
       error: 'openclaw_not_configured',
       detail: 'OPENCLAW_TRIGGER_URL and OPENCLAW_TRIGGER_TOKEN must be set as Supabase secrets',
+      research_run_id: researchRunId,
     }, 503);
   }
 
+  const selectedMunis = inRadiusList.filter((m) => requested.includes(m.boundary_municipality_id));
   const openclawPayload = {
     ovis_site_submit_id: site.id,
+    research_run_id: researchRunId,
     lat: Number(lat),
     lng: Number(lng),
     radius_miles: radius,
     triggered_by_user_id: authUserId,
+    municipalities: selectedMunis, // frozen — agent can only research these
   };
 
   let openclawResp: Response;
@@ -145,7 +220,8 @@ serve(async (req) => {
       body: JSON.stringify(openclawPayload),
     });
   } catch (e) {
-    return jsonResponse({ error: 'openclaw_unreachable', detail: String(e) }, 502);
+    await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
+    return jsonResponse({ error: 'openclaw_unreachable', detail: String(e), research_run_id: researchRunId }, 502);
   }
 
   const openclawBodyText = await openclawResp.text();
@@ -153,17 +229,29 @@ serve(async (req) => {
   try { openclawBody = JSON.parse(openclawBodyText); } catch { /* leave as text */ }
 
   if (!openclawResp.ok) {
+    await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
     return jsonResponse({
       error: 'openclaw_rejected',
       status: openclawResp.status,
       body: openclawBody,
+      research_run_id: researchRunId,
     }, 502);
+  }
+
+  // Stash the OpenClaw correlation id if present.
+  if (openclawBody && typeof openclawBody === 'object' && 'openclaw_run_id' in openclawBody) {
+    const oid = (openclawBody as { openclaw_run_id?: unknown }).openclaw_run_id;
+    if (typeof oid === 'string') {
+      await service.from('research_run').update({ openclaw_run_id: oid }).eq('id', researchRunId);
+    }
   }
 
   return jsonResponse({
     ok: true,
-    site_submit_id: site.id,
-    radius_miles: radius,
+    mode: 'commit',
+    research_run_id: researchRunId,
+    selected_count: requested.length,
+    in_radius_count: inRadiusList.length,
     openclaw_response: openclawBody,
   });
 });

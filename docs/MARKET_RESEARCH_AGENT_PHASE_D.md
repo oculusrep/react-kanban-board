@@ -11,12 +11,31 @@ Phase D ships the user-facing trigger surface: the "Start Research" button on th
 
 | File | Purpose |
 |---|---|
-| `supabase/functions/ovis-research-trigger/index.ts` | Browser-facing trigger. Validates the click (Starbucks, admin/broker, has lat/lng), then POSTs to OpenClaw with `OPENCLAW_TRIGGER_TOKEN` in `Authorization`. Returns OpenClaw's response. |
-| `src/components/shared/StartResearchModal.tsx` | Radius-picker modal (3 / 5 / 10 / 15 mi, default 10) using OVIS brand palette. Calls the edge function via `supabase.functions.invoke`. |
+| `supabase/functions/ovis-research-trigger/index.ts` | Browser-facing trigger. Two modes: PREVIEW (returns munis list in radius, no write) and COMMIT (creates `research_run` + checklist server-side with frozen scope, then POSTs to OpenClaw). |
+| `supabase/migrations/20260608130000_submit_report_checklist_guard.sql` | Layer-3 SQL guard: `submit_research_report` rejects candidate records whose `boundary_municipality_id` isn't on the run's checklist. Prevents OpenClaw from leaking off-scope findings into staging. |
+| `src/components/shared/StartResearchModal.tsx` | Radius picker (3 / 5 / 10 / 15 mi) + per-muni checkbox list. Calls PREVIEW on mount + radius change; calls COMMIT on submit with `municipality_ids[]`. Bulk controls: All / None / Cities only / Counties only. |
 | `src/components/shared/PastResearchRunsPanel.tsx` | Lists all `research_run` rows for the current site_submit, newest first, with state badges + checklist/staging counts. |
 | `src/components/shared/SiteSubmitSidebar.tsx` (edited) | Imports the two new components, adds the icon button to the existing action bar (Starbucks + admin/broker + has-lat/lng gated), renders the modal and the panel. |
 
-No backing migration or schema changes — Phase D uses Phase B's `research_run` table as-is.
+## Orchestration pivot (2026-06-08)
+
+The originally-shipped Phase D was a single-shot "pick radius → trigger" flow. Mike asked for a preview step before token spend on the agent side, plus per-muni selection. That led to a small but meaningful design pivot.
+
+**Before:** OpenClaw was the orchestrator. It called MCP `get_municipalities_in_radius` → `create_research_checklist` → researched → submitted. The agent chose its own scope.
+
+**After (current):** OVIS is the orchestrator for setup. The trigger function calls `get_municipalities_in_radius_for_site` + `create_research_run_with_checklist` directly (via SECURITY DEFINER RPCs, not MCP tools), and hands OpenClaw a frozen `research_run_id` + muni list. The agent receives its scope as input and cannot expand it.
+
+**Three concentric defenses guarantee the frozen scope:**
+
+| Layer | What it gates | Where it lives |
+|---|---|---|
+| 1. UI checkbox list | User picks/skips munis before committing. | `StartResearchModal.tsx` |
+| 2. Server-side run creation | The trigger function validates every requested muni id is in radius; rejects any off-radius IDs. Creates the run with only the validated set. | `ovis-research-trigger/index.ts` commit mode |
+| 3. SQL submit guard | `submit_research_report` raises `off_checklist_municipalities` if any candidate's `boundary_municipality_id` isn't on the run's checklist. The whole batch is rejected (atomic, agent must resubmit clean). | `20260608130000_submit_report_checklist_guard.sql` |
+
+**Implication for the MCP tool surface:** the existing MCP tools `get_municipalities_in_radius` and `create_research_checklist` from Phase C still exist, but the v1 OVIS-driven flow doesn't call them. They're left deployed for potential future flows (agent-driven orchestration) — zero ongoing cost. The MCP tools the agent actually uses in v1 are `update_checklist_status` + `submit_research_report`.
+
+No backing schema changes beyond the layer-3 guard migration — Phase D's reads/writes are still all against the `research_run` + `research_checklist_item` + `boundary_municipality` tables from Phases A and B.
 
 ---
 
@@ -58,19 +77,30 @@ supabase secrets set OPENCLAW_TRIGGER_TOKEN=<openclaw-bearer-token>
 
 No code change or redeploy needed after setting secrets — the function reads `Deno.env.get(...)` per request.
 
-**Forward payload to OpenClaw** (what the gateway will receive):
+**Forward payload to OpenClaw** (after the orchestration pivot — what the gateway will receive in commit mode):
 
 ```json
 {
   "ovis_site_submit_id": "uuid",
+  "research_run_id": "uuid",
   "lat": 33.99,
   "lng": -83.72,
   "radius_miles": 10,
-  "triggered_by_user_id": "uuid"
+  "triggered_by_user_id": "uuid",
+  "municipalities": [
+    { "boundary_municipality_id": "uuid", "kind": "city",   "name": "Braselton",      "geoid": "1310104", "distance_mi": 0.32 },
+    { "boundary_municipality_id": "uuid", "kind": "county", "name": "Barrow County",  "geoid": "13013",   "distance_mi": 4.10 },
+    ...
+  ]
 }
 ```
 
-OpenClaw should respond with at least HTTP 2xx; the body is forwarded verbatim to the browser. Conventional reply would be `{ "openclaw_run_id": "..." }` for correlation.
+The run + checklist already exist when OpenClaw receives this. The agent should:
+1. Walk `municipalities[]` and research each one.
+2. Call MCP `update_checklist_status` per muni as it works.
+3. Call MCP `submit_research_report` ONCE at the end with all candidates (must reference only the muni IDs in `municipalities[]` — layer-3 SQL guard rejects off-checklist findings).
+
+OpenClaw should respond with at least HTTP 2xx. If the body contains `{ "openclaw_run_id": "..." }`, OVIS stores it on `research_run.openclaw_run_id` for correlation.
 
 ---
 
