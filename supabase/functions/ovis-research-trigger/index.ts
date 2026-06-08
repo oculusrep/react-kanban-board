@@ -101,9 +101,21 @@ serve(async (req) => {
   }
 
   // ---- Site_submit lookup: Starbucks client + has lat/lng ----
+  // Coordinate resolution falls back through:
+  //   site_submit.verified_latitude
+  //     → site_submit.sf_property_latitude
+  //       → property.verified_latitude
+  //         → property.latitude
+  // (Some site_submits have NULL on their own snapshot columns and only carry
+  // lat/lng on the linked property — e.g. Villa Rica Hwy 2.)
   const { data: site, error: siteErr } = await service
     .from('site_submit')
-    .select('id, client_id, sf_property_latitude, sf_property_longitude, verified_latitude, verified_longitude')
+    .select(`
+      id, client_id, property_id,
+      sf_property_latitude, sf_property_longitude,
+      verified_latitude, verified_longitude,
+      property:property_id ( latitude, longitude, verified_latitude, verified_longitude )
+    `)
     .eq('id', body.site_submit_id)
     .maybeSingle();
   if (siteErr) return jsonResponse({ error: 'site_lookup_failed', detail: siteErr.message }, 500);
@@ -111,10 +123,19 @@ serve(async (req) => {
   if (site.client_id !== STARBUCKS_CLIENT_ID) {
     return jsonResponse({ error: 'not_a_starbucks_site' }, 403);
   }
-  const lat = site.verified_latitude ?? site.sf_property_latitude;
-  const lng = site.verified_longitude ?? site.sf_property_longitude;
+  // Coordinate priority: verified beats unverified, regardless of table.
+  // See memory feedback_coordinate_resolution.md for the project-wide rule.
+  const prop = (site as { property?: { latitude?: number | null; longitude?: number | null; verified_latitude?: number | null; verified_longitude?: number | null } | null }).property ?? null;
+  const lat = site.verified_latitude
+    ?? prop?.verified_latitude
+    ?? site.sf_property_latitude
+    ?? prop?.latitude;
+  const lng = site.verified_longitude
+    ?? prop?.verified_longitude
+    ?? site.sf_property_longitude
+    ?? prop?.longitude;
   if (lat == null || lng == null) {
-    return jsonResponse({ error: 'site_has_no_lat_lng' }, 400);
+    return jsonResponse({ error: 'site_has_no_lat_lng', detail: 'No lat/lng found on site_submit or its linked property' }, 400);
   }
 
   // ---- Resolve in-radius munis (used by both modes) ----

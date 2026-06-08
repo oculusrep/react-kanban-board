@@ -18,6 +18,25 @@ interface PreviewMuni {
 
 const RADIUS_PRESETS = [3, 5, 10, 15];
 
+/**
+ * supabase-js's FunctionsHttpError exposes the raw Response on `.context`.
+ * If we don't parse it, the user only sees "Edge Function returned a non-2xx
+ * status code" — useless for diagnosis. This helper reads the body and pulls
+ * the function's own `detail` / `error` field.
+ */
+async function extractInvokeError(err: unknown): Promise<string> {
+  const ctx = (err as { context?: unknown }).context;
+  if (ctx && typeof ctx === 'object' && 'json' in ctx && typeof (ctx as Response).json === 'function') {
+    try {
+      const body = await (ctx as Response).clone().json();
+      const detail = (body as { detail?: string; error?: string })?.detail
+                   ?? (body as { detail?: string; error?: string })?.error;
+      if (detail) return detail;
+    } catch { /* fall through */ }
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 export default function StartResearchModal({
   siteSubmitId,
   siteSubmitLabel,
@@ -44,10 +63,7 @@ export default function StartResearchModal({
           { body: { mode: 'preview', site_submit_id: siteSubmitId, radius_miles: radius } },
         );
         if (cancelled) return;
-        if (error) {
-          const detail = (error as { context?: { error?: string; detail?: string } }).context;
-          throw new Error(detail?.detail ?? detail?.error ?? error.message);
-        }
+        if (error) throw new Error(await extractInvokeError(error));
         if (data && typeof data === 'object' && 'error' in data) {
           throw new Error((data as { detail?: string; error?: string }).detail ?? (data as { error: string }).error);
         }
@@ -102,10 +118,7 @@ export default function StartResearchModal({
           },
         },
       );
-      if (error) {
-        const detail = (error as { context?: { error?: string; detail?: string } }).context;
-        throw new Error(detail?.detail ?? detail?.error ?? error.message);
-      }
+      if (error) throw new Error(await extractInvokeError(error));
       if (data && typeof data === 'object' && 'error' in data) {
         throw new Error((data as { detail?: string; error?: string }).detail ?? (data as { error: string }).error);
       }
