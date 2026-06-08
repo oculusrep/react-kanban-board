@@ -26,6 +26,7 @@ import { CLIENT_VISIBLE_STAGES } from '../client-pipeline/pipelineConfig';
 import OpenTasksPanel from '../tasks/OpenTasksPanel';
 import StartResearchModal from './StartResearchModal';
 import PastResearchRunsPanel from './PastResearchRunsPanel';
+import ResearchRunApprovalModal from './ResearchRunApprovalModal';
 import { useAuth } from '../../contexts/AuthContext';
 
 // Starbucks client_id — gates the "Start Research" action to Starbucks site_submits only.
@@ -250,6 +251,7 @@ export default function SiteSubmitSidebar({
   const [showDigestModal, setShowDigestModal] = useState(false);
   const [showStartResearchModal, setShowStartResearchModal] = useState(false);
   const [researchRunsRefresh, setResearchRunsRefresh] = useState(0);
+  const [openApprovalRunId, setOpenApprovalRunId] = useState<string | null>(null);
   const { userRole } = useAuth();
   // Market-research action gate: Starbucks site + admin/broker role + has lat/lng on property.
   const canStartResearch =
@@ -1241,6 +1243,7 @@ export default function SiteSubmitSidebar({
                     <PastResearchRunsPanel
                       siteSubmitId={siteSubmit.id}
                       refreshTrigger={researchRunsRefresh}
+                      onRunClick={(runId) => setOpenApprovalRunId(runId)}
                     />
                   </div>
                 )}
@@ -1380,6 +1383,28 @@ export default function SiteSubmitSidebar({
           onClose={() => setShowStartResearchModal(false)}
           onStarted={() => {
             showToast('Research started — OpenClaw is working on it.', { type: 'success', duration: 4000 });
+            setResearchRunsRefresh((n) => n + 1);
+          }}
+        />
+      )}
+
+      {/* Approval modal — opened by clicking a row in the Past Research Runs panel */}
+      {openApprovalRunId && siteSubmit && (
+        <ResearchRunApprovalModal
+          researchRunId={openApprovalRunId}
+          siteSubmitLabel={
+            siteSubmit.site_submit_name
+            || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
+          }
+          onClose={() => setOpenApprovalRunId(null)}
+          onDone={({ approved_count, created_municipality_count }) => {
+            const muniNote = created_municipality_count > 0
+              ? ` (${created_municipality_count} new ${created_municipality_count === 1 ? 'municipality' : 'municipalities'} created)`
+              : '';
+            showToast(
+              `Approved ${approved_count} ${approved_count === 1 ? 'record' : 'records'}${muniNote}`,
+              { type: 'success', duration: 4000 },
+            );
             setResearchRunsRefresh((n) => n + 1);
           }}
         />

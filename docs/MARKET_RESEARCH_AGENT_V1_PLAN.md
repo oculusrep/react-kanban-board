@@ -12,7 +12,7 @@
 | **B — research_run + checklist + staging schema** | ✅ Shipped 2026-06-06 | [`MARKET_RESEARCH_AGENT_PHASE_B.md`](MARKET_RESEARCH_AGENT_PHASE_B.md) |
 | **C — MCP edge function + backing RPCs** | ✅ Shipped 2026-06-08 (deployed at `/functions/v1/ovis-research-mcp`) | [`MARKET_RESEARCH_AGENT_PHASE_C.md`](MARKET_RESEARCH_AGENT_PHASE_C.md) |
 | **D — "Start Research" trigger UI** | ✅ Shipped 2026-06-08 (button + modal + past-runs panel + `ovis-research-trigger` edge function) | [`MARKET_RESEARCH_AGENT_PHASE_D.md`](MARKET_RESEARCH_AGENT_PHASE_D.md) |
-| **E — Approval slideout + promotion RPC + auto-create municipality** | ⏳ Not started | — |
+| **E — Approval modal + promotion RPC + auto-create municipality** | ✅ Shipped 2026-06-08 (RPCs verified end-to-end; UI typechecks clean) | [`MARKET_RESEARCH_AGENT_PHASE_E.md`](MARKET_RESEARCH_AGENT_PHASE_E.md) |
 | **F — Wire OpenClaw end-to-end** | ⏳ Blocked on OpenClaw URL/token | — |
 
 **Related work:** [`MIGRATION_HISTORY_CLEANUP_PLAN.md`](MIGRATION_HISTORY_CLEANUP_PLAN.md) (on branch `chore/migration-history-cleanup-plan`) — planning-only doc for the pre-May `schema_migrations` backlog that's still blocking `supabase db push` on this branch. Doesn't block any market-research phase; psql is the practical migration path until the cleanup runs.

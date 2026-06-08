@@ -5,6 +5,8 @@ interface PastResearchRunsPanelProps {
   siteSubmitId: string;
   /** Bump this number to force a re-fetch (e.g. after a fresh "Start Research" click). */
   refreshTrigger?: number;
+  /** Callback when a row is clicked (opens the approval modal). */
+  onRunClick?: (runId: string) => void;
 }
 
 interface ResearchRunRow {
@@ -43,7 +45,7 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0 }: PastResearchRunsPanelProps) {
+export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick }: PastResearchRunsPanelProps) {
   const [runs, setRuns] = useState<ResearchRunRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,10 +103,15 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
     <div className="space-y-2">
       {runs!.map((r) => {
         const style = STATE_STYLES[r.state] ?? STATE_STYLES.pending;
+        const clickable = !!onRunClick;
         return (
           <div
             key={r.id}
-            className="rounded-md border px-3 py-2 text-sm"
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onRunClick!(r.id) : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') onRunClick!(r.id); } : undefined}
+            className={`rounded-md border px-3 py-2 text-sm ${clickable ? 'cursor-pointer hover:shadow' : ''}`}
             style={{ borderColor: '#8FA9C8', backgroundColor: '#FFFFFF' }}
           >
             <div className="flex items-center justify-between gap-2">
