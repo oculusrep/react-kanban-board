@@ -11,7 +11,7 @@
 | **A — Boundary dataset** | ✅ Shipped 2026-06-06 (live: 159 GA counties + 538 places) | [`MARKET_RESEARCH_AGENT_PHASE_A.md`](MARKET_RESEARCH_AGENT_PHASE_A.md) |
 | **B — research_run + checklist + staging schema** | ✅ Shipped 2026-06-06 | [`MARKET_RESEARCH_AGENT_PHASE_B.md`](MARKET_RESEARCH_AGENT_PHASE_B.md) |
 | **C — MCP edge function + backing RPCs** | ✅ Shipped 2026-06-08 (deployed at `/functions/v1/ovis-research-mcp`) | [`MARKET_RESEARCH_AGENT_PHASE_C.md`](MARKET_RESEARCH_AGENT_PHASE_C.md) |
-| **D — "Start Research" trigger UI** | ⏳ Not started | — |
+| **D — "Start Research" trigger UI** | ✅ Shipped 2026-06-08 (button + modal + past-runs panel + `ovis-research-trigger` edge function) | [`MARKET_RESEARCH_AGENT_PHASE_D.md`](MARKET_RESEARCH_AGENT_PHASE_D.md) |
 | **E — Approval slideout + promotion RPC + auto-create municipality** | ⏳ Not started | — |
 | **F — Wire OpenClaw end-to-end** | ⏳ Blocked on OpenClaw URL/token | — |
 
