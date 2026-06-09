@@ -1,6 +1,6 @@
 # Task System v2 — User Manual
 
-**Covers:** Everything live on `main` as of 2026-05-09 — Phases 1, 2, 2.5, and 3.
+**Covers:** Everything live on `main` as of 2026-06-09 — Phases 1, 2, 2.5, 3, plus the 2026-06-09 All-Tasks preset views + bulk actions.
 **Audience:** Anyone using OVIS to plan, execute, and triage their work.
 **Companion docs:** [Spec](TASK_SYSTEM_V2_SPEC.md) (design rationale) · [Testing script](TASK_SYSTEM_V2_TESTING_SCRIPT.md) (QA checklist)
 
@@ -299,6 +299,37 @@ A flat, filterable, sortable view of every task in the system. Useful for:
 Click any row → TaskDetailSlideout opens (same one used everywhere else).
 
 Get back to the dashboard via `← Today's Timeline` in the page header.
+
+### Preset views
+
+A row of buttons above the filter bar narrows by due-date "shape". They stack with the existing status / category / search / My / High filters.
+
+| Preset | Shows |
+|---|---|
+| **Focus** *(default)* | Overdue + due today + tasks with no due date. Hides recurring future-dated tasks so the page opens to what actually needs attention. |
+| **Overdue** | Past due, not yet completed or cancelled. |
+| **Due today** | Due today (local Eastern). |
+| **No due date** | Only tasks with no due date set. |
+| **Next 7 days** | Due today through 7 days out. |
+| **All** | No date filter — everything matching the other filters. |
+
+The header count shows `N of M tasks` so you can see how the preset narrowed the list.
+
+### Multi-select & bulk actions
+
+Each row has a checkbox on the far left. Check 1+ rows (or use the header checkbox to select all visible) and a sticky bar slides up at the bottom with:
+
+- **Due date** — date picker; "clear" sets due_at to NULL on every selected task.
+- **Owner** — dropdown of assignable users.
+- **Category** — dropdown of active task categories.
+- **Status** — Open (reopen) / Completed / Cancelled.
+- **Clear selection** — drops the selection without applying anything.
+
+Each control fires immediately on change. Bulk runs in parallel per task; a partial failure (e.g., one task you can't edit) surfaces in an alert showing how many succeeded vs. failed, and the rest still apply.
+
+Per-row complete/reopen moved to a small **✓** (or **↺** when completed) button in the right-side action area next to **Delete** — the row checkbox is reserved for bulk selection.
+
+Selecting rows then switching presets or filtering further: the selection persists across views. You can build up a cross-cutting selection (e.g., "all my overdue + all my no-date tasks") by selecting in one preset, switching to another, and selecting more before applying a bulk action.
 
 ---
 
