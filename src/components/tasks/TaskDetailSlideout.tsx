@@ -203,6 +203,12 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     return patch;
   };
 
+  // setSaving(false) lives in finally on every handler — the slideout's
+  // parent always renders <TaskDetailSlideout>, so onClose() flips taskId
+  // to null but doesn't actually unmount the component. State (including
+  // `saving`) persists across opens. Without the finally, a successful
+  // save leaves saving=true forever, and the next time the slideout
+  // opens the Save button is stuck on "Saving…" with no save in flight.
   const handleSave = async () => {
     if (!task) return;
     if (!subject.trim()) {
@@ -219,6 +225,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
       setSaving(false);
     }
   };
@@ -255,6 +262,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Complete failed');
+    } finally {
       setSaving(false);
     }
   };
@@ -273,6 +281,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Reopen failed');
+    } finally {
       setSaving(false);
     }
   };
@@ -289,6 +298,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
       setSaving(false);
     }
   };
