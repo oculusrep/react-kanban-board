@@ -4,6 +4,7 @@ import {
   completeTask,
   deleteTask,
   reopenTask,
+  updateTask,
   useTaskList,
 } from '../hooks/useTasks';
 import {
@@ -13,7 +14,10 @@ import {
   TaskWithRelations,
 } from '../types/task';
 import { useAuth } from '../contexts/AuthContext';
+import { useUsers } from '../hooks/useUsers';
 import { isCategoryVisibleTo } from '../lib/taskCategory';
+import { isOverdue } from '../lib/taskOverdue';
+import { localDateString } from '../types/taskBlock';
 import { supabase } from '../lib/supabaseClient';
 import TaskDetailSlideout from '../components/tasks/TaskDetailSlideout';
 
@@ -35,6 +39,23 @@ const STATUS_OPTIONS: { value: TaskStatus | 'all'; label: string }[] = [
   { value: 'in_progress', label: 'In progress' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
+];
+
+const ASSIGNABLE_ROLES = new Set(['broker_full', 'va', 'admin']);
+
+// Date-based view presets. The default "focus" preset hides recurring future
+// tasks (months/years out) so the page opens to what actually needs attention:
+// overdue + today + tasks with no due date. Switching presets changes the
+// date predicate only — status / category / search / My / High stack on top.
+type Preset = 'focus' | 'overdue' | 'today' | 'no_date' | 'next_7' | 'all';
+
+const PRESETS: { value: Preset; label: string; title: string }[] = [
+  { value: 'focus', label: 'Focus', title: 'Overdue, due today, or no due date' },
+  { value: 'overdue', label: 'Overdue', title: 'Past due date, not yet completed' },
+  { value: 'today', label: 'Due today', title: "Due today (local time)" },
+  { value: 'no_date', label: 'No due date', title: 'Tasks without a due date' },
+  { value: 'next_7', label: 'Next 7 days', title: 'Due today through 7 days out' },
+  { value: 'all', label: 'All', title: 'No date filter' },
 ];
 
 // Category options for the filter dropdown are loaded from task_category
@@ -88,9 +109,36 @@ const formatDate = (iso: string | null): string => {
   }
 };
 
-const isOverdue = (task: TaskWithRelations): boolean => {
-  if (!task.due_at || task.status === 'completed' || task.status === 'cancelled') return false;
-  return new Date(task.due_at).getTime() < Date.now();
+// Add days to a YYYY-MM-DD local date, returning a new YYYY-MM-DD string.
+// Uses local-time arithmetic so DST boundaries don't shift the result.
+const addDaysISO = (yyyymmdd: string, days: number): string => {
+  const [y, m, d] = yyyymmdd.split('-').map((s) => parseInt(s, 10));
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return localDateString(dt);
+};
+
+// Client-side date predicate per the selected preset. due_at can be a full
+// ISO timestamp or just a date — we compare on the YYYY-MM-DD prefix in
+// local time (per CLAUDE.md timezone guidance).
+const matchesPreset = (task: TaskWithRelations, preset: Preset, today: string): boolean => {
+  const dueDate = task.due_at ? task.due_at.slice(0, 10) : null;
+  switch (preset) {
+    case 'focus':
+      return dueDate === null || dueDate <= today;
+    case 'overdue':
+      return dueDate !== null && dueDate < today && task.status !== 'completed' && task.status !== 'cancelled';
+    case 'today':
+      return dueDate === today;
+    case 'no_date':
+      return dueDate === null;
+    case 'next_7': {
+      const max = addDaysISO(today, 7);
+      return dueDate !== null && dueDate >= today && dueDate <= max;
+    }
+    case 'all':
+      return true;
+  }
 };
 
 const ownerLabel = (task: TaskWithRelations): string => {
@@ -135,6 +183,8 @@ const compareTasks = (a: TaskWithRelations, b: TaskWithRelations, key: SortKey, 
 
 export const TasksPage: React.FC = () => {
   const { userTableId } = useAuth();
+  const { users } = useUsers();
+  const [preset, setPreset] = useState<Preset>('focus');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('open');
   // Category filter value is the category name (text), which keeps working
   // against the legacy task.category column. UUID FK filtering is a future
@@ -165,6 +215,13 @@ export const TasksPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
+  // Multi-select for bulk actions. Selected IDs may include rows that scroll
+  // out of the current preset/filter view — that's intentional: bulk actions
+  // act on the captured set, not "currently visible". Clear button is always
+  // available.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
+
   const handleSort = (key: SortKey) => {
     if (sortBy === key) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -186,10 +243,53 @@ export const TasksPage: React.FC = () => {
 
   const { tasks, loading, error, refetch } = useTaskList(filters);
 
+  const today = localDateString();
+
+  // Client-side date predicate. Server-side already handled status / category /
+  // search / owner / high_flag. The preset narrows by due_at.
+  const presetTasks = useMemo(
+    () => tasks.filter((t) => matchesPreset(t, preset, today)),
+    [tasks, preset, today]
+  );
+
   const sortedTasks = useMemo(() => {
-    if (!sortBy) return tasks;
-    return [...tasks].sort((a, b) => compareTasks(a, b, sortBy, sortDir));
-  }, [tasks, sortBy, sortDir]);
+    if (!sortBy) return presetTasks;
+    return [...presetTasks].sort((a, b) => compareTasks(a, b, sortBy, sortDir));
+  }, [presetTasks, sortBy, sortDir]);
+
+  const assigneeOptions = useMemo(
+    () => users.filter((u) => u.ovis_role && ASSIGNABLE_ROLES.has(u.ovis_role)),
+    [users]
+  );
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allVisibleSelected =
+    sortedTasks.length > 0 && sortedTasks.every((t) => selectedIds.has(t.id));
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      // Deselect the ones currently visible; preserve any out-of-view selections.
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const t of sortedTasks) next.delete(t.id);
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const t of sortedTasks) next.add(t.id);
+        return next;
+      });
+    }
+  };
 
   const handleToggleComplete = async (task: TaskWithRelations) => {
     if (!userTableId) {
@@ -220,9 +320,67 @@ export const TasksPage: React.FC = () => {
     }
   };
 
+  // Bulk helpers — apply the action to every selected id in parallel, then
+  // clear selection and refetch. Errors surface as alert + console so a
+  // partial failure doesn't silently leave the user thinking it worked.
+  const runBulk = async (
+    label: string,
+    perTask: (id: string) => Promise<unknown>
+  ) => {
+    if (selectedIds.size === 0) return;
+    setBulkSaving(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const results = await Promise.allSettled(ids.map(perTask));
+      const failures = results.filter((r) => r.status === 'rejected');
+      if (failures.length > 0) {
+        console.error(`Bulk ${label} failures:`, failures);
+        alert(`${label}: ${ids.length - failures.length} succeeded, ${failures.length} failed.`);
+      }
+      setSelectedIds(new Set());
+      refetch();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : `${label} failed`);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const bulkSetDueDate = (yyyymmdd: string) => {
+    const due_at = yyyymmdd
+      ? new Date(`${yyyymmdd}T23:59:59`).toISOString()
+      : null;
+    return runBulk('Set due date', (id) => updateTask(id, { due_at }));
+  };
+
+  const bulkSetOwner = (ownerId: string) =>
+    runBulk('Set owner', (id) => updateTask(id, { owner_id: ownerId }));
+
+  const bulkSetCategory = (categoryId: string) =>
+    runBulk('Set category', (id) => updateTask(id, { category_id: categoryId }));
+
+  const bulkSetStatus = (status: 'open' | 'completed' | 'cancelled') => {
+    if (status === 'completed') {
+      if (!userTableId) {
+        alert('Not authenticated');
+        return;
+      }
+      return runBulk('Mark complete', (id) =>
+        completeTask(id, { actor_user_id: userTableId })
+      );
+    }
+    if (status === 'open') {
+      return runBulk('Reopen', (id) => reopenTask(id));
+    }
+    return runBulk('Cancel', (id) =>
+      updateTask(id, { status: 'cancelled' })
+    );
+  };
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: COLORS.bg }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-baseline gap-3">
@@ -238,8 +396,33 @@ export const TasksPage: React.FC = () => {
             </Link>
           </div>
           <span className="text-sm" style={{ color: COLORS.steel }}>
-            {loading ? 'Loading…' : `${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
+            {loading
+              ? 'Loading…'
+              : `${sortedTasks.length} of ${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
           </span>
+        </div>
+
+        {/* Preset buttons */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          {PRESETS.map((p) => {
+            const active = preset === p.value;
+            return (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setPreset(p.value)}
+                title={p.title}
+                className="text-xs px-3 py-1.5 rounded border transition-colors"
+                style={
+                  active
+                    ? { backgroundColor: COLORS.midnight, color: '#FFFFFF', borderColor: COLORS.midnight }
+                    : { backgroundColor: '#FFFFFF', color: COLORS.steel, borderColor: COLORS.slate }
+                }
+              >
+                {p.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Filters */}
@@ -302,7 +485,16 @@ export const TasksPage: React.FC = () => {
           <table className="min-w-full text-sm">
             <thead style={{ backgroundColor: COLORS.bg }}>
               <tr>
-                <th className="px-3 py-2 text-left font-medium w-8" />
+                <th className="px-3 py-2 text-left font-medium w-8">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Select all visible tasks"
+                    title={allVisibleSelected ? 'Deselect all visible' : 'Select all visible'}
+                    className="cursor-pointer"
+                  />
+                </th>
                 {([
                   { key: 'subject' as SortKey, label: 'Subject', nowrap: false },
                   { key: 'category' as SortKey, label: 'Category', nowrap: true },
@@ -337,7 +529,7 @@ export const TasksPage: React.FC = () => {
                     {sortBy === 'status' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
                   </span>
                 </th>
-                <th className="px-3 py-2 text-left font-medium w-20" />
+                <th className="px-3 py-2 text-left font-medium w-28" />
               </tr>
             </thead>
             <tbody>
@@ -357,22 +549,26 @@ export const TasksPage: React.FC = () => {
               )}
               {!loading &&
                 sortedTasks.map((task) => {
-                  const overdue = isOverdue(task);
+                  const overdue = isOverdue(task.due_at) && task.status !== 'completed' && task.status !== 'cancelled';
                   const completed = task.status === 'completed';
+                  const selected = selectedIds.has(task.id);
                   return (
                     <tr
                       key={task.id}
                       className="border-t hover:bg-gray-50 cursor-pointer"
-                      style={{ borderColor: COLORS.slate + '33' }}
+                      style={{
+                        borderColor: COLORS.slate + '33',
+                        backgroundColor: selected ? COLORS.slate + '14' : undefined,
+                      }}
                       onClick={() => setOpenTaskId(task.id)}
                     >
                       <td className="px-3 py-2 align-top" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
-                          checked={completed}
-                          onChange={() => handleToggleComplete(task)}
-                          aria-label={completed ? 'Reopen task' : 'Complete task'}
-                          title={completed ? 'Click to reopen' : 'Click to mark complete'}
+                          checked={selected}
+                          onChange={() => toggleSelect(task.id)}
+                          aria-label="Select task for bulk action"
+                          title="Select for bulk action"
                           className="cursor-pointer"
                         />
                       </td>
@@ -419,7 +615,19 @@ export const TasksPage: React.FC = () => {
                           {task.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                      <td
+                        className="px-3 py-2 align-top text-right whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleToggleComplete(task)}
+                          className="text-xs px-1.5 py-1 rounded hover:bg-gray-100 mr-1"
+                          style={{ color: completed ? COLORS.steel : '#166534' }}
+                          title={completed ? 'Reopen task' : 'Mark complete'}
+                        >
+                          {completed ? '↺' : '✓'}
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(task)}
@@ -437,6 +645,140 @@ export const TasksPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Bulk action bar — sticky at bottom when 1+ rows selected. Each
+          control fires immediately on change (no per-action confirm); the
+          shared runBulk helper reports partial failures via alert. */}
+      {selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-30 border-t shadow-lg"
+          style={{ backgroundColor: '#FFFFFF', borderColor: COLORS.slate + '66' }}
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center gap-3">
+            <span
+              className="text-sm font-medium px-2 py-1 rounded"
+              style={{ backgroundColor: COLORS.midnight, color: '#FFFFFF' }}
+            >
+              {selectedIds.size} selected
+            </span>
+
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: COLORS.steel }}>
+              Due date
+              <input
+                type="date"
+                disabled={bulkSaving}
+                onChange={(e) => {
+                  if (e.target.value) bulkSetDueDate(e.target.value);
+                }}
+                className="text-xs px-2 py-1 rounded border"
+                style={{ borderColor: COLORS.slate, color: COLORS.midnight }}
+              />
+              <button
+                type="button"
+                disabled={bulkSaving}
+                onClick={() => bulkSetDueDate('')}
+                className="text-xs px-1.5 py-1 rounded hover:bg-gray-100 disabled:opacity-50"
+                style={{ color: COLORS.steel }}
+                title="Clear due date on selected tasks"
+              >
+                clear
+              </button>
+            </label>
+
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: COLORS.steel }}>
+              Owner
+              <select
+                disabled={bulkSaving}
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    bulkSetOwner(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                className="text-xs px-2 py-1 rounded border"
+                style={{ borderColor: COLORS.slate, color: COLORS.steel }}
+              >
+                <option value="" disabled>
+                  Set owner…
+                </option>
+                {assigneeOptions.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.first_name && u.last_name
+                      ? `${u.first_name} ${u.last_name}`
+                      : u.email || 'Unnamed'}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: COLORS.steel }}>
+              Category
+              <select
+                disabled={bulkSaving}
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    bulkSetCategory(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                className="text-xs px-2 py-1 rounded border"
+                style={{ borderColor: COLORS.slate, color: COLORS.steel }}
+              >
+                <option value="" disabled>
+                  Set category…
+                </option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: COLORS.steel }}>
+              Status
+              <select
+                disabled={bulkSaving}
+                defaultValue=""
+                onChange={(e) => {
+                  const v = e.target.value as 'open' | 'completed' | 'cancelled' | '';
+                  if (v) {
+                    bulkSetStatus(v);
+                    e.target.value = '';
+                  }
+                }}
+                className="text-xs px-2 py-1 rounded border"
+                style={{ borderColor: COLORS.slate, color: COLORS.steel }}
+              >
+                <option value="" disabled>
+                  Set status…
+                </option>
+                <option value="open">Open (reopen)</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+
+            <button
+              type="button"
+              disabled={bulkSaving}
+              onClick={() => setSelectedIds(new Set())}
+              className="ml-auto text-xs px-3 py-1.5 rounded border hover:bg-gray-50 disabled:opacity-50"
+              style={{ borderColor: COLORS.slate, color: COLORS.steel }}
+            >
+              Clear selection
+            </button>
+
+            {bulkSaving && (
+              <span className="text-xs" style={{ color: COLORS.steel }}>
+                Saving…
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <TaskDetailSlideout
         taskId={openTaskId}
