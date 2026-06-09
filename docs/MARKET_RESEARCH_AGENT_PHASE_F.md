@@ -187,13 +187,16 @@ Call this whenever the agent transitions a muni's research state. Idempotent.
 
 **Required per candidate:** `boundary_municipality_id`, `project_name`, `address`, `source`. Everything else nullable.
 
-**`status_name`** (recommended): pass the project status by NAME, case-insensitive. Canonical values:
-- `"Planning"` — use this for sources that say "Pending" too
-- `"Approved"`
-- `"Under Construction"`
-- `"Recently Completed"`
+**`status_name`** (recommended): pass the project status by NAME, case-insensitive. Decision rules for the agent — assign one of the four canonical values per record:
 
-Unknown names silently fall back to NULL (don't fail the batch). `status_stage_id` (UUID) is still accepted for callers that already know the UUID — if both are supplied, `status_stage_id` wins.
+- **"Planning"** — announced, proposed, or pre-approval. Use for: news articles about upcoming subdivisions, builder "coming soon" pages, planning-meeting agendas, applications not yet voted on, anything a source labels "Pending."
+- **"Approved"** — formal municipal approval (zoning, plat, etc.) issued, but construction has not visibly started. Permits dated but no ground-breaking yet.
+- **"Under Construction"** — work is actively underway. Ground broken, infrastructure being installed, homes in framing/finishing. Look for: recent building permits, news of groundbreaking, recent Citizens Portal status changes.
+- **"Recently Completed"** — built out within the last ~2 years. Still relevant as a recent population addition. Older than 2 years → OMIT `status_name` (the record is still captured, just without a status).
+
+If unsure, omit `status_name`. NULL is preferable to a guess. Unknown / misspelled values silently resolve to NULL — your batch won't fail, but the row will be missing status until a reviewer fixes it. Names are case-insensitive and whitespace-tolerant.
+
+`status_stage_id` (UUID) is still accepted for callers that already know the UUID — if both are supplied, `status_stage_id` wins.
 
 **Single call per run.** Re-submitting on the same `research_run_id` would insert duplicate staging rows (no idempotency at the RPC level). The agent's contract is: ONE submit at end of run.
 
