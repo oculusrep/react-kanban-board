@@ -149,7 +149,7 @@ export default function FinanceHubPage() {
       title: 'Mike Is Owed',
       description: 'View outstanding amounts owed to Mike from deals.',
       icon: <Wallet className="h-8 w-8" />,
-      path: '/reports/mike-owed',
+      path: '/reports/mike-is-owed',
       color: 'text-amber-600',
       bgColor: 'bg-amber-50',
       borderColor: 'border-amber-200',
