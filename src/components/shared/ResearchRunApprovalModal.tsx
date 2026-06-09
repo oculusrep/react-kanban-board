@@ -5,7 +5,7 @@ interface ResearchRunApprovalModalProps {
   researchRunId: string;
   siteSubmitLabel: string;
   onClose: () => void;
-  onDone: (summary: { approved_count: number; created_municipality_count: number }) => void;
+  onDone: (summary: { approved_new: number; approved_matched: number; created_municipality_count: number }) => void;
 }
 
 interface RunRow {
@@ -228,7 +228,8 @@ export default function ResearchRunApprovalModal({
       const { data, error: rpcErr } = await supabase.rpc('approve_research_staging_rows', { p_rows: payload });
       if (rpcErr) throw rpcErr;
       onDone({
-        approved_count:           (data as any)?.approved_count           ?? 0,
+        approved_new:               (data as any)?.approved_new               ?? 0,
+        approved_matched:           (data as any)?.approved_matched           ?? 0,
         created_municipality_count: (data as any)?.created_municipality_count ?? 0,
       });
       onClose();

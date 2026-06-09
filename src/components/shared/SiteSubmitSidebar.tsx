@@ -1400,12 +1400,16 @@ export default function SiteSubmitSidebar({
             || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
           }
           onClose={() => setOpenApprovalRunId(null)}
-          onDone={({ approved_count, created_municipality_count }) => {
+          onDone={({ approved_new, approved_matched, created_municipality_count }) => {
+            const parts: string[] = [];
+            if (approved_new > 0) parts.push(`${approved_new} new`);
+            if (approved_matched > 0) parts.push(`${approved_matched} already existed`);
+            const summary = parts.length ? parts.join(' + ') : '0 records';
             const muniNote = created_municipality_count > 0
               ? ` (${created_municipality_count} new ${created_municipality_count === 1 ? 'municipality' : 'municipalities'} created)`
               : '';
             showToast(
-              `Approved ${approved_count} ${approved_count === 1 ? 'record' : 'records'}${muniNote}`,
+              `Approved ${summary}${muniNote}`,
               { type: 'success', duration: 4000 },
             );
             setResearchRunsRefresh((n) => n + 1);

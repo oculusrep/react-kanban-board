@@ -24,7 +24,7 @@ No new edge function. The browser calls the RPCs directly via `supabase.rpc(...)
 
 ### `approve_research_staging_rows(p_rows jsonb) → jsonb`
 
-Promotes one or more staging rows from a single research_run into `municipal_project`. Idempotent on already-resolved rows (already approved/rejected → silently skipped).
+Promotes one or more staging rows from a single research_run. Idempotent on already-resolved rows. **Respects `matched_existing_id` — a row that's flagged as MATCHES EXISTING does NOT create a duplicate row in `municipal_project`; instead its staging `approved_municipal_project_id` points at the pre-existing row.** Added 2026-06-08 after Mike noted the dup-prevention gap. See "Dup prevention" section below.
 
 **Input** — array of items:
 ```json
