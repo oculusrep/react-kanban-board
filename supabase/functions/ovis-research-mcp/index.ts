@@ -157,7 +157,15 @@ const TOOLS = [
               permit_application_date: { type: ['string', 'null'], format: 'date' },
               source: { type: 'string', description: 'REQUIRED. Where this record came from (Citizens Portal permit #, news article, builder website, econ-dev email attachment, etc.).' },
               notes: { type: ['string', 'null'], description: 'Any extra detail not covered by the schema.' },
-              status_stage_id: { type: ['string', 'null'], format: 'uuid', description: 'Optional project_stage.id if you can map to one.' },
+              status_name: {
+                type: ['string', 'null'],
+                description: 'Project status by NAME (case-insensitive). Canonical values: "Planning" (use this when the source calls it "Pending"), "Approved", "Under Construction", "Recently Completed". Use this rather than status_stage_id whenever possible; unknown names fall back to NULL silently.',
+              },
+              status_stage_id: {
+                type: ['string', 'null'],
+                format: 'uuid',
+                description: 'Project status by UUID. Only set this if you somehow already know the UUID; otherwise prefer status_name. If both are provided, status_stage_id wins.',
+              },
               raw_stages: { type: 'object', description: 'Per-muni stage column data, free-form jsonb.' },
             },
             required: ['boundary_municipality_id', 'project_name', 'address', 'source'],

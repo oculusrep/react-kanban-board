@@ -176,7 +176,8 @@ Call this whenever the agent transitions a muni's research state. Idempotent.
       "permit_url": "https://citizens.villaricaga.gov/permits/LDP-2025-0087",
       "permit_application_date": "2025-11-01",
       "source": "Citizens Portal permit #LDP-2025-0087",
-      "notes": "Approved; ground-breaking expected Q1 2026"
+      "notes": "Approved; ground-breaking expected Q1 2026",
+      "status_name": "Approved"
     }
   ],
   "needs_review": "Found two news articles mentioning a Phase II but no permit yet — flagged for Mike to follow up.",
@@ -185,6 +186,14 @@ Call this whenever the agent transitions a muni's research state. Idempotent.
 ```
 
 **Required per candidate:** `boundary_municipality_id`, `project_name`, `address`, `source`. Everything else nullable.
+
+**`status_name`** (recommended): pass the project status by NAME, case-insensitive. Canonical values:
+- `"Planning"` — use this for sources that say "Pending" too
+- `"Approved"`
+- `"Under Construction"`
+- `"Recently Completed"`
+
+Unknown names silently fall back to NULL (don't fail the batch). `status_stage_id` (UUID) is still accepted for callers that already know the UUID — if both are supplied, `status_stage_id` wins.
 
 **Single call per run.** Re-submitting on the same `research_run_id` would insert duplicate staging rows (no idempotency at the RPC level). The agent's contract is: ONE submit at end of run.
 
