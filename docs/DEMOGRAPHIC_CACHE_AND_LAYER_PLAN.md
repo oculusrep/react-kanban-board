@@ -1,5 +1,13 @@
 # Demographic Cache + Audit Log + Map Layer
 
+> **Status (2026-06-09):** Phases A + B shipped on branch
+> `feature/demographic-cache-audit-log`. Migration is applied to the prod
+> DB and recorded in `supabase_migrations.schema_migrations`. Edge
+> function is deployed and live. Frontend is on the branch only — not
+> merged to `main`, not on Vercel prod. See the **Delivery summary** at
+> the bottom for what actually shipped vs. what this plan originally
+> proposed.
+
 Follow-on to [DEMOGRAPHIC_RING_LAYERS_PLAN.md](DEMOGRAPHIC_RING_LAYERS_PLAN.md). Phases 1–3 (rings, drive-time, custom polygon) shipped — every Fetch still hits ESRI fresh. This plan adds:
 
 1. An **audit log / cache table** that records every successful enrichment call.
@@ -193,3 +201,119 @@ Total ~7-8 hrs across 1-2 sessions.
 - **Cache key includes `radii` and `drive_times` as a set** — `[1,3,5]` and `[3,5,1]` should hit the same cache row (use sorted arrays as the canonical form).
 
 If any of these are wrong for your workflow, flag before I start Phase A.
+
+---
+
+## Delivery summary (2026-06-09)
+
+What actually shipped on `feature/demographic-cache-audit-log`. Two commits:
+
+- `a09507c8` — Phase A: cache + audit log
+- `fb62177e` — Phase B: Cached Demographics map layer + click-to-restore
+
+### Database
+
+[`supabase/migrations/20260603120000_esri_enrichment_log.sql`](../supabase/migrations/20260603120000_esri_enrichment_log.sql)
+
+Single table `esri_enrichment_log`. Schema matches the proposal above with one cleanup — the GIST `ll_to_earth` bbox index was dropped in favor of a plain composite index on `(latitude, longitude)` filtered to `success = true`. The earthdistance extension wasn't enabled in the project and the bbox queries are simple range filters, so the composite index is enough.
+
+RLS:
+- `esri_enrichment_log_read_authenticated` — any logged-in user can read successful rows (cache works across the team; the Cached Demographics layer renders everyone's lookups).
+- `esri_enrichment_log_write_service_role` — only the edge function (service role) writes.
+
+Indexes:
+- `esri_enrichment_log_lookup_rings` — partial on `(latitude, longitude, called_at DESC) WHERE mode='rings' AND success AND NOT cache_hit` for cache lookups.
+- `esri_enrichment_log_lookup_polygon` — same shape for polygon mode.
+- `esri_enrichment_log_user_time` — for the future "who burned credits this month" dashboard.
+- `esri_enrichment_log_bbox` — composite on `(latitude, longitude) WHERE success` for the map-layer bbox fetch.
+
+Migration applied via `psql + INSERT into schema_migrations` per the established workflow (the supabase CLI's `db push` remains broken — see [reference_supabase_migration_workflow](../../.claude/projects/-Users-mike-Documents-GitHub-react-kanban-board/memory/reference_supabase_migration_workflow.md)).
+
+### Edge function — `supabase/functions/esri-geoenrich/index.ts`
+
+**Cache lookup before ESRI:**
+- Rings: rounded lat/lng + sorted radii set + sorted drive_times set + 30-day window. Matches on `radii @> requested` and `drive_times @> requested` so a cached `[1,3,5]` row satisfies a request for `[1,3]`.
+- Polygon: round all coords to 4 decimals (~11m), match on exact JSONB equality + stored centroid. A re-drawn polygon slightly off won't hit the cache; we accepted that tradeoff because polygon enrichment is the rarest use case.
+
+**Log write on every call:**
+- Fresh ESRI call → `cache_hit = false` + full result snapshot.
+- Cache hit → second log row with `cache_hit = true` (audit trail of "who pulled this for free").
+- Failure → `success = false` + error message.
+
+**`force_refresh: true` bypasses the cache.** The slideout's "Refresh from ESRI" button sends this.
+
+**Module-scope Supabase client** so steady traffic shares one connection across requests in the same Deno isolate.
+
+**Caller identity:** JWT extracted from the `Authorization: Bearer ...` header → `user_id` written into every log row. Anonymous/invalid tokens still serve the request; they just write a NULL `user_id`.
+
+### Hook — [src/hooks/usePropertyGeoenrichment.ts](../src/hooks/usePropertyGeoenrichment.ts)
+
+- `GeoenrichmentResult` gained `cached_at` (ISO timestamp of the original ESRI call) and `cached_by` (user_id who paid for it).
+- `enrichLocation(...)` and `enrichPolygon(...)` accept an optional `forceRefresh` arg that propagates to `force_refresh` on the edge function body.
+
+### Slideout + Modal cached UI
+
+[`src/components/mapping/slideouts/DemographicsAnalysisSlideout.tsx`](../src/components/mapping/slideouts/DemographicsAnalysisSlideout.tsx)
+
+- `<CachedBadge>` renders below the Fetch button when `result.cached_at` is set: green mint background, `✓ Cached · pulled <X> ago · no ESRI credit charged`, with a **Refresh from ESRI** link.
+- One badge for ring/drive-time results, one for polygon results — they're tracked separately so a fresh polygon pull doesn't override a cached ring badge or vice versa.
+- New `prefilled?: PrefilledCacheState | null` prop lets the slideout open with state already seeded from a cached row (used by the Cached Demographics layer's click handler).
+
+[`src/components/mapping/slideouts/DemographicsAnalysisModal.tsx`](../src/components/mapping/slideouts/DemographicsAnalysisModal.tsx)
+
+- Footer adds a small green note (`rings cached`, `polygon cached`, or both) so the "View All" view also surfaces cache status.
+
+### Cached Demographics map layer
+
+New files:
+- [`src/components/mapping/layers/CachedDemographicsLayer.tsx`](../src/components/mapping/layers/CachedDemographicsLayer.tsx) — bbox fetch on map idle, client-side dedupe by rounded `(lat, lng)`, renders one `google.maps.Marker` per deduped lookup. Click → `onPinClick(...)` carries the reconstituted `GeoenrichmentResult`.
+
+Modified:
+- [`src/components/mapping/layers/LayerManager.tsx`](../src/components/mapping/layers/LayerManager.tsx) — new `cached_demographics` entry in `DEFAULT_LAYERS` (icon: 📊). New state in the context: `cachedDemographicsTimeRange` (`'7d' | '30d' | 'all'`, default `'30d'`), `cachedDemographicsScope` (`'mine' | 'all'`, default `'mine'`), `cachedDemographicsModes` (`Set<'rings' | 'polygon'>`, default both).
+- [`src/components/mapping/LayerPanel.tsx`](../src/components/mapping/LayerPanel.tsx) — `<CachedDemographicsFilters>` pill UI renders below the layer toggle when the layer is on. Mirrors the existing `MunicipalProjectFilters` pattern.
+- [`src/pages/MappingPageNew.tsx`](../src/pages/MappingPageNew.tsx) — mounts the layer, holds the `demographicsPrefilled` state, wires the click handler into the existing slideout open path.
+
+**Pin styling:**
+- Rings: midnight (#002147) round dot.
+- Polygon: terracotta (#A27B5C) square (SVG path).
+- Both with white stroke for contrast against the basemap.
+
+### Things deliberately deferred
+
+- **Cluster at >100 pins in view.** Markers don't cluster yet — at any realistic 30-day OVIS volume this hasn't been a problem. Easy to add later via `@googlemaps/markerclusterer` if needed.
+- **Isochrone polygons on cache restore.** Clicking a cached rings pin opens the slideout with ring + drive-time stats populated, but does NOT redraw the drive-time isochrone polygons even though they're stored in the cache row. The `isochrones` field is there; just not consumed by the slideout's overlay on prefilled open. Easy follow-up if users want it.
+- **Admin-only "All users" scope.** Today any logged-in user can flip the scope filter to "All users". Probably fine for OVIS team size; if multi-tenant ever matters, gate that pill on `is_admin`.
+- **"Who pulled this" attribution UI.** The cached badge says "pulled N days ago" but doesn't show the user's email. We have `cached_by` plumbed through; surfacing a tooltip with the email is a 5-line follow-up. Deferred until a single-user OVIS deployment outgrows.
+- **Auto-purge of old rows.** The 30-day TTL is enforced in the query (`called_at >= now() - 30 days`). Rows older than 30 days stay in the table forever, growing slowly. A monthly `DELETE FROM esri_enrichment_log WHERE called_at < now() - 90 days` cron could be added if storage becomes a concern. At expected volume, this is years away.
+
+### How to verify the cache is working
+
+Open the slideout, Fetch the same `(lat, lng, radii, drive_times)` twice:
+
+```sql
+-- Should show one cache_hit=false row + one cache_hit=true row at the same coords:
+SELECT mode, latitude, longitude, radii, drive_times, cache_hit, called_at
+FROM esri_enrichment_log
+WHERE success
+ORDER BY called_at DESC
+LIMIT 5;
+```
+
+On the second fetch, the green `Cached · …` badge should appear and the response is served without touching ESRI.
+
+### How to verify the layer is working
+
+1. Toggle on **📊 Cached Demographics** in the layer panel.
+2. Round midnight dots and square terracotta dots appear at every previously-enriched location in the current map bbox.
+3. Click any dot → the slideout opens with cached numbers populated, no spinner, no badge change.
+4. Adjust the filter pills (`7d` / `30d` / `All`, `Mine` / `All users`, `Rings` / `Polygon`) and watch pins refresh.
+
+### Production rollout checklist
+
+When ready to merge to `main` and push to Vercel:
+
+1. Merge the branch: `git checkout main && git merge feature/demographic-cache-audit-log && git push origin main`
+2. Run `vercel --prod` (two-step deploy per [CLAUDE.md](../CLAUDE.md)).
+3. The edge function is already deployed to the live Supabase project, so no `supabase functions deploy` step needed.
+4. The migration is already applied to the live DB, so no `psql` step needed.
+5. Smoke-test on the production URL: right-click → Demographics Here → Fetch twice on the same spot → confirm the green Cached badge appears on the second fetch.

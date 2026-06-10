@@ -15,7 +15,11 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics';
+
+export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
+export type CachedDemographicsScope = 'mine' | 'all';
+export type CachedDemographicsMode = 'rings' | 'polygon';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -88,6 +92,15 @@ export interface LayerManagerContextType {
   municipalProjectsShowPolygons: boolean;
   setMunicipalProjectsShowPins: (v: boolean) => void;
   setMunicipalProjectsShowPolygons: (v: boolean) => void;
+
+  // Cached Demographics layer filters. Defaults match the plan in
+  // docs/DEMOGRAPHIC_CACHE_AND_LAYER_PLAN.md.
+  cachedDemographicsTimeRange: CachedDemographicsTimeRange;
+  setCachedDemographicsTimeRange: (r: CachedDemographicsTimeRange) => void;
+  cachedDemographicsScope: CachedDemographicsScope;
+  setCachedDemographicsScope: (s: CachedDemographicsScope) => void;
+  cachedDemographicsModes: Set<CachedDemographicsMode>;
+  toggleCachedDemographicsMode: (m: CachedDemographicsMode) => void;
 }
 
 export type CreateMode = 'property' | 'site_submit' | 'municipal_project';
@@ -159,6 +172,15 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     defaultVisible: false,
     isSystemLayer: true,
   },
+  {
+    id: 'cached_demographics',
+    name: 'Cached Demographics',
+    type: 'cached_demographics',
+    icon: '📊',
+    description: 'Past ESRI enrichment lookups — click a pin to reopen the slideout without a new ESRI call',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
 ];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
@@ -196,6 +218,26 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const [municipalProjectsMaxUnits, setMunicipalProjectsMaxUnits] = useState<number | null>(null);
   const [municipalProjectsShowPins, setMunicipalProjectsShowPins] = useState<boolean>(true);
   const [municipalProjectsShowPolygons, setMunicipalProjectsShowPolygons] = useState<boolean>(true);
+
+  const [cachedDemographicsTimeRange, setCachedDemographicsTimeRange] =
+    useState<CachedDemographicsTimeRange>('30d');
+  const [cachedDemographicsScope, setCachedDemographicsScope] =
+    useState<CachedDemographicsScope>('mine');
+  const [cachedDemographicsModes, setCachedDemographicsModes] = useState<
+    Set<CachedDemographicsMode>
+  >(new Set(['rings', 'polygon']));
+
+  const toggleCachedDemographicsMode = useCallback(
+    (m: CachedDemographicsMode) => {
+      setCachedDemographicsModes((prev) => {
+        const next = new Set(prev);
+        if (next.has(m)) next.delete(m);
+        else next.add(m);
+        return next;
+      });
+    },
+    [],
+  );
 
   // Initialize layer state once
   useEffect(() => {
@@ -369,6 +411,12 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     municipalProjectsShowPolygons,
     setMunicipalProjectsShowPins,
     setMunicipalProjectsShowPolygons,
+    cachedDemographicsTimeRange,
+    setCachedDemographicsTimeRange,
+    cachedDemographicsScope,
+    setCachedDemographicsScope,
+    cachedDemographicsModes,
+    toggleCachedDemographicsMode,
   }), [
     layers,
     layerState,
@@ -395,6 +443,10 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     municipalProjectsMaxUnits,
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
+    cachedDemographicsTimeRange,
+    cachedDemographicsScope,
+    cachedDemographicsModes,
+    toggleCachedDemographicsMode,
   ]);
 
   return (

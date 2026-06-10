@@ -54,6 +54,20 @@ interface Props {
   map: google.maps.Map | null;
   coordinates: { lat: number; lng: number } | null;
   onClose: () => void;
+  // Optional prefilled state when opened from a cached-demographics pin
+  // click. The slideout skips its initial reset and seeds rings or polygon
+  // state from the cached row.
+  prefilled?: PrefilledCacheState | null;
+}
+
+export interface PrefilledCacheState {
+  mode: 'rings' | 'polygon';
+  result: GeoenrichmentResult;
+  // Rings mode:
+  radii?: number[];
+  driveTimes?: number[];
+  // Polygon mode:
+  polygonCoordinates?: number[][][];
 }
 
 const formatNumber = (n: number | null | undefined) =>
@@ -106,11 +120,61 @@ function getPolygonValue(
   return v ?? null;
 }
 
+// Short relative-time string for the cached badge. We round generously
+// because the precise minute the cache was populated isn't meaningful
+// to the user — they want "fresh", "today", "a few days ago".
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diff = Date.now() - then;
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+interface CachedBadgeProps {
+  cachedAt: string;
+  onRefresh: () => void;
+  disabled: boolean;
+}
+
+const CachedBadge: React.FC<CachedBadgeProps> = ({ cachedAt, onRefresh, disabled }) => {
+  // Soft mint background to distinguish "this didn't cost you" from
+  // the rest of the slideout, but not loud enough to be alarming.
+  return (
+    <div
+      className="mt-2 flex items-center justify-between gap-2 px-3 py-2 rounded-md border text-xs"
+      style={{
+        backgroundColor: '#ECFDF5',
+        borderColor: '#A7F3D0',
+        color: '#065F46',
+      }}
+    >
+      <span>
+        ✓ Cached · pulled {relativeTime(cachedAt)} · no ESRI credit charged
+      </span>
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={disabled}
+        className="underline whitespace-nowrap disabled:opacity-50"
+      >
+        Refresh from ESRI
+      </button>
+    </div>
+  );
+};
+
 const DemographicsAnalysisSlideout: React.FC<Props> = ({
   isOpen,
   map,
   coordinates,
   onClose,
+  prefilled,
 }) => {
   const [selectedRadii, setSelectedRadii] = useState<number[]>(DEFAULT_RADII);
   const [selectedDriveTimes, setSelectedDriveTimes] =
@@ -138,26 +202,44 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const { isEnriching, enrichError, enrichLocation, enrichPolygon, clearError } =
     usePropertyGeoenrichment();
 
-  // Reset state whenever a new location is opened.
+  // Reset state whenever a new location is opened. Prefilled cache
+  // clicks seed the relevant slice of state instead of clearing it.
   useEffect(() => {
-    if (isOpen && coordinates) {
+    if (!isOpen || !coordinates) return;
+
+    setRingColors({});
+    setDriveTimeColors({});
+    setPolygonColor(DEFAULT_OVERLAY_COLOR);
+    setStrokeOpacity(DEFAULT_STROKE_OPACITY);
+    setFillOpacity(DEFAULT_FILL_OPACITY);
+    setStrokeWeight(DEFAULT_STROKE_WEIGHT);
+    setShowStylePanel(false);
+    setShowModal(false);
+    clearError();
+
+    if (prefilled?.mode === 'rings') {
+      setResult(prefilled.result);
+      setSelectedRadii(prefilled.radii ?? DEFAULT_RADII);
+      setSelectedDriveTimes(prefilled.driveTimes ?? []);
+      setPolygonDrawing(false);
+      setPolygonCoords(null);
+      setPolygonResult(null);
+    } else if (prefilled?.mode === 'polygon') {
+      setResult(null);
+      setSelectedRadii([]);
+      setSelectedDriveTimes([]);
+      setPolygonDrawing(false);
+      setPolygonCoords(prefilled.polygonCoordinates ?? null);
+      setPolygonResult(prefilled.result);
+    } else {
       setResult(null);
       setSelectedRadii(DEFAULT_RADII);
       setSelectedDriveTimes(DEFAULT_DRIVE_TIMES);
       setPolygonDrawing(false);
       setPolygonCoords(null);
       setPolygonResult(null);
-      setRingColors({});
-      setDriveTimeColors({});
-      setPolygonColor(DEFAULT_OVERLAY_COLOR);
-      setStrokeOpacity(DEFAULT_STROKE_OPACITY);
-      setFillOpacity(DEFAULT_FILL_OPACITY);
-      setStrokeWeight(DEFAULT_STROKE_WEIGHT);
-      setShowStylePanel(false);
-      setShowModal(false);
-      clearError();
     }
-  }, [isOpen, coordinates?.lat, coordinates?.lng]);
+  }, [isOpen, coordinates?.lat, coordinates?.lng, prefilled]);
 
   const sortedRadii = useMemo(
     () => [...selectedRadii].sort((a, b) => a - b),
@@ -207,7 +289,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     // require a re-fetch to draw a new ring set).
   };
 
-  const handleFetch = async () => {
+  const handleFetch = async (forceRefresh = false) => {
     if (!coordinates || (selectedRadii.length === 0 && selectedDriveTimes.length === 0)) {
       return;
     }
@@ -217,6 +299,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
       coordinates.lng,
       sortedRadii,
       sortedDriveTimes,
+      forceRefresh,
     );
     if (r) setResult(r);
   };
@@ -233,10 +316,10 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     setPolygonResult(null);
   };
 
-  const handleFetchPolygon = async () => {
+  const handleFetchPolygon = async (forceRefresh = false) => {
     if (!polygonCoords) return;
     clearError();
-    const r = await enrichPolygon(polygonCoords);
+    const r = await enrichPolygon(polygonCoords, forceRefresh);
     if (r) setPolygonResult(r);
   };
 
@@ -547,7 +630,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
 
             <button
               type="button"
-              onClick={handleFetch}
+              onClick={() => handleFetch(false)}
               disabled={
                 isEnriching ||
                 (selectedRadii.length === 0 && selectedDriveTimes.length === 0)
@@ -584,6 +667,13 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                 'Fetch demographics'
               )}
             </button>
+            {result?.cached_at && (
+              <CachedBadge
+                cachedAt={result.cached_at}
+                onRefresh={() => handleFetch(true)}
+                disabled={isEnriching}
+              />
+            )}
             {enrichError && (
               <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
                 {enrichError}
@@ -801,7 +891,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                 <>
                   <button
                     type="button"
-                    onClick={handleFetchPolygon}
+                    onClick={() => handleFetchPolygon(false)}
                     disabled={isEnriching}
                     className="px-3 py-1.5 text-sm rounded-md transition-colors disabled:opacity-50"
                     style={{ backgroundColor: BRAND.midnight, color: '#FFFFFF' }}
@@ -828,6 +918,14 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                 </>
               )}
             </div>
+
+            {polygonResult?.cached_at && (
+              <CachedBadge
+                cachedAt={polygonResult.cached_at}
+                onRefresh={() => handleFetchPolygon(true)}
+                disabled={isEnriching}
+              />
+            )}
 
             {polygonCoords && (
               <div
