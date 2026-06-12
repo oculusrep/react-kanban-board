@@ -386,7 +386,9 @@ const PaymentDashboardPage: React.FC = () => {
       filtered = filtered.filter(p =>
         p.deal_name.toLowerCase().includes(query) ||
         p.broker_splits.some(b => b.broker_name.toLowerCase().includes(query)) ||
-        (p.referral_payee_name && p.referral_payee_name.toLowerCase().includes(query))
+        (p.referral_payee_name && p.referral_payee_name.toLowerCase().includes(query)) ||
+        (p.qb_invoice_number && p.qb_invoice_number.toLowerCase().includes(query)) ||
+        (p.orep_invoice && p.orep_invoice.toLowerCase().includes(query))
       );
     }
 

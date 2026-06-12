@@ -88,7 +88,7 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
           type="text"
           value={filters.searchQuery}
           onChange={(e) => onFilterChange({ searchQuery: e.target.value })}
-          placeholder="Search deals, brokers..."
+          placeholder="Search deals, brokers, invoice #..."
           className="w-full pl-9 pr-8 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         />
         {filters.searchQuery && (
