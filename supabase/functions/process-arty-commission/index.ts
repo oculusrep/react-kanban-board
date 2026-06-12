@@ -36,19 +36,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface EmailOverrides {
+  to?: string[];
+  cc?: string[];
+  subject?: string;
+  body_text?: string;
+}
+
 interface ProcessCommissionRequest {
   payment_split_id: string;
   skip_email?: boolean;
   preview_only?: boolean;  // If true, just return the breakdown without creating anything
+  email_overrides?: EmailOverrides;
 }
 
 interface ProcessCommissionResult {
   success: boolean;
   broker_name: string;
   deal_name: string;
+  payment_name?: string;
   gross_commission: number;
   draw_balance: number;
   net_payment: number;
+  // Draw math (preview): draw_before is the QB balance before applying this commission,
+  // credit_applied is the portion of this commission that pays down the draw,
+  // draw_after is the remaining draw after the credit is applied.
+  draw_before?: number;
+  credit_applied?: number;
+  draw_after?: number;
+  arty_email?: string;
+  default_cc?: string[];
+  email_subject?: string;
+  email_body_text?: string;
   journal_entry?: {
     id: string;
     doc_number: string;
@@ -59,6 +78,53 @@ interface ProcessCommissionResult {
   };
   email_sent?: boolean;
   error?: string;
+}
+
+const DEFAULT_CC = ['mike@oculusrep.com'];
+const ARTY_DRAW_REPORT_URL = 'https://ovis.oculusrep.com/reports/arty-draw';
+
+function formatCurrencyUSD(amount: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+}
+
+function renderArtyEmail(params: {
+  brokerFirstName: string;
+  dealName: string;
+  paymentName: string;
+  grossCommission: number;
+  drawBefore: number;
+  creditApplied: number;
+  drawAfter: number;
+  netPayment: number;
+  senderName: string;
+}): { subject: string; bodyText: string } {
+  const { brokerFirstName, dealName, paymentName, grossCommission, drawBefore, creditApplied, drawAfter, netPayment, senderName } = params;
+
+  const directDepositLine = netPayment > 0
+    ? `\nAfter zeroing out your draw, you will receive a direct deposit in the amount of ${formatCurrencyUSD(netPayment)} once this payment clears the account.\n`
+    : '';
+
+  const subject = `Commission Payment Received — ${dealName} (${paymentName})`;
+  const bodyText = `Hi ${brokerFirstName},
+
+We've received payment for ${dealName} — ${paymentName}.
+
+Your net commission on this payment is ${formatCurrencyUSD(grossCommission)}.
+
+Draw balance before:    ${formatCurrencyUSD(drawBefore)}
+Less credit applied:    (${formatCurrencyUSD(creditApplied)})
+Draw balance after:     ${formatCurrencyUSD(drawAfter)}
+${directDepositLine}
+You can view your full draw report here:
+${ARTY_DRAW_REPORT_URL}
+
+
+Thank you for your hard work on this!
+
+— ${senderName}
+OVIS Commercial Real Estate`;
+
+  return { subject, bodyText };
 }
 
 serve(async (req) => {
@@ -209,19 +275,58 @@ serve(async (req) => {
 
     // QBO may return CurrentBalance or CurrentBalanceWithSubAccounts depending on account type
     const drawBalance = accountResult.Account.CurrentBalance ?? accountResult.Account.CurrentBalanceWithSubAccounts ?? 0;
+    const creditApplied = Math.min(grossCommission, drawBalance);
+    const drawAfter = Math.max(0, drawBalance - grossCommission);
     const netPayment = Math.max(0, grossCommission - drawBalance);
 
-    console.log(`[ProcessArtyCommission] Draw balance: $${drawBalance}, Net payment: $${netPayment}`);
+    console.log(`[ProcessArtyCommission] Draw balance: $${drawBalance}, Credit applied: $${creditApplied}, Draw after: $${drawAfter}, Net payment: $${netPayment}`);
 
-    // If preview_only, return the breakdown without creating anything
+    // If preview_only, return the breakdown + rendered email template without creating anything
     if (request.preview_only) {
+      // Look up Arty's email and sender name so the modal can show a real preview
+      const { data: brokerUserData } = await supabase
+        .from('user')
+        .select('email')
+        .ilike('name', `%${broker.name}%`)
+        .single();
+      const artyEmail = brokerUserData?.email || null;
+
+      const { data: senderData } = await supabase
+        .from('user')
+        .select('name, first_name, last_name')
+        .eq('id', internalUserId)
+        .single();
+      const senderName = senderData?.first_name && senderData?.last_name
+        ? `${senderData.first_name} ${senderData.last_name}`
+        : senderData?.name || 'OVIS';
+
+      const { subject: previewSubject, bodyText: previewBody } = renderArtyEmail({
+        brokerFirstName: broker.name.split(' ')[0],
+        dealName,
+        paymentName,
+        grossCommission,
+        drawBefore: drawBalance,
+        creditApplied,
+        drawAfter,
+        netPayment,
+        senderName,
+      });
+
       const previewResult: ProcessCommissionResult = {
         success: true,
         broker_name: broker.name,
         deal_name: dealName,
+        payment_name: paymentName,
         gross_commission: grossCommission,
         draw_balance: drawBalance,
+        draw_before: drawBalance,
+        credit_applied: creditApplied,
+        draw_after: drawAfter,
         net_payment: netPayment,
+        arty_email: artyEmail ?? undefined,
+        default_cc: DEFAULT_CC,
+        email_subject: previewSubject,
+        email_body_text: previewBody,
       };
 
       return new Response(
@@ -424,34 +529,32 @@ serve(async (req) => {
               ? `${senderData.first_name} ${senderData.last_name}`
               : senderData?.name || 'OVIS';
 
-            const formatCurrency = (amount: number) =>
-              new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+            // Render the default subject/body using the shared template; the caller can
+            // override either by passing email_overrides (from the preview-and-send modal).
+            const { subject: defaultSubject, bodyText: defaultBodyText } = renderArtyEmail({
+              brokerFirstName: broker.name.split(' ')[0],
+              dealName,
+              paymentName,
+              grossCommission,
+              drawBefore: drawBalance,
+              creditApplied,
+              drawAfter,
+              netPayment,
+              senderName,
+            });
 
-            const subject = `Commission Payment - ${dealName}`;
-            const bodyText = `Hi ${broker.name.split(' ')[0]},
-
-A commission payment for ${dealName} has been processed.
-
-COMMISSION BREAKDOWN:
------------------------------------------
-Gross Commission:        ${formatCurrency(grossCommission)}
-Less Draw Balance:       (${formatCurrency(drawBalance)})
------------------------------------------
-Net Payment:             ${formatCurrency(netPayment)}
-
-${netPayment > 0
-  ? 'This amount will be deposited via direct deposit.'
-  : 'This commission has been applied to your outstanding draw balance.'}
-
-Best,
-${senderName}
-OVIS Commercial Real Estate`;
+            const overrides = request.email_overrides || {};
+            const toList = overrides.to && overrides.to.length > 0 ? overrides.to : [brokerEmail];
+            const ccList = overrides.cc !== undefined ? overrides.cc : DEFAULT_CC;
+            const subject = overrides.subject ?? defaultSubject;
+            const bodyText = overrides.body_text ?? defaultBodyText;
 
             await sendEmail(
               accessToken,
               gmailConn.google_email,
               {
-                to: [brokerEmail],
+                to: toList,
+                cc: ccList && ccList.length > 0 ? ccList : undefined,
                 subject,
                 bodyText,
                 fromName: senderName,
@@ -459,7 +562,7 @@ OVIS Commercial Real Estate`;
             );
 
             emailSent = true;
-            console.log(`[ProcessArtyCommission] Email sent to ${brokerEmail}`);
+            console.log(`[ProcessArtyCommission] Email sent to ${toList.join(', ')}${ccList && ccList.length > 0 ? ` (cc: ${ccList.join(', ')})` : ''}`);
           }
         }
       } catch (emailErr) {
@@ -475,8 +578,12 @@ OVIS Commercial Real Estate`;
       success: true,
       broker_name: broker.name,
       deal_name: dealName,
+      payment_name: paymentName,
       gross_commission: grossCommission,
       draw_balance: drawBalance,
+      draw_before: drawBalance,
+      credit_applied: creditApplied,
+      draw_after: drawAfter,
       net_payment: netPayment,
       journal_entry: jeResult ? {
         id: jeResult.Id,
