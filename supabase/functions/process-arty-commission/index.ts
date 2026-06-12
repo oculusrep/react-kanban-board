@@ -68,6 +68,7 @@ interface ProcessCommissionResult {
   default_cc?: string[];
   email_subject?: string;
   email_body_text?: string;
+  email_signature_html?: string;
   journal_entry?: {
     id: string;
     doc_number: string;
@@ -96,9 +97,8 @@ function renderArtyEmail(params: {
   creditApplied: number;
   drawAfter: number;
   netPayment: number;
-  senderName: string;
 }): { subject: string; bodyText: string } {
-  const { brokerFirstName, dealName, paymentName, grossCommission, drawBefore, creditApplied, drawAfter, netPayment, senderName } = params;
+  const { brokerFirstName, dealName, paymentName, grossCommission, drawBefore, creditApplied, drawAfter, netPayment } = params;
 
   const directDepositLine = netPayment > 0
     ? `\nAfter zeroing out your draw, you will receive a direct deposit in the amount of ${formatCurrencyUSD(netPayment)} once this payment clears the account.\n`
@@ -111,20 +111,38 @@ We've received payment for ${dealName} — ${paymentName}.
 
 Your net commission on this payment is ${formatCurrencyUSD(grossCommission)}.
 
-Draw balance before:    ${formatCurrencyUSD(drawBefore)}
-Less credit applied:    (${formatCurrencyUSD(creditApplied)})
-Draw balance after:     ${formatCurrencyUSD(drawAfter)}
+Draw balance before: ${formatCurrencyUSD(drawBefore)}
+Less credit applied: (${formatCurrencyUSD(creditApplied)})
+Draw balance after:  ${formatCurrencyUSD(drawAfter)}
 ${directDepositLine}
 You can view your full draw report here:
 ${ARTY_DRAW_REPORT_URL}
 
 
-Thank you for your hard work on this!
-
-— ${senderName}
-OVIS Commercial Real Estate`;
+Thank you for your hard work on this!`;
 
   return { subject, bodyText };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Convert the editable plain-text body into an HTML body, preserving line breaks,
+// auto-linking the arty-draw report URL, and appending the sender's saved signature.
+function buildHtmlBody(bodyText: string, signatureHtml: string | null): string {
+  const escaped = escapeHtml(bodyText);
+  const linked = escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" style="color:#1155cc;">$1</a>'
+  );
+  const bodyBlock =
+    `<div style="white-space: pre-wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; color: #222;">${linked}</div>`;
+  const sigBlock = signatureHtml ? `<br>${signatureHtml}` : '';
+  return bodyBlock + sigBlock;
 }
 
 serve(async (req) => {
@@ -283,7 +301,7 @@ serve(async (req) => {
 
     // If preview_only, return the breakdown + rendered email template without creating anything
     if (request.preview_only) {
-      // Look up Arty's email and sender name so the modal can show a real preview
+      // Look up Arty's email so the modal can show a real preview
       const { data: brokerUserData } = await supabase
         .from('user')
         .select('email')
@@ -291,14 +309,14 @@ serve(async (req) => {
         .single();
       const artyEmail = brokerUserData?.email || null;
 
-      const { data: senderData } = await supabase
-        .from('user')
-        .select('name, first_name, last_name')
-        .eq('id', internalUserId)
-        .single();
-      const senderName = senderData?.first_name && senderData?.last_name
-        ? `${senderData.first_name} ${senderData.last_name}`
-        : senderData?.name || 'OVIS';
+      // Look up the calling user's default email signature (auto-appended on send)
+      const { data: sigData } = await supabase
+        .from('user_email_signature')
+        .select('signature_html')
+        .eq('user_id', internalUserId)
+        .eq('is_default', true)
+        .maybeSingle();
+      const signatureHtml = sigData?.signature_html || null;
 
       const { subject: previewSubject, bodyText: previewBody } = renderArtyEmail({
         brokerFirstName: broker.name.split(' ')[0],
@@ -309,7 +327,6 @@ serve(async (req) => {
         creditApplied,
         drawAfter,
         netPayment,
-        senderName,
       });
 
       const previewResult: ProcessCommissionResult = {
@@ -327,6 +344,7 @@ serve(async (req) => {
         default_cc: DEFAULT_CC,
         email_subject: previewSubject,
         email_body_text: previewBody,
+        email_signature_html: signatureHtml ?? undefined,
       };
 
       return new Response(
@@ -529,6 +547,15 @@ serve(async (req) => {
               ? `${senderData.first_name} ${senderData.last_name}`
               : senderData?.name || 'OVIS';
 
+            // Look up the calling user's default signature; it gets appended as HTML below.
+            const { data: sigData } = await supabase
+              .from('user_email_signature')
+              .select('signature_html')
+              .eq('user_id', internalUserId)
+              .eq('is_default', true)
+              .maybeSingle();
+            const signatureHtml = sigData?.signature_html || null;
+
             // Render the default subject/body using the shared template; the caller can
             // override either by passing email_overrides (from the preview-and-send modal).
             const { subject: defaultSubject, bodyText: defaultBodyText } = renderArtyEmail({
@@ -540,7 +567,6 @@ serve(async (req) => {
               creditApplied,
               drawAfter,
               netPayment,
-              senderName,
             });
 
             const overrides = request.email_overrides || {};
@@ -548,6 +574,7 @@ serve(async (req) => {
             const ccList = overrides.cc !== undefined ? overrides.cc : DEFAULT_CC;
             const subject = overrides.subject ?? defaultSubject;
             const bodyText = overrides.body_text ?? defaultBodyText;
+            const bodyHtml = buildHtmlBody(bodyText, signatureHtml);
 
             await sendEmail(
               accessToken,
@@ -557,6 +584,7 @@ serve(async (req) => {
                 cc: ccList && ccList.length > 0 ? ccList : undefined,
                 subject,
                 bodyText,
+                bodyHtml,
                 fromName: senderName,
               }
             );

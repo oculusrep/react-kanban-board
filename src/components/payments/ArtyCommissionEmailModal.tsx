@@ -21,6 +21,7 @@ interface ArtyCommissionPreviewResponse {
   default_cc?: string[];
   email_subject?: string;
   email_body_text?: string;
+  email_signature_html?: string;
   error?: string;
 }
 
@@ -315,6 +316,21 @@ const ArtyCommissionEmailModal: React.FC<ArtyCommissionEmailModalProps> = ({
                       className="w-full px-3 py-2 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+                  {preview.email_signature_html ? (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Signature (your saved default, appended automatically)
+                      </label>
+                      <div
+                        className="border border-gray-200 bg-gray-50 rounded p-3 text-sm max-h-48 overflow-y-auto"
+                        dangerouslySetInnerHTML={{ __html: preview.email_signature_html }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                      No default email signature found on your user. The email will send without a signature — set one up under your Hunter settings if you want one appended.
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-blue-50 rounded-lg p-3 mt-4 text-sm text-blue-800">
