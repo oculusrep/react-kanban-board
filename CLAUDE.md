@@ -2,17 +2,11 @@
 
 ## Deployment
 
-**"Push to production" requires TWO steps. A `git push` alone does NOT deploy.**
-
-1. Get the commit onto `main` (via `git push origin main`).
-2. Run `vercel --prod` to actually ship.
-
-There is no GitHub→Vercel auto-deploy wired up. The production site is the Vercel project `ovis` (aliased to https://ovis.oculusrep.com), and prod deploys happen via the Vercel CLI only. When the user says "deploy", "push to production", or similar, always do both steps — and never assume the push was enough.
+**`git push origin main` deploys to production via the Vercel CLI integration.** The production site is the Vercel project `ovis` (aliased to https://ovis.oculusrep.com).
 
 Notes:
-- The Vercel build runs `vite build` (no `tsc` typecheck), so type errors don't block deploys but will still ship broken code — typecheck locally before deploying.
-- `vercel --prod` uploads the working tree. If there's unrelated uncommitted WIP, deploy from a clean checkout (e.g. a throwaway `git worktree`) so WIP doesn't ride along.
-- `vercel login` is interactive — Claude cannot authenticate; the user must.
+- The Vercel build runs `vite build` (no `tsc` typecheck), so type errors don't block deploys but will still ship broken code — typecheck locally before pushing.
+- A manual `vercel --prod` is also possible from a clean checkout if you need to redeploy a specific commit without pushing again.
 
 ## Timezone
 
