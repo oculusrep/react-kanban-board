@@ -23,6 +23,7 @@ import EmailComposerModal from '../EmailComposerModal';
 import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
 import DigestComposeModal from '../portal/DigestComposeModal';
 import { CLIENT_VISIBLE_STAGES } from '../client-pipeline/pipelineConfig';
+import { getDropboxPropertySyncService } from '../../services/dropboxPropertySync';
 import OpenTasksPanel from '../tasks/OpenTasksPanel';
 
 export interface SiteSubmitData {
@@ -53,6 +54,7 @@ export interface SiteSubmitData {
   client_id: string | null;
   assignment_id: string | null;
   deal_id: string | null;
+  deal_name: string | null;
   client_demographics?: Record<string, unknown> | null;
   created_at?: string | null;
   created_by_id?: string | null;
@@ -244,6 +246,9 @@ export default function SiteSubmitSidebar({
   const [pendingLoiStageChange, setPendingLoiStageChange] = useState<{ stageId: string; stageName: string } | null>(null);
   const [showLoiConversionPrompt, setShowLoiConversionPrompt] = useState(false);
   const [createFormKey, setCreateFormKey] = useState(0);
+  const [editingHeaderField, setEditingHeaderField] = useState<'site_submit_name' | 'deal_name' | null>(null);
+  const [headerEditValue, setHeaderEditValue] = useState('');
+  const [savingHeaderField, setSavingHeaderField] = useState(false);
 
   // Check if this is a new site submit creation
   const isNewSiteSubmit = initialData?._isNew === true && !siteSubmitId;
@@ -486,16 +491,17 @@ export default function SiteSubmitSidebar({
         // Fetch associated deal (if any)
         const { data: dealData } = await supabase
           .from('deal')
-          .select('id')
+          .select('id, deal_name')
           .eq('site_submit_id', siteSubmitId)
           .maybeSingle();
 
         if (!isMounted) return;
 
-        // Combine site submit data with deal_id
+        // Combine site submit data with deal_id + deal_name
         const siteSubmitData = {
           ...(data as unknown as SiteSubmitData),
           deal_id: dealData?.id || null,
+          deal_name: dealData?.deal_name || null,
         };
 
         setSiteSubmit(siteSubmitData);
@@ -620,6 +626,7 @@ export default function SiteSubmitSidebar({
           client_id: dealRow.client_id ?? null,
           assignment_id: dealRow.assignment_id ?? null,
           deal_id: dealRow.id,
+          deal_name: dealRow.deal_name ?? null,
           property,
           property_unit: null,
           submit_stage: null,
@@ -673,6 +680,7 @@ export default function SiteSubmitSidebar({
         client_id: initialData.client_id || null,
         assignment_id: null,
         deal_id: null,
+        deal_name: null,
         property: initialData.property || null,
         property_unit: null,
         submit_stage: initialData.submit_stage || null,
@@ -731,6 +739,90 @@ export default function SiteSubmitSidebar({
     setSiteSubmit(updatedSiteSubmit);
     if (onDataUpdate) {
       onDataUpdate(updatedSiteSubmit);
+    }
+  };
+
+  // Begin inline-edit for a header field (site submit name or deal name).
+  const startHeaderEdit = (field: 'site_submit_name' | 'deal_name') => {
+    if (!siteSubmit) return;
+    setHeaderEditValue(
+      field === 'site_submit_name'
+        ? siteSubmit.site_submit_name || ''
+        : siteSubmit.deal_name || ''
+    );
+    setEditingHeaderField(field);
+  };
+
+  const cancelHeaderEdit = () => {
+    setEditingHeaderField(null);
+    setHeaderEditValue('');
+  };
+
+  const saveHeaderEdit = async () => {
+    if (!siteSubmit || !editingHeaderField) return;
+    const trimmed = headerEditValue.trim();
+    const field = editingHeaderField;
+
+    setSavingHeaderField(true);
+    try {
+      if (field === 'site_submit_name') {
+        if (!siteSubmit.id) {
+          showToast('Save the site submit before renaming it', { type: 'error' });
+          return;
+        }
+        const { error: updateError } = await supabase
+          .from('site_submit')
+          .update({ site_submit_name: trimmed || null })
+          .eq('id', siteSubmit.id);
+        if (updateError) throw updateError;
+        handleUpdate({ site_submit_name: trimmed || null });
+        showToast('Site submit name updated', { type: 'success' });
+      } else {
+        if (!siteSubmit.deal_id) return;
+        const previousName = siteSubmit.deal_name || '';
+        const nextName = trimmed || null;
+        const { error: updateError } = await supabase
+          .from('deal')
+          .update({ deal_name: nextName })
+          .eq('id', siteSubmit.deal_id);
+        if (updateError) throw updateError;
+        handleUpdate({ deal_name: nextName });
+
+        // Mirror the deal page: keep the Dropbox folder name in sync. Best-effort —
+        // a Dropbox failure shouldn't roll back the DB write, just surface a toast.
+        if (previousName && nextName && previousName !== nextName) {
+          try {
+            const result = await getDropboxPropertySyncService().syncDealName(
+              siteSubmit.deal_id,
+              previousName,
+              nextName
+            );
+            if (!result.success) {
+              showToast(
+                `Deal renamed in OVIS, but Dropbox folder sync failed: ${result.error || 'Unknown error'}`,
+                { type: 'error', duration: 6000 }
+              );
+            } else {
+              showToast('Deal name updated', { type: 'success' });
+            }
+          } catch (syncErr) {
+            console.error('Dropbox deal sync threw:', syncErr);
+            showToast('Deal renamed in OVIS, but Dropbox folder sync threw an error.', {
+              type: 'error',
+              duration: 6000,
+            });
+          }
+        } else {
+          showToast('Deal name updated', { type: 'success' });
+        }
+      }
+      setEditingHeaderField(null);
+      setHeaderEditValue('');
+    } catch (err) {
+      console.error('Error saving header field:', err);
+      showToast('Failed to save. Please try again.', { type: 'error' });
+    } finally {
+      setSavingHeaderField(false);
     }
   };
 
@@ -994,9 +1086,118 @@ export default function SiteSubmitSidebar({
 
         {/* Address and unit info */}
         <div className="mt-2">
-          <h3 className="text-white font-medium truncate">
-            {siteSubmit?.site_submit_name || `${siteSubmit?.property?.property_name || ''} - ${siteSubmit?.client?.client_name || ''}`}
-          </h3>
+          {(() => {
+            // h3 edits site_submit_name normally; in deal-direct mode (no site submit) it edits deal_name.
+            const h3Field: 'site_submit_name' | 'deal_name' = isDealDirectMode ? 'deal_name' : 'site_submit_name';
+            const h3Display = siteSubmit?.site_submit_name
+              || `${siteSubmit?.property?.property_name || ''} - ${siteSubmit?.client?.client_name || ''}`;
+            const h3Editable = isEditable && !!siteSubmit && (
+              isDealDirectMode ? !!siteSubmit.deal_id : !!siteSubmit.id
+            );
+            const isEditingH3 = editingHeaderField === h3Field;
+            return isEditingH3 ? (
+              <div className="flex items-center gap-1 bg-white/10 rounded px-1.5 py-0.5">
+                <input
+                  type="text"
+                  value={headerEditValue}
+                  onChange={(e) => setHeaderEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveHeaderEdit();
+                    if (e.key === 'Escape') cancelHeaderEdit();
+                  }}
+                  autoFocus
+                  disabled={savingHeaderField}
+                  className="flex-1 min-w-0 bg-white/20 text-white placeholder-white/50 text-sm font-medium px-2 py-0.5 rounded border border-white/30 focus:outline-none focus:ring-1 focus:ring-white/60"
+                  placeholder={isDealDirectMode ? 'Deal name…' : 'Site submit name…'}
+                />
+                <button
+                  onClick={cancelHeaderEdit}
+                  disabled={savingHeaderField}
+                  className="px-1.5 py-0.5 text-xs text-white/80 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveHeaderEdit}
+                  disabled={savingHeaderField}
+                  className="px-1.5 py-0.5 text-xs bg-white/20 hover:bg-white/30 text-white rounded disabled:opacity-50"
+                >
+                  {savingHeaderField ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 group">
+                <h3 className="text-white font-medium truncate flex-1 min-w-0">
+                  {h3Display}
+                </h3>
+                {h3Editable && (
+                  <button
+                    onClick={() => startHeaderEdit(h3Field)}
+                    className="p-1 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                    title={isDealDirectMode ? 'Edit deal name' : 'Edit site submit name'}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+          {/* Deal name (shown when this submit is linked to a deal and we have a real submit id) */}
+          {siteSubmit?.deal_id && !isDealDirectMode && (() => {
+            const dealEditable = isEditable;
+            const isEditingDeal = editingHeaderField === 'deal_name';
+            return isEditingDeal ? (
+              <div className="mt-1 flex items-center gap-1 bg-white/10 rounded px-1.5 py-0.5">
+                <span className="text-xs text-white/80 flex-shrink-0">Deal:</span>
+                <input
+                  type="text"
+                  value={headerEditValue}
+                  onChange={(e) => setHeaderEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveHeaderEdit();
+                    if (e.key === 'Escape') cancelHeaderEdit();
+                  }}
+                  autoFocus
+                  disabled={savingHeaderField}
+                  className="flex-1 min-w-0 bg-white/20 text-white placeholder-white/50 text-sm px-2 py-0.5 rounded border border-white/30 focus:outline-none focus:ring-1 focus:ring-white/60"
+                  placeholder="Deal name…"
+                />
+                <button
+                  onClick={cancelHeaderEdit}
+                  disabled={savingHeaderField}
+                  className="px-1.5 py-0.5 text-xs text-white/80 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveHeaderEdit}
+                  disabled={savingHeaderField}
+                  className="px-1.5 py-0.5 text-xs bg-white/20 hover:bg-white/30 text-white rounded disabled:opacity-50"
+                >
+                  {savingHeaderField ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-1 group">
+                <p className="text-xs text-white/90 truncate flex-1 min-w-0">
+                  <span className="text-white/70">Deal:</span> {siteSubmit.deal_name || 'Unnamed deal'}
+                </p>
+                {dealEditable && (
+                  <button
+                    onClick={() => startHeaderEdit('deal_name')}
+                    className="p-0.5 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                    title="Edit deal name"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           {siteSubmit?.property?.address && (
             <div className="flex items-center gap-2">
               <p className="text-sm text-gray-300 truncate flex-1">
