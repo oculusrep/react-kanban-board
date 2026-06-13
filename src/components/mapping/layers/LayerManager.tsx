@@ -154,6 +154,16 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     requiresPermission: 'can_view_starbucks_layer',
   },
   {
+    id: 'starbucks_licensed_stores',
+    name: 'Starbucks: Licensed Stores',
+    type: 'starbucks',
+    icon: '🏷️',
+    description: 'Starbucks Licensed Store locations (Cafe / Drive Thru / Kiosk)',
+    defaultVisible: false,
+    isSystemLayer: true,
+    requiresPermission: 'can_view_starbucks_layer',
+  },
+  {
     id: 'starbucks_target_areas',
     name: 'Starbucks: GA Target Areas',
     type: 'starbucks',

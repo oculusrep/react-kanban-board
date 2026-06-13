@@ -13,6 +13,8 @@ import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalP
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
+import StarbucksLicensedStoreLayer, { type StarbucksLicensedStore } from '../components/mapping/layers/StarbucksLicensedStoreLayer';
+import StarbucksLicensedStoreContextMenu from '../components/mapping/StarbucksLicensedStoreContextMenu';
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
 import StarbucksTargetAreaToggle from '../components/mapping/layers/StarbucksTargetAreaToggle';
 import { useStarbucksTargetAreaStyles } from '../hooks/useStarbucksTargetAreaStyles';
@@ -126,6 +128,15 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | 'starbucks' | null>(null);
   const [selectedStarbucksStore, setSelectedStarbucksStore] = useState<any>(null);
   const [starbucksLogoUrl, setStarbucksLogoUrl] = useState<string | null>(null);
+
+  // Starbucks Licensed Store layer — verify mode + right-click menu
+  const [verifyingLicensedStoreNumber, setVerifyingLicensedStoreNumber] = useState<string | null>(null);
+  const [licensedStoreContextMenu, setLicensedStoreContextMenu] = useState<{
+    isVisible: boolean;
+    x: number;
+    y: number;
+    store: StarbucksLicensedStore | null;
+  }>({ isVisible: false, x: 0, y: 0, store: null });
 
   useEffect(() => {
     supabase
@@ -1664,6 +1675,55 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     }
   };
 
+  // Starbucks Licensed Store — right-click → context menu (Verify / Reset / Copy)
+  const handleLicensedStoreRightClick = (store: StarbucksLicensedStore, x: number, y: number) => {
+    setSiteSubmitContextMenu(prev => ({ ...prev, isVisible: false }));
+    setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
+    setSuppressMapContextMenu(true);
+    setTimeout(() => setSuppressMapContextMenu(false), 100);
+    setLicensedStoreContextMenu({ isVisible: true, x, y, store });
+  };
+
+  const handleLicensedStoreContextMenuClose = () => {
+    setLicensedStoreContextMenu(prev => ({ ...prev, isVisible: false }));
+  };
+
+  const handleLicensedStoreVerifyLocation = (storeNumber: string) => {
+    setVerifyingLicensedStoreNumber(storeNumber);
+    showToast('Drag the pin to adjust its location', { type: 'success' });
+  };
+
+  const handleLicensedStoreLocationVerified = async (storeNumber: string, lat: number, lng: number) => {
+    try {
+      const { error } = await supabase
+        .from('starbucks_licensed_store')
+        .update({ verified_latitude: lat, verified_longitude: lng })
+        .eq('store_number', storeNumber);
+      if (error) throw error;
+      showToast('Verified location saved', { type: 'success' });
+      setVerifyingLicensedStoreNumber(null);
+      refreshLayer('starbucks_licensed_stores');
+    } catch (e) {
+      console.error('Failed to save licensed-store verified location:', e);
+      showToast('Failed to save verified location', { type: 'error' });
+    }
+  };
+
+  const handleLicensedStoreResetLocation = async (storeNumber: string) => {
+    try {
+      const { error } = await supabase
+        .from('starbucks_licensed_store')
+        .update({ verified_latitude: null, verified_longitude: null })
+        .eq('store_number', storeNumber);
+      if (error) throw error;
+      showToast('Reset to original location', { type: 'success' });
+      refreshLayer('starbucks_licensed_stores');
+    } catch (e) {
+      console.error('Failed to reset licensed-store location:', e);
+      showToast('Failed to reset location', { type: 'error' });
+    }
+  };
+
   // Handle site submit deletion
   const handleDeleteSiteSubmit = async (siteSubmitId: string, siteSubmitName: string) => {
     console.log('🗑️ Delete site submit requested:', siteSubmitId, siteSubmitName);
@@ -2563,6 +2623,32 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       </div>
                     )}
 
+                    {/* Starbucks Licensed Stores — sibling layer to Starbucks Stores.
+                        Shown directly beneath the Starbucks Stores toggle. */}
+                    {hasPermission('can_view_starbucks_layer') && (
+                      <div className="p-2 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => toggleLayer('starbucks_licensed_stores')}
+                              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                                layerState.starbucks_licensed_stores?.isVisible ? 'bg-green-700' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                  layerState.starbucks_licensed_stores?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                            <span>🏷️</span>
+                            <span className="text-sm font-medium text-gray-900">Starbucks: Licensed Stores</span>
+                          </div>
+                          <span className="text-xs text-gray-400">Confidential</span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Starbucks GA target areas — same permission gate as Starbucks stores.
                         Toggle + inline style editor (per-priority color/opacity, localStorage-backed).
                         Re-enabling the master toggle resets all bucket checkboxes to visible so the
@@ -2966,6 +3052,15 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               }}
             />
 
+            {/* Starbucks Licensed Stores — confidential, permission-gated */}
+            <StarbucksLicensedStoreLayer
+              map={mapInstance}
+              isVisible={layerState.starbucks_licensed_stores?.isVisible || false}
+              verifyingStoreNumber={verifyingLicensedStoreNumber}
+              onLocationVerified={handleLicensedStoreLocationVerified}
+              onRightClick={handleLicensedStoreRightClick}
+            />
+
             {/* Starbucks Target Areas (polygons) — same permission gate as Starbucks Stores */}
             <StarbucksTargetAreaLayer
               map={mapInstance}
@@ -3153,6 +3248,17 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               onResetLocation={handleSiteSubmitResetLocation}
               onDelete={handleDeleteSiteSubmit}
               onClose={handleSiteSubmitContextMenuClose}
+            />
+
+            {/* Starbucks Licensed Store Context Menu — Verify / Reset / Copy */}
+            <StarbucksLicensedStoreContextMenu
+              x={licensedStoreContextMenu.x}
+              y={licensedStoreContextMenu.y}
+              isVisible={licensedStoreContextMenu.isVisible}
+              store={licensedStoreContextMenu.store}
+              onVerifyLocation={handleLicensedStoreVerifyLocation}
+              onResetLocation={handleLicensedStoreResetLocation}
+              onClose={handleLicensedStoreContextMenuClose}
             />
 
             {/* Restaurant Context Menu for Right-Click on Restaurants */}
