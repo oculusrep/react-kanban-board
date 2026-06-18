@@ -25,7 +25,7 @@ const BRAND = {
 const AVAILABLE_RADII = [1, 2, 3, 5, 10] as const;
 const DEFAULT_RADII = [1, 3, 5];
 
-const AVAILABLE_DRIVE_TIMES = [5, 10, 15] as const;
+const AVAILABLE_DRIVE_TIMES = [5, 7, 10, 15] as const;
 const DEFAULT_DRIVE_TIMES = [5, 10, 15];
 
 // All ring + drive-time overlays default to red. The user can recolor
@@ -191,7 +191,12 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   // across selection toggles means re-checking a ring keeps your chosen
   // color.
   const [ringColors, setRingColors] = useState<Record<number, string>>({});
-  const [driveTimeColors, setDriveTimeColors] = useState<Record<number, string>>({});
+  // Drive-time bands support per-band fill color, line color, and fill
+  // opacity. Line color defaults to the fill color when unset, so a user
+  // who only picks one color still gets a matching outline.
+  const [driveTimeFillColors, setDriveTimeFillColors] = useState<Record<number, string>>({});
+  const [driveTimeLineColors, setDriveTimeLineColors] = useState<Record<number, string>>({});
+  const [driveTimeFillOpacities, setDriveTimeFillOpacities] = useState<Record<number, number>>({});
   const [polygonColor, setPolygonColor] = useState(DEFAULT_OVERLAY_COLOR);
   const [strokeOpacity, setStrokeOpacity] = useState(DEFAULT_STROKE_OPACITY);
   const [fillOpacity, setFillOpacity] = useState(DEFAULT_FILL_OPACITY);
@@ -208,7 +213,9 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     if (!isOpen || !coordinates) return;
 
     setRingColors({});
-    setDriveTimeColors({});
+    setDriveTimeFillColors({});
+    setDriveTimeLineColors({});
+    setDriveTimeFillOpacities({});
     setPolygonColor(DEFAULT_OVERLAY_COLOR);
     setStrokeOpacity(DEFAULT_STROKE_OPACITY);
     setFillOpacity(DEFAULT_FILL_OPACITY);
@@ -262,11 +269,20 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
 
   const driveTimeStyles = useMemo(
     () =>
-      sortedDriveTimes.map((minutes) => ({
-        minutes,
-        color: driveTimeColors[minutes] ?? DEFAULT_OVERLAY_COLOR,
-      })),
-    [sortedDriveTimes, driveTimeColors],
+      sortedDriveTimes.map((minutes) => {
+        const fillColor = driveTimeFillColors[minutes] ?? DEFAULT_OVERLAY_COLOR;
+        return {
+          minutes,
+          fillColor,
+          // Line color falls back to the band's fill color so single-color
+          // edits stay coherent without forcing two pickers per band.
+          lineColor: driveTimeLineColors[minutes] ?? fillColor,
+          // Per-band fill opacity overrides the slideout's global fill
+          // opacity for this isochrone only.
+          fillOpacity: driveTimeFillOpacities[minutes] ?? fillOpacity,
+        };
+      }),
+    [sortedDriveTimes, driveTimeFillColors, driveTimeLineColors, driveTimeFillOpacities, fillOpacity],
   );
 
   if (!isOpen || !coordinates) return null;
@@ -341,7 +357,6 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
         map={map}
         isochrones={result?.isochrones ?? null}
         bands={driveTimeStyles}
-        fillOpacity={fillOpacity}
         strokeOpacity={strokeOpacity}
         strokeWeight={strokeWeight}
         isVisible
@@ -538,26 +553,71 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                   {sortedDriveTimes.length > 0 && (
                     <div>
                       <div className="text-[11px] mb-1" style={{ color: BRAND.slate }}>
-                        Drive-time colors
+                        Drive-time styles
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {sortedDriveTimes.map((m) => (
-                          <label
-                            key={m}
-                            className="flex items-center gap-1.5 text-xs"
-                            style={{ color: BRAND.steel }}
-                          >
-                            <input
-                              type="color"
-                              value={driveTimeColors[m] ?? DEFAULT_OVERLAY_COLOR}
-                              onChange={(e) =>
-                                setDriveTimeColors((prev) => ({ ...prev, [m]: e.target.value }))
-                              }
-                              className="w-7 h-5 border border-gray-300 rounded cursor-pointer"
-                            />
-                            {m} min
-                          </label>
-                        ))}
+                      <div className="space-y-1.5">
+                        {sortedDriveTimes.map((m) => {
+                          const fillColor = driveTimeFillColors[m] ?? DEFAULT_OVERLAY_COLOR;
+                          const lineColor = driveTimeLineColors[m] ?? fillColor;
+                          const bandFillOpacity = driveTimeFillOpacities[m] ?? fillOpacity;
+                          return (
+                            <div
+                              key={m}
+                              className="grid items-center gap-2 text-xs"
+                              style={{
+                                color: BRAND.steel,
+                                gridTemplateColumns: '3rem auto auto 1fr 2.5rem',
+                              }}
+                            >
+                              <span>{m} min</span>
+                              <label className="flex items-center gap-1" title="Fill color">
+                                <span className="text-[10px]" style={{ color: BRAND.slate }}>F</span>
+                                <input
+                                  type="color"
+                                  value={fillColor}
+                                  onChange={(e) =>
+                                    setDriveTimeFillColors((prev) => ({
+                                      ...prev,
+                                      [m]: e.target.value,
+                                    }))
+                                  }
+                                  className="w-6 h-5 border border-gray-300 rounded cursor-pointer"
+                                />
+                              </label>
+                              <label className="flex items-center gap-1" title="Line color">
+                                <span className="text-[10px]" style={{ color: BRAND.slate }}>L</span>
+                                <input
+                                  type="color"
+                                  value={lineColor}
+                                  onChange={(e) =>
+                                    setDriveTimeLineColors((prev) => ({
+                                      ...prev,
+                                      [m]: e.target.value,
+                                    }))
+                                  }
+                                  className="w-6 h-5 border border-gray-300 rounded cursor-pointer"
+                                />
+                              </label>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                value={Math.round(bandFillOpacity * 100)}
+                                onChange={(e) =>
+                                  setDriveTimeFillOpacities((prev) => ({
+                                    ...prev,
+                                    [m]: Number(e.target.value) / 100,
+                                  }))
+                                }
+                                className="w-full"
+                                title="Fill opacity"
+                              />
+                              <span className="text-[10px] text-right" style={{ color: BRAND.slate }}>
+                                {Math.round(bandFillOpacity * 100)}%
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -612,7 +672,9 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                       type="button"
                       onClick={() => {
                         setRingColors({});
-                        setDriveTimeColors({});
+                        setDriveTimeFillColors({});
+                        setDriveTimeLineColors({});
+                        setDriveTimeFillOpacities({});
                         setPolygonColor(DEFAULT_OVERLAY_COLOR);
                         setStrokeOpacity(DEFAULT_STROKE_OPACITY);
                         setFillOpacity(DEFAULT_FILL_OPACITY);
