@@ -121,3 +121,16 @@ Total: ~3-4 days of focused work for all three, assuming the existing ESRI pipel
 - **Which ring/drive-time defaults?** Currently rings default to 1/3/5 mi; drive-time defaults to 10 min only. For the new UI I'd default rings to 1/3/5 (matches stored property data so caching is trivial) and drive-time to 5/10/15 (more useful for site analysis).
 - **Variable set.** The edge function only requests the seven core variables ([line 47-69](../supabase/functions/esri-geoenrich/index.ts#L47)). Should the custom-polygon flow optionally request a larger variable set (consumer spending, retail potential, etc.)? Each extra variable adds credits.
 - **Marker source for Phase 1.** Should "Demographics here" open from any pin (property, site submit, raw map click) or only the map context menu? Recommend all three.
+
+## Recent enhancements
+
+### 2026-06-18 — 7-minute drive-time + per-band styling
+
+User-driven tweaks to the Ad-hoc location demographics sidebar ([DemographicsAnalysisSlideout.tsx](../src/components/mapping/slideouts/DemographicsAnalysisSlideout.tsx)):
+
+- **Added 7 min** to the drive-time button row (now 5 / 7 / 10 / 15). The ESRI edge function takes `driveTimes` straight through to `bufferRadii` and returns `7min_drive` keyed isochrones, so no backend or schema change was needed. Defaults stay at 5/10/15 — 7 is opt-in.
+- **Per-band drive-time styling.** Each selected drive-time band now exposes three controls in the Layer style panel: fill color (F), line color (L), and a fill-opacity slider. Line color defaults to the band's fill color so single-color edits stay coherent. Line opacity and line weight remain global to the layer.
+
+[DemographicIsochronesOverlay.tsx](../src/components/mapping/layers/DemographicIsochronesOverlay.tsx) now takes `bands: { minutes, fillColor, lineColor, fillOpacity }[]` instead of a single per-band `color` plus a global `fillOpacity`. The cached `*_10min_drive` property columns are not affected — they're a separate downstream concern (property-pin pre-cache), not an ad-hoc-sidebar concern.
+
+Shipped in commit `49a57a18`.
