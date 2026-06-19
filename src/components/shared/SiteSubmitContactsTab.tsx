@@ -173,6 +173,10 @@ export default function SiteSubmitContactsTab({
   const [showAddDealModal, setShowAddDealModal] = useState(false);
   const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
+  // When the user clicks "+ New Contact" from inside the deal picker, the
+  // newly-created contact should attach to the deal (mirrors how the
+  // property picker attaches a new contact to the property).
+  const [creatingNewForDeal, setCreatingNewForDeal] = useState(false);
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -501,6 +505,12 @@ export default function SiteSubmitContactsTab({
             loadDealContacts();
             setShowAddDealModal(false);
           }}
+          onCreateNew={() => {
+            setShowAddDealModal(false);
+            setCreatingNewForDeal(true);
+            setEditingContactId(null);
+            setShowContactForm(true);
+          }}
         />
       )}
 
@@ -511,18 +521,40 @@ export default function SiteSubmitContactsTab({
           onClose={() => {
             setShowContactForm(false);
             setEditingContactId(null);
+            setCreatingNewForDeal(false);
           }}
-          propertyId={propertyId}
+          // When creating-for-deal, skip the property auto-attach so the new
+          // contact lands on the deal instead. Editing existing contacts and
+          // the standalone "New Contact" affordance keep the property attach.
+          propertyId={creatingNewForDeal ? undefined : propertyId}
           contactId={editingContactId || undefined}
-          onSave={() => {
+          onSave={async (newContact) => {
+            if (creatingNewForDeal && dealId && newContact?.id) {
+              try {
+                const { error } = await supabase
+                  .from('deal_contact')
+                  .insert(prepareInsert([{
+                    deal_id: dealId,
+                    contact_id: newContact.id,
+                    primary_contact: false,
+                    role_id: null,
+                  }]));
+                if (error) throw error;
+              } catch (err) {
+                console.error('Failed to attach new contact to deal:', err);
+                alert('Contact saved but could not be attached to the deal. You can add it via the picker.');
+              }
+            }
             reloadAll();
             setShowContactForm(false);
             setEditingContactId(null);
+            setCreatingNewForDeal(false);
           }}
           onUpdate={() => {
             reloadAll();
             setShowContactForm(false);
             setEditingContactId(null);
+            setCreatingNewForDeal(false);
           }}
         />
       )}
@@ -539,12 +571,14 @@ function AddDealContactsModal({
   dealId,
   existingContactIds,
   onContactsAdded,
+  onCreateNew,
 }: {
   isOpen: boolean;
   onClose: () => void;
   dealId: string;
   existingContactIds: string[];
   onContactsAdded: () => void;
+  onCreateNew?: () => void;
 }) {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<Contact[]>([]);
@@ -645,7 +679,20 @@ function AddDealContactsModal({
             <div className="text-xs text-gray-500">Searching…</div>
           )}
           {!searching && search.trim().length >= 2 && results.length === 0 && (
-            <div className="text-xs text-gray-500">No matching contacts.</div>
+            <div className="space-y-2">
+              <div className="text-xs text-gray-500">No matching contacts.</div>
+              {onCreateNew && (
+                <button
+                  onClick={onCreateNew}
+                  className="inline-flex items-center px-3 py-1.5 text-xs text-white bg-green-600 hover:bg-green-700 rounded"
+                >
+                  <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Contact
+                </button>
+              )}
+            </div>
           )}
           <div className="space-y-1">
             {results.map(c => {
@@ -679,20 +726,35 @@ function AddDealContactsModal({
             })}
           </div>
         </div>
-        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={selectedIds.size === 0 || saving}
-            className="px-3 py-1.5 text-sm text-white bg-green-600 hover:bg-green-700 rounded disabled:opacity-50"
-          >
-            {saving ? 'Adding…' : `Add ${selectedIds.size || ''}`.trim()}
-          </button>
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between gap-2">
+          <div>
+            {onCreateNew && (
+              <button
+                onClick={onCreateNew}
+                className="inline-flex items-center px-3 py-1.5 text-sm text-green-700 border border-green-600 hover:bg-green-50 rounded"
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New Contact
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={selectedIds.size === 0 || saving}
+              className="px-3 py-1.5 text-sm text-white bg-green-600 hover:bg-green-700 rounded disabled:opacity-50"
+            >
+              {saving ? 'Adding…' : `Add ${selectedIds.size || ''}`.trim()}
+            </button>
+          </div>
         </div>
       </div>
     </div>
