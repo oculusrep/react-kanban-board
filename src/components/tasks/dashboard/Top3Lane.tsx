@@ -166,7 +166,14 @@ export const Top3Lane: React.FC<Top3LaneProps> = ({ ownerId, viewDate, onTaskCha
       <TaskDetailSlideout
         taskId={openTaskId}
         onClose={() => setOpenTaskId(null)}
-        onChanged={refetch}
+        onChanged={() => {
+          refetch();
+          // Bump the dashboard refresh so TodaysTimeline's block instances
+          // refetch — otherwise edits made here (e.g. duration_minutes on a
+          // task that's also scheduled in a block) leave the capacity bar
+          // stale.
+          onTaskChanged?.();
+        }}
       />
     </>
   );
