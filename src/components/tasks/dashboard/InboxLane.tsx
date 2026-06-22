@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Draggable, Droppable } from '@hello-pangea/dnd';
 import {
   blockTask,
@@ -12,6 +12,7 @@ import {
   useBlockInstancesForDate,
 } from '../../../hooks/useTaskBlocks';
 import { TaskWithRelations } from '../../../types/task';
+import { BlockInstanceWithTasks } from '../../../types/taskBlock';
 import { isOverdue } from '../../../lib/taskOverdue';
 import BlockTaskModal from '../BlockTaskModal';
 import CategoryDropdown from '../CategoryDropdown';
@@ -48,6 +49,87 @@ const ageLabel = (createdAt: string): string => {
   if (days === 0) return 'today';
   if (days === 1) return '1d ago';
   return `${days}d ago`;
+};
+
+// Default schedule date for an inbox row: prefer the task's own due date when
+// it's later than the lane's viewDate, so triaging a future-due task lands it
+// on the due day's blocks rather than today's. User can still override.
+const computeScheduleDefault = (
+  task: TaskWithRelations,
+  defaultDate: string
+): string => {
+  const dueDate = task.due_at ? task.due_at.slice(0, 10) : null;
+  return dueDate && dueDate > defaultDate ? dueDate : defaultDate;
+};
+
+interface InboxRowSchedulerProps {
+  task: TaskWithRelations;
+  ownerId: string;
+  /** Lane's viewDate; floor for the date picker. */
+  defaultDate: string;
+  /** Blocks the lane already loaded for `defaultDate` — reused when the row's
+   *  chosen date matches, to avoid an extra fetch per row in the common case. */
+  defaultInstances: BlockInstanceWithTasks[];
+  onSchedule: (blockId: string) => void;
+}
+
+const InboxRowScheduler: React.FC<InboxRowSchedulerProps> = ({
+  task,
+  ownerId,
+  defaultDate,
+  defaultInstances,
+  onSchedule,
+}) => {
+  const [scheduleDate, setScheduleDate] = useState(() =>
+    computeScheduleDefault(task, defaultDate)
+  );
+  // Resync when the lane's date changes (Plan Today ⇄ Plan Tomorrow) or when
+  // the task's due date is edited elsewhere. Drops a manual override; rare,
+  // and the user can re-pick.
+  useEffect(() => {
+    setScheduleDate(computeScheduleDefault(task, defaultDate));
+  }, [task.due_at, defaultDate]);
+
+  // Only hit the network when the row's chosen date differs from the lane's.
+  // Passing null params makes the hook a no-op (returns []) per its contract.
+  const fetchSelf = scheduleDate !== defaultDate;
+  const { instances: ownInstances } = useBlockInstancesForDate({
+    ownerId: fetchSelf ? ownerId : null,
+    onDate: fetchSelf ? scheduleDate : null,
+  });
+  const instances = fetchSelf ? ownInstances : defaultInstances;
+
+  return (
+    <>
+      <input
+        type="date"
+        value={scheduleDate}
+        min={defaultDate}
+        onChange={(e) => setScheduleDate(e.target.value || defaultDate)}
+        className="text-[11px] px-1 py-0.5 rounded border"
+        style={{ borderColor: COLORS.slate, color: COLORS.steel }}
+        title="Schedule date — defaults to due date when later than today"
+      />
+      <select
+        value=""
+        onChange={(e) => {
+          if (e.target.value) onSchedule(e.target.value);
+        }}
+        className="text-[11px] px-1 py-0.5 rounded border"
+        style={{ borderColor: COLORS.slate, color: COLORS.steel }}
+        disabled={instances.length === 0}
+      >
+        <option value="" disabled>
+          {instances.length === 0 ? 'No blocks' : 'Schedule…'}
+        </option>
+        {instances.map((inst) => (
+          <option key={inst.id} value={inst.id}>
+            {inst.start_time.slice(0, 5)} {inst.name}
+          </option>
+        ))}
+      </select>
+    </>
+  );
 };
 
 export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskChanged }) => {
@@ -251,25 +333,13 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
                         : 'Set due date'
                     }
                   />
-                  {instances.length > 0 && (
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) handleSchedule(task, e.target.value);
-                      }}
-                      className="text-[11px] px-1 py-0.5 rounded border"
-                      style={{ borderColor: COLORS.slate, color: COLORS.steel }}
-                    >
-                      <option value="" disabled>
-                        Schedule…
-                      </option>
-                      {instances.map((inst) => (
-                        <option key={inst.id} value={inst.id}>
-                          {inst.start_time.slice(0, 5)} {inst.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                  <InboxRowScheduler
+                    task={task}
+                    ownerId={ownerId}
+                    defaultDate={viewDate}
+                    defaultInstances={instances}
+                    onSchedule={(blockId) => handleSchedule(task, blockId)}
+                  />
                   <button
                     type="button"
                     onClick={() => handlePinTop3(task)}
@@ -323,7 +393,14 @@ export const InboxLane: React.FC<InboxLaneProps> = ({ ownerId, viewDate, onTaskC
       <TaskDetailSlideout
         taskId={openTaskId}
         onClose={() => setOpenTaskId(null)}
-        onChanged={refetch}
+        onChanged={() => {
+          refetch();
+          // Bump the dashboard refresh so TodaysTimeline's block instances
+          // refetch — otherwise edits made here (e.g. duration_minutes on a
+          // task that's also scheduled in a block) leave the capacity bar
+          // stale.
+          onTaskChanged?.();
+        }}
       />
 
       <BlockTaskModal
