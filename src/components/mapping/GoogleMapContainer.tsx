@@ -628,9 +628,10 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         setIsLoading(true);
         setError(null);
 
-        // Get user location first (only if mounted)
-        console.log('📍 Getting user location...');
-        const location = await getUserLocation();
+        // TEMP: skip geolocation and always open on Atlanta. Restore by
+        // changing this back to `await getUserLocation()`.
+        console.log('📍 Skipping geolocation — opening map on Atlanta');
+        const location = null as { lat: number; lng: number } | null;
 
         if (!isMounted) return; // Check if component is still mounted
 
