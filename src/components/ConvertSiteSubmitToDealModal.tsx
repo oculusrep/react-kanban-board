@@ -20,6 +20,8 @@ interface AssignmentOption {
   deal_team_id: string | null;
 }
 
+type TriggerStage = 'LOI' | 'Pre-Submittal';
+
 interface ConvertSiteSubmitToDealModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -32,6 +34,7 @@ interface ConvertSiteSubmitToDealModalProps {
   propertyName: string | null;
   propertyUnitId: string | null;
   onSuccess: (dealId: string) => void;
+  triggerStage?: TriggerStage;
 }
 
 export default function ConvertSiteSubmitToDealModal({
@@ -46,7 +49,11 @@ export default function ConvertSiteSubmitToDealModal({
   propertyName,
   propertyUnitId,
   onSuccess,
+  triggerStage = 'LOI',
 }: ConvertSiteSubmitToDealModalProps) {
+  const isPreSubmittal = triggerStage === 'Pre-Submittal';
+  const dealStageLabel = isPreSubmittal ? 'Pre-Submittal' : 'Negotiating LOI';
+  const dealStageProbability = isPreSubmittal ? 10 : 50;
   // Form state
   const [dealName, setDealName] = useState('');
   const [targetCloseDate, setTargetCloseDate] = useState<Date | null>(null);
@@ -243,18 +250,18 @@ export default function ConvertSiteSubmitToDealModal({
         setLoading(false);
         return;
       }
-      // Step 1: Look up the "Negotiating LOI" stage_id
+      // Step 1: Look up the deal_stage_id for the chosen trigger stage
       const { data: stageData, error: stageError } = await supabase
         .from('deal_stage')
         .select('id')
-        .eq('label', 'Negotiating LOI')
+        .eq('label', dealStageLabel)
         .single();
 
       if (stageError || !stageData) {
-        throw new Error('Could not find "Negotiating LOI" stage');
+        throw new Error(`Could not find "${dealStageLabel}" deal stage`);
       }
 
-      const loiStageId = stageData.id;
+      const dealStageId = stageData.id;
 
       // Step 2: Determine number_of_payments based on transaction type
       let numberOfPayments = 1; // Default
@@ -344,21 +351,21 @@ export default function ConvertSiteSubmitToDealModal({
         referral_payee_client_id: referralPayeeId,
         transaction_type_id: transactionTypeId,
         deal_team_id: dealTeamId,
-        stage_id: loiStageId,
+        stage_id: dealStageId,
         property_id: propertyId,
         property_unit_id: propertyUnitId,
         site_submit_id: siteSubmitId,
         assignment_id: selectedAssignmentId || null,
         target_close_date: targetCloseDate ? formatDateFn(targetCloseDate, 'yyyy-MM-dd') : null,
-        probability: 50, // Default for "Negotiating LOI"
+        probability: dealStageProbability,
         number_of_payments: numberOfPayments,
         // Set default commission split percentages
         house_percent: 40,
         origination_percent: 50,
         site_percent: 25,
         deal_percent: 25,
-        // LOI written date defaults to today
-        loi_written_date: formatDateFn(new Date(), 'yyyy-MM-dd'),
+        // LOI written date only applies when the deal starts at "Negotiating LOI"
+        loi_written_date: isPreSubmittal ? null : formatDateFn(new Date(), 'yyyy-MM-dd'),
         // Metadata fields
         created_at: now,
         created_by_id: currentUserId,
@@ -454,19 +461,23 @@ export default function ConvertSiteSubmitToDealModal({
         }
       }
 
-      // Step 8: Look up the "LOI" submit stage_id and update the site submit
-      const { data: submitStageData } = await supabase
-        .from('submit_stage')
-        .select('id')
-        .eq('name', 'LOI')
-        .single();
-
+      // Step 8: Update the site submit with the new deal_id. The LOI trigger
+      // also forces the submit_stage forward to "LOI"; the Pre-Submittal
+      // trigger leaves the stage where the user just set it.
       const siteSubmitUpdate: any = {
-        deal_id: newDeal.id
+        deal_id: newDeal.id,
       };
 
-      if (submitStageData) {
-        siteSubmitUpdate.submit_stage_id = submitStageData.id;
+      if (!isPreSubmittal) {
+        const { data: submitStageData } = await supabase
+          .from('submit_stage')
+          .select('id')
+          .eq('name', 'LOI')
+          .single();
+
+        if (submitStageData) {
+          siteSubmitUpdate.submit_stage_id = submitStageData.id;
+        }
       }
 
       const { error: siteSubmitError } = await supabase
@@ -480,10 +491,13 @@ export default function ConvertSiteSubmitToDealModal({
       }
 
       // Step 9: Log a comment for deal creation
+      const commentSuffix = isPreSubmittal
+        ? '(Pre-Submittal)'
+        : `(LOI written ${formatDateFn(new Date(), 'MM/dd/yyyy')})`;
       await supabase.from('site_submit_comment').insert({
         site_submit_id: siteSubmitId,
         author_id: currentUserId,
-        content: `Deal created: ${dealName.trim()} (LOI written ${formatDateFn(new Date(), 'MM/dd/yyyy')})`,
+        content: `Deal created: ${dealName.trim()} ${commentSuffix}`,
         visibility: 'client',
       });
 
@@ -599,7 +613,9 @@ export default function ConvertSiteSubmitToDealModal({
               readOnly
             />
             <p className="text-xs text-gray-500 mt-1">
-              This site submit will be linked to the deal and its stage will change to LOI
+              {isPreSubmittal
+                ? 'This site submit will be linked to the deal; its stage will stay at Pre-Submittal.'
+                : 'This site submit will be linked to the deal and its stage will change to LOI'}
             </p>
           </div>
 
@@ -692,12 +708,16 @@ export default function ConvertSiteSubmitToDealModal({
           <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
             <h3 className="text-sm font-semibold text-blue-900 mb-2">What will happen:</h3>
             <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-              <li>New deal will be created with stage "Negotiating LOI"</li>
+              <li>New deal will be created with stage "{dealStageLabel}"</li>
               <li>Number of payments will be set based on transaction type (2 for leases, 1 for purchases)</li>
               <li>Property and property unit from site submit will be linked to the deal</li>
               {propertyId && <li>Property contacts will be copied to the deal (editable in Contacts tab)</li>}
               {selectedAssignmentId && <li>Assignment will be linked to the new deal and priority changed to "Converted"</li>}
-              <li>Site submit will be linked to the deal and stage changed to "LOI"</li>
+              <li>
+                {isPreSubmittal
+                  ? 'Site submit will be linked to the deal; stage stays at "Pre-Submittal"'
+                  : 'Site submit will be linked to the deal and stage changed to "LOI"'}
+              </li>
             </ul>
           </div>
         </div>

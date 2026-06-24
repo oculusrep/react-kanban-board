@@ -8,7 +8,7 @@
  * - Assignment and property unit selectors
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import SiteSubmitDataTab from './SiteSubmitDataTab';
@@ -243,8 +243,14 @@ export default function SiteSubmitSidebar({
   const [preparingEmail, setPreparingEmail] = useState(false);
   const [showConvertToDealModal, setShowConvertToDealModal] = useState(false);
   const [showDigestModal, setShowDigestModal] = useState(false);
-  const [pendingLoiStageChange, setPendingLoiStageChange] = useState<{ stageId: string; stageName: string } | null>(null);
-  const [showLoiConversionPrompt, setShowLoiConversionPrompt] = useState(false);
+  // Tracks an in-flight stage change that should prompt deal creation
+  // (LOI for any client, or Pre-Submittal for Starbucks).
+  const [pendingDealConversionStage, setPendingDealConversionStage] = useState<
+    { stageId: string; stageName: string; triggerStage: 'LOI' | 'Pre-Submittal' } | null
+  >(null);
+  const [showDealConversionPrompt, setShowDealConversionPrompt] = useState(false);
+  // Remembers which trigger opened the convert modal so we can pass it through.
+  const [conversionTriggerStage, setConversionTriggerStage] = useState<'LOI' | 'Pre-Submittal'>('LOI');
   const [createFormKey, setCreateFormKey] = useState(0);
   const [editingHeaderField, setEditingHeaderField] = useState<'site_submit_name' | 'deal_name' | null>(null);
   const [headerEditValue, setHeaderEditValue] = useState('');
@@ -826,14 +832,25 @@ export default function SiteSubmitSidebar({
     }
   };
 
-  // Handle status change with LOI detection
+  // Handle status change. Two cases trigger a deal-creation prompt:
+  //   1. Any client moving to LOI without a deal.
+  //   2. Starbucks moving to Pre-Submittal without a deal — lets the team
+  //      attach deal files at the earliest stage of the funnel.
   const handleStatusChange = (newStageId: string, newStageName: string) => {
-    // Check if changing to LOI and no deal exists yet
-    if (newStageName === 'LOI' && !siteSubmit?.deal_id) {
-      setPendingLoiStageChange({ stageId: newStageId, stageName: newStageName });
-      setShowLoiConversionPrompt(true);
+    const isStarbucks = siteSubmit?.client?.client_name === 'Starbucks';
+    const triggerStage: 'LOI' | 'Pre-Submittal' | null =
+      !siteSubmit?.deal_id
+        ? newStageName === 'LOI'
+          ? 'LOI'
+          : newStageName === 'Pre-Submittal' && isStarbucks
+            ? 'Pre-Submittal'
+            : null
+        : null;
+
+    if (triggerStage) {
+      setPendingDealConversionStage({ stageId: newStageId, stageName: newStageName, triggerStage });
+      setShowDealConversionPrompt(true);
     } else {
-      // Normal status change
       handleUpdate({
         submit_stage_id: newStageId,
         submit_stage: { id: newStageId, name: newStageName },
@@ -844,26 +861,27 @@ export default function SiteSubmitSidebar({
     }
   };
 
-  // Handle LOI conversion prompt response
-  const handleLoiConversionResponse = (shouldConvert: boolean) => {
-    setShowLoiConversionPrompt(false);
+  // Handle deal-conversion prompt response (LOI or Pre-Submittal trigger).
+  const handleDealConversionResponse = (shouldConvert: boolean) => {
+    setShowDealConversionPrompt(false);
 
-    if (pendingLoiStageChange) {
-      // Apply the stage change regardless
+    if (pendingDealConversionStage) {
+      // Apply the stage change regardless of whether they convert.
       handleUpdate({
-        submit_stage_id: pendingLoiStageChange.stageId,
-        submit_stage: { id: pendingLoiStageChange.stageId, name: pendingLoiStageChange.stageName },
+        submit_stage_id: pendingDealConversionStage.stageId,
+        submit_stage: { id: pendingDealConversionStage.stageId, name: pendingDealConversionStage.stageName },
       });
       if (onStatusChange && siteSubmit) {
-        onStatusChange(siteSubmit.id, pendingLoiStageChange.stageId, pendingLoiStageChange.stageName);
+        onStatusChange(siteSubmit.id, pendingDealConversionStage.stageId, pendingDealConversionStage.stageName);
       }
     }
 
     if (shouldConvert) {
+      setConversionTriggerStage(pendingDealConversionStage?.triggerStage ?? 'LOI');
       setShowConvertToDealModal(true);
     }
 
-    setPendingLoiStageChange(null);
+    setPendingDealConversionStage(null);
   };
 
   // Handle successful deal conversion
@@ -872,6 +890,36 @@ export default function SiteSubmitSidebar({
     // Update local state with the new deal_id
     handleUpdate({ deal_id: dealId });
   };
+
+  // Auto-fire the deal-conversion prompt when a Starbucks site_submit is opened
+  // in the Pre-Submittal stage with no deal yet. Tracks already-prompted IDs in
+  // a ref so dismissing "Not Now" doesn't re-pester the user while the slideout
+  // is still mounted; the user can change status away and back to re-trigger.
+  const autoPromptedSiteSubmitIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!siteSubmit || !isEditable) return;
+    if (context !== 'map' && context !== 'deal') return;
+    if (siteSubmit.deal_id) return;
+    if (siteSubmit.client?.client_name !== 'Starbucks') return;
+    if (siteSubmit.submit_stage?.name !== 'Pre-Submittal') return;
+    if (autoPromptedSiteSubmitIdsRef.current.has(siteSubmit.id)) return;
+
+    autoPromptedSiteSubmitIdsRef.current.add(siteSubmit.id);
+    setPendingDealConversionStage({
+      stageId: siteSubmit.submit_stage?.id || '',
+      stageName: 'Pre-Submittal',
+      triggerStage: 'Pre-Submittal',
+    });
+    setShowDealConversionPrompt(true);
+  }, [
+    siteSubmit?.id,
+    siteSubmit?.deal_id,
+    siteSubmit?.client?.client_name,
+    siteSubmit?.submit_stage?.name,
+    siteSubmit?.submit_stage?.id,
+    context,
+    isEditable,
+  ]);
 
   // Build tabs based on context (no EMAIL tab - email is a header button)
   const tabs: { id: TabType; label: string; icon: JSX.Element }[] = [
@@ -1459,8 +1507,8 @@ export default function SiteSubmitSidebar({
         title={`Email: ${siteSubmit?.property?.property_name || 'Site Submit'}`}
       />
 
-      {/* LOI Conversion Prompt Modal */}
-      {showLoiConversionPrompt && (
+      {/* Deal Conversion Prompt Modal (LOI or Pre-Submittal trigger) */}
+      {showDealConversionPrompt && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="px-6 py-4 border-b border-gray-200">
@@ -1468,7 +1516,7 @@ export default function SiteSubmitSidebar({
             </div>
             <div className="px-6 py-4">
               <p className="text-gray-600">
-                This site submit is being moved to the <strong>LOI</strong> stage. Would you like to create a new deal from this site submit?
+                This site submit is being moved to the <strong>{pendingDealConversionStage?.stageName}</strong> stage. Would you like to create a new deal from this site submit?
               </p>
               <div className="mt-4 p-3 bg-blue-50 rounded-md">
                 <p className="text-sm text-blue-800">
@@ -1478,13 +1526,13 @@ export default function SiteSubmitSidebar({
             </div>
             <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end gap-3">
               <button
-                onClick={() => handleLoiConversionResponse(false)}
+                onClick={() => handleDealConversionResponse(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 Not Now
               </button>
               <button
-                onClick={() => handleLoiConversionResponse(true)}
+                onClick={() => handleDealConversionResponse(true)}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
               >
                 Create Deal
@@ -1508,6 +1556,7 @@ export default function SiteSubmitSidebar({
           propertyName={siteSubmit.property?.property_name || null}
           propertyUnitId={siteSubmit.property_unit_id}
           onSuccess={handleDealConversionSuccess}
+          triggerStage={conversionTriggerStage}
         />
       )}
 
