@@ -13,11 +13,15 @@ export default function useKanbanData() {
       try {
         console.log('🔍 Fetching kanban data (safe version)...');
         
-        // Fetch stages (now including all active stages, including Lost)
+        // Fetch stages (all active stages, including Lost). Pre-Submittal and
+        // Submitted-Reviewing are Starbucks-only early-funnel stages and are
+        // hidden from the master pipeline kanban — deals there still exist,
+        // they just don't get their own columns here.
         const { data: stageData, error: stageError } = await supabase
           .from('deal_stage')
           .select('id, label, description, sort_order, active')
           .eq('active', true)
+          .not('label', 'in', '("Pre-Submittal","Submitted-Reviewing")')
           .order('sort_order', { ascending: true });
 
         console.log('📊 Stages:', stageData);
