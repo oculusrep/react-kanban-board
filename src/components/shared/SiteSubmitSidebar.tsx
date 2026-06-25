@@ -244,13 +244,13 @@ export default function SiteSubmitSidebar({
   const [showConvertToDealModal, setShowConvertToDealModal] = useState(false);
   const [showDigestModal, setShowDigestModal] = useState(false);
   // Tracks an in-flight stage change that should prompt deal creation
-  // (LOI for any client, or Pre-Submittal for Starbucks).
+  // (LOI for any client, or Pre-Submittal / Submitted-Reviewing for Starbucks).
   const [pendingDealConversionStage, setPendingDealConversionStage] = useState<
-    { stageId: string; stageName: string; triggerStage: 'LOI' | 'Pre-Submittal' } | null
+    { stageId: string; stageName: string; triggerStage: 'LOI' | 'Pre-Submittal' | 'Submitted-Reviewing' } | null
   >(null);
   const [showDealConversionPrompt, setShowDealConversionPrompt] = useState(false);
   // Remembers which trigger opened the convert modal so we can pass it through.
-  const [conversionTriggerStage, setConversionTriggerStage] = useState<'LOI' | 'Pre-Submittal'>('LOI');
+  const [conversionTriggerStage, setConversionTriggerStage] = useState<'LOI' | 'Pre-Submittal' | 'Submitted-Reviewing'>('LOI');
   const [createFormKey, setCreateFormKey] = useState(0);
   const [editingHeaderField, setEditingHeaderField] = useState<'site_submit_name' | 'deal_name' | null>(null);
   const [headerEditValue, setHeaderEditValue] = useState('');
@@ -832,18 +832,18 @@ export default function SiteSubmitSidebar({
     }
   };
 
-  // Handle status change. Two cases trigger a deal-creation prompt:
+  // Handle status change. Cases that trigger a deal-creation prompt:
   //   1. Any client moving to LOI without a deal.
-  //   2. Starbucks moving to Pre-Submittal without a deal — lets the team
-  //      attach deal files at the earliest stage of the funnel.
+  //   2. Starbucks moving to Pre-Submittal or Submitted-Reviewing without a
+  //      deal — lets the team attach deal files at the earliest funnel stages.
   const handleStatusChange = (newStageId: string, newStageName: string) => {
     const isStarbucks = siteSubmit?.client?.client_name === 'Starbucks';
-    const triggerStage: 'LOI' | 'Pre-Submittal' | null =
+    const triggerStage: 'LOI' | 'Pre-Submittal' | 'Submitted-Reviewing' | null =
       !siteSubmit?.deal_id
         ? newStageName === 'LOI'
           ? 'LOI'
-          : newStageName === 'Pre-Submittal' && isStarbucks
-            ? 'Pre-Submittal'
+          : isStarbucks && (newStageName === 'Pre-Submittal' || newStageName === 'Submitted-Reviewing')
+            ? (newStageName as 'Pre-Submittal' | 'Submitted-Reviewing')
             : null
         : null;
 
@@ -892,23 +892,25 @@ export default function SiteSubmitSidebar({
   };
 
   // Auto-fire the deal-conversion prompt when a Starbucks site_submit is opened
-  // in the Pre-Submittal stage with no deal yet. Tracks already-prompted IDs in
-  // a ref so dismissing "Not Now" doesn't re-pester the user while the slideout
-  // is still mounted; the user can change status away and back to re-trigger.
+  // in the Pre-Submittal or Submitted-Reviewing stage with no deal yet. Tracks
+  // already-prompted IDs in a ref so dismissing "Not Now" doesn't re-pester the
+  // user while the slideout is still mounted; the user can change status away
+  // and back to re-trigger.
   const autoPromptedSiteSubmitIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!siteSubmit || !isEditable) return;
     if (context !== 'map' && context !== 'deal') return;
     if (siteSubmit.deal_id) return;
     if (siteSubmit.client?.client_name !== 'Starbucks') return;
-    if (siteSubmit.submit_stage?.name !== 'Pre-Submittal') return;
+    const stageName = siteSubmit.submit_stage?.name;
+    if (stageName !== 'Pre-Submittal' && stageName !== 'Submitted-Reviewing') return;
     if (autoPromptedSiteSubmitIdsRef.current.has(siteSubmit.id)) return;
 
     autoPromptedSiteSubmitIdsRef.current.add(siteSubmit.id);
     setPendingDealConversionStage({
       stageId: siteSubmit.submit_stage?.id || '',
-      stageName: 'Pre-Submittal',
-      triggerStage: 'Pre-Submittal',
+      stageName,
+      triggerStage: stageName,
     });
     setShowDealConversionPrompt(true);
   }, [

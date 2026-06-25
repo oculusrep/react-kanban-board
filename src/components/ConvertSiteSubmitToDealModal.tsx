@@ -20,7 +20,7 @@ interface AssignmentOption {
   deal_team_id: string | null;
 }
 
-type TriggerStage = 'LOI' | 'Pre-Submittal';
+type TriggerStage = 'LOI' | 'Pre-Submittal' | 'Submitted-Reviewing';
 
 interface ConvertSiteSubmitToDealModalProps {
   isOpen: boolean;
@@ -51,9 +51,18 @@ export default function ConvertSiteSubmitToDealModal({
   onSuccess,
   triggerStage = 'LOI',
 }: ConvertSiteSubmitToDealModalProps) {
-  const isPreSubmittal = triggerStage === 'Pre-Submittal';
-  const dealStageLabel = isPreSubmittal ? 'Pre-Submittal' : 'Negotiating LOI';
-  const dealStageProbability = isPreSubmittal ? 10 : 50;
+  // LOI is the only trigger that forces the site_submit stage forward and
+  // sets loi_written_date; the other two are early-funnel Starbucks triggers
+  // that leave the site_submit at its current stage.
+  const isLoiTrigger = triggerStage === 'LOI';
+  const dealStageLabel =
+    triggerStage === 'LOI' ? 'Negotiating LOI'
+    : triggerStage === 'Pre-Submittal' ? 'Pre-Submittal'
+    : 'Submitted-Reviewing';
+  const dealStageProbability =
+    triggerStage === 'LOI' ? 50
+    : triggerStage === 'Pre-Submittal' ? 10
+    : 25;
   // Form state
   const [dealName, setDealName] = useState('');
   const [targetCloseDate, setTargetCloseDate] = useState<Date | null>(null);
@@ -365,7 +374,7 @@ export default function ConvertSiteSubmitToDealModal({
         site_percent: 25,
         deal_percent: 25,
         // LOI written date only applies when the deal starts at "Negotiating LOI"
-        loi_written_date: isPreSubmittal ? null : formatDateFn(new Date(), 'yyyy-MM-dd'),
+        loi_written_date: isLoiTrigger ? formatDateFn(new Date(), 'yyyy-MM-dd') : null,
         // Metadata fields
         created_at: now,
         created_by_id: currentUserId,
@@ -462,13 +471,14 @@ export default function ConvertSiteSubmitToDealModal({
       }
 
       // Step 8: Update the site submit with the new deal_id. The LOI trigger
-      // also forces the submit_stage forward to "LOI"; the Pre-Submittal
-      // trigger leaves the stage where the user just set it.
+      // also forces the submit_stage forward to "LOI"; the early-funnel
+      // Starbucks triggers (Pre-Submittal, Submitted-Reviewing) leave the
+      // stage where the user just set it.
       const siteSubmitUpdate: any = {
         deal_id: newDeal.id,
       };
 
-      if (!isPreSubmittal) {
+      if (isLoiTrigger) {
         const { data: submitStageData } = await supabase
           .from('submit_stage')
           .select('id')
@@ -491,9 +501,9 @@ export default function ConvertSiteSubmitToDealModal({
       }
 
       // Step 9: Log a comment for deal creation
-      const commentSuffix = isPreSubmittal
-        ? '(Pre-Submittal)'
-        : `(LOI written ${formatDateFn(new Date(), 'MM/dd/yyyy')})`;
+      const commentSuffix = isLoiTrigger
+        ? `(LOI written ${formatDateFn(new Date(), 'MM/dd/yyyy')})`
+        : `(${dealStageLabel})`;
       await supabase.from('site_submit_comment').insert({
         site_submit_id: siteSubmitId,
         author_id: currentUserId,
@@ -613,9 +623,9 @@ export default function ConvertSiteSubmitToDealModal({
               readOnly
             />
             <p className="text-xs text-gray-500 mt-1">
-              {isPreSubmittal
-                ? 'This site submit will be linked to the deal; its stage will stay at Pre-Submittal.'
-                : 'This site submit will be linked to the deal and its stage will change to LOI'}
+              {isLoiTrigger
+                ? 'This site submit will be linked to the deal and its stage will change to LOI'
+                : `This site submit will be linked to the deal; its stage will stay at ${dealStageLabel}.`}
             </p>
           </div>
 
@@ -714,9 +724,9 @@ export default function ConvertSiteSubmitToDealModal({
               {propertyId && <li>Property contacts will be copied to the deal (editable in Contacts tab)</li>}
               {selectedAssignmentId && <li>Assignment will be linked to the new deal and priority changed to "Converted"</li>}
               <li>
-                {isPreSubmittal
-                  ? 'Site submit will be linked to the deal; stage stays at "Pre-Submittal"'
-                  : 'Site submit will be linked to the deal and stage changed to "LOI"'}
+                {isLoiTrigger
+                  ? 'Site submit will be linked to the deal and stage changed to "LOI"'
+                  : `Site submit will be linked to the deal; stage stays at "${dealStageLabel}"`}
               </li>
             </ul>
           </div>
