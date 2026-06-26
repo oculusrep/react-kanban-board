@@ -419,15 +419,14 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
           });
 
           if (isBeingVerified && onLocationVerified) {
-            marker.addListener('gmp-dragend', () => {
-              const cur = marker.position as google.maps.LatLngLiteral | google.maps.LatLng | null;
-              if (!cur) return;
-              const lat = typeof (cur as google.maps.LatLng).lat === 'function'
-                ? (cur as google.maps.LatLng).lat()
-                : (cur as google.maps.LatLngLiteral).lat;
-              const lng = typeof (cur as google.maps.LatLng).lng === 'function'
-                ? (cur as google.maps.LatLng).lng()
-                : (cur as google.maps.LatLngLiteral).lng;
+            // NOTE: event name is 'dragend', NOT 'gmp-dragend'. The latter
+            // doesn't exist on AdvancedMarkerElement and the listener never
+            // fires — matches what every other layer uses (PropertyLayer,
+            // SiteSubmitLayer, RestaurantLayer, etc.).
+            marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
+              if (!event.latLng) return;
+              const lat = event.latLng.lat();
+              const lng = event.latLng.lng();
 
               // 1. Skip the next idle-triggered fetch so the in-flight DB
               //    save doesn't race a SELECT that returns stale coords.
