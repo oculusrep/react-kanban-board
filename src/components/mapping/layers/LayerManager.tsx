@@ -15,7 +15,7 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants';
 
 export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
@@ -101,6 +101,12 @@ export interface LayerManagerContextType {
   setCachedDemographicsScope: (s: CachedDemographicsScope) => void;
   cachedDemographicsModes: Set<CachedDemographicsMode>;
   toggleCachedDemographicsMode: (m: CachedDemographicsMode) => void;
+
+  // Merchants layer — selected brand IDs (drawer filter).
+  // Empty set = no pins rendered (avoid dumping 21k pins by default).
+  merchantSelectedBrandIds: Set<string>;
+  setMerchantSelectedBrandIds: (next: Set<string>) => void;
+  toggleMerchantBrand: (brandId: string) => void;
 }
 
 export type CreateMode = 'property' | 'site_submit' | 'municipal_project';
@@ -191,6 +197,15 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     defaultVisible: false,
     isSystemLayer: true,
   },
+  {
+    id: 'merchants',
+    name: 'Merchants',
+    type: 'merchants',
+    icon: '🏬',
+    description: 'Branded retail / restaurant / service locations with brand-logo pins',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
 ];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
@@ -248,6 +263,21 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     },
     [],
   );
+
+  const [merchantSelectedBrandIds, setMerchantSelectedBrandIdsState] = useState<Set<string>>(
+    new Set(),
+  );
+  const setMerchantSelectedBrandIds = useCallback((next: Set<string>) => {
+    setMerchantSelectedBrandIdsState(new Set(next));
+  }, []);
+  const toggleMerchantBrand = useCallback((brandId: string) => {
+    setMerchantSelectedBrandIdsState((prev) => {
+      const next = new Set(prev);
+      if (next.has(brandId)) next.delete(brandId);
+      else next.add(brandId);
+      return next;
+    });
+  }, []);
 
   // Initialize layer state once
   useEffect(() => {
@@ -427,6 +457,9 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setCachedDemographicsScope,
     cachedDemographicsModes,
     toggleCachedDemographicsMode,
+    merchantSelectedBrandIds,
+    setMerchantSelectedBrandIds,
+    toggleMerchantBrand,
   }), [
     layers,
     layerState,
@@ -457,6 +490,9 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     cachedDemographicsScope,
     cachedDemographicsModes,
     toggleCachedDemographicsMode,
+    merchantSelectedBrandIds,
+    setMerchantSelectedBrandIds,
+    toggleMerchantBrand,
   ]);
 
   return (

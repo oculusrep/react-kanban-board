@@ -13,6 +13,8 @@ import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalP
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
+import MerchantLayer from '../components/mapping/layers/MerchantLayer';
+import MerchantsDrawer from '../components/mapping/MerchantsDrawer';
 import StarbucksLicensedStoreLayer, { type StarbucksLicensedStore } from '../components/mapping/layers/StarbucksLicensedStoreLayer';
 import StarbucksLicensedStoreContextMenu from '../components/mapping/StarbucksLicensedStoreContextMenu';
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
@@ -366,7 +368,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   }, [recentlyCreatedPropertyIds]);
 
   // Get layer state from context
-  const { layerState, setLayerCount, setLayerLoading, createMode, setCreateMode, refreshLayer, toggleLayer, customLayers, customLayerVisibility, toggleCustomLayer, refreshCustomLayers } = useLayerManager();
+  const { layerState, setLayerCount, setLayerLoading, createMode, setCreateMode, refreshLayer, toggleLayer, customLayers, customLayerVisibility, toggleCustomLayer, refreshCustomLayers, merchantSelectedBrandIds } = useLayerManager();
+  const [showMerchantsDrawer, setShowMerchantsDrawer] = useState(false);
 
   // Refs that mirror state so the map's click listener (a closure attached in handleMapLoad)
   // can read the latest values. GoogleMapContainer re-invokes onMapLoad whenever the
@@ -2577,6 +2580,28 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 <span>Search</span>
               </button>
 
+              {/* Merchants Button — opens floating drawer with category/brand filter */}
+              <button
+                onClick={() => setShowMerchantsDrawer((v) => !v)}
+                className={`h-10 px-3 rounded shadow flex items-center space-x-1 text-sm font-medium ${
+                  showMerchantsDrawer || layerState.merchants?.isVisible
+                    ? 'bg-[#002147] text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Merchant Brands"
+                style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+              >
+                <span>Merchants</span>
+                {layerState.merchants?.isVisible && merchantSelectedBrandIds.size > 0 && (
+                  <span
+                    className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+                    style={{ background: 'rgba(255,255,255,0.25)' }}
+                  >
+                    {merchantSelectedBrandIds.size}
+                  </span>
+                )}
+              </button>
+
               {/* Layers Button */}
               <div className="relative">
                 <button
@@ -3050,6 +3075,17 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setSelectedPinType('starbucks');
                 setSelectedStarbucksStore(store);
               }}
+            />
+
+            {/* Merchant Brands Layer — branded retail/restaurant/service locations via merchant_location cache */}
+            <MerchantLayer
+              map={mapInstance}
+              isVisible={layerState.merchants?.isVisible || false}
+              selectedBrandIds={merchantSelectedBrandIds}
+            />
+            <MerchantsDrawer
+              isOpen={showMerchantsDrawer}
+              onClose={() => setShowMerchantsDrawer(false)}
             />
 
             {/* Starbucks Licensed Stores — confidential, permission-gated */}

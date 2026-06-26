@@ -18,10 +18,15 @@ interface MerchantBrand {
   logo_fetched_at: string | null;
   logo_variant: LogoVariant;
   is_active: boolean;
+  brandfetch_logo_status: 'unknown' | 'ok' | 'miss';
+  brandfetch_checked_at: string | null;
   merchant_category?: { name: string } | null;
 }
 
-type LogoFilter = 'all' | 'has_logo' | 'no_logo';
+// 'no_logo' = nothing at all (no domain set) OR domain set but Brandfetch
+// has no real asset (status='miss'). 'brandfetch_miss' filters down to JUST
+// the latter — the actionable ones where admin can try a different domain.
+type LogoFilter = 'all' | 'has_logo' | 'no_logo' | 'brandfetch_miss';
 
 export default function BrandsTab() {
   const [brands, setBrands] = useState<MerchantBrand[]>([]);
@@ -50,7 +55,7 @@ export default function BrandsTab() {
         const { data, error } = await supabase
           .from('merchant_brand')
           .select(
-            'id, name, category_id, brandfetch_domain, logo_url, logo_fetched_at, logo_variant, is_active, merchant_category(name)',
+            'id, name, category_id, brandfetch_domain, logo_url, logo_fetched_at, logo_variant, is_active, brandfetch_logo_status, brandfetch_checked_at, merchant_category(name)',
           )
           .order('name')
           .range(offset, offset + PAGE_SIZE - 1);
@@ -80,6 +85,12 @@ export default function BrandsTab() {
     loadData();
   }, []);
 
+  // A brand "has a real logo" iff it has a URL set AND Brandfetch isn't
+  // returning the placeholder. Status 'unknown' is treated as has-logo
+  // (innocent until proven otherwise) — the cron will fill it in.
+  const hasRealLogo = (b: MerchantBrand) =>
+    !!b.logo_url && b.brandfetch_logo_status !== 'miss';
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return brands.filter((b) => {
@@ -90,8 +101,9 @@ export default function BrandsTab() {
       ) {
         return false;
       }
-      if (logoFilter === 'has_logo' && !b.logo_url) return false;
-      if (logoFilter === 'no_logo' && b.logo_url) return false;
+      if (logoFilter === 'has_logo' && !hasRealLogo(b)) return false;
+      if (logoFilter === 'no_logo' && hasRealLogo(b)) return false;
+      if (logoFilter === 'brandfetch_miss' && b.brandfetch_logo_status !== 'miss') return false;
       if (categoryFilter && b.category_id !== categoryFilter) return false;
       return true;
     });
@@ -99,8 +111,9 @@ export default function BrandsTab() {
 
   const stats = useMemo(() => {
     const total = brands.length;
-    const withLogo = brands.filter((b) => b.logo_url).length;
-    return { total, withLogo, noLogo: total - withLogo };
+    const withLogo = brands.filter(hasRealLogo).length;
+    const miss = brands.filter((b) => b.brandfetch_logo_status === 'miss').length;
+    return { total, withLogo, noLogo: total - withLogo, miss };
   }, [brands]);
 
   const startEdit = (brand: MerchantBrand) => {
@@ -125,6 +138,10 @@ export default function BrandsTab() {
           brandfetch_domain: nextDomain,
           logo_url: nextLogoUrl,
           logo_fetched_at: nextDomain ? new Date().toISOString() : null,
+          // Reset to 'unknown' until verify confirms. Avoids showing stale
+          // 'miss' / 'ok' badge while the new URL is being checked.
+          brandfetch_logo_status: 'unknown',
+          brandfetch_checked_at: null,
         })
         .eq('id', brand.id);
       if (updErr) throw updErr;
@@ -136,17 +153,70 @@ export default function BrandsTab() {
                 brandfetch_domain: nextDomain,
                 logo_url: nextLogoUrl,
                 logo_fetched_at: nextDomain ? new Date().toISOString() : null,
+                brandfetch_logo_status: 'unknown',
+                brandfetch_checked_at: null,
               }
             : b,
         ),
       );
       setEditingBrandId(null);
       setEditingDomain('');
+
+      // Kick off immediate re-verify if a domain was set. Fire-and-forget;
+      // we re-fetch the brand row when the function returns and patch state
+      // so the admin sees the verified status without a manual reload.
+      if (nextDomain) {
+        verifyBrand(brand.id);
+      }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Save failed';
       alert(`Save failed: ${message}`);
     } finally {
       setSavingBrandId(null);
+    }
+  };
+
+  // Hit the Edge Function in brandIds mode so the new logo URL is checked
+  // server-side immediately. Function updates merchant_brand in place; we
+  // re-fetch the row when it returns and patch local state so the badge
+  // updates without a manual reload.
+  const verifyBrand = async (brandId: string) => {
+    try {
+      const projectUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const res = await fetch(
+        `${projectUrl}/functions/v1/merchant-logo-refresh?brandIds=${brandId}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${anonKey}` },
+          body: '{}',
+        },
+      );
+      if (!res.ok) {
+        console.warn('verifyBrand: function returned HTTP', res.status);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('merchant_brand')
+        .select('brandfetch_logo_status, brandfetch_checked_at, logo_url, logo_fetched_at')
+        .eq('id', brandId)
+        .single();
+      if (error || !data) return;
+      setBrands((prev) =>
+        prev.map((b) =>
+          b.id === brandId
+            ? {
+                ...b,
+                brandfetch_logo_status: data.brandfetch_logo_status,
+                brandfetch_checked_at: data.brandfetch_checked_at,
+                logo_url: data.logo_url,
+                logo_fetched_at: data.logo_fetched_at,
+              }
+            : b,
+        ),
+      );
+    } catch (e) {
+      console.warn('verifyBrand failed:', e);
     }
   };
 
@@ -203,9 +273,14 @@ export default function BrandsTab() {
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total brands" value={stats.total} />
         <StatCard label="With logo" value={stats.withLogo} accent={BRAND_COLOR_MED} />
+        <StatCard
+          label="Brandfetch miss"
+          value={stats.miss}
+          accent={stats.miss > 0 ? BRAND_COLOR_WARN : BRAND_COLOR_LIGHT}
+        />
         <StatCard
           label="Needs attention"
           value={stats.noLogo}
@@ -229,7 +304,8 @@ export default function BrandsTab() {
           >
             <option value="all">All brands</option>
             <option value="has_logo">Has logo</option>
-            <option value="no_logo">Missing logo</option>
+            <option value="no_logo">Missing logo (any reason)</option>
+            <option value="brandfetch_miss">Brandfetch returned nothing</option>
           </select>
           <select
             value={categoryFilter}
@@ -398,18 +474,46 @@ function StatCard({ label, value, accent }: { label: string; value: number; acce
 }
 
 function LogoPreview({ brand }: { brand: MerchantBrand }) {
-  const [failed, setFailed] = useState(false);
-  const fallbackLetter = brand.name.charAt(0).toUpperCase();
-  const showFallback = !brand.logo_url || failed;
+  // imgFailed is a client-side belt-and-suspenders fallback for cases where the
+  // DB still says 'ok' but the browser fetch fails. Resets on URL change.
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => {
+    setImgFailed(false);
+  }, [brand.logo_url]);
 
-  if (showFallback) {
+  const fallbackLetter = brand.name.charAt(0).toUpperCase();
+  // Three states:
+  //   1. No domain set                       — neutral dark circle
+  //   2. Domain set, brandfetch miss / fail  — warning circle + ! badge
+  //   3. Logo loaded                         — show it
+  const noDomain = !brand.logo_url;
+  const brandfetchMiss =
+    !noDomain && (brand.brandfetch_logo_status === 'miss' || imgFailed);
+
+  if (noDomain || brandfetchMiss) {
+    const bg = brandfetchMiss ? BRAND_COLOR_WARN : BRAND_COLOR_DARK;
+    const tooltip = brandfetchMiss
+      ? 'Brandfetch has no logo for this domain — try a different domain'
+      : 'No logo set';
     return (
-      <div
-        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
-        style={{ backgroundColor: BRAND_COLOR_DARK }}
-        title={brand.logo_url ? 'Logo failed to load' : 'No logo set'}
-      >
-        {fallbackLetter}
+      <div className="relative w-12 h-12">
+        <div
+          className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
+          style={{ backgroundColor: bg }}
+          title={tooltip}
+        >
+          {fallbackLetter}
+        </div>
+        {brandfetchMiss && (
+          <div
+            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white border-2 flex items-center justify-center text-[10px] font-bold leading-none"
+            style={{ borderColor: BRAND_COLOR_WARN, color: BRAND_COLOR_WARN }}
+            title={tooltip}
+            aria-label="Brandfetch returned no logo"
+          >
+            !
+          </div>
+        )}
       </div>
     );
   }
@@ -422,7 +526,7 @@ function LogoPreview({ brand }: { brand: MerchantBrand }) {
         className="w-10 h-10 object-contain"
         loading="lazy"
         decoding="async"
-        onError={() => setFailed(true)}
+        onError={() => setImgFailed(true)}
       />
     </div>
   );
