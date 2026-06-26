@@ -186,6 +186,10 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
   const isFetchingRef = useRef(false);
   const lastFetchKeyRef = useRef<string | null>(null);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // After a successful verify-drag, skip exactly one idle-triggered fetch so
+  // the in-flight DB UPDATE doesn't race the next SELECT (which would otherwise
+  // pull back stale Places coords and snap the pin back to its old spot).
+  const skipNextFetchRef = useRef(false);
 
   // Stable key for the selected brand set (set identity is not safe for deps)
   const selectedBrandKey = useMemo(
@@ -262,6 +266,12 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
   const fetchLocations = useCallback(
     async (forceRefresh = false) => {
       if (!map || isFetchingRef.current) return;
+      // One-shot skip after a verify-drag, so the post-drop idle event doesn't
+      // re-fetch and momentarily snap the pin back.
+      if (skipNextFetchRef.current && !forceRefresh) {
+        skipNextFetchRef.current = false;
+        return;
+      }
       if (selectedBrandIds.size === 0) {
         setLocations([]);
         return;
@@ -418,9 +428,28 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
               const lng = typeof (cur as google.maps.LatLng).lng === 'function'
                 ? (cur as google.maps.LatLng).lng()
                 : (cur as google.maps.LatLngLiteral).lng;
-              // Skip the next idle re-fetch so the server roundtrip doesn't
-              // snap the pin back to the pre-drag position momentarily.
-              lastFetchKeyRef.current = null;
+
+              // 1. Skip the next idle-triggered fetch so the in-flight DB
+              //    save doesn't race a SELECT that returns stale coords.
+              skipNextFetchRef.current = true;
+
+              // 2. Optimistically patch local state so the next render uses
+              //    the new verified coords (without this, clearing
+              //    verifyingLocationId re-renders the marker at old coords).
+              setLocations((prev) =>
+                prev.map((p) =>
+                  p.id === loc.id
+                    ? {
+                        ...p,
+                        verified_latitude: lat,
+                        verified_longitude: lng,
+                        verified_at: new Date().toISOString(),
+                      }
+                    : p,
+                ),
+              );
+
+              // 3. Persist via parent handler.
               onLocationVerified(loc.id, lat, lng);
             });
           }
