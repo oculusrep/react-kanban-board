@@ -45,6 +45,54 @@ interface CommitRequest extends BaseRequest {
   municipality_ids: string[];
 }
 
+/**
+ * Build the multi-line message string OpenClaw receives in the `message` field
+ * of the trigger POST. The leading directive tells the agent this is a real
+ * job from a trusted internal system, not an ad-hoc question. The structured
+ * muni block uses one line per muni with exact field=value pairs so the agent
+ * can reliably parse out boundary_municipality_id values — those must round-trip
+ * back through update_checklist_status + submit_research_report, and the SQL
+ * layer-3 guard rejects any candidate whose id isn't on the run's checklist.
+ */
+function buildOpenClawMessage(opts: {
+  researchRunId: string;
+  siteSubmitId: string;
+  lat: number;
+  lng: number;
+  radiusMiles: number;
+  triggeredByUserId: string;
+  municipalities: Array<{
+    boundary_municipality_id: string;
+    kind: string;
+    name: string;
+    geoid: string;
+    distance_mi: number;
+  }>;
+}): string {
+  const muniLines = opts.municipalities
+    .map((m) =>
+      `- boundary_municipality_id=${m.boundary_municipality_id}  kind=${m.kind}  name="${m.name}"  distance_mi=${Number(m.distance_mi).toFixed(2)}`,
+    )
+    .join('\n');
+
+  return [
+    'You are being triggered by OVIS (a trusted internal system) to run a market-research task. Follow your SOUL.md research protocol.',
+    '',
+    `research_run_id: ${opts.researchRunId}`,
+    `ovis_site_submit_id: ${opts.siteSubmitId}`,
+    `site_lat: ${opts.lat}`,
+    `site_lng: ${opts.lng}`,
+    `radius_miles: ${opts.radiusMiles}`,
+    `triggered_by_user_id: ${opts.triggeredByUserId}`,
+    '',
+    'Research the following municipalities (do NOT research others — any candidate referencing an off-list boundary_municipality_id will be rejected at submit time):',
+    '',
+    muniLines,
+    '',
+    'When finished, call submit_research_report ONCE with all candidates. Use update_checklist_status to report per-muni progress.',
+  ].join('\n');
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -220,15 +268,21 @@ serve(async (req) => {
   }
 
   const selectedMunis = inRadiusList.filter((m) => requested.includes(m.boundary_municipality_id));
-  const openclawPayload = {
-    ovis_site_submit_id: site.id,
-    research_run_id: researchRunId,
+
+  // Build the message the agent receives. Single `{ message: string }` field
+  // matches OpenClaw's input contract; the multi-line message embeds the
+  // run_id + coords + the FROZEN muni block so the agent can extract what
+  // it needs. The leading directive is what tells the agent this is a real
+  // job from a trusted internal system, not an ad-hoc question.
+  const message = buildOpenClawMessage({
+    researchRunId,
+    siteSubmitId: site.id,
     lat: Number(lat),
     lng: Number(lng),
-    radius_miles: radius,
-    triggered_by_user_id: authUserId,
-    municipalities: selectedMunis, // frozen — agent can only research these
-  };
+    radiusMiles: radius,
+    triggeredByUserId: authUserId,
+    municipalities: selectedMunis,
+  });
 
   let openclawResp: Response;
   try {
@@ -238,7 +292,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${openclawToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(openclawPayload),
+      body: JSON.stringify({ message }),
     });
   } catch (e) {
     await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
