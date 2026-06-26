@@ -90,6 +90,12 @@ Independent of producer choice, these UI pieces from spec §11 light up automati
 
 These can ship today even with zero closure-detection producer, because the table will populate later. The badge will sit at zero until then.
 
+## Constraint for whoever picks this up: do NOT overwrite verified coords
+
+`merchant_location` now has `verified_latitude` / `verified_longitude` / `verified_at` / `verified_by` columns (migration `20260626122550`). Admins can drag a pin in the map to override Google Places coords when the Places pin is slightly off the storefront. At render time the map prefers verified coords, falling back to Places.
+
+When re-ingestion lands, **the UPSERT/UPDATE statement must only touch `latitude` / `longitude` (the Places-sourced columns)** — never `verified_*`. Stomping a verified location with a fresh Places coord would invisibly undo manual corrections. Same constraint as restaurant_location.
+
 ## Reference files
 
 - [docs/MERCHANTS_LAYER_SPEC.md](MERCHANTS_LAYER_SPEC.md) — full spec, §4.4 + §10 + §11 are the relevant sections

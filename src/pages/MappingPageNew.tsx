@@ -13,8 +13,9 @@ import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalP
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
-import MerchantLayer from '../components/mapping/layers/MerchantLayer';
+import MerchantLayer, { type MerchantLocationWithBrand } from '../components/mapping/layers/MerchantLayer';
 import MerchantsDrawer from '../components/mapping/MerchantsDrawer';
+import MerchantContextMenu from '../components/mapping/MerchantContextMenu';
 import StarbucksLicensedStoreLayer, { type StarbucksLicensedStore } from '../components/mapping/layers/StarbucksLicensedStoreLayer';
 import StarbucksLicensedStoreContextMenu from '../components/mapping/StarbucksLicensedStoreContextMenu';
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
@@ -91,7 +92,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   controlledSelectedSiteSubmitId,
   onSelectedSiteSubmitChange,
 }) => {
-  const { userRole } = useAuth();
+  const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
@@ -370,6 +371,13 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Get layer state from context
   const { layerState, setLayerCount, setLayerLoading, createMode, setCreateMode, refreshLayer, toggleLayer, customLayers, customLayerVisibility, toggleCustomLayer, refreshCustomLayers, merchantSelectedBrandIds } = useLayerManager();
   const [showMerchantsDrawer, setShowMerchantsDrawer] = useState(false);
+  const [verifyingMerchantLocationId, setVerifyingMerchantLocationId] = useState<string | null>(null);
+  const [merchantContextMenu, setMerchantContextMenu] = useState<{
+    isVisible: boolean;
+    x: number;
+    y: number;
+    location: MerchantLocationWithBrand | null;
+  }>({ isVisible: false, x: 0, y: 0, location: null });
 
   // Refs that mirror state so the map's click listener (a closure attached in handleMapLoad)
   // can read the latest values. GoogleMapContainer re-invokes onMapLoad whenever the
@@ -2001,6 +2009,48 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     setVerifyingRestaurantStoreNo(storeNo);
   };
 
+  // --- Merchant location verification (mirrors restaurants) ---
+
+  const handleMerchantLocationVerified = async (locationId: string, lat: number, lng: number) => {
+    try {
+      const update: Record<string, unknown> = {
+        verified_latitude: lat,
+        verified_longitude: lng,
+        verified_at: new Date().toISOString(),
+      };
+      // Only set verified_by if we have an OVIS user id (best-effort; column is nullable).
+      if (userTableId) update.verified_by = userTableId;
+      const { error } = await supabase
+        .from('merchant_location')
+        .update(update)
+        .eq('id', locationId);
+      if (error) throw error;
+      setVerifyingMerchantLocationId(null);
+    } catch (err) {
+      console.error('Failed to save verified merchant location:', err);
+      // Leave verification mode active so the user can retry without restarting.
+    }
+  };
+
+  const handleMerchantRightClick = (location: MerchantLocationWithBrand, x: number, y: number) => {
+    setMerchantContextMenu({ isVisible: true, x, y, location });
+  };
+
+  const handleMerchantVerifyLocation = (locationId: string) => {
+    setVerifyingMerchantLocationId(locationId);
+  };
+
+  // ESC cancels merchant verify mode (no other obvious "back out" affordance
+  // since the visual is just a draggable pin).
+  useEffect(() => {
+    if (!verifyingMerchantLocationId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setVerifyingMerchantLocationId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [verifyingMerchantLocationId]);
+
   // Handle restaurant context menu close
   const handleRestaurantContextMenuClose = () => {
     setRestaurantContextMenu({
@@ -3082,6 +3132,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               map={mapInstance}
               isVisible={layerState.merchants?.isVisible || false}
               selectedBrandIds={merchantSelectedBrandIds}
+              verifyingLocationId={verifyingMerchantLocationId}
+              onLocationVerified={canVerifyRestaurantLocations ? handleMerchantLocationVerified : undefined}
+              onMerchantRightClick={canVerifyRestaurantLocations ? handleMerchantRightClick : undefined}
             />
             <MerchantsDrawer
               isOpen={showMerchantsDrawer}
@@ -3305,6 +3358,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               restaurant={restaurantContextMenu.restaurant}
               onVerifyLocation={handleRestaurantVerifyLocation}
               onClose={handleRestaurantContextMenuClose}
+            />
+
+            {/* Merchant Context Menu for Right-Click on Merchant Pins */}
+            <MerchantContextMenu
+              x={merchantContextMenu.x}
+              y={merchantContextMenu.y}
+              isVisible={merchantContextMenu.isVisible}
+              location={merchantContextMenu.location}
+              onVerifyLocation={handleMerchantVerifyLocation}
+              onClose={() => setMerchantContextMenu({ isVisible: false, x: 0, y: 0, location: null })}
             />
 
             {/* Site Submit Legend - Show when site submit layer is visible */}

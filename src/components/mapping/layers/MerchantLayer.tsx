@@ -19,6 +19,9 @@ export interface MerchantLocationRow {
   name: string;
   latitude: number;
   longitude: number;
+  verified_latitude: number | null;
+  verified_longitude: number | null;
+  verified_at: string | null;
   formatted_address: string | null;
   phone: string | null;
   website: string | null;
@@ -35,6 +38,20 @@ interface MerchantLayerProps {
   isVisible: boolean;
   selectedBrandIds: Set<string>;
   showClosed?: boolean;
+  /** When set, that one pin becomes draggable so admin can drop it on the real storefront. */
+  verifyingLocationId?: string | null;
+  /** Called after the admin drops a draggable pin. Persist via UPDATE merchant_location. */
+  onLocationVerified?: (locationId: string, lat: number, lng: number) => void;
+  /** Right-click handler — typically opens MerchantContextMenu with screen coords. */
+  onMerchantRightClick?: (location: MerchantLocationWithBrand, x: number, y: number) => void;
+}
+
+/** Verified coords take precedence over Places coords. */
+function displayCoords(loc: MerchantLocationRow): { lat: number; lng: number } {
+  if (loc.verified_latitude != null && loc.verified_longitude != null) {
+    return { lat: loc.verified_latitude, lng: loc.verified_longitude };
+  }
+  return { lat: loc.latitude, lng: loc.longitude };
 }
 
 const PIN_SIZE = 28; // px — fixed for v1; zoom-scaled sizing deferred
@@ -74,6 +91,18 @@ function ensurePinStyle() {
         drop-shadow(0 0 2px white)
         drop-shadow(0 0 2px white);
     }
+    .merchant-pin.verifying {
+      cursor: grab;
+      transform: scale(1.4);
+      filter: drop-shadow(0 0 0 3px #f97316) drop-shadow(0 0 8px rgba(249,115,22,0.6));
+    }
+    .merchant-pin.verifying:active { cursor: grabbing; }
+    .merchant-pin.verifying img {
+      filter:
+        drop-shadow(0 0 0 2px #f97316)
+        drop-shadow(0 0 4px white)
+        drop-shadow(0 0 4px white);
+    }
     .merchant-pin-fallback {
       width: ${PIN_SIZE}px;
       height: ${PIN_SIZE}px;
@@ -92,9 +121,10 @@ function ensurePinStyle() {
   document.head.appendChild(style);
 }
 
-function buildPinContent(loc: MerchantLocationWithBrand): HTMLElement {
+function buildPinContent(loc: MerchantLocationWithBrand, verifying = false): HTMLElement {
   const container = document.createElement('div');
   container.className = 'merchant-pin';
+  if (verifying) container.classList.add('verifying');
   if (loc.business_status === 'CLOSED_PERMANENTLY') container.classList.add('closed-perm');
   else if (loc.business_status === 'CLOSED_TEMPORARILY') container.classList.add('closed-temp');
 
@@ -142,6 +172,9 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
   isVisible,
   selectedBrandIds,
   showClosed = false,
+  verifyingLocationId = null,
+  onLocationVerified,
+  onMerchantRightClick,
 }) => {
   const [locations, setLocations] = useState<MerchantLocationWithBrand[]>([]);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
@@ -257,16 +290,18 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
         const brandIds = Array.from(selectedBrandIds);
 
         while (true) {
+          // Viewport filter checks BOTH places and verified coords (logical OR)
+          // so a row whose verified pin sits in the viewport is included even
+          // if its original Places coord was outside.
+          // Matches RestaurantLayer's pattern.
+          const orFilter = `and(latitude.gte.${sw.lat()},latitude.lte.${ne.lat()},longitude.gte.${sw.lng()},longitude.lte.${ne.lng()}),and(verified_latitude.gte.${sw.lat()},verified_latitude.lte.${ne.lat()},verified_longitude.gte.${sw.lng()},verified_longitude.lte.${ne.lng()})`;
           let query = supabase
             .from('merchant_location')
             .select(
-              'id, brand_id, google_place_id, name, latitude, longitude, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, category_id)',
+              'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, category_id)',
             )
             .in('brand_id', brandIds)
-            .gte('latitude', sw.lat())
-            .lte('latitude', ne.lat())
-            .gte('longitude', sw.lng())
-            .lte('longitude', ne.lng())
+            .or(orFilter)
             .range(offset, offset + PAGE - 1);
 
           if (!showClosed) {
@@ -344,20 +379,61 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
         if (cancelled) return;
         const { AdvancedMarkerElement } = lib;
         const newMarkers: google.maps.marker.AdvancedMarkerElement[] = locations.map((loc) => {
-          const content = buildPinContent(loc);
+          const pos = displayCoords(loc);
+          const isBeingVerified = verifyingLocationId === loc.id;
+          const content = buildPinContent(loc, isBeingVerified);
           const marker = new AdvancedMarkerElement({
             map: null,
-            position: { lat: loc.latitude, lng: loc.longitude },
+            position: pos,
             content,
             title: loc.brand.name,
+            gmpDraggable: isBeingVerified,
+            zIndex: isBeingVerified ? 2000 : undefined,
           });
+
           marker.addListener('gmp-click', () => {
             closeOpenPopup();
-            const pos = new google.maps.LatLng(loc.latitude, loc.longitude);
-            const overlay = createPopupOverlay(loc, pos);
+            // Use current marker position so newly-dragged pin opens popup
+            // in the right spot before the DB save round-trips.
+            const cur = marker.position as google.maps.LatLngLiteral | google.maps.LatLng | null;
+            const lat = typeof (cur as google.maps.LatLng)?.lat === 'function'
+              ? (cur as google.maps.LatLng).lat()
+              : (cur as google.maps.LatLngLiteral)?.lat ?? pos.lat;
+            const lng = typeof (cur as google.maps.LatLng)?.lng === 'function'
+              ? (cur as google.maps.LatLng).lng()
+              : (cur as google.maps.LatLngLiteral)?.lng ?? pos.lng;
+            const latLng = new google.maps.LatLng(lat, lng);
+            const overlay = createPopupOverlay(loc, latLng);
             overlay.setMap(map);
             openPopupRef.current = { locationId: loc.id, overlay };
           });
+
+          if (isBeingVerified && onLocationVerified) {
+            marker.addListener('gmp-dragend', () => {
+              const cur = marker.position as google.maps.LatLngLiteral | google.maps.LatLng | null;
+              if (!cur) return;
+              const lat = typeof (cur as google.maps.LatLng).lat === 'function'
+                ? (cur as google.maps.LatLng).lat()
+                : (cur as google.maps.LatLngLiteral).lat;
+              const lng = typeof (cur as google.maps.LatLng).lng === 'function'
+                ? (cur as google.maps.LatLng).lng()
+                : (cur as google.maps.LatLngLiteral).lng;
+              // Skip the next idle re-fetch so the server roundtrip doesn't
+              // snap the pin back to the pre-drag position momentarily.
+              lastFetchKeyRef.current = null;
+              onLocationVerified(loc.id, lat, lng);
+            });
+          }
+
+          if (onMerchantRightClick) {
+            // AdvancedMarkerElement has no native rightclick — attach to content.
+            content.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMerchantRightClick(loc, e.clientX, e.clientY);
+            });
+          }
+
           return marker;
         });
         markersRef.current = newMarkers;
@@ -383,7 +459,16 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [map, isVisible, locations, createPopupOverlay, closeOpenPopup]);
+  }, [
+    map,
+    isVisible,
+    locations,
+    verifyingLocationId,
+    onLocationVerified,
+    onMerchantRightClick,
+    createPopupOverlay,
+    closeOpenPopup,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
