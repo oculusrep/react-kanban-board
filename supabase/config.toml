@@ -16,3 +16,8 @@ verify_jwt = false
 # function. Skipping Supabase JWT lets OpenClaw call without minting a user JWT.
 [functions.ovis-research-mcp]
 verify_jwt = false
+
+# Throwaway diagnostic — tests Supabase → Cloudflare-quick-tunnel reachability.
+# Delete the function + this stanza when we have the answer.
+[functions.cf-tunnel-probe]
+verify_jwt = false
