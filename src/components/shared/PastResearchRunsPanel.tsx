@@ -7,13 +7,15 @@ interface PastResearchRunsPanelProps {
   refreshTrigger?: number;
   /** Callback when a row is clicked (opens the approval modal). */
   onRunClick?: (runId: string) => void;
+  /** Callback when the Cancel button is clicked on a pending/running row. */
+  onCancelClick?: (runId: string) => void | Promise<void>;
 }
 
 interface ResearchRunRow {
   id: string;
   triggered_at: string;
   radius_miles: number;
-  state: 'pending' | 'running' | 'awaiting_review' | 'approved' | 'archived' | 'failed';
+  state: 'pending' | 'running' | 'awaiting_review' | 'approved' | 'archived' | 'failed' | 'cancelled';
   needs_review: string | null;
   openclaw_run_id: string | null;
   checklist_count: number;
@@ -27,6 +29,7 @@ const STATE_STYLES: Record<ResearchRunRow['state'], { label: string; bg: string;
   approved:        { label: 'Approved',        bg: '#002147', fg: '#FFFFFF', border: '#002147' },
   archived:        { label: 'Archived',        bg: '#F8FAFC', fg: '#8FA9C8', border: '#8FA9C8' },
   failed:          { label: 'Failed',          bg: '#FBEAEA', fg: '#8B0000', border: '#8B0000' },
+  cancelled:       { label: 'Cancelled',       bg: '#F8FAFC', fg: '#8FA9C8', border: '#8FA9C8' },
 };
 
 function formatTimestamp(iso: string): string {
@@ -45,7 +48,7 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick }: PastResearchRunsPanelProps) {
+export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick, onCancelClick }: PastResearchRunsPanelProps) {
   const [runs, setRuns] = useState<ResearchRunRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,7 +124,20 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
               >
                 {style.label}
               </span>
-              <span className="text-xs" style={{ color: '#8FA9C8' }}>{formatTimestamp(r.triggered_at)}</span>
+              <div className="flex items-center gap-2">
+                {onCancelClick && (r.state === 'pending' || r.state === 'running') && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void onCancelClick(r.id); }}
+                    className="text-xs px-2 py-0.5 rounded border"
+                    style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFFFFF' }}
+                    title="Mark this run as cancelled (use when a run is hung)"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <span className="text-xs" style={{ color: '#8FA9C8' }}>{formatTimestamp(r.triggered_at)}</span>
+              </div>
             </div>
             <div className="mt-1 text-xs" style={{ color: '#4A6B94' }}>
               {r.radius_miles}-mile radius

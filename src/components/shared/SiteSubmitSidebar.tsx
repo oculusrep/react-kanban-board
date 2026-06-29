@@ -1244,6 +1244,21 @@ export default function SiteSubmitSidebar({
                       siteSubmitId={siteSubmit.id}
                       refreshTrigger={researchRunsRefresh}
                       onRunClick={(runId) => setOpenApprovalRunId(runId)}
+                      onCancelClick={async (runId) => {
+                        if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
+                        try {
+                          const { data, error } = await supabase.rpc('cancel_research_run', { p_run_id: runId });
+                          if (error) throw error;
+                          const wasCancelled = (data as { cancelled?: boolean })?.cancelled;
+                          showToast(
+                            wasCancelled ? 'Run cancelled.' : 'Run was already in a terminal state.',
+                            { type: wasCancelled ? 'success' : 'info', duration: 3000 },
+                          );
+                          setResearchRunsRefresh((n) => n + 1);
+                        } catch (e) {
+                          showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
+                        }
+                      }}
                     />
                   </div>
                 )}
