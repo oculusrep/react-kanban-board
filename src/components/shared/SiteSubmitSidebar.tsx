@@ -25,6 +25,14 @@ import DigestComposeModal from '../portal/DigestComposeModal';
 import { CLIENT_VISIBLE_STAGES } from '../client-pipeline/pipelineConfig';
 import { getDropboxPropertySyncService } from '../../services/dropboxPropertySync';
 import OpenTasksPanel from '../tasks/OpenTasksPanel';
+import StartResearchModal from './StartResearchModal';
+import PastResearchRunsPanel from './PastResearchRunsPanel';
+import ResearchRunApprovalModal from './ResearchRunApprovalModal';
+import { useAuth } from '../../contexts/AuthContext';
+
+// Starbucks client_id — gates the "Start Research" action to Starbucks site_submits only.
+// See docs/MARKET_RESEARCH_AGENT_V1_PLAN.md decision #7.
+const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
 
 export interface SiteSubmitData {
   id: string;
@@ -251,6 +259,18 @@ export default function SiteSubmitSidebar({
   const [showDealConversionPrompt, setShowDealConversionPrompt] = useState(false);
   // Remembers which trigger opened the convert modal so we can pass it through.
   const [conversionTriggerStage, setConversionTriggerStage] = useState<'LOI' | 'Pre-Submittal' | 'Submitted-Reviewing'>('LOI');
+  // Market-research state (Starbucks site_submits only).
+  const [showStartResearchModal, setShowStartResearchModal] = useState(false);
+  const [researchRunsRefresh, setResearchRunsRefresh] = useState(0);
+  const [openApprovalRunId, setOpenApprovalRunId] = useState<string | null>(null);
+  const { userRole } = useAuth();
+  // Market-research action gate: Starbucks site + admin/broker role + has lat/lng on property.
+  const canStartResearch =
+    !!siteSubmit
+    && siteSubmit.client_id === STARBUCKS_CLIENT_ID
+    && (userRole === 'admin' || userRole === 'broker')
+    && (siteSubmit.property?.verified_latitude != null
+        || siteSubmit.property?.latitude != null);
   const [createFormKey, setCreateFormKey] = useState(0);
   const [editingHeaderField, setEditingHeaderField] = useState<'site_submit_name' | 'deal_name' | null>(null);
   const [headerEditValue, setHeaderEditValue] = useState('');
@@ -1068,6 +1088,22 @@ export default function SiteSubmitSidebar({
               );
             })()}
 
+            {/* Start Research button (clipboard) - Starbucks + admin/broker only */}
+            {canStartResearch && (
+              <button
+                onClick={() => setShowStartResearchModal(true)}
+                className="p-2 rounded-lg transition-colors"
+                style={{ backgroundColor: '#002147' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#4A6B94'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#002147'; }}
+                title="Start market research run for this site"
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+              </button>
+            )}
+
             {/* Convert to Deal button (dollar sign) - only show when no deal exists */}
             {isEditable && siteSubmit && !siteSubmit.deal_id && siteSubmit.client_id && (
               <button
@@ -1435,20 +1471,50 @@ export default function SiteSubmitSidebar({
         ) : (
           <>
             {activeTab === 'data' && (
-              siteSubmit.deal_id ? (
-                <DealDataTab
-                  siteSubmit={siteSubmit}
-                  dealId={siteSubmit.deal_id}
-                  isEditable={isEditable}
-                  onUpdate={handleUpdate}
-                />
-              ) : (
-                <SiteSubmitDataTab
-                  siteSubmit={siteSubmit}
-                  isEditable={isEditable}
-                  onUpdate={handleUpdate}
-                />
-              )
+              <>
+                {siteSubmit.deal_id ? (
+                  <DealDataTab
+                    siteSubmit={siteSubmit}
+                    dealId={siteSubmit.deal_id}
+                    isEditable={isEditable}
+                    onUpdate={handleUpdate}
+                  />
+                ) : (
+                  <SiteSubmitDataTab
+                    siteSubmit={siteSubmit}
+                    isEditable={isEditable}
+                    onUpdate={handleUpdate}
+                  />
+                )}
+                {/* Market research runs — only shown when the action is available, to keep the surface clean. */}
+                {canStartResearch && (
+                  <div className="px-4 pb-4 pt-2 border-t mt-4" style={{ borderColor: '#8FA9C8' }}>
+                    <h4 className="text-sm font-semibold mb-2" style={{ color: '#002147' }}>
+                      Market research runs
+                    </h4>
+                    <PastResearchRunsPanel
+                      siteSubmitId={siteSubmit.id}
+                      refreshTrigger={researchRunsRefresh}
+                      onRunClick={(runId) => setOpenApprovalRunId(runId)}
+                      onCancelClick={async (runId) => {
+                        if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
+                        try {
+                          const { data, error } = await supabase.rpc('cancel_research_run', { p_run_id: runId });
+                          if (error) throw error;
+                          const wasCancelled = (data as { cancelled?: boolean })?.cancelled;
+                          showToast(
+                            wasCancelled ? 'Run cancelled.' : 'Run was already in a terminal state.',
+                            { type: wasCancelled ? 'success' : 'info', duration: 3000 },
+                          );
+                          setResearchRunsRefresh((n) => n + 1);
+                        } catch (e) {
+                          showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </>
             )}
             {activeTab === 'chat' && (
               <PortalChatTab
@@ -1571,6 +1637,51 @@ export default function SiteSubmitSidebar({
           siteSubmitName={siteSubmit.site_submit_name || null}
           clientId={siteSubmit.client_id}
           clientName={siteSubmit.client?.client_name || null}
+        />
+      )}
+
+      {/* Start Research Modal — Starbucks site_submit, admin/broker only */}
+      {showStartResearchModal && siteSubmit && (
+        <StartResearchModal
+          siteSubmitId={siteSubmit.id}
+          siteSubmitLabel={
+            siteSubmit.site_submit_name
+            || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
+          }
+          onClose={() => setShowStartResearchModal(false)}
+          onStarted={({ selected_count }) => {
+            showToast(
+              `Research started on ${selected_count} ${selected_count === 1 ? 'municipality' : 'municipalities'} — OpenClaw is working on it.`,
+              { type: 'success', duration: 4000 },
+            );
+            setResearchRunsRefresh((n) => n + 1);
+          }}
+        />
+      )}
+
+      {/* Approval modal — opened by clicking a row in the Past Research Runs panel */}
+      {openApprovalRunId && siteSubmit && (
+        <ResearchRunApprovalModal
+          researchRunId={openApprovalRunId}
+          siteSubmitLabel={
+            siteSubmit.site_submit_name
+            || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
+          }
+          onClose={() => setOpenApprovalRunId(null)}
+          onDone={({ approved_new, approved_matched, created_municipality_count }) => {
+            const parts: string[] = [];
+            if (approved_new > 0) parts.push(`${approved_new} new`);
+            if (approved_matched > 0) parts.push(`${approved_matched} already existed`);
+            const summary = parts.length ? parts.join(' + ') : '0 records';
+            const muniNote = created_municipality_count > 0
+              ? ` (${created_municipality_count} new ${created_municipality_count === 1 ? 'municipality' : 'municipalities'} created)`
+              : '';
+            showToast(
+              `Approved ${summary}${muniNote}`,
+              { type: 'success', duration: 4000 },
+            );
+            setResearchRunsRefresh((n) => n + 1);
+          }}
         />
       )}
     </div>

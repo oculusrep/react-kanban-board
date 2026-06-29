@@ -10,3 +10,10 @@ verify_jwt = false
 # avoids needing a vault-stored service_role_key for the pg_cron job.
 [functions.send-portal-comment-alert]
 verify_jwt = false
+
+# MCP server consumed by the OpenClaw market-research subagent. Auth is via the
+# Authorization: Bearer <OVIS_MCP_BEARER_TOKEN> header, validated inside the
+# function. Skipping Supabase JWT lets OpenClaw call without minting a user JWT.
+[functions.ovis-research-mcp]
+verify_jwt = false
+

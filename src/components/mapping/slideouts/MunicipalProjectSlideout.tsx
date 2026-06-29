@@ -411,6 +411,16 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                 Geocoded as: {project.geocoded_address}
               </div>
             )}
+            {project.location_description && (
+              <div className="mt-1.5 text-xs px-2 py-1.5 rounded"
+                   style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight, borderLeft: `3px solid ${BRAND.terracotta}` }}>
+                <span className="font-semibold uppercase tracking-wide block mb-0.5"
+                      style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
+                  Pin placement hint
+                </span>
+                {project.location_description}
+              </div>
+            )}
             {project.parcel_numbers && project.parcel_numbers.length > 0 && (
               <div className="text-xs mt-1.5" style={{ color: BRAND.steel }}>
                 <span style={{ color: BRAND.slate }}>Parcels:</span>{' '}
@@ -505,6 +515,49 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
             </section>
           )}
 
+          {/* Source — agent-discovered context. Only renders if any of these fields are populated.
+              Importer + manually-created rows usually have all four NULL → section is hidden. */}
+          {(project.builder_developer || project.permit_url || project.permit_application_date || project.source) && (
+            <section>
+              <SectionLabel>Source</SectionLabel>
+              <div className="mt-1.5 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-sm">
+                {project.builder_developer && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Builder</span>
+                    <span style={{ color: BRAND.midnight }}>{project.builder_developer}</span>
+                  </>
+                )}
+                {project.permit_application_date && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Permit app</span>
+                    <span style={{ color: BRAND.midnight }}>{project.permit_application_date}</span>
+                  </>
+                )}
+                {project.permit_url && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Permit URL</span>
+                    <a
+                      href={project.permit_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate underline"
+                      style={{ color: BRAND.steel }}
+                      title={project.permit_url}
+                    >
+                      {project.permit_url}
+                    </a>
+                  </>
+                )}
+                {project.source && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Origin</span>
+                    <span style={{ color: BRAND.midnight }}>{project.source}</span>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Notes — always visible, editable */}
           <section>
             <SectionLabel>Notes</SectionLabel>
@@ -565,6 +618,16 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
           {/* Polygon drawing */}
           <section>
             <SectionLabel>Polygon</SectionLabel>
+            {project.parcel_boundary_notes && (
+              <div className="mt-1.5 text-xs px-2 py-1.5 rounded"
+                   style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight, borderLeft: `3px solid ${BRAND.terracotta}` }}>
+                <span className="font-semibold uppercase tracking-wide block mb-0.5"
+                      style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
+                  Parcel / boundary notes (polygon hint)
+                </span>
+                {project.parcel_boundary_notes}
+              </div>
+            )}
             <div className="mt-1.5">
               {project.geometry_geojson ? (
                 <div className="text-xs mb-2" style={{ color: BRAND.steel }}>
@@ -607,6 +670,22 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                 </div>
               )}
             </div>
+          </section>
+
+          {/* Provenance footer — quietly tells the user where this row came from.
+              Agent rows: "Found by the market research agent". Importer rows:
+              "Imported via CSV". Otherwise: created manually. */}
+          <section className="pt-2 border-t text-xs" style={{ borderColor: '#EAEEF3', color: BRAND.slate }}>
+            {project.source_research_run_id ? (
+              <>Found by the market research agent</>
+            ) : project.source_import_id ? (
+              <>Imported via municipal-project CSV</>
+            ) : (
+              <>Manually created</>
+            )}
+            {project.created_at && (
+              <> · created {new Date(project.created_at).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' })}</>
+            )}
           </section>
         </div>
 
