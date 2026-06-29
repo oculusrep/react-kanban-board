@@ -411,6 +411,16 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                 Geocoded as: {project.geocoded_address}
               </div>
             )}
+            {project.location_description && (
+              <div className="mt-1.5 text-xs px-2 py-1.5 rounded"
+                   style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight, borderLeft: `3px solid ${BRAND.terracotta}` }}>
+                <span className="font-semibold uppercase tracking-wide block mb-0.5"
+                      style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
+                  Pin placement hint
+                </span>
+                {project.location_description}
+              </div>
+            )}
             {project.parcel_numbers && project.parcel_numbers.length > 0 && (
               <div className="text-xs mt-1.5" style={{ color: BRAND.steel }}>
                 <span style={{ color: BRAND.slate }}>Parcels:</span>{' '}
@@ -608,6 +618,16 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
           {/* Polygon drawing */}
           <section>
             <SectionLabel>Polygon</SectionLabel>
+            {project.parcel_boundary_notes && (
+              <div className="mt-1.5 text-xs px-2 py-1.5 rounded"
+                   style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight, borderLeft: `3px solid ${BRAND.terracotta}` }}>
+                <span className="font-semibold uppercase tracking-wide block mb-0.5"
+                      style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
+                  Parcel / boundary notes (polygon hint)
+                </span>
+                {project.parcel_boundary_notes}
+              </div>
+            )}
             <div className="mt-1.5">
               {project.geometry_geojson ? (
                 <div className="text-xs mb-2" style={{ color: BRAND.steel }}>

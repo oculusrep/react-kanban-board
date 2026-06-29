@@ -32,6 +32,8 @@ interface StagingRow {
   approval_state: 'pending' | 'approved' | 'rejected';
   project_name: string | null;
   address: string | null;
+  location_description: string | null;
+  parcel_boundary_notes: string | null;
   total_housing_units: number | null;
   builder_developer: string | null;
   permit_url: string | null;
@@ -44,12 +46,17 @@ interface StagingRow {
 
 // Editable subset — the fields the approval UI lets the user override per row.
 type Edits = Partial<Pick<StagingRow,
-  'project_name' | 'address' | 'total_housing_units' | 'builder_developer'
+  'project_name' | 'address' | 'location_description' | 'parcel_boundary_notes'
+  | 'total_housing_units' | 'builder_developer'
   | 'permit_url' | 'permit_application_date' | 'source' | 'notes'>>;
 
 const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url'; full?: boolean }[] = [
   { key: 'project_name',            label: 'Project name',     type: 'text', full: true },
-  { key: 'address',                 label: 'Address',          type: 'text', full: true },
+  { key: 'address',                 label: 'Address (geocoded)', type: 'text', full: true },
+  // Location-precision fields the agent captures from sources; reviewer reads these
+  // when manually placing the pin / drawing the polygon. Neither feeds geocoding.
+  { key: 'location_description',    label: 'Location description (manual-pin hint)', type: 'text', full: true },
+  { key: 'parcel_boundary_notes',   label: 'Parcel / boundary notes (polygon hint)', type: 'text', full: true },
   { key: 'total_housing_units',     label: 'Total units',      type: 'number' },
   { key: 'builder_developer',       label: 'Builder',          type: 'text' },
   { key: 'permit_url',              label: 'Permit URL',       type: 'url', full: true },
@@ -99,7 +106,8 @@ export default function ResearchRunApprovalModal({
             .from('municipal_project_staging')
             .select(`
               id, boundary_municipality_id, matched_existing_id, approval_state,
-              project_name, address, total_housing_units, builder_developer, permit_url,
+              project_name, address, location_description, parcel_boundary_notes,
+              total_housing_units, builder_developer, permit_url,
               permit_application_date, source, notes,
               boundary_municipality(name, kind)
             `)
@@ -240,6 +248,8 @@ export default function ResearchRunApprovalModal({
             staging_id: id,
             ...(e.project_name        !== undefined ? { project_name:            e.project_name        } : {}),
             ...(e.address             !== undefined ? { address:                 e.address             } : {}),
+            ...(e.location_description  !== undefined ? { location_description:  e.location_description  } : {}),
+            ...(e.parcel_boundary_notes !== undefined ? { parcel_boundary_notes: e.parcel_boundary_notes } : {}),
             ...(e.total_housing_units !== undefined ? { total_housing_units:     Number(e.total_housing_units) || null } : {}),
             ...(e.builder_developer   !== undefined ? { builder_developer:       e.builder_developer   } : {}),
             ...(e.permit_url          !== undefined ? { permit_url:              e.permit_url          } : {}),

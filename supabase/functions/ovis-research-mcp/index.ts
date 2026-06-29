@@ -143,6 +143,14 @@ const TOOLS = [
               boundary_municipality_id: { type: 'string', format: 'uuid', description: 'Which muni this record was found in.' },
               project_name: { type: 'string' },
               address: { type: 'string' },
+              location_description: {
+                type: ['string', 'null'],
+                description: 'Human-readable precise location descriptor for manual pin placement — e.g. "NWC of Hwy 92 & Dallas-Acworth Rd, behind the Publix". Distinct from address (which drives geocoding). Does NOT feed geocoding; the reviewer reads this when manually adjusting the pin. Omit / null if no source stated the precise location.',
+              },
+              parcel_boundary_notes: {
+                type: ['string', 'null'],
+                description: 'Any boundary/parcel detail STATED IN A SOURCE — prioritize tax parcel ID(s), then acreage, then bounding roads/features/frontage (e.g. "Parcel 045-123; ~42 acres; bounded by Cole Lake Rd (N) and creek (E)"). Used by the reviewer to manually draw the project polygon. Capture only what sources state; do NOT derive geometry.',
+              },
               phase_label: { type: 'string', description: 'e.g. "Phase I" / "Phase 2" / "" — extract from notes if present.' },
               total_housing_units: { type: 'integer', minimum: 0 },
               single_family_lots: { type: ['integer', 'null'] },
