@@ -505,6 +505,49 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
             </section>
           )}
 
+          {/* Source — agent-discovered context. Only renders if any of these fields are populated.
+              Importer + manually-created rows usually have all four NULL → section is hidden. */}
+          {(project.builder_developer || project.permit_url || project.permit_application_date || project.source) && (
+            <section>
+              <SectionLabel>Source</SectionLabel>
+              <div className="mt-1.5 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-sm">
+                {project.builder_developer && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Builder</span>
+                    <span style={{ color: BRAND.midnight }}>{project.builder_developer}</span>
+                  </>
+                )}
+                {project.permit_application_date && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Permit app</span>
+                    <span style={{ color: BRAND.midnight }}>{project.permit_application_date}</span>
+                  </>
+                )}
+                {project.permit_url && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Permit URL</span>
+                    <a
+                      href={project.permit_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate underline"
+                      style={{ color: BRAND.steel }}
+                      title={project.permit_url}
+                    >
+                      {project.permit_url}
+                    </a>
+                  </>
+                )}
+                {project.source && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Origin</span>
+                    <span style={{ color: BRAND.midnight }}>{project.source}</span>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Notes — always visible, editable */}
           <section>
             <SectionLabel>Notes</SectionLabel>
@@ -607,6 +650,22 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                 </div>
               )}
             </div>
+          </section>
+
+          {/* Provenance footer — quietly tells the user where this row came from.
+              Agent rows: "Found by the market research agent". Importer rows:
+              "Imported via CSV". Otherwise: created manually. */}
+          <section className="pt-2 border-t text-xs" style={{ borderColor: '#EAEEF3', color: BRAND.slate }}>
+            {project.source_research_run_id ? (
+              <>Found by the market research agent</>
+            ) : project.source_import_id ? (
+              <>Imported via municipal-project CSV</>
+            ) : (
+              <>Manually created</>
+            )}
+            {project.created_at && (
+              <> · created {new Date(project.created_at).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' })}</>
+            )}
           </section>
         </div>
 

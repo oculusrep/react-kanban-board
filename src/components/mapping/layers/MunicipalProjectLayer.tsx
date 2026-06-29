@@ -33,6 +33,16 @@ export interface MunicipalProjectMapRow {
   geocoded_address: string | null;
   // GeoJSON Polygon (or MultiPolygon) when the user has drawn one in Phase 3; null otherwise.
   geometry_geojson: { type: string; coordinates: unknown } | null;
+  // Source / provenance (Phase B additions — populated by the market research agent
+  // on agent-promoted rows; nullable on importer + manually-created rows).
+  builder_developer: string | null;
+  permit_url: string | null;
+  permit_application_date: string | null;
+  source: string | null;
+  source_research_run_id: string | null;
+  source_import_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 interface Props {
