@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { geocodingService } from '../../services/geocodingService';
 
 interface ResearchRunApprovalModalProps {
   researchRunId: string;
@@ -210,20 +211,51 @@ export default function ResearchRunApprovalModal({
         if (nrErr) console.warn('needs_review update skipped (RLS):', nrErr.message);
       }
 
-      const payload = ids.map((id) => {
-        const e = edits[id] ?? {};
-        return {
-          staging_id: id,
-          ...(e.project_name        !== undefined ? { project_name:            e.project_name        } : {}),
-          ...(e.address             !== undefined ? { address:                 e.address             } : {}),
-          ...(e.total_housing_units !== undefined ? { total_housing_units:     Number(e.total_housing_units) || null } : {}),
-          ...(e.builder_developer   !== undefined ? { builder_developer:       e.builder_developer   } : {}),
-          ...(e.permit_url          !== undefined ? { permit_url:              e.permit_url          } : {}),
-          ...(e.permit_application_date !== undefined ? { permit_application_date: e.permit_application_date } : {}),
-          ...(e.source              !== undefined ? { source:                  e.source              } : {}),
-          ...(e.notes               !== undefined ? { notes:                   e.notes               } : {}),
-        };
-      });
+      // Geocode each selected row before submitting so the new municipal_project
+      // rows land with a centroid + geocoded_address — without those the
+      // Municipal Projects map layer can't render a pin. Mirrors the importer's
+      // pre-insert geocode pass.
+      const geocodeFailures: string[] = [];
+      const payload = await Promise.all(
+        ids.map(async (id) => {
+          const row = staging.find((s) => s.id === id);
+          const e = edits[id] ?? {};
+          const finalAddress = (e.address ?? row?.address ?? '').trim();
+
+          let lat: number | null = null;
+          let lng: number | null = null;
+          let formatted: string | null = null;
+          if (finalAddress) {
+            const g = await geocodingService.geocodeAddress(finalAddress);
+            if ('latitude' in g && 'longitude' in g) {
+              lat = g.latitude;
+              lng = g.longitude;
+              formatted = g.formatted_address ?? null;
+            } else {
+              geocodeFailures.push(`${row?.project_name ?? id}: ${('error' in g) ? g.error : 'geocode failed'}`);
+            }
+          }
+
+          return {
+            staging_id: id,
+            ...(e.project_name        !== undefined ? { project_name:            e.project_name        } : {}),
+            ...(e.address             !== undefined ? { address:                 e.address             } : {}),
+            ...(e.total_housing_units !== undefined ? { total_housing_units:     Number(e.total_housing_units) || null } : {}),
+            ...(e.builder_developer   !== undefined ? { builder_developer:       e.builder_developer   } : {}),
+            ...(e.permit_url          !== undefined ? { permit_url:              e.permit_url          } : {}),
+            ...(e.permit_application_date !== undefined ? { permit_application_date: e.permit_application_date } : {}),
+            ...(e.source              !== undefined ? { source:                  e.source              } : {}),
+            ...(e.notes               !== undefined ? { notes:                   e.notes               } : {}),
+            ...(lat !== null && lng !== null ? { latitude: lat, longitude: lng } : {}),
+            ...(formatted ? { geocoded_address: formatted } : {}),
+          };
+        }),
+      );
+
+      if (geocodeFailures.length > 0) {
+        // Surface but don't block — backfill script can fill these in later.
+        console.warn('Geocoding failed for some rows; they will land without a centroid:', geocodeFailures);
+      }
 
       const { data, error: rpcErr } = await supabase.rpc('approve_research_staging_rows', { p_rows: payload });
       if (rpcErr) throw rpcErr;
