@@ -10,14 +10,19 @@ This is the final wire-up step. With it, the loop runs end-to-end on a real Star
 
 ## What needs to be configured on each side
 
-### OVIS side — two secrets (Mike sets these)
+### OVIS side — three secrets (Mike sets these)
 
 ```bash
-supabase secrets set OPENCLAW_TRIGGER_URL=https://<your-openclaw-gateway>/api/research/start
+supabase secrets set OPENCLAW_TRIGGER_URL=https://hooks.ovisclaw-hooks.com/hooks/ovis-research
 supabase secrets set OPENCLAW_TRIGGER_TOKEN=<bearer-token-OVIS-uses-when-calling-OpenClaw>
+supabase secrets set TELEGRAM_BOT_TOKEN=<bot-token-for-@orep_openclaw_bot>
 ```
 
 No code change or redeploy needed after — `ovis-research-trigger` reads `Deno.env.get(...)` per request. Within ~30 seconds of `secrets set`, the next click on "Start Research" stops 503'ing and forwards to OpenClaw.
+
+**Tunnel setup (one-time on the Mac mini):** the trigger URL is served by a **Cloudflare named tunnel** (name: `ovis-hooks`) running as a LaunchDaemon. It's path-scoped to `/hooks/ovis-research` only — the OpenClaw dashboard is not exposed. Stable hostname (`hooks.ovisclaw-hooks.com`) means `OPENCLAW_TRIGGER_URL` never needs to change unless the tunnel name is reconfigured.
+
+**Telegram notifications:** every commit-mode trigger fires a Telegram message to chat `8371575998` via `@orep_openclaw_bot` — `✅ Research started: …` on success, `⚠️ Research trigger FAILED for …: <reason>` on any failure path (OpenClaw unreachable, OpenClaw rejected, OpenClaw secrets not configured). If `TELEGRAM_BOT_TOKEN` is unset, notifications are silently skipped (the trigger itself still works). Notification failures never block the response.
 
 ### OpenClaw side — two credentials (share with the OpenClaw operator)
 

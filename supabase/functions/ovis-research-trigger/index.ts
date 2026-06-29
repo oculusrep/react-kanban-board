@@ -100,6 +100,30 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+// Telegram operator notifications — chat ID hardcoded (Mike's @orep_openclaw_bot).
+// Failures here are swallowed so a notification glitch can never block the
+// trigger response.
+const TELEGRAM_CHAT_ID = '8371575998';
+async function notifyTelegram(text: string): Promise<void> {
+  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
+  if (!token) {
+    console.warn('TELEGRAM_BOT_TOKEN not set — skipping notification:', text);
+    return;
+  }
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
+    });
+    if (!resp.ok) {
+      console.warn('Telegram notification non-2xx:', resp.status, await resp.text());
+    }
+  } catch (e) {
+    console.warn('Telegram notification threw:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: CORS });
@@ -159,10 +183,10 @@ serve(async (req) => {
   const { data: site, error: siteErr } = await service
     .from('site_submit')
     .select(`
-      id, client_id, property_id,
+      id, client_id, property_id, site_submit_name,
       sf_property_latitude, sf_property_longitude,
       verified_latitude, verified_longitude,
-      property:property_id ( latitude, longitude, verified_latitude, verified_longitude )
+      property:property_id ( property_name, latitude, longitude, verified_latitude, verified_longitude )
     `)
     .eq('id', body.site_submit_id)
     .maybeSingle();
@@ -254,12 +278,19 @@ serve(async (req) => {
   if (createErr) return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
   const researchRunId = runId as string;
 
+  // Build a human-readable site label used in Telegram notifications below.
+  const siteLabel = (site as { site_submit_name?: string | null; property?: { property_name?: string | null } | null })
+    .site_submit_name
+    ?? (site as { property?: { property_name?: string | null } | null }).property?.property_name
+    ?? body.site_submit_id;
+
   // Now POST to OpenClaw. The agent receives the frozen scope as input.
   const openclawUrl = Deno.env.get('OPENCLAW_TRIGGER_URL');
   const openclawToken = Deno.env.get('OPENCLAW_TRIGGER_TOKEN');
   if (!openclawUrl || !openclawToken) {
     // Mark the run as failed so it doesn't sit forever in 'running'.
     await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
+    await notifyTelegram(`⚠️ Research trigger FAILED for ${siteLabel}: OpenClaw secrets not configured`);
     return jsonResponse({
       error: 'openclaw_not_configured',
       detail: 'OPENCLAW_TRIGGER_URL and OPENCLAW_TRIGGER_TOKEN must be set as Supabase secrets',
@@ -296,6 +327,7 @@ serve(async (req) => {
     });
   } catch (e) {
     await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
+    await notifyTelegram(`⚠️ Research trigger FAILED for ${siteLabel}: OpenClaw unreachable (${String(e).slice(0, 200)})`);
     return jsonResponse({ error: 'openclaw_unreachable', detail: String(e), research_run_id: researchRunId }, 502);
   }
 
@@ -305,6 +337,7 @@ serve(async (req) => {
 
   if (!openclawResp.ok) {
     await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
+    await notifyTelegram(`⚠️ Research trigger FAILED for ${siteLabel}: OpenClaw returned HTTP ${openclawResp.status}`);
     return jsonResponse({
       error: 'openclaw_rejected',
       status: openclawResp.status,
@@ -320,6 +353,8 @@ serve(async (req) => {
       await service.from('research_run').update({ openclaw_run_id: oid }).eq('id', researchRunId);
     }
   }
+
+  await notifyTelegram(`✅ Research started: ${siteLabel} — ${requested.length} ${requested.length === 1 ? 'municipality' : 'municipalities'}`);
 
   return jsonResponse({
     ok: true,

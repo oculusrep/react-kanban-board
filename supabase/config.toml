@@ -17,7 +17,3 @@ verify_jwt = false
 [functions.ovis-research-mcp]
 verify_jwt = false
 
-# Throwaway diagnostic — tests Supabase → Cloudflare-quick-tunnel reachability.
-# Delete the function + this stanza when we have the answer.
-[functions.cf-tunnel-probe]
-verify_jwt = false
