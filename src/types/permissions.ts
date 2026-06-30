@@ -106,6 +106,8 @@ export interface RolePermissions {
   can_access_cfo_dashboard?: boolean;
   can_access_finance_hub?: boolean;
   can_access_municipal_import?: boolean;
+  can_run_market_research?: boolean;
+  can_approve_market_research?: boolean;
 
   // Traffic Data (StreetLight SATC)
   can_view_traffic_data?: boolean;
@@ -629,6 +631,20 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_access_municipal_import',
     label: 'Access Municipal Projects',
     description: 'Access the Municipal Project Import tool (CSV import, map layer, polygon drawing, KML export)',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_run_market_research',
+    label: 'Run Market Research',
+    description: 'Trigger market research runs on Starbucks site_submits (spends OpenClaw tokens) and cancel hung runs',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_approve_market_research',
+    label: 'Approve Market Research',
+    description: 'Review staged research findings and approve/reject them into the canonical municipal_project table',
     category: 'system_admin',
     defaultValue: false,
   },

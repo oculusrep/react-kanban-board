@@ -28,7 +28,7 @@ import OpenTasksPanel from '../tasks/OpenTasksPanel';
 import StartResearchModal from './StartResearchModal';
 import PastResearchRunsPanel from './PastResearchRunsPanel';
 import ResearchRunApprovalModal from './ResearchRunApprovalModal';
-import { useAuth } from '../../contexts/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 
 // Starbucks client_id — gates the "Start Research" action to Starbucks site_submits only.
 // See docs/MARKET_RESEARCH_AGENT_V1_PLAN.md decision #7.
@@ -264,12 +264,12 @@ export default function SiteSubmitSidebar({
   const [researchRunsRefresh, setResearchRunsRefresh] = useState(0);
   const [openApprovalRunId, setOpenApprovalRunId] = useState<string | null>(null);
   const [researchPanelExpanded, setResearchPanelExpanded] = useState(false);
-  const { userRole } = useAuth();
-  // Market-research action gate: Starbucks site + admin/broker role + has lat/lng on property.
+  const { hasPermission } = usePermissions();
+  // Market-research action gate: Starbucks site + can_run_market_research permission + has lat/lng on property.
   const canStartResearch =
     !!siteSubmit
     && siteSubmit.client_id === STARBUCKS_CLIENT_ID
-    && (userRole === 'admin' || userRole === 'broker')
+    && hasPermission('can_run_market_research')
     && (siteSubmit.property?.verified_latitude != null
         || siteSubmit.property?.latitude != null);
   const [createFormKey, setCreateFormKey] = useState(0);

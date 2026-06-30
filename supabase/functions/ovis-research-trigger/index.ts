@@ -148,16 +148,27 @@ serve(async (req) => {
     { auth: { persistSession: false } },
   );
 
-  // ---- Role gate ----
-  const { data: userRow, error: roleErr } = await service
+  // ---- User lookup + permission gate ----
+  // auth.uid() maps to user.auth_user_id (NOT user.id — that's the auth identity,
+  // user.id is the OVIS row id). Looking up by id only worked for the admin
+  // because their two columns happen to match.
+  const { data: userRow, error: userErr } = await service
     .from('user')
-    .select('id, ovis_role')
-    .eq('id', authUserId)
+    .select('id')
+    .eq('auth_user_id', authUserId)
     .maybeSingle();
-  if (roleErr) return jsonResponse({ error: 'role_lookup_failed', detail: roleErr.message }, 500);
+  if (userErr) return jsonResponse({ error: 'user_lookup_failed', detail: userErr.message }, 500);
   if (!userRow) return jsonResponse({ error: 'user_not_found' }, 403);
-  if (!['admin', 'broker'].includes(userRow.ovis_role ?? '')) {
-    return jsonResponse({ error: 'forbidden', detail: 'admin or broker role required' }, 403);
+  const userId = userRow.id as string;
+
+  // Permission gate via the SQL helper (admin bypass + user-override → role-default).
+  // Call via the anonClient so auth.uid() resolves correctly through the user's JWT.
+  const { data: hasAccess, error: permErr } = await anonClient.rpc(
+    'user_has_market_research_run_access',
+  );
+  if (permErr) return jsonResponse({ error: 'permission_check_failed', detail: permErr.message }, 500);
+  if (!hasAccess) {
+    return jsonResponse({ error: 'forbidden', detail: 'can_run_market_research permission required' }, 403);
   }
 
   // ---- Parse + validate body ----
@@ -272,7 +283,7 @@ serve(async (req) => {
       p_radius_miles: radius,
       p_boundary_muni_ids: orderedSelected,
       p_openclaw_run_id: null,
-      p_triggered_by: authUserId,
+      p_triggered_by: userId,
     },
   );
   if (createErr) return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
@@ -311,7 +322,7 @@ serve(async (req) => {
     lat: Number(lat),
     lng: Number(lng),
     radiusMiles: radius,
-    triggeredByUserId: authUserId,
+    triggeredByUserId: userId,
     municipalities: selectedMunis,
   });
 
