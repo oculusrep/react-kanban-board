@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { geocodingService } from '../../services/geocodingService';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface ResearchRunApprovalModalProps {
   researchRunId: string;
@@ -283,7 +284,11 @@ export default function ResearchRunApprovalModal({
   };
 
   // ---- render ----
-  const isReadOnlyRun = run?.state === 'approved' || run?.state === 'archived';
+  // Read-only if the run is in a terminal state OR the user lacks approval
+  // permission. Both produce the same UX (view but don't edit/approve/reject).
+  const { hasPermission } = usePermissions();
+  const canApprove = hasPermission('can_approve_market_research');
+  const isReadOnlyRun = run?.state === 'approved' || run?.state === 'archived' || !canApprove;
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 p-4">
@@ -316,6 +321,12 @@ export default function ResearchRunApprovalModal({
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
               {error}
+            </div>
+          )}
+          {!loading && !canApprove && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#F8FAFC' }}>
+              View-only — you don't have the <code>can_approve_market_research</code> permission. Ask an admin to grant it if you need to approve or reject findings here.
             </div>
           )}
 
