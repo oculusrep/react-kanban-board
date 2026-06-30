@@ -263,6 +263,7 @@ export default function SiteSubmitSidebar({
   const [showStartResearchModal, setShowStartResearchModal] = useState(false);
   const [researchRunsRefresh, setResearchRunsRefresh] = useState(0);
   const [openApprovalRunId, setOpenApprovalRunId] = useState<string | null>(null);
+  const [researchPanelExpanded, setResearchPanelExpanded] = useState(false);
   const { userRole } = useAuth();
   // Market-research action gate: Starbucks site + admin/broker role + has lat/lng on property.
   const canStartResearch =
@@ -1489,29 +1490,47 @@ export default function SiteSubmitSidebar({
                 {/* Market research runs — only shown when the action is available, to keep the surface clean. */}
                 {canStartResearch && (
                   <div className="px-4 pb-4 pt-2 border-t mt-4" style={{ borderColor: '#8FA9C8' }}>
-                    <h4 className="text-sm font-semibold mb-2" style={{ color: '#002147' }}>
-                      Market research runs
-                    </h4>
-                    <PastResearchRunsPanel
-                      siteSubmitId={siteSubmit.id}
-                      refreshTrigger={researchRunsRefresh}
-                      onRunClick={(runId) => setOpenApprovalRunId(runId)}
-                      onCancelClick={async (runId) => {
-                        if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
-                        try {
-                          const { data, error } = await supabase.rpc('cancel_research_run', { p_run_id: runId });
-                          if (error) throw error;
-                          const wasCancelled = (data as { cancelled?: boolean })?.cancelled;
-                          showToast(
-                            wasCancelled ? 'Run cancelled.' : 'Run was already in a terminal state.',
-                            { type: wasCancelled ? 'success' : 'info', duration: 3000 },
-                          );
-                          setResearchRunsRefresh((n) => n + 1);
-                        } catch (e) {
-                          showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
-                        }
-                      }}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setResearchPanelExpanded((v) => !v)}
+                      className="flex items-center justify-between w-full text-left mb-2 hover:opacity-80 transition-opacity"
+                      aria-expanded={researchPanelExpanded}
+                    >
+                      <h4 className="text-sm font-semibold" style={{ color: '#002147' }}>
+                        Market research runs
+                      </h4>
+                      <svg
+                        className={`w-4 h-4 transition-transform ${researchPanelExpanded ? 'rotate-180' : ''}`}
+                        style={{ color: '#002147' }}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {researchPanelExpanded && (
+                      <PastResearchRunsPanel
+                        siteSubmitId={siteSubmit.id}
+                        refreshTrigger={researchRunsRefresh}
+                        onRunClick={(runId) => setOpenApprovalRunId(runId)}
+                        onCancelClick={async (runId) => {
+                          if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
+                          try {
+                            const { data, error } = await supabase.rpc('cancel_research_run', { p_run_id: runId });
+                            if (error) throw error;
+                            const wasCancelled = (data as { cancelled?: boolean })?.cancelled;
+                            showToast(
+                              wasCancelled ? 'Run cancelled.' : 'Run was already in a terminal state.',
+                              { type: wasCancelled ? 'success' : 'info', duration: 3000 },
+                            );
+                            setResearchRunsRefresh((n) => n + 1);
+                          } catch (e) {
+                            showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
+                          }
+                        }}
+                      />
+                    )}
                   </div>
                 )}
               </>
