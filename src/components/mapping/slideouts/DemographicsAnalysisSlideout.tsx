@@ -203,6 +203,10 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const [strokeWeight, setStrokeWeight] = useState(DEFAULT_STROKE_WEIGHT);
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  // Minimize collapses the body but keeps the slideout open — overlays
+  // stay mounted on the map so rings/isochrones/polygon remain visible
+  // while the user works on other things.
+  const [minimized, setMinimized] = useState(false);
 
   const { isEnriching, enrichError, enrichLocation, enrichPolygon, clearError } =
     usePropertyGeoenrichment();
@@ -222,6 +226,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     setStrokeWeight(DEFAULT_STROKE_WEIGHT);
     setShowStylePanel(false);
     setShowModal(false);
+    setMinimized(false);
     clearError();
 
     if (prefilled?.mode === 'rings') {
@@ -383,11 +388,19 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
       />
 
       <aside
-        className="fixed top-0 right-0 h-full w-[420px] z-[50] shadow-2xl flex flex-col"
+        className={
+          minimized
+            ? 'fixed top-4 right-4 z-[50] shadow-2xl rounded-lg overflow-hidden'
+            : 'fixed top-0 right-0 h-full w-[420px] z-[50] shadow-2xl flex flex-col'
+        }
         style={{ backgroundColor: '#FFFFFF' }}
       >
         <header
-          className="px-5 py-4 border-b flex items-start justify-between"
+          className={
+            minimized
+              ? 'px-4 py-2 flex items-center justify-between gap-3'
+              : 'px-5 py-4 border-b flex items-start justify-between'
+          }
           style={{ borderColor: BRAND.border }}
         >
           <div className="min-w-0">
@@ -396,13 +409,23 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
               style={{ color: BRAND.slate }}
             >
               Demographics
+              {minimized && (result || polygonResult) && (
+                <span
+                  className="ml-2 normal-case tracking-normal"
+                  style={{ color: BRAND.steel }}
+                >
+                  · overlays on map
+                </span>
+              )}
             </div>
-            <h2
-              className="text-lg font-semibold mt-0.5"
-              style={{ color: BRAND.midnight }}
-            >
-              Ad-hoc location
-            </h2>
+            {!minimized && (
+              <h2
+                className="text-lg font-semibold mt-0.5"
+                style={{ color: BRAND.midnight }}
+              >
+                Ad-hoc location
+              </h2>
+            )}
             <div
               className="text-xs font-mono mt-1"
               style={{ color: BRAND.steel }}
@@ -411,7 +434,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {(result || polygonResult) && (
+            {!minimized && (result || polygonResult) && (
               <button
                 type="button"
                 onClick={() => setShowModal(true)}
@@ -422,15 +445,30 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
               </button>
             )}
             <button
+              type="button"
+              onClick={() => setMinimized((m) => !m)}
+              className="text-gray-400 hover:text-gray-700 text-lg leading-none"
+              aria-label={minimized ? 'Expand' : 'Minimize'}
+              title={
+                minimized
+                  ? 'Expand — bring the panel back'
+                  : 'Minimize — keep overlays on map, hide panel'
+              }
+            >
+              {minimized ? '▢' : '–'}
+            </button>
+            <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-700 text-2xl leading-none"
               aria-label="Close"
+              title="Close — remove overlays from map"
             >
               ×
             </button>
           </div>
         </header>
 
+        {!minimized && (
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           <section>
             <div
@@ -1045,6 +1083,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
             )}
           </section>
         </div>
+        )}
       </aside>
     </>
   );
