@@ -2718,6 +2718,32 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       </div>
                     )}
 
+                    {/* SBUX Atlas Logos — same stores as Starbucks Stores, rendered with a
+                        distinct logo per store_type (DT / Cafe / DTO). */}
+                    {hasPermission('can_view_starbucks_layer') && (
+                      <div className="p-2 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => toggleLayer('starbucks_atlas_logos')}
+                              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                                layerState.starbucks_atlas_logos?.isVisible ? 'bg-green-700' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                  layerState.starbucks_atlas_logos?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                            <span>🟢</span>
+                            <span className="text-sm font-medium text-gray-900">SBUX Atlas Logos</span>
+                          </div>
+                          <span className="text-xs text-gray-400">Confidential</span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Starbucks Licensed Stores — sibling layer to Starbucks Stores.
                         Shown directly beneath the Starbucks Stores toggle. */}
                     {hasPermission('can_view_starbucks_layer') && (
