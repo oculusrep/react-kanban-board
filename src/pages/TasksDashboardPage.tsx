@@ -273,7 +273,7 @@ export const TasksDashboardPage: React.FC = () => {
                 lane internally caps its own scroll height — see InboxLane —
                 so a tall Inbox can't push other lanes off-screen. */}
             <DragDropContext onDragEnd={handleDragEnd}>
-              <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
                   <TodaysTimeline
                     key={`timeline-${viewDate}-${dashboardRefreshKey}`}
