@@ -43,6 +43,8 @@ export interface MunicipalProjectMapRow {
   source_import_id: string | null;
   created_at: string | null;
   updated_at: string | null;
+  created_by_id: string | null;
+  updated_by_id: string | null;
   // Location-precision hints captured by the agent from sources. Neither feeds
   // geocoding; reviewer reads these when manually adjusting the pin / drawing
   // the project polygon.

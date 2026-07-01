@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { geocodingService } from '../../../services/geocodingService';
 import type { MunicipalProjectMapRow } from '../layers/MunicipalProjectLayer';
 import { formatUnitsLabel } from '../../../utils/municipalProjectUnitsLabel';
+import UserByIdDisplay from '../../shared/UserByIdDisplay';
 
 interface ProjectStageOption {
   id: string;
@@ -52,6 +53,17 @@ function errMessage(e: unknown): string {
     return String((e as { message: unknown }).message);
   }
   return String(e);
+}
+
+// Provenance footer dates render in the user's Eastern-Time working day
+// (per CLAUDE.md timezone rule) so "created today" matches what they see.
+function formatProvenanceDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 const MunicipalProjectSlideout: React.FC<Props> = ({
@@ -718,19 +730,34 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
             </div>
           </section>
 
-          {/* Provenance footer — quietly tells the user where this row came from.
+          {/* Provenance footer — quietly tells the user where this row came from,
+              who created it, and (if edited since) who last touched it.
               Agent rows: "Found by the market research agent". Importer rows:
               "Imported via CSV". Otherwise: created manually. */}
-          <section className="pt-2 border-t text-xs" style={{ borderColor: '#EAEEF3', color: BRAND.slate }}>
-            {project.source_research_run_id ? (
-              <>Found by the market research agent</>
-            ) : project.source_import_id ? (
-              <>Imported via municipal-project CSV</>
-            ) : (
-              <>Manually created</>
-            )}
-            {project.created_at && (
-              <> · created {new Date(project.created_at).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' })}</>
+          <section className="pt-2 border-t text-xs space-y-1" style={{ borderColor: '#EAEEF3', color: BRAND.slate }}>
+            <div>
+              {project.source_research_run_id ? (
+                <>Found by the market research agent</>
+              ) : project.source_import_id ? (
+                <>Imported via municipal-project CSV</>
+              ) : (
+                <>Manually created</>
+              )}
+              {project.created_at && (
+                <> · created {formatProvenanceDate(project.created_at)}</>
+              )}
+              {project.created_by_id && (
+                <UserByIdDisplay userId={project.created_by_id} />
+              )}
+            </div>
+            {project.updated_at && project.created_at
+              && new Date(project.updated_at).getTime() - new Date(project.created_at).getTime() > 1000 && (
+              <div>
+                Updated {formatProvenanceDate(project.updated_at)}
+                {project.updated_by_id && (
+                  <UserByIdDisplay userId={project.updated_by_id} />
+                )}
+              </div>
             )}
           </section>
         </div>
