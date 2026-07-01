@@ -81,6 +81,7 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [saveError, setSaveError] = useState<string>('');
   const [showRawStages, setShowRawStages] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>('');
   const [notesDraft, setNotesDraft] = useState<string>('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesError, setNotesError] = useState<string>('');
@@ -120,6 +121,7 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setUnitsError('');
     setLocDescDraft(project?.location_description ?? '');
     setLocDescError('');
+    setDeleteError('');
   }, [
     project?.id,
     project?.status_override_id,
@@ -304,14 +306,14 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
       return;
     }
     setDeleting(true);
-    setSaveError('');
+    setDeleteError('');
     try {
       const { error } = await supabase.from('municipal_project').delete().eq('id', project.id);
       if (error) throw error;
       onProjectDeleted?.(project.id);
       onClose();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : String(e));
+      setDeleteError(e instanceof Error ? e.message : String(e));
     } finally {
       setDeleting(false);
     }
@@ -764,21 +766,28 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
 
         {/* Footer with destructive action */}
         <footer
-          className="px-5 py-3 border-t flex items-center justify-between"
+          className="px-5 py-3 border-t flex flex-col gap-1"
           style={{ borderColor: '#EAEEF3' }}
         >
-          <button
-            type="button"
-            onClick={deleteProject}
-            disabled={deleting}
-            className="text-xs font-medium disabled:opacity-40"
-            style={{ color: BRAND.terracotta }}
-          >
-            {deleting ? 'Deleting…' : 'Delete project'}
-          </button>
-          <span className="text-xs" style={{ color: BRAND.slate }}>
-            Row {project.id.slice(0, 8)}…
-          </span>
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={deleteProject}
+              disabled={deleting}
+              className="text-xs font-medium disabled:opacity-40"
+              style={{ color: BRAND.terracotta }}
+            >
+              {deleting ? 'Deleting…' : 'Delete project'}
+            </button>
+            <span className="text-xs" style={{ color: BRAND.slate }}>
+              Row {project.id.slice(0, 8)}…
+            </span>
+          </div>
+          {deleteError && (
+            <div className="text-xs" style={{ color: BRAND.terracotta }}>
+              {deleteError}
+            </div>
+          )}
         </footer>
       </aside>
   );
