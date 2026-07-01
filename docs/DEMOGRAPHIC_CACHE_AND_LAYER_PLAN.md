@@ -317,3 +317,47 @@ When ready to merge to `main` and push to Vercel:
 3. The edge function is already deployed to the live Supabase project, so no `supabase functions deploy` step needed.
 4. The migration is already applied to the live DB, so no `psql` step needed.
 5. Smoke-test on the production URL: right-click → Demographics Here → Fetch twice on the same spot → confirm the green Cached badge appears on the second fetch.
+
+---
+
+## Post-ship fixes
+
+### 2026-07-01 — Cached Demographics toggle was invisible on prod
+
+The layer landed on `main` and shipped to Vercel weeks ago, but no one
+could see the toggle. Cause: the map page's layer popup
+(`MappingPageNew.tsx`) is a **hardcoded inline JSX menu**, not the
+generic `LayerPanel.tsx` component the plan assumed. Registering the
+layer in `LayerManager.DEFAULT_LAYERS` was necessary but not sufficient.
+
+Fixed in commit `14dd5fa2` — added a Cached Demographics row
+(with inline time-range / scope / mode filter pills) to the popup
+between Municipal Projects and Custom Layers. Layer is now reachable
+from the UI.
+
+**Lesson learned, documented separately**: any new system layer needs
+to be wired into both menus. See
+[ADDING_A_SYSTEM_LAYER.md](ADDING_A_SYSTEM_LAYER.md) for the checklist.
+
+### 2026-07-01 — Minimize button on the demographics slideout
+
+Follow-up to the "keep the rings visible after I stop editing" ask.
+Closing the slideout previously unmounted all three overlays
+(rings / isochrones / polygon) because they live inside the slideout's
+render tree — that's still the case. Instead, added a minimize (`–`)
+control next to the close (`×`) button.
+
+- **Minimize** collapses the panel to a small header pill in the
+  top-right corner. Overlays stay mounted. Useful while you scroll the
+  map or work in another slideout.
+- **Close** still tears the overlays down as before.
+
+Commit: `be63d203`. Implementation: `minimized` boolean state gates
+only the slideout body; the overlays sit outside the conditional so
+they render as long as `isOpen` is true.
+
+If we ever want overlays to survive a full close (screenshot workflow,
+etc.), the fix is bigger — lift `DemographicRingsOverlay` /
+`DemographicIsochronesOverlay` / `DemographicPolygonOverlay` out of
+the slideout up to `MappingPageNew` and drive them off page-level
+state. Not done yet.
