@@ -51,7 +51,7 @@ const DEFAULT_ICON_URL = '/Images/LICENSE-CAFE.png';
 
 function iconForStore(storeType: string | null, _selected = false, _verifying = false): google.maps.Icon {
   const url = (storeType && TYPE_ICON_URL[storeType]) || DEFAULT_ICON_URL;
-  const size = 36;
+  const size = 27;
   return {
     url,
     scaledSize: new google.maps.Size(size, size),
