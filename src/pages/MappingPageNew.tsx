@@ -2736,7 +2736,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                                 }`}
                               />
                             </button>
-                            <span>🟢</span>
+                            {starbucksLogoUrl
+                              ? <img src={starbucksLogoUrl} alt="SBUX Atlas" style={{ width: 18, height: 18, filter: 'brightness(0)' }} />
+                              : <span>⚫</span>
+                            }
                             <span className="text-sm font-medium text-gray-900">SBUX Atlas Logos</span>
                           </div>
                           <span className="text-xs text-gray-400">Confidential</span>
