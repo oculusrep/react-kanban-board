@@ -13,6 +13,7 @@ import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalP
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
+import StarbucksAtlasLogosLayer from '../components/mapping/layers/StarbucksAtlasLogosLayer';
 import MerchantLayer, { type MerchantLocationWithBrand } from '../components/mapping/layers/MerchantLayer';
 import MerchantsDrawer from '../components/mapping/MerchantsDrawer';
 import MerchantContextMenu from '../components/mapping/MerchantContextMenu';
@@ -3231,6 +3232,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             <StarbucksLayer
               map={mapInstance}
               isVisible={layerState.starbucks?.isVisible || false}
+              selectedStoreNumber={selectedPinType === 'starbucks' && selectedStarbucksStore ? selectedStarbucksStore.store_number : null}
+              clusterConfig={clusterConfig}
+              onPinClick={(store) => {
+                setSelectedPinType('starbucks');
+                setSelectedStarbucksStore(store);
+              }}
+            />
+
+            {/* SBUX Atlas Logos — same data as Starbucks Stores, per-store-type logo */}
+            <StarbucksAtlasLogosLayer
+              map={mapInstance}
+              isVisible={layerState.starbucks_atlas_logos?.isVisible || false}
               selectedStoreNumber={selectedPinType === 'starbucks' && selectedStarbucksStore ? selectedStarbucksStore.store_number : null}
               clusterConfig={clusterConfig}
               onPinClick={(store) => {

@@ -160,6 +160,16 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     requiresPermission: 'can_view_starbucks_layer',
   },
   {
+    id: 'starbucks_atlas_logos',
+    name: 'SBUX Atlas Logos',
+    type: 'starbucks',
+    icon: '🟢',
+    description: 'Same stores as Starbucks Stores, with a distinct logo per store type (DT / Cafe / DTO)',
+    defaultVisible: false,
+    isSystemLayer: true,
+    requiresPermission: 'can_view_starbucks_layer',
+  },
+  {
     id: 'starbucks_licensed_stores',
     name: 'Starbucks: Licensed Stores',
     type: 'starbucks',
