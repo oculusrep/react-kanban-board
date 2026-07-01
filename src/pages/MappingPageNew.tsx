@@ -2736,10 +2736,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                                 }`}
                               />
                             </button>
-                            {starbucksLogoUrl
-                              ? <img src={starbucksLogoUrl} alt="SBUX Atlas" style={{ width: 18, height: 18, filter: 'brightness(0)' }} />
-                              : <span>⚫</span>
-                            }
+                            <img src="/Images/SBUX-ATLAS-CAFE.png" alt="SBUX Atlas" style={{ width: 18, height: 18 }} />
                             <span className="text-sm font-medium text-gray-900">SBUX Atlas Logos</span>
                           </div>
                           <span className="text-xs text-gray-400">Confidential</span>
@@ -2765,7 +2762,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                                 }`}
                               />
                             </button>
-                            <span>🏷️</span>
+                            <img src="/Images/LICENSE-CAFE.png" alt="Licensed Stores" style={{ width: 18, height: 18 }} />
                             <span className="text-sm font-medium text-gray-900">Starbucks: Licensed Stores</span>
                           </div>
                           <span className="text-xs text-gray-400">Confidential</span>
