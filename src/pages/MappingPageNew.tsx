@@ -369,7 +369,26 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   }, [recentlyCreatedPropertyIds]);
 
   // Get layer state from context
-  const { layerState, setLayerCount, setLayerLoading, createMode, setCreateMode, refreshLayer, toggleLayer, customLayers, customLayerVisibility, toggleCustomLayer, refreshCustomLayers, merchantSelectedBrandIds } = useLayerManager();
+  const {
+    layerState,
+    setLayerCount,
+    setLayerLoading,
+    createMode,
+    setCreateMode,
+    refreshLayer,
+    toggleLayer,
+    customLayers,
+    customLayerVisibility,
+    toggleCustomLayer,
+    refreshCustomLayers,
+    merchantSelectedBrandIds,
+    cachedDemographicsTimeRange,
+    setCachedDemographicsTimeRange,
+    cachedDemographicsScope,
+    setCachedDemographicsScope,
+    cachedDemographicsModes,
+    toggleCachedDemographicsMode,
+  } = useLayerManager();
   const [showMerchantsDrawer, setShowMerchantsDrawer] = useState(false);
   const [verifyingMerchantLocationId, setVerifyingMerchantLocationId] = useState<string | null>(null);
   const [merchantContextMenu, setMerchantContextMenu] = useState<{
@@ -2787,6 +2806,98 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                               setSelectedMunicipalProject(project);
                             }}
                           />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cached Demographics system layer — pins for prior ESRI enrichment
+                        lookups. Click a pin to re-open the slideout without a new ESRI call. */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('cached_demographics')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.cached_demographics?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.cached_demographics?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>📊</span>
+                          <span className="text-sm font-medium text-gray-900">Cached Demographics</span>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.cached_demographics?.count ?? 0}
+                        </span>
+                      </div>
+
+                      {layerState.cached_demographics?.isVisible && (
+                        <div className="mt-2 pl-11 pr-1 space-y-2 text-xs">
+                          <div>
+                            <div className="font-semibold text-gray-700 mb-1">Time range</div>
+                            <div className="flex gap-1.5">
+                              {(['7d', '30d', 'all'] as const).map((r) => (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  onClick={() => setCachedDemographicsTimeRange(r)}
+                                  className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
+                                    cachedDemographicsTimeRange === r
+                                      ? 'bg-[#002147] text-white border-[#002147]'
+                                      : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                  }`}
+                                >
+                                  {r === '7d' ? '7 days' : r === '30d' ? '30 days' : 'All'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-700 mb-1">Who</div>
+                            <div className="flex gap-1.5">
+                              {(['mine', 'all'] as const).map((s) => (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  onClick={() => setCachedDemographicsScope(s)}
+                                  className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
+                                    cachedDemographicsScope === s
+                                      ? 'bg-[#002147] text-white border-[#002147]'
+                                      : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                  }`}
+                                >
+                                  {s === 'mine' ? 'Mine' : 'All users'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-700 mb-1">Mode</div>
+                            <div className="flex gap-1.5">
+                              {(['rings', 'polygon'] as const).map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => toggleCachedDemographicsMode(m)}
+                                  className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
+                                    cachedDemographicsModes.has(m)
+                                      ? 'bg-[#002147] text-white border-[#002147]'
+                                      : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                  }`}
+                                >
+                                  {m === 'rings' ? '● Rings' : '■ Polygon'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-gray-500 italic">
+                            Click any pin to re-open the slideout with cached
+                            numbers — no ESRI call.
+                          </div>
                         </div>
                       )}
                     </div>
