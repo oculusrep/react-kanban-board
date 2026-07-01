@@ -230,9 +230,12 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const passesFilters = isVisible && !stageHidden && !muniHidden && !unitsHidden;
       const showPin = passesFilters && municipalProjectsShowPins;
       const showPoly = passesFilters && municipalProjectsShowPolygons;
-      const color = row.source_research_run_id
-        ? AGENT_PIN_COLOR
-        : (row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR);
+      // Pin color: agent rows override to navy so they're spot-able at a glance.
+      // Polygon color: always use the stage color chain so agent polygons blend in
+      // with manually-entered ones (the navy signal on the pin is enough).
+      const stageColor = row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
+      const pinColor = row.source_research_run_id ? AGENT_PIN_COLOR : stageColor;
+      const polyColor = stageColor;
       const isSelected = selectedProjectId === row.id;
 
       const isBeingVerified = verifyingProjectId === row.id;
@@ -240,7 +243,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       if (!marker) {
         marker = new google.maps.Marker({
           position: { lat: row.centroid_lat, lng: row.centroid_lng },
-          icon: makeIcon(color, isSelected || isBeingVerified),
+          icon: makeIcon(pinColor, isSelected || isBeingVerified),
           title: row.project_name || row.address,
           map: showPin ? map : null,
           draggable: isBeingVerified,
@@ -259,7 +262,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         existing.set(row.id, marker);
       } else {
         marker.setPosition({ lat: row.centroid_lat, lng: row.centroid_lng });
-        marker.setIcon(makeIcon(color, isSelected || isBeingVerified));
+        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified));
         marker.setMap(showPin ? map : null);
         marker.setDraggable(isBeingVerified);
         marker.setZIndex(isSelected || isBeingVerified ? 1000 : undefined);
@@ -274,10 +277,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         if (!poly) {
           poly = new google.maps.Polygon({
             paths: polyPaths,
-            strokeColor: color,
+            strokeColor: polyColor,
             strokeOpacity: polygonStyle.strokeOpacity,
             strokeWeight: weight,
-            fillColor: color,
+            fillColor: polyColor,
             fillOpacity: polygonStyle.fillOpacity,
             clickable: true,
             zIndex: isSelected ? 999 : undefined,
@@ -288,10 +291,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         } else {
           poly.setPaths(polyPaths);
           poly.setOptions({
-            strokeColor: color,
+            strokeColor: polyColor,
             strokeOpacity: polygonStyle.strokeOpacity,
             strokeWeight: weight,
-            fillColor: color,
+            fillColor: polyColor,
             fillOpacity: polygonStyle.fillOpacity,
             zIndex: isSelected ? 999 : undefined,
           });
