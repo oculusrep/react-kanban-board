@@ -62,6 +62,9 @@ interface Props {
 }
 
 const DEFAULT_STAGE_COLOR = '#8FA9C8'; // brand slate
+// Agent-generated projects (source_research_run_id set) render in brand midnight
+// so reviewers can spot new agent-created pins at a glance regardless of stage.
+const AGENT_PIN_COLOR = '#002147';
 
 // Rounded-square "badge" pin with a small house glyph + a triangular stem at the
 // bottom that anchors the visual point on the map. Intentionally different from
@@ -225,7 +228,9 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const passesFilters = isVisible && !stageHidden && !muniHidden && !unitsHidden;
       const showPin = passesFilters && municipalProjectsShowPins;
       const showPoly = passesFilters && municipalProjectsShowPolygons;
-      const color = row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
+      const color = row.source_research_run_id
+        ? AGENT_PIN_COLOR
+        : (row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR);
       const isSelected = selectedProjectId === row.id;
 
       const isBeingVerified = verifyingProjectId === row.id;
