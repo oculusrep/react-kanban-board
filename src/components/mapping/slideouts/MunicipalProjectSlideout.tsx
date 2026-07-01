@@ -24,6 +24,7 @@ interface Props {
     project_name?: string;
     total_housing_units?: number | null;
     notes?: string | null;
+    location_description?: string | null;
     geometry_geojson?: MunicipalProjectMapRow['geometry_geojson'];
     centroid_lat?: number;
     centroid_lng?: number;
@@ -77,6 +78,9 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [unitsDraft, setUnitsDraft] = useState<string>('');
   const [savingUnits, setSavingUnits] = useState(false);
   const [unitsError, setUnitsError] = useState<string>('');
+  const [locDescDraft, setLocDescDraft] = useState<string>('');
+  const [savingLocDesc, setSavingLocDesc] = useState(false);
+  const [locDescError, setLocDescError] = useState<string>('');
   const [removingPolygon, setRemovingPolygon] = useState(false);
   const [polygonError, setPolygonError] = useState<string>('');
 
@@ -102,12 +106,15 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setNameError('');
     setUnitsDraft(project?.total_housing_units != null ? String(project.total_housing_units) : '');
     setUnitsError('');
+    setLocDescDraft(project?.location_description ?? '');
+    setLocDescError('');
   }, [
     project?.id,
     project?.status_override_id,
     project?.notes,
     project?.project_name,
     project?.total_housing_units,
+    project?.location_description,
   ]);
 
   if (!isOpen || !project) return null;
@@ -220,6 +227,25 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
       setNotesError(e instanceof Error ? e.message : String(e));
     } finally {
       setSavingNotes(false);
+    }
+  }
+
+  async function saveLocationDescription() {
+    if (!project) return;
+    const next = locDescDraft.trim() === '' ? null : locDescDraft.trim();
+    setSavingLocDesc(true);
+    setLocDescError('');
+    try {
+      const { error } = await supabase
+        .from('municipal_project')
+        .update({ location_description: next })
+        .eq('id', project.id);
+      if (error) throw error;
+      onProjectUpdated?.({ id: project.id, location_description: next });
+    } catch (e) {
+      setLocDescError(errMessage(e));
+    } finally {
+      setSavingLocDesc(false);
     }
   }
 
@@ -411,16 +437,36 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                 Geocoded as: {project.geocoded_address}
               </div>
             )}
-            {project.location_description && (
-              <div className="mt-1.5 text-xs px-2 py-1.5 rounded"
-                   style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight, borderLeft: `3px solid ${BRAND.terracotta}` }}>
-                <span className="font-semibold uppercase tracking-wide block mb-0.5"
-                      style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
-                  Pin placement hint
-                </span>
-                {project.location_description}
+            <div className="mt-2">
+              <span className="font-semibold uppercase tracking-wide block mb-1"
+                    style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
+                Pin placement hint
+              </span>
+              <textarea
+                value={locDescDraft}
+                onChange={(e) => setLocDescDraft(e.target.value)}
+                placeholder='e.g. "NWC of Hwy 92 & Dallas-Acworth Rd, behind the Publix"'
+                rows={2}
+                className="w-full border rounded px-2 py-1.5 text-sm resize-y"
+                style={{ borderColor: BRAND.slate, color: BRAND.midnight, borderLeft: `3px solid ${BRAND.terracotta}` }}
+              />
+              <div className="mt-1 flex items-center justify-between">
+                {locDescError ? (
+                  <span className="text-xs" style={{ color: BRAND.terracotta }}>{locDescError}</span>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  onClick={saveLocationDescription}
+                  disabled={savingLocDesc || locDescDraft.trim() === (project.location_description ?? '')}
+                  className="px-3 py-1 rounded text-white text-xs font-semibold disabled:opacity-40"
+                  style={{ backgroundColor: BRAND.midnight }}
+                >
+                  {savingLocDesc ? 'Saving…' : 'Save'}
+                </button>
               </div>
-            )}
+            </div>
             {project.parcel_numbers && project.parcel_numbers.length > 0 && (
               <div className="text-xs mt-1.5" style={{ color: BRAND.steel }}>
                 <span style={{ color: BRAND.slate }}>Parcels:</span>{' '}
