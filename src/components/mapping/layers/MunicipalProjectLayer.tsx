@@ -61,6 +61,9 @@ interface Props {
   verifyingProjectId?: string | null;
   onProjectsLoaded?: (count: number) => void;
   selectedProjectId?: string | null;
+  // While the user is editing a polygon, hide this project's baked polygon so
+  // the terra-draw editable polygon is the only one on the map.
+  hidePolygonForProjectId?: string | null;
 }
 
 const DEFAULT_STAGE_COLOR = '#8FA9C8'; // brand slate
@@ -138,6 +141,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   verifyingProjectId,
   onProjectsLoaded,
   selectedProjectId,
+  hidePolygonForProjectId,
 }) => {
   const {
     setLayerCount,
@@ -229,7 +233,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       }
       const passesFilters = isVisible && !stageHidden && !muniHidden && !unitsHidden;
       const showPin = passesFilters && municipalProjectsShowPins;
-      const showPoly = passesFilters && municipalProjectsShowPolygons;
+      const showPoly = passesFilters && municipalProjectsShowPolygons
+        && hidePolygonForProjectId !== row.id;
       // Pin color: agent rows override to navy so they're spot-able at a glance.
       // Polygon color: always use the stage color chain so agent polygons blend in
       // with manually-entered ones (the navy signal on the pin is enough).
@@ -318,6 +323,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsShowPolygons,
     selectedProjectId,
     verifyingProjectId,
+    hidePolygonForProjectId,
     polygonStyle,
     onPinClick,
     onPinRightClick,

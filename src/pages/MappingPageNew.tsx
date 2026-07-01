@@ -3089,6 +3089,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               isVisible={layerState.municipal_projects?.isVisible || false}
               selectedProjectId={selectedMunicipalProject?.id ?? null}
               verifyingProjectId={verifyingMunicipalProjectId}
+              hidePolygonForProjectId={drawingMunicipalProjectId}
               onPinClick={(project) => setSelectedMunicipalProject(project)}
               onPinRightClick={(project, x, y) =>
                 setMunicipalProjectContextMenu({ isVisible: true, x, y, project })
@@ -3661,6 +3662,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         <MunicipalProjectDrawer
           map={mapInstance}
           projectId={drawingMunicipalProjectId}
+          existingGeometryGeoJson={
+            drawingMunicipalProjectId === selectedMunicipalProject?.id
+              ? selectedMunicipalProject.geometry_geojson
+              : null
+          }
           onCancel={() => setDrawingMunicipalProjectId(null)}
           onSaved={() => {
             setDrawingMunicipalProjectId(null);

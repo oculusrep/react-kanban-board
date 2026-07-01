@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { TerraDraw, TerraDrawPolygonMode } from 'terra-draw';
+import { TerraDraw, TerraDrawPolygonMode, TerraDrawSelectMode } from 'terra-draw';
 import { TerraDrawGoogleMapsAdapter } from 'terra-draw-google-maps-adapter';
 import { supabase } from '../../../lib/supabaseClient';
 
 interface Props {
   map: google.maps.Map | null;
   projectId: string;
+  // If present, drawer opens in select/edit mode with this polygon pre-loaded.
+  // If null, drawer opens in polygon-draw mode for a fresh capture.
+  existingGeometryGeoJson: { type: string; coordinates: unknown } | null;
   onCancel: () => void;
   onSaved: () => void;
 }
@@ -18,14 +21,26 @@ const BRAND = {
 };
 
 /**
- * Owns the terra-draw lifecycle for capturing a single polygon and writing it
- * to municipal_project.geometry. Mounted by MappingPageNew when the user clicks
- * "Draw polygon" in the slideout; unmounts on cancel or successful save.
+ * Owns the terra-draw lifecycle for capturing or editing a project's polygon
+ * (municipal_project.geometry). Mounted by MappingPageNew when the user clicks
+ * "Draw polygon" or "Edit polygon" in the slideout; unmounts on cancel or
+ * successful save.
  */
-const MunicipalProjectDrawer: React.FC<Props> = ({ map, projectId, onCancel, onSaved }) => {
+const MunicipalProjectDrawer: React.FC<Props> = ({
+  map,
+  projectId,
+  existingGeometryGeoJson,
+  onCancel,
+  onSaved,
+}) => {
   const drawRef = useRef<TerraDraw | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
+  // We only enter edit mode if a Polygon was pre-loaded; MultiPolygon isn't
+  // currently editable (the writer only produces single Polygons anyway).
+  const isEditing = !!(
+    existingGeometryGeoJson && existingGeometryGeoJson.type === 'Polygon'
+  );
 
   useEffect(() => {
     if (!map) return;
@@ -37,29 +52,59 @@ const MunicipalProjectDrawer: React.FC<Props> = ({ map, projectId, onCancel, onS
         lib: google.maps,
         coordinatePrecision: 9,
       });
-      const draw = new TerraDraw({
-        adapter,
-        modes: [
-          new TerraDrawPolygonMode({
-            styles: {
-              fillColor: '#002147',
-              fillOpacity: 0.25,
-              outlineColor: '#002147',
-              outlineWidth: 2,
-            },
-          }),
-        ],
+      const polygonMode = new TerraDrawPolygonMode({
+        styles: {
+          fillColor: '#002147',
+          fillOpacity: 0.25,
+          outlineColor: '#002147',
+          outlineWidth: 2,
+        },
       });
+      const selectMode = new TerraDrawSelectMode({
+        flags: {
+          polygon: {
+            feature: {
+              draggable: true,
+              coordinates: {
+                draggable: true,
+                midpoints: true,
+                deletable: true,
+              },
+            },
+          },
+        },
+      });
+      const draw = new TerraDraw({ adapter, modes: [polygonMode, selectMode] });
       draw.start();
-      draw.setMode('polygon');
+
+      if (isEditing) {
+        const id = draw.getFeatureId();
+        draw.addFeatures([
+          {
+            id,
+            type: 'Feature',
+            geometry: existingGeometryGeoJson as {
+              type: 'Polygon';
+              coordinates: [number, number][][];
+            },
+            properties: { mode: 'polygon' },
+          },
+        ]);
+        draw.setMode('select');
+        selectMode.selectFeature(id);
+      } else {
+        draw.setMode('polygon');
+      }
       drawRef.current = draw;
 
-      draw.on('finish', async (featureId: string, ctx: { action: string }) => {
-        if (ctx.action !== 'draw' || !alive) return;
+      // Auto-persist only for fresh draws — edits go through the Save button so
+      // vertex-drag/midpoint-drag events don't spam the DB.
+      draw.on('finish', (featureId, ctx) => {
+        if (ctx.action !== 'draw' || !alive || isEditing) return;
         const snapshot = draw.getSnapshot();
         const feature = snapshot.find((f) => f.id === featureId);
         if (!feature || feature.geometry.type !== 'Polygon') return;
-        await persistPolygon(feature.geometry.coordinates as number[][][]);
+        void persistPolygon(feature.geometry.coordinates as number[][][]);
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -76,7 +121,9 @@ const MunicipalProjectDrawer: React.FC<Props> = ({ map, projectId, onCancel, onS
         drawRef.current = null;
       }
     };
-    // We intentionally re-init only when map/projectId change.
+    // We intentionally re-init only when map/projectId change. isEditing +
+    // existingGeometryGeoJson are captured at mount; parent unmounts the whole
+    // drawer if you switch projects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, projectId]);
 
@@ -115,23 +162,48 @@ const MunicipalProjectDrawer: React.FC<Props> = ({ map, projectId, onCancel, onS
     }
   }
 
+  async function saveEdits() {
+    const draw = drawRef.current;
+    if (!draw) return;
+    const snapshot = draw.getSnapshot();
+    const feature = snapshot.find((f) => f.geometry.type === 'Polygon');
+    if (!feature) {
+      setError('No polygon to save.');
+      return;
+    }
+    await persistPolygon(feature.geometry.coordinates as number[][][]);
+  }
+
   return (
     <div
       className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2.5 rounded-lg shadow-xl"
       style={{ backgroundColor: '#FFFFFF', border: `2px solid ${BRAND.midnight}` }}
     >
       <span className="text-sm font-semibold" style={{ color: BRAND.midnight }}>
-        Drawing polygon
+        {isEditing ? 'Editing polygon' : 'Drawing polygon'}
       </span>
       <span className="text-xs" style={{ color: BRAND.steel }}>
         {saving
           ? 'Saving…'
-          : 'Click to add corners • double-click last point to finish'}
+          : isEditing
+            ? 'Drag corners or midpoints • click Save when done'
+            : 'Click to add corners • double-click last point to finish'}
       </span>
       {error && (
         <span className="text-xs" style={{ color: BRAND.terracotta }}>
           {error}
         </span>
+      )}
+      {isEditing && (
+        <button
+          type="button"
+          onClick={saveEdits}
+          disabled={saving}
+          className="px-3 py-1 text-xs rounded font-semibold disabled:opacity-40"
+          style={{ backgroundColor: BRAND.midnight, color: '#FFFFFF' }}
+        >
+          Save changes
+        </button>
       )}
       <button
         type="button"

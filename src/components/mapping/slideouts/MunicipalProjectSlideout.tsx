@@ -709,7 +709,7 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                   {isDrawingPolygon
                     ? 'Drawing on map…'
                     : project.geometry_geojson
-                      ? 'Redraw polygon'
+                      ? 'Edit polygon'
                       : 'Draw polygon'}
                 </button>
                 {project.geometry_geojson && (
