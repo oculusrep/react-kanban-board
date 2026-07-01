@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { useMunicipalProjectPolygonStyle } from '../../../hooks/useMunicipalProjectPolygonStyle';
+import { formatUnitsLabel } from '../../../utils/municipalProjectUnitsLabel';
 
 export interface MunicipalProjectMapRow {
   id: string;
@@ -28,6 +29,9 @@ export interface MunicipalProjectMapRow {
   effective_stage_id: string | null;
   effective_stage_name: string | null;
   effective_stage_color: string | null;
+  // Joined in client-side from project_stage.abbreviation (municipal_project_v
+  // doesn't expose it). Used to compose the on-map units label (e.g. "+80 RC").
+  effective_stage_abbreviation: string | null;
   centroid_lat: number;
   centroid_lng: number;
   geocoded_address: string | null;
@@ -122,13 +126,16 @@ function polygonPathsFromGeoJson(
   return null;
 }
 
-function makeIcon(color: string, selected: boolean): google.maps.Icon {
+function makeIcon(color: string, selected: boolean, hasLabel: boolean): google.maps.Icon {
   const svg = pinSvg(color, selected);
   const scale = selected ? 1.1 : 1;
   return {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
     scaledSize: new google.maps.Size(30 * scale, 36 * scale),
     anchor: new google.maps.Point(15 * scale, 36 * scale),
+    // Position the label below the pin tip. When there's no label this is
+    // ignored, but always setting it keeps update paths simple.
+    labelOrigin: hasLabel ? new google.maps.Point(15 * scale, 50 * scale) : undefined,
   };
 }
 
@@ -153,6 +160,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsMaxUnits,
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
+    municipalProjectsLabelMode,
     refreshTrigger,
   } = useLayerManager();
   const { style: polygonStyle } = useMunicipalProjectPolygonStyle();
@@ -172,6 +180,22 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         .not('centroid_lng', 'is', null);
       if (error) throw error;
       const typed = (data ?? []) as unknown as MunicipalProjectMapRow[];
+
+      // Join in project_stage.abbreviation client-side (municipal_project_v
+      // doesn't expose it). Mirrors the KML export pattern.
+      const { data: stages, error: stagesErr } = await supabase
+        .from('project_stage')
+        .select('id, abbreviation');
+      if (stagesErr) throw stagesErr;
+      const abbrById = new Map<string, string | null>(
+        (stages ?? []).map((s: { id: string; abbreviation: string | null }) => [s.id, s.abbreviation]),
+      );
+      for (const r of typed) {
+        r.effective_stage_abbreviation = r.effective_stage_id
+          ? abbrById.get(r.effective_stage_id) ?? null
+          : null;
+      }
+
       setRows(typed);
       setLayerCount('municipal_projects', typed.length);
       onProjectsLoaded?.(typed.length);
@@ -244,11 +268,32 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const isSelected = selectedProjectId === row.id;
 
       const isBeingVerified = verifyingProjectId === row.id;
+      // On-map label text driven by municipalProjectsLabelMode. Falls back
+      // to empty when the mode's source field is null, so the pin renders
+      // without a label rather than "null" or "undefined".
+      const labelText =
+        municipalProjectsLabelMode === 'total_units'
+          ? row.total_housing_units != null
+            ? String(row.total_housing_units)
+            : ''
+          : municipalProjectsLabelMode === 'units_label'
+            ? formatUnitsLabel(row.total_housing_units, row.effective_stage_abbreviation)
+            : '';
+      const hasLabel = labelText.length > 0;
+      const markerLabel: google.maps.MarkerLabel | undefined = hasLabel
+        ? {
+            text: labelText,
+            color: '#002147',
+            fontSize: '11px',
+            fontWeight: 'bold',
+          }
+        : undefined;
       let marker = existing.get(row.id);
       if (!marker) {
         marker = new google.maps.Marker({
           position: { lat: row.centroid_lat, lng: row.centroid_lng },
-          icon: makeIcon(pinColor, isSelected || isBeingVerified),
+          icon: makeIcon(pinColor, isSelected || isBeingVerified, hasLabel),
+          label: markerLabel,
           title: row.project_name || row.address,
           map: showPin ? map : null,
           draggable: isBeingVerified,
@@ -267,7 +312,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         existing.set(row.id, marker);
       } else {
         marker.setPosition({ lat: row.centroid_lat, lng: row.centroid_lng });
-        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified));
+        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified, hasLabel));
+        marker.setLabel(markerLabel ?? null);
         marker.setMap(showPin ? map : null);
         marker.setDraggable(isBeingVerified);
         marker.setZIndex(isSelected || isBeingVerified ? 1000 : undefined);
@@ -321,6 +367,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsMaxUnits,
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
+    municipalProjectsLabelMode,
     selectedProjectId,
     verifyingProjectId,
     hidePolygonForProjectId,

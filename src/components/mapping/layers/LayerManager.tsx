@@ -21,6 +21,12 @@ export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
 export type CachedDemographicsMode = 'rings' | 'polygon';
 
+// Which piece of data the Municipal Projects pins should render as an on-map
+// label. 'total_units' = raw number (e.g. "80"). 'units_label' = the same
+// computed string shown in the slideout / KML export (e.g. "+80 RC"). Session
+// state only — resets on refresh.
+export type MunicipalProjectsLabelMode = 'none' | 'total_units' | 'units_label';
+
 export interface LayerPermissions {
   canView: boolean;
   canEdit: boolean;
@@ -92,6 +98,10 @@ export interface LayerManagerContextType {
   municipalProjectsShowPolygons: boolean;
   setMunicipalProjectsShowPins: (v: boolean) => void;
   setMunicipalProjectsShowPolygons: (v: boolean) => void;
+
+  // On-map label rendered next to each Municipal Projects pin. Session-only.
+  municipalProjectsLabelMode: MunicipalProjectsLabelMode;
+  setMunicipalProjectsLabelMode: (m: MunicipalProjectsLabelMode) => void;
 
   // Cached Demographics layer filters. Defaults match the plan in
   // docs/DEMOGRAPHIC_CACHE_AND_LAYER_PLAN.md.
@@ -253,6 +263,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const [municipalProjectsMaxUnits, setMunicipalProjectsMaxUnits] = useState<number | null>(null);
   const [municipalProjectsShowPins, setMunicipalProjectsShowPins] = useState<boolean>(true);
   const [municipalProjectsShowPolygons, setMunicipalProjectsShowPolygons] = useState<boolean>(true);
+  const [municipalProjectsLabelMode, setMunicipalProjectsLabelMode] =
+    useState<MunicipalProjectsLabelMode>('none');
 
   const [cachedDemographicsTimeRange, setCachedDemographicsTimeRange] =
     useState<CachedDemographicsTimeRange>('30d');
@@ -461,6 +473,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     municipalProjectsShowPolygons,
     setMunicipalProjectsShowPins,
     setMunicipalProjectsShowPolygons,
+    municipalProjectsLabelMode,
+    setMunicipalProjectsLabelMode,
     cachedDemographicsTimeRange,
     setCachedDemographicsTimeRange,
     cachedDemographicsScope,
@@ -496,6 +510,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     municipalProjectsMaxUnits,
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
+    municipalProjectsLabelMode,
     cachedDemographicsTimeRange,
     cachedDemographicsScope,
     cachedDemographicsModes,

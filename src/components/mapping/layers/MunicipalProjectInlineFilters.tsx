@@ -29,6 +29,8 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     municipalProjectsShowPolygons,
     setMunicipalProjectsShowPins,
     setMunicipalProjectsShowPolygons,
+    municipalProjectsLabelMode,
+    setMunicipalProjectsLabelMode,
     refreshLayer,
     createMode,
     setCreateMode,
@@ -360,6 +362,24 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
           />
           <span className="text-gray-800">Show polygons</span>
         </label>
+      </div>
+
+      {/* On-map pin label: none / total units number / composed units label */}
+      <div className="flex items-center gap-2">
+        <span className="text-gray-800">Label pins by:</span>
+        <select
+          value={municipalProjectsLabelMode}
+          onChange={(e) =>
+            setMunicipalProjectsLabelMode(
+              e.target.value as 'none' | 'total_units' | 'units_label',
+            )
+          }
+          className="border border-gray-300 rounded px-1.5 py-0.5 text-gray-800"
+        >
+          <option value="none">None</option>
+          <option value="total_units">Total units</option>
+          <option value="units_label">Units label</option>
+        </select>
       </div>
 
       <div>
