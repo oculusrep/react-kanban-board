@@ -44,6 +44,9 @@ screenshots/
 # Top-level Images/ is not served (Vite only serves public/). Belongs in public/Images/.
 /Images/
 
+# macOS Finder metadata
+.DS_Store
+
 # Database backups (contain sensitive data, too large for git)
 backups/
 *.sql.gz
