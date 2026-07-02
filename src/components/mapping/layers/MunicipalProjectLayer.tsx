@@ -54,6 +54,10 @@ export interface MunicipalProjectMapRow {
   // the project polygon.
   location_description: string | null;
   parcel_boundary_notes: string | null;
+  // Screen-pixel offset applied to the on-map units label. NULL = default (0,0),
+  // which sits just below the pin tip. User can drag the label to override.
+  label_offset_x_px: number | null;
+  label_offset_y_px: number | null;
 }
 
 interface Props {
@@ -126,16 +130,100 @@ function polygonPathsFromGeoJson(
   return null;
 }
 
-function makeIcon(color: string, selected: boolean, hasLabel: boolean): google.maps.Icon {
+function makeIcon(color: string, selected: boolean): google.maps.Icon {
   const svg = pinSvg(color, selected);
   const scale = selected ? 1.1 : 1;
   return {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
     scaledSize: new google.maps.Size(30 * scale, 36 * scale),
     anchor: new google.maps.Point(15 * scale, 36 * scale),
-    // Position the label below the pin tip. When there's no label this is
-    // ignored, but always setting it keeps update paths simple.
-    labelOrigin: hasLabel ? new google.maps.Point(15 * scale, 50 * scale) : undefined,
+  };
+}
+
+function xmlEscape(s: string): string {
+  return s.replace(/[<>&"']/g, (c) =>
+    c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : c === '"' ? '&quot;' : '&apos;',
+  );
+}
+
+// SVG icon for the on-map label — text with a solid halo stroke behind the fill
+// so it stays legible over any basemap. Sized to the text so it doesn't
+// intercept clicks well outside the visible characters.
+function makeLabelIcon(
+  text: string,
+  fontSize: number,
+  fillColor: string,
+  lineColor: string,
+): google.maps.Icon {
+  // Rough character-width estimate for the SVG viewport. Bold Arial ≈ 0.62em/char.
+  const approxCharWidth = fontSize * 0.62;
+  const paddingX = 6;
+  const width = Math.max(24, Math.ceil(text.length * approxCharWidth + paddingX * 2));
+  const height = fontSize + 10;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<text x="${width / 2}" y="${fontSize + 3}" text-anchor="middle" ` +
+    `font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="bold" ` +
+    `paint-order="stroke" stroke="${lineColor}" stroke-width="3" stroke-linejoin="round" ` +
+    `fill="${fillColor}">${xmlEscape(text)}</text>` +
+    `</svg>`;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(width, height),
+    // Anchor at top-center so the label sits below the pin position (which is
+    // the pin tip). When a saved offset is applied the marker position shifts
+    // by that many pixels; the anchor stays the same.
+    anchor: new google.maps.Point(width / 2, 0),
+  };
+}
+
+// Convert a screen-pixel offset (relative to a lat/lng center) to an absolute
+// lat/lng at the map's current zoom. Used so a stored pixel offset produces
+// the same on-screen distance at every zoom level.
+function offsetToLatLng(
+  map: google.maps.Map,
+  centerLat: number,
+  centerLng: number,
+  offsetXPx: number,
+  offsetYPx: number,
+): { lat: number; lng: number } {
+  const proj = map.getProjection();
+  const zoom = map.getZoom();
+  if (!proj || zoom == null || (offsetXPx === 0 && offsetYPx === 0)) {
+    return { lat: centerLat, lng: centerLng };
+  }
+  const worldScale = Math.pow(2, zoom);
+  const centerPoint = proj.fromLatLngToPoint(new google.maps.LatLng(centerLat, centerLng));
+  if (!centerPoint) return { lat: centerLat, lng: centerLng };
+  const newPoint = new google.maps.Point(
+    centerPoint.x + offsetXPx / worldScale,
+    centerPoint.y + offsetYPx / worldScale,
+  );
+  const newLatLng = proj.fromPointToLatLng(newPoint);
+  return newLatLng
+    ? { lat: newLatLng.lat(), lng: newLatLng.lng() }
+    : { lat: centerLat, lng: centerLng };
+}
+
+// Inverse of offsetToLatLng — given a dragged label position, work out the
+// pixel offset from the centroid so we can persist it.
+function latLngToOffset(
+  map: google.maps.Map,
+  centerLat: number,
+  centerLng: number,
+  labelLat: number,
+  labelLng: number,
+): { x: number; y: number } {
+  const proj = map.getProjection();
+  const zoom = map.getZoom();
+  if (!proj || zoom == null) return { x: 0, y: 0 };
+  const worldScale = Math.pow(2, zoom);
+  const centerPoint = proj.fromLatLngToPoint(new google.maps.LatLng(centerLat, centerLng));
+  const labelPoint = proj.fromLatLngToPoint(new google.maps.LatLng(labelLat, labelLng));
+  if (!centerPoint || !labelPoint) return { x: 0, y: 0 };
+  return {
+    x: Math.round((labelPoint.x - centerPoint.x) * worldScale),
+    y: Math.round((labelPoint.y - centerPoint.y) * worldScale),
   };
 }
 
@@ -161,13 +249,25 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsLabelFontSize,
+    municipalProjectsLabelFillColor,
+    municipalProjectsLabelLineColor,
     refreshTrigger,
   } = useLayerManager();
   const { style: polygonStyle } = useMunicipalProjectPolygonStyle();
 
   const [rows, setRows] = useState<MunicipalProjectMapRow[]>([]);
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
+  const labelMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const polygonsRef = useRef<Map<string, google.maps.Polygon>>(new Map());
+  // Increments on map zoom so labels re-derive their lat/lng from stored pixel
+  // offsets whenever the projection changes.
+  const [zoomTick, setZoomTick] = useState(0);
+  useEffect(() => {
+    if (!map) return;
+    const listener = map.addListener('zoom_changed', () => setZoomTick((n) => n + 1));
+    return () => google.maps.event.removeListener(listener);
+  }, [map]);
 
   const fetchRows = useCallback(async () => {
     setLayerLoading('municipal_projects', true);
@@ -233,6 +333,12 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         existing.delete(id);
       }
     }
+    for (const [id, labelMarker] of labelMarkersRef.current) {
+      if (!rows.find((r) => r.id === id)) {
+        labelMarker.setMap(null);
+        labelMarkersRef.current.delete(id);
+      }
+    }
     for (const [id, poly] of existingPolys) {
       if (!rows.find((r) => r.id === id)) {
         poly.setMap(null);
@@ -268,32 +374,11 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const isSelected = selectedProjectId === row.id;
 
       const isBeingVerified = verifyingProjectId === row.id;
-      // On-map label text driven by municipalProjectsLabelMode. Falls back
-      // to empty when the mode's source field is null, so the pin renders
-      // without a label rather than "null" or "undefined".
-      const labelText =
-        municipalProjectsLabelMode === 'total_units'
-          ? row.total_housing_units != null
-            ? String(row.total_housing_units)
-            : ''
-          : municipalProjectsLabelMode === 'units_label'
-            ? formatUnitsLabel(row.total_housing_units, row.effective_stage_abbreviation)
-            : '';
-      const hasLabel = labelText.length > 0;
-      const markerLabel: google.maps.MarkerLabel | undefined = hasLabel
-        ? {
-            text: labelText,
-            color: '#002147',
-            fontSize: '11px',
-            fontWeight: 'bold',
-          }
-        : undefined;
       let marker = existing.get(row.id);
       if (!marker) {
         marker = new google.maps.Marker({
           position: { lat: row.centroid_lat, lng: row.centroid_lng },
-          icon: makeIcon(pinColor, isSelected || isBeingVerified, hasLabel),
-          label: markerLabel,
+          icon: makeIcon(pinColor, isSelected || isBeingVerified),
           title: row.project_name || row.address,
           map: showPin ? map : null,
           draggable: isBeingVerified,
@@ -312,11 +397,96 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         existing.set(row.id, marker);
       } else {
         marker.setPosition({ lat: row.centroid_lat, lng: row.centroid_lng });
-        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified, hasLabel));
-        marker.setLabel(markerLabel ?? null);
+        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified));
         marker.setMap(showPin ? map : null);
         marker.setDraggable(isBeingVerified);
         marker.setZIndex(isSelected || isBeingVerified ? 1000 : undefined);
+      }
+
+      // On-map label: separate draggable marker whose position is the pin
+      // centroid + any saved pixel offset (resolved at the current zoom).
+      // Independent of pin visibility — shown whenever the row passes filters
+      // and *something* representing the project (pin OR polygon) is on the map.
+      const labelText =
+        municipalProjectsLabelMode === 'total_units'
+          ? row.total_housing_units != null
+            ? String(row.total_housing_units)
+            : ''
+          : municipalProjectsLabelMode === 'units_label'
+            ? formatUnitsLabel(row.total_housing_units, row.effective_stage_abbreviation)
+            : '';
+      const hasLabel = labelText.length > 0;
+      const showLabel =
+        hasLabel &&
+        passesFilters &&
+        (municipalProjectsShowPins || municipalProjectsShowPolygons);
+      const offsetX = row.label_offset_x_px ?? 0;
+      const offsetY = row.label_offset_y_px ?? 0;
+      const labelPos = offsetToLatLng(
+        map,
+        row.centroid_lat,
+        row.centroid_lng,
+        offsetX,
+        offsetY,
+      );
+      let labelMarker = labelMarkersRef.current.get(row.id);
+      if (!labelMarker && showLabel) {
+        labelMarker = new google.maps.Marker({
+          position: labelPos,
+          icon: makeLabelIcon(
+            labelText,
+            municipalProjectsLabelFontSize,
+            municipalProjectsLabelFillColor,
+            municipalProjectsLabelLineColor,
+          ),
+          map,
+          draggable: true,
+          crossOnDrag: false,
+          // Sit above the pin so clicks on the text hit the label, not the pin
+          // behind it. Selected pin still wins via its z=1000.
+          zIndex: 800,
+          // Skip Maps' click-optimization so pointer events aren't merged with
+          // adjacent labels/pins — makes dragging responsive.
+          optimized: false,
+        });
+        labelMarker.addListener('dragend', (e: google.maps.MapMouseEvent) => {
+          if (!e.latLng) return;
+          const { x, y } = latLngToOffset(
+            map,
+            row.centroid_lat,
+            row.centroid_lng,
+            e.latLng.lat(),
+            e.latLng.lng(),
+          );
+          // Persist. Update local row synchronously so the next re-render uses
+          // the new offset (otherwise the label snaps back on any state change).
+          void supabase
+            .from('municipal_project')
+            .update({ label_offset_x_px: x, label_offset_y_px: y })
+            .eq('id', row.id)
+            .then(({ error }) => {
+              if (error) console.warn('label offset save failed:', error.message);
+            });
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === row.id
+                ? { ...r, label_offset_x_px: x, label_offset_y_px: y }
+                : r,
+            ),
+          );
+        });
+        labelMarkersRef.current.set(row.id, labelMarker);
+      } else if (labelMarker) {
+        labelMarker.setPosition(labelPos);
+        labelMarker.setIcon(
+          makeLabelIcon(
+            labelText,
+            municipalProjectsLabelFontSize,
+            municipalProjectsLabelFillColor,
+            municipalProjectsLabelLineColor,
+          ),
+        );
+        labelMarker.setMap(showLabel ? map : null);
       }
 
       // Polygon (if the project has drawn geometry)
@@ -368,6 +538,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsLabelFontSize,
+    municipalProjectsLabelFillColor,
+    municipalProjectsLabelLineColor,
+    zoomTick,
     selectedProjectId,
     verifyingProjectId,
     hidePolygonForProjectId,
@@ -382,6 +556,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     return () => {
       for (const [, marker] of markersRef.current) marker.setMap(null);
       markersRef.current.clear();
+      for (const [, labelMarker] of labelMarkersRef.current) labelMarker.setMap(null);
+      labelMarkersRef.current.clear();
       for (const [, poly] of polygonsRef.current) poly.setMap(null);
       polygonsRef.current.clear();
     };

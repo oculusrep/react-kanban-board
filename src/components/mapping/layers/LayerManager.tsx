@@ -103,6 +103,16 @@ export interface LayerManagerContextType {
   municipalProjectsLabelMode: MunicipalProjectsLabelMode;
   setMunicipalProjectsLabelMode: (m: MunicipalProjectsLabelMode) => void;
 
+  // Label typography (session-only). fontSize in pixels; fill = text color;
+  // line = the halo/stroke color that outlines the text so it stays readable
+  // over any basemap.
+  municipalProjectsLabelFontSize: number;
+  setMunicipalProjectsLabelFontSize: (n: number) => void;
+  municipalProjectsLabelFillColor: string;
+  setMunicipalProjectsLabelFillColor: (c: string) => void;
+  municipalProjectsLabelLineColor: string;
+  setMunicipalProjectsLabelLineColor: (c: string) => void;
+
   // Cached Demographics layer filters. Defaults match the plan in
   // docs/DEMOGRAPHIC_CACHE_AND_LAYER_PLAN.md.
   cachedDemographicsTimeRange: CachedDemographicsTimeRange;
@@ -265,6 +275,12 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const [municipalProjectsShowPolygons, setMunicipalProjectsShowPolygons] = useState<boolean>(true);
   const [municipalProjectsLabelMode, setMunicipalProjectsLabelMode] =
     useState<MunicipalProjectsLabelMode>('none');
+  const [municipalProjectsLabelFontSize, setMunicipalProjectsLabelFontSize] =
+    useState<number>(11);
+  const [municipalProjectsLabelFillColor, setMunicipalProjectsLabelFillColor] =
+    useState<string>('#002147'); // brand midnight
+  const [municipalProjectsLabelLineColor, setMunicipalProjectsLabelLineColor] =
+    useState<string>('#FFFFFF'); // white halo — high contrast on any basemap
 
   const [cachedDemographicsTimeRange, setCachedDemographicsTimeRange] =
     useState<CachedDemographicsTimeRange>('30d');
@@ -475,6 +491,12 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setMunicipalProjectsShowPolygons,
     municipalProjectsLabelMode,
     setMunicipalProjectsLabelMode,
+    municipalProjectsLabelFontSize,
+    setMunicipalProjectsLabelFontSize,
+    municipalProjectsLabelFillColor,
+    setMunicipalProjectsLabelFillColor,
+    municipalProjectsLabelLineColor,
+    setMunicipalProjectsLabelLineColor,
     cachedDemographicsTimeRange,
     setCachedDemographicsTimeRange,
     cachedDemographicsScope,
@@ -511,6 +533,9 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsLabelFontSize,
+    municipalProjectsLabelFillColor,
+    municipalProjectsLabelLineColor,
     cachedDemographicsTimeRange,
     cachedDemographicsScope,
     cachedDemographicsModes,

@@ -31,6 +31,12 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     setMunicipalProjectsShowPolygons,
     municipalProjectsLabelMode,
     setMunicipalProjectsLabelMode,
+    municipalProjectsLabelFontSize,
+    setMunicipalProjectsLabelFontSize,
+    municipalProjectsLabelFillColor,
+    setMunicipalProjectsLabelFillColor,
+    municipalProjectsLabelLineColor,
+    setMunicipalProjectsLabelLineColor,
     refreshLayer,
     createMode,
     setCreateMode,
@@ -381,6 +387,44 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
           <option value="units_label">Units label</option>
         </select>
       </div>
+
+      {municipalProjectsLabelMode !== 'none' && (
+        <div className="flex items-center gap-3 pl-4 text-gray-800">
+          <label className="flex items-center gap-1.5">
+            <span>Size</span>
+            <input
+              type="number"
+              min={8}
+              max={24}
+              value={municipalProjectsLabelFontSize}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isFinite(n)) setMunicipalProjectsLabelFontSize(n);
+              }}
+              className="w-14 border border-gray-300 rounded px-1 py-0.5"
+            />
+          </label>
+          <label className="flex items-center gap-1.5" title="Text color">
+            <span>Fill</span>
+            <input
+              type="color"
+              value={municipalProjectsLabelFillColor}
+              onChange={(e) => setMunicipalProjectsLabelFillColor(e.target.value)}
+              className="w-6 h-6 border border-gray-300 rounded"
+            />
+          </label>
+          <label className="flex items-center gap-1.5" title="Text outline / halo color">
+            <span>Line</span>
+            <input
+              type="color"
+              value={municipalProjectsLabelLineColor}
+              onChange={(e) => setMunicipalProjectsLabelLineColor(e.target.value)}
+              className="w-6 h-6 border border-gray-300 rounded"
+            />
+          </label>
+          <span className="text-xs text-gray-500">Drag any label on the map to reposition; saved per project.</span>
+        </div>
+      )}
 
       <div>
         <button
