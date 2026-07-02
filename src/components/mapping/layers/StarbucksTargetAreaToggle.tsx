@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StarbucksTargetAreaStyles,
   PriorityKey,
   PriorityStyle,
 } from '../../../hooks/useStarbucksTargetAreaStyles';
+import {
+  OpsAreaOption,
+  SelectedOpsAreaIds,
+} from '../../../hooks/useStarbucksOpsAreaFilter';
 
 interface Props {
   isVisible: boolean;
@@ -11,6 +15,12 @@ interface Props {
   styles: StarbucksTargetAreaStyles;
   updateStyle: (priority: PriorityKey, partial: Partial<PriorityStyle>) => void;
   resetToDefaults: () => void;
+  opsAreaOptions: OpsAreaOption[];
+  selectedOpsAreaIds: SelectedOpsAreaIds;
+  onToggleOpsArea: (id: number) => void;
+  onSelectAllOpsAreas: () => void;
+  onSelectNoOpsAreas: () => void;
+  onFetchOpsAreas: () => void;
 }
 
 const StarbucksTargetAreaToggle: React.FC<Props> = ({
@@ -19,8 +29,19 @@ const StarbucksTargetAreaToggle: React.FC<Props> = ({
   styles,
   updateStyle,
   resetToDefaults,
+  opsAreaOptions,
+  selectedOpsAreaIds,
+  onToggleOpsArea,
+  onSelectAllOpsAreas,
+  onSelectNoOpsAreas,
+  onFetchOpsAreas,
 }) => {
   const [styleEditorOpen, setStyleEditorOpen] = useState(false);
+
+  // Load the ops-area list the first time the layer becomes visible.
+  useEffect(() => {
+    if (isVisible) onFetchOpsAreas();
+  }, [isVisible, onFetchOpsAreas]);
 
   return (
     <div className="p-2 border-b border-gray-200">
@@ -55,6 +76,17 @@ const StarbucksTargetAreaToggle: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* Ops area filter — visible whenever the layer is on so users can see what's included at a glance */}
+      {isVisible && (
+        <OpsAreaFilter
+          options={opsAreaOptions}
+          selectedIds={selectedOpsAreaIds}
+          onToggleId={onToggleOpsArea}
+          onSelectAll={onSelectAllOpsAreas}
+          onSelectNone={onSelectNoOpsAreas}
+        />
+      )}
+
       {/* Inline style editor — compact 1-row-per-priority layout that fits the 384px modal */}
       {styleEditorOpen && (
         <div className="mt-2 space-y-1.5">
@@ -87,6 +119,83 @@ const StarbucksTargetAreaToggle: React.FC<Props> = ({
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+interface OpsAreaFilterProps {
+  options: OpsAreaOption[];
+  selectedIds: SelectedOpsAreaIds;
+  onToggleId: (id: number) => void;
+  onSelectAll: () => void;
+  onSelectNone: () => void;
+}
+
+const OpsAreaFilter: React.FC<OpsAreaFilterProps> = ({
+  options,
+  selectedIds,
+  onToggleId,
+  onSelectAll,
+  onSelectNone,
+}) => {
+  const isChecked = (id: number | null): boolean => {
+    if (id == null) return false;
+    if (selectedIds === null) return true;
+    return selectedIds.has(id);
+  };
+
+  return (
+    <div className="mt-2 pl-11 pr-1">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] uppercase tracking-wide text-gray-500">Ops Area</span>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={onSelectAll}
+            className="text-[10px] text-blue-600 hover:underline"
+          >
+            All
+          </button>
+          <button
+            onClick={onSelectNone}
+            className="text-[10px] text-blue-600 hover:underline"
+          >
+            None
+          </button>
+        </div>
+      </div>
+      <div className="space-y-0.5">
+        {options.length === 0 && (
+          <div className="text-[11px] text-gray-400 italic">Loading ops areas…</div>
+        )}
+        {options.map(opt => {
+          const id = opt.planned_ops_area_id;
+          const label = opt.planned_ops_area_name ?? '— (no ops area)';
+          const disabled = id == null;
+          return (
+            <label
+              key={id ?? 'null'}
+              className={`flex items-center justify-between text-[11px] ${
+                disabled ? 'text-gray-400' : 'text-gray-700 cursor-pointer'
+              }`}
+              title={disabled ? 'Row has no ops area assigned' : undefined}
+            >
+              <span className="flex items-center space-x-1.5 min-w-0">
+                <input
+                  type="checkbox"
+                  checked={isChecked(id)}
+                  disabled={disabled}
+                  onChange={() => id != null && onToggleId(id)}
+                  className="w-3.5 h-3.5 cursor-pointer flex-shrink-0"
+                />
+                <span className="truncate">{label}</span>
+              </span>
+              <span className="text-gray-500 tabular-nums text-[10px] ml-2 flex-shrink-0">
+                {opt.count}
+              </span>
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 };

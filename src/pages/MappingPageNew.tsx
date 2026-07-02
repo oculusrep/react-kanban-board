@@ -22,6 +22,7 @@ import StarbucksLicensedStoreContextMenu from '../components/mapping/StarbucksLi
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
 import StarbucksTargetAreaToggle from '../components/mapping/layers/StarbucksTargetAreaToggle';
 import { useStarbucksTargetAreaStyles } from '../hooks/useStarbucksTargetAreaStyles';
+import { useStarbucksOpsAreaFilter } from '../hooks/useStarbucksOpsAreaFilter';
 import TrafficCountLayer from '../components/mapping/TrafficCountLayer';
 import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
@@ -96,6 +97,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
+  const starbucksOpsAreaFilter = useStarbucksOpsAreaFilter();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const [searchAddress, setSearchAddress] = useState('');
@@ -2788,6 +2790,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         styles={starbucksTargetAreaStyles.styles}
                         updateStyle={starbucksTargetAreaStyles.updateStyle}
                         resetToDefaults={starbucksTargetAreaStyles.resetToDefaults}
+                        opsAreaOptions={starbucksOpsAreaFilter.options}
+                        selectedOpsAreaIds={starbucksOpsAreaFilter.selectedIds}
+                        onToggleOpsArea={starbucksOpsAreaFilter.toggleId}
+                        onSelectAllOpsAreas={starbucksOpsAreaFilter.selectAll}
+                        onSelectNoOpsAreas={starbucksOpsAreaFilter.selectNone}
+                        onFetchOpsAreas={starbucksOpsAreaFilter.fetchOptions}
                       />
                     )}
 
@@ -3309,6 +3317,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               map={mapInstance}
               isVisible={layerState.starbucks_target_areas?.isVisible || false}
               styles={starbucksTargetAreaStyles.styles}
+              selectedOpsAreaIds={starbucksOpsAreaFilter.selectedIds}
             />
 
             {/* Closed Business Search Results Layer (live search) */}

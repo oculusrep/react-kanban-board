@@ -20,6 +20,8 @@ interface TargetAreaRow {
   market_name: string | null;
   sdm_mdm: string | null;
   model_yr1_sales: number | null;
+  planned_ops_area_id: number | null;
+  planned_ops_area_name: string | null;
   geom_geojson: { type: 'Polygon'; coordinates: number[][][] };
 }
 
@@ -31,12 +33,19 @@ export interface StarbucksTargetAreaLayerProps {
    * falls back to DEFAULT_STYLES so the layer still renders sensibly.
    */
   styles?: StarbucksTargetAreaStyles;
+  /**
+   * Optional ops-area filter. null = show all; a Set (possibly empty) = only show these ids.
+   * Rows with a null planned_ops_area_id are only shown when the filter itself is null.
+   */
+  selectedOpsAreaIds?: Set<number> | null;
 }
 
-// Keep alongside each polygon so style-update and hover effects can re-style without rebuilding.
+// Keep alongside each polygon so style-update, hover effects, and the ops-area filter
+// can re-style / attach / detach without rebuilding the polygon set.
 interface PolygonRef {
   polygon: google.maps.Polygon;
   priority: PriorityKey | null; // null when the row has no/invalid priority
+  opsAreaId: number | null;
 }
 
 function priorityKeyOf(p: number | null): PriorityKey | null {
@@ -96,6 +105,7 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
   map,
   isVisible,
   styles,
+  selectedOpsAreaIds = null,
 }) => {
   const effectiveStyles: StarbucksTargetAreaStyles = styles ?? DEFAULT_STYLES;
 
@@ -206,7 +216,11 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
           zIndex: pkey === 1 ? 30 : pkey === 2 ? 20 : 10,
         });
         const bucketVisible = pkey != null ? effectiveStyles[pkey].visible : true;
-        polygon.setMap(isVisible && bucketVisible ? map : null);
+        const opsAreaVisible =
+          selectedOpsAreaIds === null
+            ? true
+            : row.planned_ops_area_id != null && selectedOpsAreaIds.has(row.planned_ops_area_id);
+        polygon.setMap(isVisible && bucketVisible && opsAreaVisible ? map : null);
 
         polygon.addListener('mouseover', () => {
           const current = styleFor(pkey, stylesRef.current);
@@ -229,7 +243,7 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
           iw.open({ map });
         });
 
-        return { polygon, priority: pkey };
+        return { polygon, priority: pkey, opsAreaId: row.planned_ops_area_id };
       });
 
     polygonsRef.current = built;
@@ -251,18 +265,22 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
     });
   }, [effectiveStyles]);
 
-  // Attach/detach polygons based on (master toggle) AND (per-bucket visibility).
-  // Runs on both isVisible flips and per-bucket flips from the style editor.
+  // Attach/detach polygons based on (master toggle) AND (per-bucket visibility) AND (ops-area filter).
+  // Runs on isVisible flips, per-bucket flips from the style editor, and ops-area filter changes.
   useEffect(() => {
     if (!map) return;
-    polygonsRef.current.forEach(({ polygon, priority }) => {
+    polygonsRef.current.forEach(({ polygon, priority, opsAreaId }) => {
       const bucketVisible = priority != null ? effectiveStyles[priority].visible : true;
-      polygon.setMap(isVisible && bucketVisible ? map : null);
+      const opsAreaVisible =
+        selectedOpsAreaIds === null
+          ? true
+          : opsAreaId != null && selectedOpsAreaIds.has(opsAreaId);
+      polygon.setMap(isVisible && bucketVisible && opsAreaVisible ? map : null);
     });
     if (!isVisible && infoWindowRef.current) {
       infoWindowRef.current.close();
     }
-  }, [isVisible, map, effectiveStyles]);
+  }, [isVisible, map, effectiveStyles, selectedOpsAreaIds]);
 
   useEffect(() => {
     return () => {
