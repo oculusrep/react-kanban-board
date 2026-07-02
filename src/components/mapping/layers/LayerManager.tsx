@@ -127,6 +127,13 @@ export interface LayerManagerContextType {
   merchantSelectedBrandIds: Set<string>;
   setMerchantSelectedBrandIds: (next: Set<string>) => void;
   toggleMerchantBrand: (brandId: string) => void;
+
+  // Merchants — "Show all in viewport" override. When true, MerchantLayer
+  // ignores selectedBrandIds and fetches every merchant location in the
+  // current viewport. Zoom-gated in the drawer (>=13) so users can't
+  // accidentally dump 21k pins on a zoomed-out map.
+  merchantShowAllInViewport: boolean;
+  setMerchantShowAllInViewport: (v: boolean) => void;
 }
 
 export type CreateMode = 'property' | 'site_submit' | 'municipal_project';
@@ -317,6 +324,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     });
   }, []);
 
+  const [merchantShowAllInViewport, setMerchantShowAllInViewport] = useState(false);
+
   // Initialize layer state once
   useEffect(() => {
     console.log('🗺️ LayerManager initializing with layers:', DEFAULT_LAYERS.map(l => l.id));
@@ -506,6 +515,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     merchantSelectedBrandIds,
     setMerchantSelectedBrandIds,
     toggleMerchantBrand,
+    merchantShowAllInViewport,
+    setMerchantShowAllInViewport,
   }), [
     layers,
     layerState,
@@ -543,6 +554,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     merchantSelectedBrandIds,
     setMerchantSelectedBrandIds,
     toggleMerchantBrand,
+    merchantShowAllInViewport,
   ]);
 
   return (

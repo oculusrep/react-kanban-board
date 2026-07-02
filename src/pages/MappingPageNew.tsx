@@ -383,6 +383,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     toggleCustomLayer,
     refreshCustomLayers,
     merchantSelectedBrandIds,
+    merchantShowAllInViewport,
     cachedDemographicsTimeRange,
     setCachedDemographicsTimeRange,
     cachedDemographicsScope,
@@ -3283,6 +3284,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               map={mapInstance}
               isVisible={layerState.merchants?.isVisible || false}
               selectedBrandIds={merchantSelectedBrandIds}
+              showAllInViewport={merchantShowAllInViewport}
               verifyingLocationId={verifyingMerchantLocationId}
               onLocationVerified={canVerifyRestaurantLocations ? handleMerchantLocationVerified : undefined}
               onMerchantRightClick={canVerifyRestaurantLocations ? handleMerchantRightClick : undefined}
@@ -3290,6 +3292,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             <MerchantsDrawer
               isOpen={showMerchantsDrawer}
               onClose={() => setShowMerchantsDrawer(false)}
+              map={mapInstance}
             />
 
             {/* Starbucks Licensed Stores — confidential, permission-gated */}

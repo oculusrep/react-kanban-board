@@ -37,6 +37,8 @@ interface MerchantLayerProps {
   map: google.maps.Map | null;
   isVisible: boolean;
   selectedBrandIds: Set<string>;
+  /** When true, ignore selectedBrandIds and fetch every merchant in viewport. Drawer zoom-gates this. */
+  showAllInViewport?: boolean;
   showClosed?: boolean;
   /** When set, that one pin becomes draggable so admin can drop it on the real storefront. */
   verifyingLocationId?: string | null;
@@ -171,6 +173,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
   map,
   isVisible,
   selectedBrandIds,
+  showAllInViewport = false,
   showClosed = false,
   verifyingLocationId = null,
   onLocationVerified,
@@ -272,7 +275,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
         skipNextFetchRef.current = false;
         return;
       }
-      if (selectedBrandIds.size === 0) {
+      if (!showAllInViewport && selectedBrandIds.size === 0) {
         setLocations([]);
         return;
       }
@@ -285,7 +288,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
         sw.lng().toFixed(4),
         ne.lat().toFixed(4),
         ne.lng().toFixed(4),
-        selectedBrandKey,
+        showAllInViewport ? 'ALL' : selectedBrandKey,
         showClosed ? '1' : '0',
       ].join('|');
       if (!forceRefresh && lastFetchKeyRef.current === key) return;
@@ -310,9 +313,12 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
             .select(
               'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, category_id)',
             )
-            .in('brand_id', brandIds)
             .or(orFilter)
             .range(offset, offset + PAGE - 1);
+
+          if (!showAllInViewport) {
+            query = query.in('brand_id', brandIds);
+          }
 
           if (!showClosed) {
             query = query.neq('business_status', 'CLOSED_PERMANENTLY');
@@ -339,7 +345,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
         isFetchingRef.current = false;
       }
     },
-    [map, selectedBrandIds, selectedBrandKey, showClosed],
+    [map, selectedBrandIds, selectedBrandKey, showAllInViewport, showClosed],
   );
 
   // Initial / visibility / selection load
@@ -352,7 +358,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
     }
     lastFetchKeyRef.current = null;
     fetchLocations(true);
-  }, [map, isVisible, selectedBrandKey, showClosed, fetchLocations, closeOpenPopup]);
+  }, [map, isVisible, selectedBrandKey, showAllInViewport, showClosed, fetchLocations, closeOpenPopup]);
 
   // Re-fetch on map idle (viewport changes)
   useEffect(() => {
