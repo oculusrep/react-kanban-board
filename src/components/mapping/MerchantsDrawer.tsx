@@ -268,10 +268,12 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
 
   const saveNewFavorite = async (name: string, brandIds: Set<string>) => {
     if (!userTableId) throw new Error('You must be signed in to create favorites.');
-    // 1. Insert the favorite row.
+    // 1. Insert the favorite row. owner_user_id is filled by a column DEFAULT
+    //    (merchants_current_user_id()) so it always matches the RLS check,
+    //    regardless of any stale userTableId in the client cache.
     const { data: favRow, error: favErr } = await supabase
       .from('merchant_favorite')
-      .insert({ owner_user_id: userTableId, name })
+      .insert({ name })
       .select('id')
       .single();
     if (favErr) throw favErr;
