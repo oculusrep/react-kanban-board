@@ -45,6 +45,23 @@ interface StagingRow {
   muni_kind: string | null;
 }
 
+// Supabase RPC errors are PostgrestError objects (not Error instances). Rendering
+// them via `String(e)` yields "[object Object]" and hides the real reason —
+// e.g. a duplicate-key constraint violation the reviewer needs to see.
+function toErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'object' && e !== null) {
+    const obj = e as Record<string, unknown>;
+    const parts: string[] = [];
+    if (typeof obj.message === 'string' && obj.message) parts.push(obj.message);
+    if (typeof obj.details === 'string' && obj.details) parts.push(obj.details);
+    if (typeof obj.hint    === 'string' && obj.hint)    parts.push(`hint: ${obj.hint}`);
+    if (typeof obj.code    === 'string' && obj.code)    parts.push(`code: ${obj.code}`);
+    if (parts.length > 0) return parts.join(' — ');
+  }
+  return String(e);
+}
+
 // Editable subset — the fields the approval UI lets the user override per row.
 type Edits = Partial<Pick<StagingRow,
   'project_name' | 'address' | 'location_description' | 'parcel_boundary_notes'
@@ -141,7 +158,7 @@ export default function ResearchRunApprovalModal({
         );
         setSelected(defaultSelected);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(toErrorMessage(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -193,7 +210,7 @@ export default function ResearchRunApprovalModal({
       // data: { rejected: bool } — silently ignore false (idempotent no-op)
       void data;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(toErrorMessage(e));
     }
   };
 
@@ -277,7 +294,7 @@ export default function ResearchRunApprovalModal({
       });
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(toErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
