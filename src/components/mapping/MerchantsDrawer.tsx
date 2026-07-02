@@ -236,6 +236,9 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
   }, [openMenuFavoriteId]);
 
   const clearAll = () => setMerchantSelectedBrandIds(new Set());
+  const selectAll = () => setMerchantSelectedBrandIds(new Set(brands.map((b) => b.id)));
+  const allSelected =
+    brands.length > 0 && merchantSelectedBrandIds.size === brands.length;
 
   // ─── Favorite helpers ────────────────────────────────────────────────
 
@@ -805,22 +808,41 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
             color: DARK.textPrimary,
           }}
         />
-        {merchantSelectedBrandIds.size > 0 && (
-          <button
-            onClick={clearAll}
-            style={{
-              marginTop: 6,
-              background: 'none',
-              border: 'none',
-              color: DARK.accent,
-              fontSize: 12,
-              cursor: 'pointer',
-              padding: 0,
-              textDecoration: 'underline',
-            }}
-          >
-            Clear all selections
-          </button>
+        {(brands.length > 0) && (
+          <div style={{ marginTop: 6, display: 'flex', gap: 12, alignItems: 'center' }}>
+            {!allSelected && (
+              <button
+                onClick={selectAll}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: DARK.accent,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline',
+                }}
+              >
+                Select all ({brands.length})
+              </button>
+            )}
+            {merchantSelectedBrandIds.size > 0 && (
+              <button
+                onClick={clearAll}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: DARK.accent,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline',
+                }}
+              >
+                Clear all selections
+              </button>
+            )}
+          </div>
         )}
       </div>
 
