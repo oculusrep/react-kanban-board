@@ -74,7 +74,7 @@ export default function IngestionTab() {
         const { data, error } = await supabase
           .from('merchant_brand')
           .select(
-            'id, name, places_search_query, places_type_filter, last_ingested_at, brandfetch_domain, is_active',
+            'id, name, places_search_query, places_type_filter, places_display_name, last_ingested_at, brandfetch_domain, is_active',
           )
           .eq('is_active', true)
           .order('name')

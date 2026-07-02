@@ -11,12 +11,56 @@ export interface MerchantBrand {
   logo_url: string | null;
   /** Admin-uploaded custom logo. When set, overrides logo_url at render time. */
   custom_logo_url: string | null;
+  /** Places' actual display name, when it differs from brand.name.
+   *  Used by the render-time name filter (see nameMatchesBrand). */
+  places_display_name: string | null;
   category_id: string | null;
 }
 
 /** Prefer the admin-uploaded custom logo over the Brandfetch URL. */
 function brandDisplayLogo(b: Pick<MerchantBrand, 'logo_url' | 'custom_logo_url'>): string | null {
   return b.custom_logo_url ?? b.logo_url ?? null;
+}
+
+/** Alphanumeric-only, lowercased. Used for the render-time name-match filter. */
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Does the Places-returned location name look like it belongs to this brand?
+ *
+ * Google Places Text Search is overly permissive — searching "24 Hour Fitness"
+ * returns Anytime Fitness, YMCAs, dance studios, etc. To keep the map honest,
+ * we require the location name to contain the brand's expected display name
+ * (or its stem — see below) after alphanumeric normalization.
+ *
+ * Match against brand.places_display_name if set (the admin's override for
+ * brands whose Places name differs from brand.name, e.g. "Truist Bank" -> "Truist")
+ * else against brand.name. Also accepts a "brand-minus-last-word" stem so that
+ * type suffixes like Bank/Wireless/Store don't force a manual override for
+ * every such brand.
+ */
+function nameMatchesBrand(
+  placesName: string | null,
+  brand: Pick<MerchantBrand, 'name' | 'places_display_name'>,
+): boolean {
+  if (!placesName) return false;
+  const expected = brand.places_display_name?.trim() || brand.name;
+  if (!expected) return false;
+  const nPlaces = normalizeForMatch(placesName);
+  const nFull = normalizeForMatch(expected);
+  if (nFull.length >= 3 && nPlaces.includes(nFull)) return true;
+  // Try stem = brand-minus-last-word (handles "Truist Bank" -> "Truist" when
+  // places_display_name isn't set yet). Only apply when stem is >= 4 chars so
+  // "The X" doesn't match everything.
+  const parts = expected.trim().split(/\s+/);
+  if (parts.length > 1) {
+    const stem = parts.slice(0, -1).join('');
+    const nStem = normalizeForMatch(stem);
+    if (nStem.length >= 4 && nPlaces.includes(nStem)) return true;
+  }
+  return false;
 }
 
 export interface MerchantLocationRow {
@@ -319,7 +363,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
           let query = supabase
             .from('merchant_location')
             .select(
-              'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, custom_logo_url, category_id)',
+              'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, custom_logo_url, places_display_name, category_id)',
             )
             .or(orFilter)
             .range(offset, offset + PAGE - 1);
@@ -337,9 +381,14 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
           if (!data || data.length === 0) break;
 
           // Supabase typed the joined `brand` as an array in some versions; normalize.
+          // Also apply the render-time name filter: Places Text Search returns
+          // many false positives ("Anytime Fitness" for a "24 Hour Fitness"
+          // search, etc.), so we require the location name to look like the
+          // brand's Places display name. See nameMatchesBrand comment.
           for (const row of data as any[]) {
             const brand = Array.isArray(row.brand) ? row.brand[0] : row.brand;
             if (!brand) continue;
+            if (!nameMatchesBrand(row.name, brand)) continue;
             all.push({ ...(row as MerchantLocationRow), brand });
           }
           if (data.length < PAGE) break;

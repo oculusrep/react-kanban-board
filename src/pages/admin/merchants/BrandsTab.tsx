@@ -25,6 +25,10 @@ interface MerchantBrand {
   // at render time on the map. See MERCHANTS_ADMIN_ROADMAP.md §6 Layer 3.
   custom_logo_url: string | null;
   custom_logo_uploaded_at: string | null;
+  // Override for the ingest-time name check and render-time name filter. Set
+  // when Google Places' actual display name differs from OVIS's brand.name
+  // (e.g. "Truist Bank" vs "Truist"). NULL = fall back to brand.name.
+  places_display_name: string | null;
   merchant_category?: { name: string } | null;
 }
 
@@ -49,6 +53,10 @@ export default function BrandsTab() {
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   const [editingDomain, setEditingDomain] = useState<string>('');
   const [savingBrandId, setSavingBrandId] = useState<string | null>(null);
+  // Inline places_display_name editor state. Separate from editingBrandId so
+  // the two edit modes don't clobber each other.
+  const [editingDisplayNameId, setEditingDisplayNameId] = useState<string | null>(null);
+  const [editingDisplayName, setEditingDisplayName] = useState<string>('');
   const [uploadingBrandId, setUploadingBrandId] = useState<string | null>(null);
   // Hidden per-brand file inputs — clicked programmatically by the Upload button
   // so we don't have to render a visible <input type=file> that can't be styled.
@@ -67,7 +75,7 @@ export default function BrandsTab() {
         const { data, error } = await supabase
           .from('merchant_brand')
           .select(
-            'id, name, category_id, brandfetch_domain, logo_url, logo_fetched_at, logo_variant, is_active, brandfetch_logo_status, brandfetch_checked_at, custom_logo_url, custom_logo_uploaded_at, merchant_category(name)',
+            'id, name, category_id, brandfetch_domain, logo_url, logo_fetched_at, logo_variant, is_active, brandfetch_logo_status, brandfetch_checked_at, custom_logo_url, custom_logo_uploaded_at, places_display_name, merchant_category(name)',
           )
           .order('name')
           .range(offset, offset + PAGE_SIZE - 1);
@@ -283,6 +291,45 @@ export default function BrandsTab() {
     }
   };
 
+  // ── Places display-name override ───────────────────────────────────────
+  //
+  // For brands where Google Places' display name differs from OVIS's
+  // brand.name — "Truist Bank" -> "Truist", "Dunkin' Donuts" -> "Dunkin'",
+  // "Apple Store" -> "Apple", "Verizon Wireless" -> "Verizon". The
+  // render-time filter and ingest guard both use this when set.
+
+  const startEditDisplayName = (brand: MerchantBrand) => {
+    setEditingDisplayNameId(brand.id);
+    setEditingDisplayName(brand.places_display_name ?? '');
+  };
+
+  const cancelEditDisplayName = () => {
+    setEditingDisplayNameId(null);
+    setEditingDisplayName('');
+  };
+
+  const saveDisplayName = async (brand: MerchantBrand) => {
+    const trimmed = editingDisplayName.trim();
+    const next = trimmed || null;
+    setSavingBrandId(brand.id);
+    try {
+      const { error: updErr } = await supabase
+        .from('merchant_brand')
+        .update({ places_display_name: next })
+        .eq('id', brand.id);
+      if (updErr) throw updErr;
+      setBrands((prev) =>
+        prev.map((b) => (b.id === brand.id ? { ...b, places_display_name: next } : b)),
+      );
+      setEditingDisplayNameId(null);
+      setEditingDisplayName('');
+    } catch (e: unknown) {
+      alert(`Save failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    } finally {
+      setSavingBrandId(null);
+    }
+  };
+
   // ── Custom logo upload / remove ────────────────────────────────────────
   //
   // Files land in the existing `assets` bucket (public read) under
@@ -438,6 +485,7 @@ export default function BrandsTab() {
                     <th className="px-4 py-3">Brand</th>
                     <th className="px-4 py-3">Category</th>
                     <th className="px-4 py-3">Brandfetch domain</th>
+                    <th className="px-4 py-3">Places name</th>
                     <th className="px-4 py-3 w-28">Variant</th>
                     <th className="px-4 py-3 w-44">Custom logo</th>
                     <th className="px-4 py-3 w-32">Actions</th>
@@ -481,6 +529,18 @@ export default function BrandsTab() {
                           ) : (
                             <span className="text-xs italic text-gray-400">not set</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <DisplayNameCell
+                            brand={brand}
+                            editing={editingDisplayNameId === brand.id}
+                            saving={savingBrandId === brand.id}
+                            value={editingDisplayName}
+                            onChange={setEditingDisplayName}
+                            onStart={() => startEditDisplayName(brand)}
+                            onSave={() => saveDisplayName(brand)}
+                            onCancel={cancelEditDisplayName}
+                          />
                         </td>
                         <td className="px-4 py-3">
                           <select
@@ -543,7 +603,7 @@ export default function BrandsTab() {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-gray-500 text-sm">
+                      <td colSpan={8} className="px-4 py-8 text-center text-gray-500 text-sm">
                         No brands match these filters.
                       </td>
                     </tr>
@@ -654,6 +714,79 @@ function LogoPreview({ brand }: { brand: MerchantBrand }) {
         </div>
       )}
     </div>
+  );
+}
+
+interface DisplayNameCellProps {
+  brand: MerchantBrand;
+  editing: boolean;
+  saving: boolean;
+  value: string;
+  onChange: (v: string) => void;
+  onStart: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}
+
+function DisplayNameCell({
+  brand,
+  editing,
+  saving,
+  value,
+  onChange,
+  onStart,
+  onSave,
+  onCancel,
+}: DisplayNameCellProps) {
+  if (editing) {
+    return (
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onSave();
+            if (e.key === 'Escape') onCancel();
+          }}
+          placeholder={`Default: ${brand.name}`}
+          autoFocus
+          disabled={saving}
+          className="w-full px-2 py-1 border border-blue-400 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          title="Google Places' display name for this brand. Blank = fall back to brand name."
+        />
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="px-2 py-1 text-xs font-medium text-white rounded disabled:opacity-50"
+          style={{ backgroundColor: BRAND_COLOR_DARK }}
+        >
+          {saving ? '…' : 'OK'}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          className="px-2 py-1 text-xs text-gray-600 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={onStart}
+      className="text-xs text-left hover:bg-gray-100 rounded px-2 py-1 -mx-2 -my-1 w-full"
+      title="Override the name Places uses for this brand (e.g. 'Truist' for 'Truist Bank'). Click to edit."
+    >
+      {brand.places_display_name ? (
+        <span className="font-mono" style={{ color: BRAND_COLOR_MED }}>
+          {brand.places_display_name}
+        </span>
+      ) : (
+        <span className="italic text-gray-400">= {brand.name}</span>
+      )}
+    </button>
   );
 }
 

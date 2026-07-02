@@ -16,6 +16,47 @@ export interface MerchantBrandRow {
   name: string;
   places_search_query: string | null;
   places_type_filter: string | null;
+  /** Optional override for the ingest-time name check. See nameMatchesBrand. */
+  places_display_name?: string | null;
+}
+
+/** Alphanumeric-only, lowercased. Mirrors the render-time helper in MerchantLayer. */
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Does a Places-returned display name look like it belongs to this brand?
+ *
+ * Google Places Text Search is overly permissive — searching "24 Hour Fitness"
+ * returns Anytime Fitness, YMCAs, and dance studios. This guard blocks non-
+ * matching results at insert time so the cache doesn't fill with false hits.
+ *
+ * Matches against brand.places_display_name if set (the admin's override for
+ * brands whose Places name differs from brand.name, e.g. "Truist Bank" -> "Truist")
+ * else against brand.name. Also accepts a "brand-minus-last-word" stem so that
+ * common type suffixes like Bank/Wireless/Store/Donuts don't force a manual
+ * override for every such brand.
+ *
+ * KEEP IN SYNC with nameMatchesBrand() in MerchantLayer.tsx.
+ */
+export function nameMatchesBrand(
+  placesName: string | null | undefined,
+  brand: Pick<MerchantBrandRow, 'name' | 'places_display_name'>,
+): boolean {
+  if (!placesName) return false;
+  const expected = brand.places_display_name?.trim() || brand.name;
+  if (!expected) return false;
+  const nPlaces = normalizeForMatch(placesName);
+  const nFull = normalizeForMatch(expected);
+  if (nFull.length >= 3 && nPlaces.includes(nFull)) return true;
+  const parts = expected.trim().split(/\s+/);
+  if (parts.length > 1) {
+    const stem = parts.slice(0, -1).join('');
+    const nStem = normalizeForMatch(stem);
+    if (nStem.length >= 4 && nPlaces.includes(nStem)) return true;
+  }
+  return false;
 }
 
 export interface IngestBrandResult {
@@ -324,10 +365,14 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
       }
     }
 
-    // Final dedup'd list, GA-only by address.
+    // Final dedup'd list, GA-only by address, name-matched against the brand.
+    // The name-match guard rejects the ~40% of Places results that are Google's
+    // over-eager semantic matches (e.g. "Anytime Fitness" returned for a
+    // "24 Hour Fitness" search). See nameMatchesBrand.
     const allPlaces = Array.from(byId.values()).filter((p) => {
       const addr = p.formatted_address ?? '';
-      return addr.includes(', GA') || /\bGeorgia\b/.test(addr);
+      if (!(addr.includes(', GA') || /\bGeorgia\b/.test(addr))) return false;
+      return nameMatchesBrand(p.name, brand);
     });
     result.locationsFound = allPlaces.length;
 
