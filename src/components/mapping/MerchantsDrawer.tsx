@@ -175,7 +175,7 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
             .order('display_order', { ascending: true }),
           supabase
             .from('merchant_brand')
-            .select('id, name, category_id, logo_url')
+            .select('id, name, category_id, logo_url, custom_logo_url')
             .eq('is_active', true)
             .order('name', { ascending: true }),
         ]);
@@ -500,9 +500,9 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
                     borderBottom: `1px solid ${DARK.borderSubtle}`,
                   }}
                 >
-                  {b.logo_url && (
+                  {(b.custom_logo_url || b.logo_url) && (
                     <img
-                      src={b.logo_url}
+                      src={b.custom_logo_url || b.logo_url || undefined}
                       alt=""
                       style={{
                         width: 18,

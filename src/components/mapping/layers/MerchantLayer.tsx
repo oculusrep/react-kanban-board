@@ -9,7 +9,14 @@ export interface MerchantBrand {
   id: string;
   name: string;
   logo_url: string | null;
+  /** Admin-uploaded custom logo. When set, overrides logo_url at render time. */
+  custom_logo_url: string | null;
   category_id: string | null;
+}
+
+/** Prefer the admin-uploaded custom logo over the Brandfetch URL. */
+function brandDisplayLogo(b: Pick<MerchantBrand, 'logo_url' | 'custom_logo_url'>): string | null {
+  return b.custom_logo_url ?? b.logo_url ?? null;
 }
 
 export interface MerchantLocationRow {
@@ -130,9 +137,10 @@ function buildPinContent(loc: MerchantLocationWithBrand, verifying = false): HTM
   if (loc.business_status === 'CLOSED_PERMANENTLY') container.classList.add('closed-perm');
   else if (loc.business_status === 'CLOSED_TEMPORARILY') container.classList.add('closed-temp');
 
-  if (loc.brand.logo_url) {
+  const displayLogo = brandDisplayLogo(loc.brand);
+  if (displayLogo) {
     const img = document.createElement('img');
-    img.src = loc.brand.logo_url;
+    img.src = displayLogo;
     img.alt = loc.brand.name;
     img.loading = 'lazy';
     img.decoding = 'async';
@@ -311,7 +319,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
           let query = supabase
             .from('merchant_location')
             .select(
-              'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, category_id)',
+              'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, custom_logo_url, category_id)',
             )
             .or(orFilter)
             .range(offset, offset + PAGE - 1);

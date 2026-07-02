@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   BRAND_COLOR_DARK,
   BRAND_COLOR_LIGHT,
@@ -20,8 +21,14 @@ interface MerchantBrand {
   is_active: boolean;
   brandfetch_logo_status: 'unknown' | 'ok' | 'miss';
   brandfetch_checked_at: string | null;
+  // Admin-uploaded logo (Layer 3 escape hatch). When set, overrides logo_url
+  // at render time on the map. See MERCHANTS_ADMIN_ROADMAP.md §6 Layer 3.
+  custom_logo_url: string | null;
+  custom_logo_uploaded_at: string | null;
   merchant_category?: { name: string } | null;
 }
+
+const CUSTOM_LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2MB — matches ClientOverviewTab
 
 // 'no_logo' = nothing at all (no domain set) OR domain set but Brandfetch
 // has no real asset (status='miss'). 'brandfetch_miss' filters down to JUST
@@ -29,6 +36,7 @@ interface MerchantBrand {
 type LogoFilter = 'all' | 'has_logo' | 'no_logo' | 'brandfetch_miss';
 
 export default function BrandsTab() {
+  const { userTableId } = useAuth();
   const [brands, setBrands] = useState<MerchantBrand[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +49,10 @@ export default function BrandsTab() {
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   const [editingDomain, setEditingDomain] = useState<string>('');
   const [savingBrandId, setSavingBrandId] = useState<string | null>(null);
+  const [uploadingBrandId, setUploadingBrandId] = useState<string | null>(null);
+  // Hidden per-brand file inputs — clicked programmatically by the Upload button
+  // so we don't have to render a visible <input type=file> that can't be styled.
+  const fileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   const loadData = async () => {
     setLoading(true);
@@ -55,7 +67,7 @@ export default function BrandsTab() {
         const { data, error } = await supabase
           .from('merchant_brand')
           .select(
-            'id, name, category_id, brandfetch_domain, logo_url, logo_fetched_at, logo_variant, is_active, brandfetch_logo_status, brandfetch_checked_at, merchant_category(name)',
+            'id, name, category_id, brandfetch_domain, logo_url, logo_fetched_at, logo_variant, is_active, brandfetch_logo_status, brandfetch_checked_at, custom_logo_url, custom_logo_uploaded_at, merchant_category(name)',
           )
           .order('name')
           .range(offset, offset + PAGE_SIZE - 1);
@@ -271,6 +283,89 @@ export default function BrandsTab() {
     }
   };
 
+  // ── Custom logo upload / remove ────────────────────────────────────────
+  //
+  // Files land in the existing `assets` bucket (public read) under
+  // `merchant-logos/{brandId}-{ts}.{ext}`. We do NOT delete previous files
+  // on replace — the URL just gets overwritten on the row. Trade-off: small
+  // Storage leak for atomicity and rollback safety. Cleanup can be a batch
+  // job later if it ever matters.
+
+  const uploadCustomLogo = async (brand: MerchantBrand, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please choose an image file (PNG, SVG, JPG, WebP).');
+      return;
+    }
+    if (file.size > CUSTOM_LOGO_MAX_BYTES) {
+      alert('Image must be under 2 MB.');
+      return;
+    }
+    setUploadingBrandId(brand.id);
+    try {
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+      const fileName = `merchant-logos/${brand.id}-${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('assets')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true });
+      if (uploadErr) throw uploadErr;
+      const { data: urlData } = supabase.storage.from('assets').getPublicUrl(fileName);
+      const customUrl = urlData.publicUrl;
+      const nowIso = new Date().toISOString();
+      const { error: updErr } = await supabase
+        .from('merchant_brand')
+        .update({
+          custom_logo_url: customUrl,
+          custom_logo_uploaded_at: nowIso,
+          custom_logo_uploaded_by: userTableId,
+        })
+        .eq('id', brand.id);
+      if (updErr) throw updErr;
+      setBrands((prev) =>
+        prev.map((b) =>
+          b.id === brand.id
+            ? { ...b, custom_logo_url: customUrl, custom_logo_uploaded_at: nowIso }
+            : b,
+        ),
+      );
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Upload failed';
+      alert(`Upload failed: ${message}`);
+    } finally {
+      setUploadingBrandId(null);
+    }
+  };
+
+  const removeCustomLogo = async (brand: MerchantBrand) => {
+    if (!brand.custom_logo_url) return;
+    if (!confirm(`Remove custom logo for "${brand.name}"? Pin will revert to the Brandfetch logo.`)) {
+      return;
+    }
+    setUploadingBrandId(brand.id);
+    try {
+      const { error: updErr } = await supabase
+        .from('merchant_brand')
+        .update({
+          custom_logo_url: null,
+          custom_logo_uploaded_at: null,
+          custom_logo_uploaded_by: null,
+        })
+        .eq('id', brand.id);
+      if (updErr) throw updErr;
+      setBrands((prev) =>
+        prev.map((b) =>
+          b.id === brand.id
+            ? { ...b, custom_logo_url: null, custom_logo_uploaded_at: null }
+            : b,
+        ),
+      );
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Remove failed';
+      alert(`Remove failed: ${message}`);
+    } finally {
+      setUploadingBrandId(null);
+    }
+  };
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
@@ -344,6 +439,7 @@ export default function BrandsTab() {
                     <th className="px-4 py-3">Category</th>
                     <th className="px-4 py-3">Brandfetch domain</th>
                     <th className="px-4 py-3 w-28">Variant</th>
+                    <th className="px-4 py-3 w-44">Custom logo</th>
                     <th className="px-4 py-3 w-32">Actions</th>
                   </tr>
                 </thead>
@@ -401,6 +497,19 @@ export default function BrandsTab() {
                           </select>
                         </td>
                         <td className="px-4 py-3">
+                          <CustomLogoCell
+                            brand={brand}
+                            uploading={uploadingBrandId === brand.id}
+                            fileInputRef={(el) => {
+                              if (el) fileInputRefs.current.set(brand.id, el);
+                              else fileInputRefs.current.delete(brand.id);
+                            }}
+                            onPickFile={(file) => uploadCustomLogo(brand, file)}
+                            onClickUpload={() => fileInputRefs.current.get(brand.id)?.click()}
+                            onRemove={() => removeCustomLogo(brand)}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
                           {isEditing ? (
                             <div className="flex gap-1">
                               <button
@@ -434,7 +543,7 @@ export default function BrandsTab() {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500 text-sm">
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-500 text-sm">
                         No brands match these filters.
                       </td>
                     </tr>
@@ -479,21 +588,25 @@ function LogoPreview({ brand }: { brand: MerchantBrand }) {
   const [imgFailed, setImgFailed] = useState(false);
   useEffect(() => {
     setImgFailed(false);
-  }, [brand.logo_url]);
+  }, [brand.logo_url, brand.custom_logo_url]);
 
   const fallbackLetter = brand.name.charAt(0).toUpperCase();
-  // Three states:
-  //   1. No domain set                       — neutral dark circle
-  //   2. Domain set, brandfetch miss / fail  — warning circle + ! badge
-  //   3. Logo loaded                         — show it
-  const noDomain = !brand.logo_url;
-  const brandfetchMiss =
-    !noDomain && (brand.brandfetch_logo_status === 'miss' || imgFailed);
+  // Preview shows what the map pin will show: custom logo wins over Brandfetch.
+  const activeUrl = brand.custom_logo_url || brand.logo_url;
+  const usingCustom = !!brand.custom_logo_url;
 
-  if (noDomain || brandfetchMiss) {
+  // Three states:
+  //   1. No URL at all                       — neutral dark circle
+  //   2. Brandfetch miss / img fetch failed  — warning circle + ! badge (only when NOT using custom)
+  //   3. Logo loaded                         — show it (with a small "C" badge if custom)
+  const noUrl = !activeUrl;
+  const brandfetchMiss =
+    !noUrl && !usingCustom && (brand.brandfetch_logo_status === 'miss' || imgFailed);
+
+  if (noUrl || brandfetchMiss) {
     const bg = brandfetchMiss ? BRAND_COLOR_WARN : BRAND_COLOR_DARK;
     const tooltip = brandfetchMiss
-      ? 'Brandfetch has no logo for this domain — try a different domain'
+      ? 'Brandfetch has no logo for this domain — try a different domain, or upload a custom logo'
       : 'No logo set';
     return (
       <div className="relative w-12 h-12">
@@ -519,15 +632,82 @@ function LogoPreview({ brand }: { brand: MerchantBrand }) {
   }
 
   return (
-    <div className="w-12 h-12 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
-      <img
-        src={brand.logo_url!}
-        alt={`${brand.name} logo`}
-        className="w-10 h-10 object-contain"
-        loading="lazy"
-        decoding="async"
-        onError={() => setImgFailed(true)}
+    <div className="relative w-12 h-12">
+      <div className="w-12 h-12 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
+        <img
+          src={activeUrl!}
+          alt={`${brand.name} logo`}
+          className="w-10 h-10 object-contain"
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgFailed(true)}
+        />
+      </div>
+      {usingCustom && (
+        <div
+          className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white border-2 flex items-center justify-center text-[10px] font-bold leading-none"
+          style={{ borderColor: BRAND_COLOR_MED, color: BRAND_COLOR_MED }}
+          title="Custom logo (admin upload). Overrides Brandfetch."
+          aria-label="Custom uploaded logo"
+        >
+          C
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CustomLogoCellProps {
+  brand: MerchantBrand;
+  uploading: boolean;
+  fileInputRef: (el: HTMLInputElement | null) => void;
+  onPickFile: (file: File) => void;
+  onClickUpload: () => void;
+  onRemove: () => void;
+}
+
+function CustomLogoCell({
+  brand,
+  uploading,
+  fileInputRef,
+  onPickFile,
+  onClickUpload,
+  onRemove,
+}: CustomLogoCellProps) {
+  const has = !!brand.custom_logo_url;
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPickFile(f);
+          e.target.value = ''; // allow picking the same file again after replace
+        }}
       />
+      <button
+        onClick={onClickUpload}
+        disabled={uploading}
+        className="px-2 py-1 text-xs text-white rounded hover:opacity-90 disabled:opacity-50"
+        style={{ backgroundColor: has ? BRAND_COLOR_MED : BRAND_COLOR_DARK }}
+        title={has ? 'Replace the current custom logo' : 'Upload a custom logo (overrides Brandfetch on the map)'}
+      >
+        {uploading ? 'Uploading…' : has ? 'Replace' : 'Upload'}
+      </button>
+      {has && (
+        <button
+          onClick={onRemove}
+          disabled={uploading}
+          className="px-2 py-1 text-xs rounded border hover:bg-gray-100 disabled:opacity-50"
+          style={{ borderColor: BRAND_COLOR_LIGHT, color: BRAND_COLOR_MED }}
+          title="Remove the custom logo and revert to Brandfetch"
+        >
+          Remove
+        </button>
+      )}
     </div>
   );
 }

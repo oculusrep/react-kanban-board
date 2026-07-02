@@ -37,9 +37,9 @@ const MerchantPopup: React.FC<MerchantPopupProps> = ({ location, onClose }) => {
       }}
     >
       <div style={{ padding: '12px 12px 0', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-        {location.brand.logo_url && (
+        {(location.brand.custom_logo_url || location.brand.logo_url) && (
           <img
-            src={location.brand.logo_url}
+            src={location.brand.custom_logo_url || location.brand.logo_url || undefined}
             alt={location.brand.name}
             style={{ width: 32, height: 32, objectFit: 'contain', flexShrink: 0 }}
             loading="lazy"

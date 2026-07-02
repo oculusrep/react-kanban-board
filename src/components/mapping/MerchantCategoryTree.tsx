@@ -11,6 +11,7 @@ export interface MerchantCategoryTreeBrand {
   name: string;
   category_id: string | null;
   logo_url: string | null;
+  custom_logo_url: string | null;
 }
 
 interface MerchantCategoryTreeProps {
@@ -272,9 +273,9 @@ const MerchantCategoryTree: React.FC<MerchantCategoryTreeProps> = ({
                           cursor: 'pointer',
                         }}
                       />
-                      {b.logo_url && (
+                      {(b.custom_logo_url || b.logo_url) && (
                         <img
-                          src={b.logo_url}
+                          src={b.custom_logo_url || b.logo_url || undefined}
                           alt=""
                           style={{
                             width: 18,
