@@ -2297,7 +2297,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             .map-presentation-mode .gmnoprint,
             .map-presentation-mode .gm-svpc,
             .map-presentation-mode .gm-fullscreen-control,
-            .map-presentation-mode [data-gps-react-controls] { display: none !important; }
+            .map-presentation-mode [data-gps-react-controls],
+            .map-presentation-mode [data-demographics-slideout] { display: none !important; }
           `}</style>
           <button
             type="button"

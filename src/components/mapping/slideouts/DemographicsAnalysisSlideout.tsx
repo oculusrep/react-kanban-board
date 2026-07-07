@@ -8,6 +8,7 @@ import DemographicRingsOverlay from '../layers/DemographicRingsOverlay';
 import DemographicIsochronesOverlay from '../layers/DemographicIsochronesOverlay';
 import DemographicPolygonOverlay from '../layers/DemographicPolygonOverlay';
 import DemographicsAnalysisModal from './DemographicsAnalysisModal';
+import { useDemographicsStyleDefaults } from '../../../hooks/useDemographicsStyleDefaults';
 
 // All three modes of the demographic-layers feature:
 //   - rings (around the right-clicked point)
@@ -176,6 +177,11 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   onClose,
   prefilled,
 }) => {
+  // User-persisted style defaults (localStorage). Falls back to the
+  // hardcoded red palette when nothing has been saved.
+  const { defaults: styleDefaults, saveAsDefaults, resetToFactory } =
+    useDemographicsStyleDefaults();
+
   const [selectedRadii, setSelectedRadii] = useState<number[]>(DEFAULT_RADII);
   const [selectedDriveTimes, setSelectedDriveTimes] =
     useState<number[]>(DEFAULT_DRIVE_TIMES);
@@ -190,17 +196,25 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   // minutes). Unset keys fall back to DEFAULT_OVERLAY_COLOR. Persisting
   // across selection toggles means re-checking a ring keeps your chosen
   // color.
-  const [ringColors, setRingColors] = useState<Record<number, string>>({});
+  const [ringColors, setRingColors] = useState<Record<number, string>>(
+    styleDefaults.ringColors,
+  );
   // Drive-time bands support per-band fill color, line color, and fill
   // opacity. Line color defaults to the fill color when unset, so a user
   // who only picks one color still gets a matching outline.
-  const [driveTimeFillColors, setDriveTimeFillColors] = useState<Record<number, string>>({});
-  const [driveTimeLineColors, setDriveTimeLineColors] = useState<Record<number, string>>({});
-  const [driveTimeFillOpacities, setDriveTimeFillOpacities] = useState<Record<number, number>>({});
-  const [polygonColor, setPolygonColor] = useState(DEFAULT_OVERLAY_COLOR);
-  const [strokeOpacity, setStrokeOpacity] = useState(DEFAULT_STROKE_OPACITY);
-  const [fillOpacity, setFillOpacity] = useState(DEFAULT_FILL_OPACITY);
-  const [strokeWeight, setStrokeWeight] = useState(DEFAULT_STROKE_WEIGHT);
+  const [driveTimeFillColors, setDriveTimeFillColors] = useState<Record<number, string>>(
+    styleDefaults.driveTimeFillColors,
+  );
+  const [driveTimeLineColors, setDriveTimeLineColors] = useState<Record<number, string>>(
+    styleDefaults.driveTimeLineColors,
+  );
+  const [driveTimeFillOpacities, setDriveTimeFillOpacities] = useState<Record<number, number>>(
+    styleDefaults.driveTimeFillOpacities,
+  );
+  const [polygonColor, setPolygonColor] = useState(styleDefaults.polygonColor);
+  const [strokeOpacity, setStrokeOpacity] = useState(styleDefaults.strokeOpacity);
+  const [fillOpacity, setFillOpacity] = useState(styleDefaults.fillOpacity);
+  const [strokeWeight, setStrokeWeight] = useState(styleDefaults.strokeWeight);
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showModal, setShowModal] = useState(false);
   // Minimize collapses the body but keeps the slideout open — overlays
@@ -213,17 +227,19 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
 
   // Reset state whenever a new location is opened. Prefilled cache
   // clicks seed the relevant slice of state instead of clearing it.
+  // Style fields seed from the user's saved defaults (or the factory red
+  // palette if none have been saved).
   useEffect(() => {
     if (!isOpen || !coordinates) return;
 
-    setRingColors({});
-    setDriveTimeFillColors({});
-    setDriveTimeLineColors({});
-    setDriveTimeFillOpacities({});
-    setPolygonColor(DEFAULT_OVERLAY_COLOR);
-    setStrokeOpacity(DEFAULT_STROKE_OPACITY);
-    setFillOpacity(DEFAULT_FILL_OPACITY);
-    setStrokeWeight(DEFAULT_STROKE_WEIGHT);
+    setRingColors(styleDefaults.ringColors);
+    setDriveTimeFillColors(styleDefaults.driveTimeFillColors);
+    setDriveTimeLineColors(styleDefaults.driveTimeLineColors);
+    setDriveTimeFillOpacities(styleDefaults.driveTimeFillOpacities);
+    setPolygonColor(styleDefaults.polygonColor);
+    setStrokeOpacity(styleDefaults.strokeOpacity);
+    setFillOpacity(styleDefaults.fillOpacity);
+    setStrokeWeight(styleDefaults.strokeWeight);
     setShowStylePanel(false);
     setShowModal(false);
     setMinimized(false);
@@ -388,6 +404,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
       />
 
       <aside
+        data-demographics-slideout="true"
         className={
           minimized
             ? 'fixed top-4 right-4 z-[50] shadow-2xl rounded-lg overflow-hidden'
@@ -706,23 +723,73 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                         className="w-full"
                       />
                     </label>
+                  </div>
+
+                  {/* Save / reset row. "Save as default" persists the
+                      current colors + opacity to localStorage so every
+                      future point opens with them. "Reset" reverts the
+                      current session to whatever is saved (or the
+                      factory red palette if nothing has been saved). */}
+                  <div className="flex items-center justify-between gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => {
-                        setRingColors({});
-                        setDriveTimeFillColors({});
-                        setDriveTimeLineColors({});
-                        setDriveTimeFillOpacities({});
-                        setPolygonColor(DEFAULT_OVERLAY_COLOR);
-                        setStrokeOpacity(DEFAULT_STROKE_OPACITY);
-                        setFillOpacity(DEFAULT_FILL_OPACITY);
-                        setStrokeWeight(DEFAULT_STROKE_WEIGHT);
-                      }}
-                      className="text-[10px] underline self-end"
-                      style={{ color: BRAND.slate }}
+                      onClick={() =>
+                        saveAsDefaults({
+                          ringColors,
+                          driveTimeFillColors,
+                          driveTimeLineColors,
+                          driveTimeFillOpacities,
+                          polygonColor,
+                          strokeOpacity,
+                          fillOpacity,
+                          strokeWeight,
+                        })
+                      }
+                      className="text-[11px] px-2.5 py-1 rounded font-medium"
+                      style={{ backgroundColor: BRAND.midnight, color: '#FFFFFF' }}
+                      title="Save these colors as your default for every new point"
                     >
-                      Reset to red
+                      Save as my default
                     </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRingColors(styleDefaults.ringColors);
+                          setDriveTimeFillColors(styleDefaults.driveTimeFillColors);
+                          setDriveTimeLineColors(styleDefaults.driveTimeLineColors);
+                          setDriveTimeFillOpacities(styleDefaults.driveTimeFillOpacities);
+                          setPolygonColor(styleDefaults.polygonColor);
+                          setStrokeOpacity(styleDefaults.strokeOpacity);
+                          setFillOpacity(styleDefaults.fillOpacity);
+                          setStrokeWeight(styleDefaults.strokeWeight);
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded font-medium border"
+                        style={{ borderColor: BRAND.slate, color: BRAND.steel }}
+                        title="Revert this point's colors to your saved defaults"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetToFactory();
+                          setRingColors({});
+                          setDriveTimeFillColors({});
+                          setDriveTimeLineColors({});
+                          setDriveTimeFillOpacities({});
+                          setPolygonColor(DEFAULT_OVERLAY_COLOR);
+                          setStrokeOpacity(DEFAULT_STROKE_OPACITY);
+                          setFillOpacity(DEFAULT_FILL_OPACITY);
+                          setStrokeWeight(DEFAULT_STROKE_WEIGHT);
+                        }}
+                        className="text-[10px] underline"
+                        style={{ color: BRAND.slate }}
+                        title="Clear your saved defaults and revert to the original red palette"
+                      >
+                        Clear saved
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
