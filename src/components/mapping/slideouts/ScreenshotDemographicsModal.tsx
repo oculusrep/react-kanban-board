@@ -81,7 +81,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
       <div
         className="relative rounded-lg shadow-2xl"
         style={{
-          backgroundColor: '#1F1F1F',
+          backgroundColor: '#2F2F2F',
           color: '#FFFFFF',
           padding: '32px 40px',
           minWidth: '560px',
@@ -110,7 +110,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     fontSize: '18px',
                     fontWeight: 400,
                     color: '#E5E7EB',
-                    padding: '0 24px 16px',
+                    padding: '0 19px 16px',
                     textAlign: 'center',
                     borderBottom: GRID_LINE,
                   }}
@@ -128,7 +128,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     fontSize: '16px',
                     fontWeight: 700,
                     color: '#FFFFFF',
-                    padding: '9px 32px 9px 0',
+                    padding: '9px 26px 9px 0',
                     whiteSpace: 'nowrap',
                     borderBottom: GRID_LINE,
                   }}
@@ -141,7 +141,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     style={{
                       fontSize: '16px',
                       color: '#FFFFFF',
-                      padding: '9px 24px',
+                      padding: '9px 19px',
                       textAlign: 'center',
                       fontVariantNumeric: 'tabular-nums',
                       borderBottom: GRID_LINE,
