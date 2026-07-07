@@ -309,6 +309,9 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     const mapIdWithPoi = import.meta.env.VITE_GOOGLE_MAP_ID;
     const mapIdNoPoi = import.meta.env.VITE_GOOGLE_MAP_ID_NO_POI;
     const controlDiv = document.createElement('div');
+    // gmnoprint lets the map's presentation-mode CSS hide this custom control
+    // alongside Google's own zoom / street-view / fullscreen controls.
+    controlDiv.className = 'gmnoprint';
     controlDiv.style.margin = `${10 + topOffset}px 10px 10px 10px`;
 
     // Main container
