@@ -1,6 +1,6 @@
 # Merchants Layer — Next Session (start here)
 
-**Last updated:** 2026-06-26
+**Last updated:** 2026-07-07
 **Purpose:** Focused pickup point. See [MERCHANTS_LAYER_SPEC.md](MERCHANTS_LAYER_SPEC.md) for the full spec, [MERCHANTS_ADMIN_ROADMAP.md](MERCHANTS_ADMIN_ROADMAP.md) for admin-side detail, and [MERCHANTS_CLOSURE_DETECTION_DEFERRED.md](MERCHANTS_CLOSURE_DETECTION_DEFERRED.md) for the parked closure-detection work.
 
 ---
@@ -19,59 +19,35 @@
 | **Verify pin location** — right-click any merchant pin → "Verify pin location" → drag to real storefront → drop. Saves to `verified_latitude` / `verified_longitude` / `verified_at` / `verified_by`. ESC cancels. Verified coords take precedence at render time. Gated by `can_verify_restaurant_locations` (same permission as restaurants). | [MerchantContextMenu.tsx](../src/components/mapping/MerchantContextMenu.tsx) · migration `20260626122550` |
 | **Operational cleanup** — unscheduled `friday-cfo-email-summer/winter` crons (they had been silently failing every Friday because the migration referenced a non-existent vault secret). Edge Function code left intact for Mike's planned rework. | migration `20260626093537` |
 | **Migration history reconciled** — repaired 4 ghost server-only timestamps that had been blocking `supabase db push` since various Studio/MCP applications | n/a (CLI repairs) |
+| **Favorites UI (lean MVP)** — drawer "Favorites" section above the tree with tri-state per favorite, "+ New" modal with preloaded picker, Edit / Delete via 3-dot menu. Sharing deferred. `owner_user_id` is DB-defaulted from `auth.uid()` so the client doesn't have to (and can't) supply it. | [MerchantsDrawer.tsx](../src/components/mapping/MerchantsDrawer.tsx) · [MerchantCategoryTree.tsx](../src/components/mapping/MerchantCategoryTree.tsx) · [NewMerchantFavoriteModal.tsx](../src/components/mapping/NewMerchantFavoriteModal.tsx) · migrations `20260702190000`, `20260702200000`, `20260702210000`, `20260702220000` |
+| **"Show all in viewport" toggle + "Select all" link** — the toggle drops the brand filter when zoom ≥ 13; the link ticks every brand at once so users can de-tick outliers instead of ticking 401 boxes. Both live in the drawer. | [MerchantsDrawer.tsx](../src/components/mapping/MerchantsDrawer.tsx) · [LayerManager.tsx](../src/components/mapping/layers/LayerManager.tsx) |
+| **Custom brand logo upload (Layer 3)** — admin uploads a PNG/SVG per brand; render prefers `custom_logo_url` over the Brandfetch URL. Storage in existing `assets` bucket under `merchant-logos/`. Upload/Replace/Remove buttons + "C" badge on the preview so overrides are visible at a glance. | [BrandsTab.tsx](../src/pages/admin/merchants/BrandsTab.tsx) · [MerchantLayer.tsx](../src/components/mapping/layers/MerchantLayer.tsx) · migration `20260702130000` |
+| **Places name-match filter + `places_display_name` override** — Google Places Text Search is over-permissive (searching "24 Hour Fitness" returns Anytime Fitness, YMCAs, dance studios; ~40% of ingested rows were misclassified). Filter now rejects locations whose name doesn't contain the brand's display name (or its "brand minus last word" stem, so "Truist Bank" catches "Truist"). Admin can override per brand via a new inline "Places name" column. | [MerchantLayer.tsx](../src/components/mapping/layers/MerchantLayer.tsx) · [merchantIngestService.ts](../src/services/merchantIngestService.ts) · [BrandsTab.tsx](../src/pages/admin/merchants/BrandsTab.tsx) · migration `20260702180000` |
+| **Ancillary sub-listing filter + `places_name_exclude` override** — Places returns separate entries for sub-services at the same storefront (Kroger Pharmacy/Bakery/Deli/Fuel Center, Wells Fargo ATM/Advisors, Lowe's Garden Center/Pro Desk/Tool Rental). Filter hides rows matching a hardcoded 20-token default list; per-brand override adds more tokens for edge cases. Hides ~2,000 additional cached rows at render time on top of the name-match filter. | [MerchantLayer.tsx](../src/components/mapping/layers/MerchantLayer.tsx) · [merchantIngestService.ts](../src/services/merchantIngestService.ts) · [BrandsTab.tsx](../src/pages/admin/merchants/BrandsTab.tsx) · migration `20260707120000` |
 
 ### DB state right now
 
-- 401 active brands, 35 categories, **21,108 merchant locations**, 9 non-operational
+- 401 active brands, 35 categories, **23,667 merchant locations**
 - All 401 brands have `logo_fetched_at` within the past day (well inside Brandfetch's 30-day window)
 - **15 brands flagged as `brandfetch_logo_status = 'miss'`** — admin can find them via the "Brandfetch returned nothing" filter. Examples: Kohl's, Sephora, Pottery Barn, Truist Bank, plus resolver mistakes like Sprouts → sproutsocial.com.
+- **~48% of cached rows are hidden at render time** by the two new filters (~40% by name-mismatch — Places over-permissiveness — plus ~8.5% by ancillary sub-listing suffix). Rows aren't deleted; toggling `places_display_name` / `places_name_exclude` per brand recovers false-negatives if any.
 
 ---
 
 ## What's next (prioritized)
 
-### 1. Favorites UI — apply / create / share saved brand sets *[~2.5 hr lean, ~5–6 hr full spec]*
+### 1. Brand-override curation pass *[~30 min, opportunistic]*
 
-Schema + RLS for `merchant_favorite`, `merchant_favorite_brand`, `merchant_favorite_share` are already done (April 2026 migration `20260422_merchants_map_layer_tables.sql`). Just need the UI in the drawer. Spec §6.3–6.5.
+The two new filters (name-match + ancillary) work off defaults that fit most brands but overreach on ~20. When Mike (or any admin) notices a legit brand rendering zero or too-few pins, the fix is per-brand curation in the Brands tab:
 
-**Effort breakdown** (per the conversation that led to this doc):
+- **Places name** column: set the actual Places display name if it differs from the brand row. Known likely candidates: **Truist Bank → `Truist`**, **Dunkin' Donuts → `Dunkin`**, **Apple Store → `Apple`**, **Verizon Wireless → `Verizon`**, **Mavis Discount Tire → `Mavis`**.
+- **Exclude tokens** column: extra ancillary tokens for a specific brand (comma-separated, added on top of the global 20-token default).
 
-| Piece | Effort |
-|---|---|
-| Drawer "Favorites" section above the category tree — list with tri-state checkboxes that apply-on-click (toggles every brand in the favorite) | ~1.5 hr |
-| "+ New Favorite" modal — name input + brand multi-select (reuses the category tree component) | ~1 hr |
-| Delete + Rename | ~30 min |
-| Share modal — dropdown of existing OVIS users (NO free-text email per spec) + view/edit permission picker | ~1.5 hr |
-| Shared-favorites query + `(owner_name)` suffix in the list | ~1 hr |
-| Duplicate action + 3-dot context menu polish | ~30 min |
+No re-ingest is needed — the filters are render-time, so curation shows up on the next drawer open. Ingest-time filter picks up the same overrides for future runs.
 
-**Lean MVP** (own favorites only, no sharing) = ~2.5 hr. **Full spec** (with sharing) = ~5–6 hr. Mike's preference when raised in conversation: lean first, defer sharing until it proves itself useful.
+### 2. Favorites — sharing UI (deferred from lean MVP) *[~2.5 hr]*
 
-**Pickup pointers when starting:**
-- The drawer state lives in [LayerManager](../src/components/mapping/layers/LayerManager.tsx) (`merchantSelectedBrandIds: Set<string>`). Favorites should drive this same Set — applying a favorite = unioning its brand IDs into the Set.
-- For tri-state on a favorite: compare its brand IDs to the current Set (all in = ☑, none = ☐, partial = ◪). Same logic as the category tri-state already in [MerchantsDrawer.tsx](../src/components/mapping/MerchantsDrawer.tsx).
-- For the user picker in the Share modal, the existing `user` table has the rows. Filter to active OVIS users (`ovis_role IS NOT NULL`).
-- The "Create Favorite" modal should reuse the category tree from MerchantsDrawer — extract it into its own component before building this.
-
-### 2. "Show all merchants in viewport" toggle — for trade-area scans  *[~1 hr]*
-
-**Mike's ask:** when zoomed into a specific trade area, it'd be useful to flip on "show every merchant we have here" without ticking 401 brand checkboxes. When zoomed out, this is undesirable — would dump 21k pins on the map.
-
-**Recommended shape — a zoom-gated "Show all in viewport" toggle in the drawer:**
-- Sits above the category tree, just below the Show on map / N brands row
-- **Enabled only when `map.getZoom() >= 13`** (matches the cluster-breakdown threshold — at that zoom you're in trade-area territory). Disabled state shows a "Zoom in to enable" hint.
-- When ON, **overrides `selectedBrandIds`** — MerchantLayer fetches every `merchant_location` in viewport regardless of brand filter. Brand-checkbox state is preserved but visually muted so it's clear they aren't driving the render right now.
-- When OFF, reverts to brand-checkbox behavior.
-
-**Alternatives considered, not chosen:**
-- *Literal "Select all 401 brands" button* — would render 300–600 pins in dense areas (Atlanta intown), turning cluster bubbles into noise. Attractive-nuisance.
-- *Auto-show-all-at-high-zoom* — silent magic; users wouldn't know why pins keep changing. Explicit toggle is clearer.
-- *Per-category "select all" button* — already exists (the category-level tri-state).
-
-**Implementation notes:**
-- Add a `showAllInViewport: boolean` to [LayerManager](../src/components/mapping/layers/LayerManager.tsx) state alongside `merchantSelectedBrandIds`.
-- MerchantLayer's `fetchLocations` checks the flag — when true, drops the `.in('brand_id', brandIds)` filter from the Supabase query. Everything else (viewport bounds, pagination, popup, verify-location) works unchanged.
-- Add a zoom-change listener on the map so the toggle disables/enables in real time as the user pans/zooms.
+Schema + RLS for `merchant_favorite_share` exists (April 2026). Own-favorites CRUD shipped this session; sharing was deferred until it proves itself useful. When adding: user-picker dropdown of existing OVIS users (`ovis_role IS NOT NULL`, no free-text email per spec §6.5), view/edit permission picker, `(owner_name)` suffix in the drawer list for shared favorites. See git blame on [MerchantsDrawer.tsx](../src/components/mapping/MerchantsDrawer.tsx) for the CRUD pattern to extend.
 
 ### 3. Closure detection (still deferred)
 
@@ -86,11 +62,11 @@ Long-term health item. Legacy `PlacesService` is deprecated. Pagination is worki
 ## Lower-priority / nice-to-haves
 
 - **Zoom-scaled pin sizing** — currently fixed at 28px in [MerchantLayer.tsx](../src/components/mapping/layers/MerchantLayer.tsx). Spec §8 calls for 24/32/40px at zoom 13/15/17+. Punted on perf grounds at v1.
-- **Per-brand location counts** in the drawer (e.g. "Starbucks (293)") — needs a view that joins COUNT(merchant_location) onto merchant_brand.
+- **Per-brand location counts** in the drawer (e.g. "Starbucks (293)") — needs a view that joins COUNT(merchant_location) onto merchant_brand, and probably should account for the render-time filters so the count matches what shows on the map.
 - **Closure-alert badge on the Merchants toolbar button** — depends on closure detection (#3) actually populating `merchant_closure_alert` rows.
-- **Custom-hosted logos (Layer 3)** — escape hatch for brands where Brandfetch has nothing useful. See [MERCHANTS_ADMIN_ROADMAP.md §6 Layer 3](MERCHANTS_ADMIN_ROADMAP.md). Defer until the 15 current Brandfetch misses get tried-and-failed with alt domains.
+- **Bulk-delete of pre-filter cached rows** — the two filters hide ~48% of rows at render time; those rows are still in the DB. A one-shot cleanup script (DELETE by the same predicates) would shrink the table meaningfully. Deferred because deletion is destructive — leave until we're confident the heuristics are stable.
+- **Per-brand "Re-ingest" button** on the admin Brands tab — quick retry without running all 401. Especially useful now that `places_display_name` and `places_name_exclude` can be tuned per brand.
 - **`can_verify_merchant_locations`** as its own permission instead of piggybacking on `can_verify_restaurant_locations`.
-- **Per-brand "Re-ingest" button** on the admin Brands tab — quick retry without running all 401.
 - **CSV bulk import / "Review Unclaimed" filter / stale-logo age column** on the Brands tab (older roadmap items, never built).
 
 ---
@@ -111,3 +87,6 @@ Long-term health item. Legacy `PlacesService` is deprecated. Pagination is worki
 - **Re-ingestion (whenever it lands) must NOT overwrite `verified_latitude` / `verified_longitude` / `verified_at` / `verified_by`.** Those are admin overrides. Same constraint as `restaurant_location.verified_*`.
 - **Supabase Studio + MCP `apply_migration` insert their own timestamps into `schema_migrations`**, which causes `supabase db push` to fail with "Remote migration versions not found in local migrations directory." Repair with `supabase migration repair --status reverted <ghost_ts1> <ghost_ts2>`. Documented in memory: `reference_supabase_migration_workflow.md`.
 - **Today's `friday-cfo-email` discovery: the cron migration `20260302100000_friday_cfo_email_cron.sql` references `vault.secrets.service_role_key` which doesn't exist in this project.** Every Friday firing has been silently 500-ing. The cron is now unscheduled; Edge Function code is intact for Mike's planned rework. Use the inline anon-JWT pattern from `email-triage-job` (or the `X-Cron-Secret` pattern from `gcal-sync-tick`) when rewiring.
+- **RLS + `INSERT ... RETURNING` gotcha.** PostgREST's `.insert(...).select(...)` translates to `INSERT ... RETURNING`, at which point Postgres applies the **SELECT** `USING` clause to the returned row. If the SELECT policy uses `EXISTS (SELECT ... FROM same_table WHERE ...)`, that subquery can't see the row-in-flight (MVCC), so it returns FALSE and the whole INSERT is rejected with the opaque `new row violates row-level security policy` message. Fix: rewrite the SELECT USING clause to check the row's own columns directly (no subquery on the same table); if a share-based OR check is needed too, split into two PERMISSIVE policies so they're OR'd. See migration `20260702220000_merchant_favorite_returning_fix.sql`.
+- **Layered curation pattern for Places-based data.** Filters run off a hardcoded default plus an optional per-brand override column. Used twice now: `places_display_name` (fixes name-mismatch overreach for brands like Truist Bank → "Truist") and `places_name_exclude` (adds ancillary tokens beyond the 20-token default). Additive-only semantics: if the default overreaches for a specific brand, don't add "un-exclude" logic — instead use the *other* column (`places_display_name`) to pin the expected shape. Keeps the default sane for everyone else.
+- **Google Places Text Search is over-permissive.** Searching a common query returns semantically-adjacent businesses too — a "24 Hour Fitness" search returns Anytime Fitness, YMCAs, dance studios; a "Starbucks" search returns Cathedral Coffee. Both the render layer and the ingest guard now require the returned name to look like the brand's expected display name. Prior to that filter, ~40% of cached rows were misclassified. If a brand's ingest ever returns 0 legit-looking rows post-filter, first suspect is `places_display_name` needs setting.

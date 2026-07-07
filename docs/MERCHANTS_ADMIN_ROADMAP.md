@@ -140,16 +140,41 @@ For the handful (~5–10) of brands where *neither* Brandfetch variant is readab
 
 **Trade-off vs Brandfetch ToS:** Brandfetch's ToS forbids caching *Brandfetch-provided* logos locally. But hosting a **custom logo we uploaded ourselves** isn't covered by that restriction — we own the asset.
 
-**Implementation:** Add an optional `custom_logo_url` column. When set, it overrides `logo_url` in pin rendering. Admin page gets an Upload button per brand. Defer until we actually hit the need in practice.
+**Status: ✅ shipped 2026-07-02**
+
+1. ✅ Schema: `custom_logo_url text`, `custom_logo_uploaded_at timestamptz`, `custom_logo_uploaded_by uuid REFERENCES "user"(id)` via migration `20260702130000_merchant_brand_custom_logo.sql`.
+2. ✅ Storage: reuses the existing `assets` bucket, keys under `merchant-logos/{brand_id}-{ts}.{ext}`. 2 MB image cap; MIME check on upload. Old blobs aren't garbage-collected on replace/remove (small leak; batch cleanup later if it matters).
+3. ✅ Admin Brands tab: per-row **Upload / Replace / Remove** buttons in a new "Custom logo" column.
+4. ✅ Render precedence: `custom_logo_url ?? logo_url` at every render surface — [MerchantLayer.tsx](../src/components/mapping/layers/MerchantLayer.tsx) (pin), [MerchantPopup.tsx](../src/components/mapping/popups/MerchantPopup.tsx), [MerchantsDrawer.tsx](../src/components/mapping/MerchantsDrawer.tsx), [MerchantCategoryTree.tsx](../src/components/mapping/MerchantCategoryTree.tsx).
+5. ✅ Admin visibility: a small "C" badge on the Brands-tab logo preview marks brands with an active custom override so admins can spot them at a glance.
+
+Common trigger for uploading: a Grease Monkey store rendering with an Express Oil Change logo because Brandfetch resolved the wrong domain. Upload a Grease Monkey PNG → override kicks in everywhere.
 
 ---
 
 **Summary of where each layer stands:**
 - **Layer 1 (zoom-based sizing)** — pending, part of spec §8 map-pin rendering work
 - **Layer 2 (variant selector)** — ✅ shipped
-- **Layer 3 (custom-hosted logos)** — still deferred; revisit if a specific brand can't be fixed via Layer 2
+- **Layer 3 (custom-hosted logos)** — ✅ shipped 2026-07-02
 
-### 7. Permissions polish
+### 7. Ingest & render filters (per-brand curation)
+
+Google Places Text Search is over-permissive, and each storefront often returns as multiple entries (main store + pharmacy + fuel + ATM + etc.). Two filters, applied both at ingest time and render time, keep the map honest. Each has a hardcoded default plus an optional per-brand override column in `merchant_brand`.
+
+**Status: ✅ shipped 2026-07-02 / 2026-07-07**
+
+| Column | What it does | Default when NULL | When to set |
+|---|---|---|---|
+| `places_display_name` | Overrides `brand.name` for the ingest/render name-match check. A location is only kept if its Places name contains this string (or "brand-minus-last-word" stem). | Uses `brand.name`. | When Google's Places display name for the brand differs from OVIS's brand name. Examples: **Truist Bank → `Truist`**, **Dunkin' Donuts → `Dunkin`**, **Apple Store → `Apple`**, **Verizon Wireless → `Verizon`**, **Mavis Discount Tire → `Mavis`**. Symptom: all/most of the brand's cached rows disappear from the map. |
+| `places_name_exclude` | Comma-separated ancillary tokens (case-insensitive whole-word match) that mark a location as a sub-listing to hide. Additive on top of the default list. | Uses hardcoded default: `ATM, Pharmacy, Fuel Center, Fuel Kiosk, Fueling Center, Deli, Bakery, Floral, Money Services, Advisors, Clicklist, Garden Center, Pro Services, Pro Center, Pro Desk, Tool Rental, Auto Center, Vision Center, Optical Center, Photo Lab`. | When the brand has additional sub-service listing formats not in the default (e.g., a supermarket with a "Wine Cellar" sub-listing). |
+
+**Additive-only semantics.** If the default list accidentally excludes a brand's primary format (e.g., a hypothetical "Pharmacy Chain" whose real name literally is "Pharmacy"), do NOT try to un-exclude tokens for that brand. Instead set `places_display_name` to pin the expected shape. That keeps the default sane for everyone else.
+
+**Impact today**: ~48% of the 23.7k cached `merchant_location` rows are hidden at render time by these two filters. Rows aren't deleted; toggling either column per brand recovers false-negatives.
+
+Admin UI: inline editable "Places name" and "Exclude tokens" columns in the Brands tab. Both use the same click-to-edit pattern as the Brandfetch domain column. Changes are picked up on the next drawer open (render) and the next re-ingest run (ingest).
+
+### 8. Permissions polish
 
 Current gating is a blunt `userRole === 'admin'`. Consider:
 
@@ -167,8 +192,11 @@ Current gating is a blunt `userRole === 'admin'`. Consider:
 | Ingestion tab + Ingest All | — | ✅ done |
 | Closure Alerts tab | — | ✅ done |
 | Logo variant selector | — | ✅ done |
+| Custom logo upload (Layer 3) | — | ✅ done 2026-07-02 |
+| `places_display_name` override + name-match filter | — | ✅ done 2026-07-02 |
+| `places_name_exclude` override + ancillary filter | — | ✅ done 2026-07-07 |
 | Places ingestion Edge Function + cron | 1 full day | ⏳ pending |
-| Logo refresh Edge Function + cron | 2–4 hours | ⏳ pending |
+| Logo refresh Edge Function + cron | — | ✅ done 2026-06-26 |
 | Brands tab polish (CSV import, unclaimed filter, age column) | 1–3 hours | ⏳ optional |
 | Permissions polish | 30 min | ⏳ optional |
 
