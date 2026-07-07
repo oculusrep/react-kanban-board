@@ -134,3 +134,21 @@ User-driven tweaks to the Ad-hoc location demographics sidebar ([DemographicsAna
 [DemographicIsochronesOverlay.tsx](../src/components/mapping/layers/DemographicIsochronesOverlay.tsx) now takes `bands: { minutes, fillColor, lineColor, fillOpacity }[]` instead of a single per-band `color` plus a global `fillOpacity`. The cached `*_10min_drive` property columns are not affected — they're a separate downstream concern (property-pin pre-cache), not an ad-hoc-sidebar concern.
 
 Shipped in commit `49a57a18`.
+
+### 2026-07-07 — save styling as user default
+
+The Layer style panel previously reset to hardcoded red every time a new point was opened — every screenshot session started over. It now has three actions that persist your palette across sessions:
+
+- **Save as my default** — writes the current ring colors, drive-time fill/line colors, per-band fill opacities, polygon color, stroke opacity, fill opacity, and stroke weight to `localStorage` under `demographics_style_defaults_v1`. Every future point opens with these values.
+- **Reset** — reverts the current session to your saved defaults (or to factory red if you've never saved).
+- **Clear saved** — wipes your saved defaults and reverts to factory red.
+
+Backed by [useDemographicsStyleDefaults.ts](../src/hooks/useDemographicsStyleDefaults.ts), which mirrors the `useMunicipalProjectPolygonStyle` pattern (module-level `useSyncExternalStore` + JSON blob + sanitize/clamp on load).
+
+Values are per-browser (localStorage), not per-user in Supabase. If someone needs their palette to follow them across devices, we'd add a `user_preferences` table — no such precedent exists in the schema today.
+
+Shipped in commit `17159087`.
+
+### 2026-07-07 — hidden in map presentation mode
+
+The demographics `<aside>` (the sidebar UI, not the overlays) picks up a `data-demographics-slideout` attribute and is hidden by the `Shift+P` presentation-mode CSS in [MappingPageNew.tsx](../src/pages/MappingPageNew.tsx). The rings / isochrones / polygon overlays on the map stay drawn so you can screenshot them cleanly. See [MAP_PRESENTATION_MODE.md](./MAP_PRESENTATION_MODE.md).
