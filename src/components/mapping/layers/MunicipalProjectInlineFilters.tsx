@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { useMunicipalProjectPolygonStyle, DEFAULT_POLYGON_STYLE } from '../../../hooks/useMunicipalProjectPolygonStyle';
+import { useMunicipalProjectRecentColors, pushRecentColor } from '../../../hooks/useMunicipalProjectRecentColors';
 import MunicipalProjectExportModal from '../MunicipalProjectExportModal';
 import type { MunicipalProjectMapRow } from './MunicipalProjectLayer';
 
@@ -120,10 +121,25 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     }
   }
   const { style: polyStyle, update: updatePolyStyle, resetToDefaults: resetPolyStyle } = useMunicipalProjectPolygonStyle();
+  const { colors: recentColors } = useMunicipalProjectRecentColors();
   const [polyStyleOpen, setPolyStyleOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [savingStageId, setSavingStageId] = useState<string | null>(null);
   const [stageColorError, setStageColorError] = useState<string>('');
+
+  // Paint mode: click a Recent color chip, then click any polygon color
+  // swatch to apply the chip's color to that swatch (skips the native picker).
+  // ESC or clicking the active chip again cancels.
+  const [paintColor, setPaintColor] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!paintColor) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPaintColor(null);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [paintColor]);
 
   // Search: "do we already have this project?" — matches name / address / municipality
   // across all projects, ignoring the visibility filters so dupes can't hide behind them.
@@ -194,6 +210,7 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     setStageColorError('');
     // Optimistic local update so the swatch UI feels immediate.
     setStages((prev) => prev.map((s) => (s.id === stageId ? { ...s, color: newColor } : s)));
+    pushRecentColor(newColor);
     try {
       const { error } = await supabase
         .from('project_stage')
@@ -214,6 +231,7 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     setSavingStageId(stageId);
     setStageColorError('');
     setStages((prev) => prev.map((s) => (s.id === stageId ? { ...s, line_color: newColor } : s)));
+    if (newColor) pushRecentColor(newColor);
     try {
       const { error } = await supabase
         .from('project_stage')
@@ -226,6 +244,19 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     } finally {
       setSavingStageId(null);
     }
+  }
+
+  // Intercept clicks on a color input when paint mode is active: apply the
+  // paint color via the provided setter, cancel the native color picker, and
+  // clear paint mode. Otherwise let the input open the native picker.
+  function paintIntercept(apply: (color: string) => void) {
+    return (e: React.MouseEvent<HTMLInputElement>) => {
+      if (paintColor) {
+        e.preventDefault();
+        apply(paintColor);
+        setPaintColor(null);
+      }
+    };
   }
 
   async function saveStageAbbreviation(stageId: string, raw: string) {
@@ -504,7 +535,14 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
               <input
                 type="color"
                 value={polyStyle.strokeColor}
-                onChange={(e) => updatePolyStyle({ strokeColor: e.target.value })}
+                onClick={paintIntercept((c) => {
+                  updatePolyStyle({ strokeColor: c, strokeColorMode: 'global' });
+                  pushRecentColor(c);
+                })}
+                onChange={(e) => {
+                  updatePolyStyle({ strokeColor: e.target.value });
+                  pushRecentColor(e.target.value);
+                }}
                 disabled={polyStyle.strokeColorMode !== 'global'}
                 className="w-8 h-5 border border-gray-300 rounded cursor-pointer disabled:opacity-40"
                 title="Global polygon line color"
@@ -530,6 +568,36 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
                 Shared across all users. Fill / line color per stage; right-click the line
                 swatch to clear the override (falls back to fill color).
               </div>
+
+              {/* Recent colors — click a chip to enter paint mode, then click any color
+                  swatch below to apply that color. Click the active chip again or press
+                  Esc to cancel. Handy for matching a stage's fill and line color. */}
+              {recentColors.length > 0 && (
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-[10px] text-gray-500">Recent:</span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {recentColors.map((c) => {
+                      const active = paintColor?.toLowerCase() === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setPaintColor(active ? null : c)}
+                          className={`w-4 h-4 rounded border ${
+                            active ? 'ring-2 ring-offset-1 ring-[#002147] border-white' : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: c }}
+                          title={active ? `${c} — click a swatch to apply (Esc to cancel)` : `Apply ${c}`}
+                        />
+                      );
+                    })}
+                  </div>
+                  {paintColor && (
+                    <span className="text-[10px] text-[#4A6B94]">click a swatch</span>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-0.5">
                 <span className="w-8 text-center">Fill</span>
                 <span className="w-8 text-center">Line</span>
@@ -541,14 +609,22 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
                     <input
                       type="color"
                       value={s.color || '#8FA9C8'}
+                      onClick={paintIntercept((c) => void saveStageColor(s.id, c))}
                       onChange={(e) => saveStageColor(s.id, e.target.value)}
                       disabled={savingStageId === s.id}
-                      className="w-8 h-5 border border-gray-300 rounded cursor-pointer disabled:opacity-40"
-                      title={`Edit fill color for ${s.name}`}
+                      className={`w-8 h-5 border rounded cursor-pointer disabled:opacity-40 ${
+                        paintColor ? 'border-[#002147] ring-1 ring-[#002147]' : 'border-gray-300'
+                      }`}
+                      title={
+                        paintColor
+                          ? `Click to apply ${paintColor} as ${s.name}'s fill`
+                          : `Edit fill color for ${s.name}`
+                      }
                     />
                     <input
                       type="color"
                       value={s.line_color || s.color || '#8FA9C8'}
+                      onClick={paintIntercept((c) => void saveStageLineColor(s.id, c))}
                       onChange={(e) => saveStageLineColor(s.id, e.target.value)}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -556,12 +632,18 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
                       }}
                       disabled={savingStageId === s.id}
                       className={`w-8 h-5 border rounded cursor-pointer disabled:opacity-40 ${
-                        s.line_color ? 'border-gray-300' : 'border-dashed border-[#8FA9C8]'
+                        paintColor
+                          ? 'border-[#002147] ring-1 ring-[#002147]'
+                          : s.line_color
+                            ? 'border-gray-300'
+                            : 'border-dashed border-[#8FA9C8]'
                       }`}
                       title={
-                        s.line_color
-                          ? `Line color for ${s.name} — right-click to clear`
-                          : `Line color for ${s.name} — currently follows fill color; click to override`
+                        paintColor
+                          ? `Click to apply ${paintColor} as ${s.name}'s line color`
+                          : s.line_color
+                            ? `Line color for ${s.name} — right-click to clear`
+                            : `Line color for ${s.name} — currently follows fill color; click to override`
                       }
                     />
                     <span className="text-gray-800 flex-1 truncate" title={s.name}>{s.name}</span>
