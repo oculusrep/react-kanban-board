@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 // Global style applied to ALL municipal_project polygons. Fill color comes from
 // the stage; line color is either the stage's own line_color (falling back to
@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 export interface MunicipalPolygonStyle {
   fillOpacity: number;   // 0..1
   strokeOpacity: number; // 0..1
-  strokeWeight: number;  // px, 1..6
+  strokeWeight: number;  // px, 0..8
   strokeColorMode: 'stage' | 'global';
   strokeColor: string;   // hex, used when strokeColorMode === 'global'
 }
@@ -58,23 +58,41 @@ function loadFromStorage(): MunicipalPolygonStyle {
   }
 }
 
-export function useMunicipalProjectPolygonStyle() {
-  const [style, setStyle] = useState<MunicipalPolygonStyle>(loadFromStorage);
+// Module-level shared store. Multiple components (InlineFilters as writer,
+// MunicipalProjectLayer as reader) need to observe the same state so slider
+// moves reflect on the map in real time — plain useState created independent
+// copies that only synced through localStorage on next mount.
+let currentStyle: MunicipalPolygonStyle = loadFromStorage();
+const listeners = new Set<() => void>();
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(style));
-    } catch {
-      // private mode / quota — non-fatal
-    }
-  }, [style]);
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot(): MunicipalPolygonStyle {
+  return currentStyle;
+}
+
+function setStyleAndNotify(next: MunicipalPolygonStyle) {
+  currentStyle = next;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // private mode / quota — non-fatal
+  }
+  for (const l of listeners) l();
+}
+
+export function useMunicipalProjectPolygonStyle() {
+  const style = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const update = useCallback((partial: Partial<MunicipalPolygonStyle>) => {
-    setStyle((prev) => ({ ...prev, ...partial }));
+    setStyleAndNotify({ ...currentStyle, ...partial });
   }, []);
 
   const resetToDefaults = useCallback(() => {
-    setStyle(DEFAULT_POLYGON_STYLE);
+    setStyleAndNotify(DEFAULT_POLYGON_STYLE);
   }, []);
 
   return { style, update, resetToDefaults };
