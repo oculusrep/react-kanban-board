@@ -14,6 +14,8 @@ interface Props {
 
 type CatchmentKey = '1_mile' | '3_mile' | '5min_drive' | '10min_drive';
 
+const GRID_LINE = '1px solid rgba(255, 255, 255, 0.18)';
+
 const COLUMNS: Array<{ label: string; suffix: CatchmentKey }> = [
   { label: '1mi', suffix: '1_mile' },
   { label: '3mi', suffix: '3_mile' },
@@ -100,7 +102,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
-              <th />
+              <th style={{ borderBottom: GRID_LINE }} />
               {COLUMNS.map((col) => (
                 <th
                   key={col.suffix}
@@ -110,6 +112,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     color: '#E5E7EB',
                     padding: '0 24px 16px',
                     textAlign: 'right',
+                    borderBottom: GRID_LINE,
                   }}
                 >
                   {col.label}
@@ -125,8 +128,9 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     fontSize: '16px',
                     fontWeight: 700,
                     color: '#FFFFFF',
-                    padding: '10px 32px 10px 0',
+                    padding: '18px 32px 18px 0',
                     whiteSpace: 'nowrap',
+                    borderBottom: GRID_LINE,
                   }}
                 >
                   {row.label}
@@ -137,9 +141,10 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     style={{
                       fontSize: '16px',
                       color: '#FFFFFF',
-                      padding: '10px 24px',
+                      padding: '18px 24px',
                       textAlign: 'right',
                       fontVariantNumeric: 'tabular-nums',
+                      borderBottom: GRID_LINE,
                     }}
                   >
                     {row.format(getValue(demographics, row.prefix, col.suffix))}
