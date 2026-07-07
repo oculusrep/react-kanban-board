@@ -2300,21 +2300,6 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             .map-presentation-mode [data-gps-react-controls],
             .map-presentation-mode [data-demographics-slideout] { display: none !important; }
           `}</style>
-          <button
-            type="button"
-            onClick={() => setPresentationMode(false)}
-            className="fixed bottom-4 right-4 z-[10002] px-3 py-2 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2 hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#002147', color: '#FFFFFF' }}
-            title="Exit presentation mode (Esc)"
-          >
-            <span>Exit presentation</span>
-            <span
-              className="px-1.5 py-0.5 rounded text-[10px]"
-              style={{ backgroundColor: '#FFFFFF', color: '#002147' }}
-            >
-              Esc
-            </span>
-          </button>
         </>
       )}
       <div className="h-full flex">
