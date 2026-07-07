@@ -37,6 +37,9 @@ const formatCurrency = (v: number | null | undefined) =>
 const formatAge = (v: number | null | undefined) =>
   v == null ? '—' : v.toFixed(1);
 
+const formatPercent = (v: number | null | undefined) =>
+  v == null ? '—' : `${v.toFixed(1)}%`;
+
 const METRIC_ROWS: Array<{
   label: string;
   prefix: string;
@@ -49,6 +52,7 @@ const METRIC_ROWS: Array<{
   { label: 'Avg HH inc.', prefix: 'hh_income_avg', format: formatCurrency },
   { label: 'Employees', prefix: 'employees', format: formatNumber },
   { label: 'Median age', prefix: 'median_age', format: formatAge },
+  { label: 'Some college+ %', prefix: 'educ_some_college_plus_pct', format: formatPercent },
 ];
 
 function getValue(

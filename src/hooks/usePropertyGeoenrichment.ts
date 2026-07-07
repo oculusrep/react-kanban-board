@@ -397,6 +397,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
             custom_radii: radii,
             custom_drive_times: driveTimes,
             force_refresh: forceRefresh,
+            include_education: true,
           },
         });
 
@@ -443,6 +444,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
           body: {
             custom_polygon: { coordinates },
             force_refresh: forceRefresh,
+            include_education: true,
           },
         });
 

@@ -48,6 +48,7 @@ const METRIC_ROWS: Array<{
   { label: 'Avg HH inc.', prefix: 'hh_income_avg', format: (n) => formatCurrency(n) },
   { label: 'Employees', prefix: 'employees', format: (n) => formatNumber(n) },
   { label: 'Median age', prefix: 'median_age', format: (n) => formatAge(n) },
+  { label: 'Some college+ %', prefix: 'educ_some_college_plus_pct', format: (n) => formatPercent(n) },
 ];
 
 interface Props {
@@ -85,6 +86,9 @@ const formatCurrency = (n: number | null | undefined) =>
 
 const formatAge = (n: number | null | undefined) =>
   n == null ? '—' : n.toFixed(1);
+
+const formatPercent = (n: number | null | undefined) =>
+  n == null ? '—' : `${n.toFixed(1)}%`;
 
 function getRingValue(
   demographics: DemographicData | null,
