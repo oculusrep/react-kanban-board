@@ -128,7 +128,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     fontSize: '16px',
                     fontWeight: 700,
                     color: '#FFFFFF',
-                    padding: '11px 32px 11px 0',
+                    padding: '9px 32px 9px 0',
                     whiteSpace: 'nowrap',
                     borderBottom: GRID_LINE,
                   }}
@@ -141,7 +141,7 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
                     style={{
                       fontSize: '16px',
                       color: '#FFFFFF',
-                      padding: '11px 24px',
+                      padding: '9px 24px',
                       textAlign: 'right',
                       fontVariantNumeric: 'tabular-nums',
                       borderBottom: GRID_LINE,
