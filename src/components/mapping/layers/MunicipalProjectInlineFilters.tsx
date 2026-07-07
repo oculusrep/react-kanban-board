@@ -478,9 +478,9 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
             <StyleRow
               label="Line weight"
               value={polyStyle.strokeWeight}
-              min={1}
-              max={6}
-              step={0.5}
+              min={0}
+              max={8}
+              step={0.25}
               format={(v) => `${v}px`}
               onChange={(v) => updatePolyStyle({ strokeWeight: v })}
             />

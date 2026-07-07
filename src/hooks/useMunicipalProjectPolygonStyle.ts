@@ -49,7 +49,7 @@ function loadFromStorage(): MunicipalPolygonStyle {
     return {
       fillOpacity: clamp(parsed.fillOpacity as number, 0, 1),
       strokeOpacity: clamp(parsed.strokeOpacity as number, 0, 1),
-      strokeWeight: clamp(parsed.strokeWeight as number, 1, 6),
+      strokeWeight: clamp(parsed.strokeWeight as number, 0, 8),
       strokeColorMode: mode,
       strokeColor: color,
     };
