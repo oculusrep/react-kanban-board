@@ -14,7 +14,68 @@ export interface MerchantBrand {
   /** Places' actual display name, when it differs from brand.name.
    *  Used by the render-time name filter (see nameMatchesBrand). */
   places_display_name: string | null;
+  /** Comma-separated ancillary tokens to exclude on top of the default list.
+   *  See isAncillarySubListing. */
+  places_name_exclude: string | null;
   category_id: string | null;
+}
+
+// Default ancillary-service tokens that show up as separate Google Places
+// entries at the same physical storefront (Kroger Pharmacy, Wells Fargo ATM,
+// Lowe's Garden Center, etc.). Matching names get filtered so the map shows
+// one pin per store. Case-insensitive whole-word match.
+const DEFAULT_ANCILLARY_TOKENS = [
+  'ATM',
+  'Pharmacy',
+  'Fuel Center',
+  'Fuel Kiosk',
+  'Fueling Center',
+  'Deli',
+  'Bakery',
+  'Floral',
+  'Money Services',
+  'Advisors',
+  'Clicklist',
+  'Garden Center',
+  'Pro Services',
+  'Pro Center',
+  'Pro Desk',
+  'Tool Rental',
+  'Auto Center',
+  'Vision Center',
+  'Optical Center',
+  'Photo Lab',
+];
+
+function tokensToRegex(tokens: string[]): RegExp {
+  // Whole-word / phrase match, case-insensitive. Escape special chars in tokens.
+  const escaped = tokens
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (escaped.length === 0) return /$^/; // never matches
+  return new RegExp(`\\b(?:${escaped.join('|')})\\b`, 'i');
+}
+
+const DEFAULT_ANCILLARY_REGEX = tokensToRegex(DEFAULT_ANCILLARY_TOKENS);
+
+/**
+ * True if a location name looks like an ancillary sub-listing (Kroger Pharmacy,
+ * Wells Fargo ATM, etc.) that should be hidden so only the primary storefront pin
+ * shows. Combines the default token list with any per-brand overrides from
+ * merchant_brand.places_name_exclude.
+ */
+function isAncillarySubListing(
+  placesName: string | null,
+  brand: Pick<MerchantBrand, 'places_name_exclude'>,
+): boolean {
+  if (!placesName) return false;
+  if (DEFAULT_ANCILLARY_REGEX.test(placesName)) return true;
+  const custom = brand.places_name_exclude?.trim();
+  if (!custom) return false;
+  const customTokens = custom.split(',').map((s) => s.trim()).filter(Boolean);
+  if (customTokens.length === 0) return false;
+  return tokensToRegex(customTokens).test(placesName);
 }
 
 /** Prefer the admin-uploaded custom logo over the Brandfetch URL. */
@@ -363,7 +424,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
           let query = supabase
             .from('merchant_location')
             .select(
-              'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, custom_logo_url, places_display_name, category_id)',
+              'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, custom_logo_url, places_display_name, places_name_exclude, category_id)',
             )
             .or(orFilter)
             .range(offset, offset + PAGE - 1);
@@ -381,14 +442,16 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
           if (!data || data.length === 0) break;
 
           // Supabase typed the joined `brand` as an array in some versions; normalize.
-          // Also apply the render-time name filter: Places Text Search returns
-          // many false positives ("Anytime Fitness" for a "24 Hour Fitness"
-          // search, etc.), so we require the location name to look like the
-          // brand's Places display name. See nameMatchesBrand comment.
+          // Two render-time filters:
+          //   1. Name-match: reject rows where the Places name doesn't look
+          //      like this brand at all (Anytime Fitness under 24 Hour Fitness).
+          //   2. Ancillary filter: reject sub-listings like "Kroger Pharmacy",
+          //      "Wells Fargo ATM" so only the primary storefront pin shows.
           for (const row of data as any[]) {
             const brand = Array.isArray(row.brand) ? row.brand[0] : row.brand;
             if (!brand) continue;
             if (!nameMatchesBrand(row.name, brand)) continue;
+            if (isAncillarySubListing(row.name, brand)) continue;
             all.push({ ...(row as MerchantLocationRow), brand });
           }
           if (data.length < PAGE) break;

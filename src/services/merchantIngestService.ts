@@ -18,6 +18,62 @@ export interface MerchantBrandRow {
   places_type_filter: string | null;
   /** Optional override for the ingest-time name check. See nameMatchesBrand. */
   places_display_name?: string | null;
+  /** Comma-separated ancillary tokens (in addition to defaults) that mark a
+   *  Places result as a sub-listing to filter out. See isAncillarySubListing. */
+  places_name_exclude?: string | null;
+}
+
+// KEEP IN SYNC with DEFAULT_ANCILLARY_TOKENS in MerchantLayer.tsx.
+const DEFAULT_ANCILLARY_TOKENS = [
+  'ATM',
+  'Pharmacy',
+  'Fuel Center',
+  'Fuel Kiosk',
+  'Fueling Center',
+  'Deli',
+  'Bakery',
+  'Floral',
+  'Money Services',
+  'Advisors',
+  'Clicklist',
+  'Garden Center',
+  'Pro Services',
+  'Pro Center',
+  'Pro Desk',
+  'Tool Rental',
+  'Auto Center',
+  'Vision Center',
+  'Optical Center',
+  'Photo Lab',
+];
+
+function tokensToRegex(tokens: string[]): RegExp {
+  const escaped = tokens
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (escaped.length === 0) return /$^/;
+  return new RegExp(`\\b(?:${escaped.join('|')})\\b`, 'i');
+}
+
+const DEFAULT_ANCILLARY_REGEX = tokensToRegex(DEFAULT_ANCILLARY_TOKENS);
+
+/**
+ * True if a Places result looks like an ancillary sub-listing at the same
+ * storefront (Kroger Pharmacy, Wells Fargo ATM, Lowe's Garden Center, etc.).
+ * KEEP IN SYNC with isAncillarySubListing() in MerchantLayer.tsx.
+ */
+export function isAncillarySubListing(
+  placesName: string | null | undefined,
+  brand: Pick<MerchantBrandRow, 'places_name_exclude'>,
+): boolean {
+  if (!placesName) return false;
+  if (DEFAULT_ANCILLARY_REGEX.test(placesName)) return true;
+  const custom = brand.places_name_exclude?.trim();
+  if (!custom) return false;
+  const customTokens = custom.split(',').map((s) => s.trim()).filter(Boolean);
+  if (customTokens.length === 0) return false;
+  return tokensToRegex(customTokens).test(placesName);
 }
 
 /** Alphanumeric-only, lowercased. Mirrors the render-time helper in MerchantLayer. */
@@ -365,14 +421,19 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
       }
     }
 
-    // Final dedup'd list, GA-only by address, name-matched against the brand.
-    // The name-match guard rejects the ~40% of Places results that are Google's
-    // over-eager semantic matches (e.g. "Anytime Fitness" returned for a
-    // "24 Hour Fitness" search). See nameMatchesBrand.
+    // Final dedup'd list, GA-only by address, name-matched against the brand,
+    // and free of ancillary sub-listings.
+    //   - Name-match: rejects Google's over-eager semantic matches (Anytime
+    //     Fitness returned for a 24 Hour Fitness search). See nameMatchesBrand.
+    //   - Ancillary filter: rejects sub-services at the same storefront
+    //     (Kroger Pharmacy, Wells Fargo ATM, Lowe's Garden Center). See
+    //     isAncillarySubListing.
     const allPlaces = Array.from(byId.values()).filter((p) => {
       const addr = p.formatted_address ?? '';
       if (!(addr.includes(', GA') || /\bGeorgia\b/.test(addr))) return false;
-      return nameMatchesBrand(p.name, brand);
+      if (!nameMatchesBrand(p.name, brand)) return false;
+      if (isAncillarySubListing(p.name, brand)) return false;
+      return true;
     });
     result.locationsFound = allPlaces.length;
 
