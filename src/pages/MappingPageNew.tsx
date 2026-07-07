@@ -2748,7 +2748,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 </button>
 
                 {showCustomLayersMenu && (
-                  <div className="absolute left-0 mt-1 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
+                  <div className="absolute left-0 mt-1 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001] max-h-[calc(100vh-8rem)] overflow-y-auto overscroll-contain">
 
                     {/* Starbucks system layer — only visible to authorized users */}
                     {hasPermission('can_view_starbucks_layer') && (

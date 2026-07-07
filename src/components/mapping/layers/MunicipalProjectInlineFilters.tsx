@@ -6,7 +6,7 @@ import MunicipalProjectExportModal from '../MunicipalProjectExportModal';
 import type { MunicipalProjectMapRow } from './MunicipalProjectLayer';
 
 interface MuniRow { id: string; name: string; state: string; display_color: string | null; }
-interface StageRow { id: string; name: string; color: string | null; sort_order: number; abbreviation: string | null; }
+interface StageRow { id: string; name: string; color: string | null; line_color: string | null; sort_order: number; abbreviation: string | null; }
 
 interface Props {
   // Called when the user clicks a search result. Parent typically pans the map
@@ -208,6 +208,26 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     }
   }
 
+  // Per-stage polygon LINE color. NULL means "same as fill color" (default behavior
+  // before this feature). Passing null clears the override.
+  async function saveStageLineColor(stageId: string, newColor: string | null) {
+    setSavingStageId(stageId);
+    setStageColorError('');
+    setStages((prev) => prev.map((s) => (s.id === stageId ? { ...s, line_color: newColor } : s)));
+    try {
+      const { error } = await supabase
+        .from('project_stage')
+        .update({ line_color: newColor })
+        .eq('id', stageId);
+      if (error) throw error;
+      refreshLayer('municipal_projects');
+    } catch (e) {
+      setStageColorError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingStageId(null);
+    }
+  }
+
   async function saveStageAbbreviation(stageId: string, raw: string) {
     const next = raw.trim() === '' ? null : raw.trim();
     const current = stages.find((s) => s.id === stageId)?.abbreviation ?? null;
@@ -234,7 +254,7 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     void (async () => {
       const [{ data: m }, { data: s }] = await Promise.all([
         supabase.from('municipality').select('id, name, state, display_color').order('name'),
-        supabase.from('project_stage').select('id, name, color, sort_order, abbreviation').order('sort_order'),
+        supabase.from('project_stage').select('id, name, color, line_color, sort_order, abbreviation').order('sort_order'),
       ]);
       setMunis((m ?? []) as MuniRow[]);
       setStages((s ?? []) as StageRow[]);
@@ -464,6 +484,36 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
               format={(v) => `${v}px`}
               onChange={(v) => updatePolyStyle({ strokeWeight: v })}
             />
+
+            {/* Line color: default follows the per-stage line color (or fill color if the
+                stage has no line_color set). Toggling on the override applies one color
+                to every polygon. */}
+            <div className="flex items-center gap-2">
+              <span className="text-gray-700 w-20">Line color</span>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={polyStyle.strokeColorMode === 'global'}
+                  onChange={(e) =>
+                    updatePolyStyle({ strokeColorMode: e.target.checked ? 'global' : 'stage' })
+                  }
+                  className="h-3 w-3"
+                />
+                <span className="text-gray-700">Override</span>
+              </label>
+              <input
+                type="color"
+                value={polyStyle.strokeColor}
+                onChange={(e) => updatePolyStyle({ strokeColor: e.target.value })}
+                disabled={polyStyle.strokeColorMode !== 'global'}
+                className="w-8 h-5 border border-gray-300 rounded cursor-pointer disabled:opacity-40"
+                title="Global polygon line color"
+              />
+              <span className="text-[10px] text-gray-500 flex-1">
+                {polyStyle.strokeColorMode === 'global' ? 'Applied to all polygons' : 'Per-stage (see below)'}
+              </span>
+            </div>
+
             <button
               type="button"
               onClick={resetPolyStyle}
@@ -477,7 +527,13 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
             <div className="border-t pt-2 mt-2" style={{ borderColor: '#EAEEF3' }}>
               <div className="text-gray-700 font-semibold mb-1">Stage colors &amp; abbreviations</div>
               <div className="text-[10px] text-gray-500 mb-1.5">
-                Shared across all users. Abbreviation appears in Units Label (e.g. "+50 UR").
+                Shared across all users. Fill / line color per stage; right-click the line
+                swatch to clear the override (falls back to fill color).
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-0.5">
+                <span className="w-8 text-center">Fill</span>
+                <span className="w-8 text-center">Line</span>
+                <span className="flex-1" />
               </div>
               <div className="space-y-1">
                 {stages.map((s) => (
@@ -488,7 +544,25 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
                       onChange={(e) => saveStageColor(s.id, e.target.value)}
                       disabled={savingStageId === s.id}
                       className="w-8 h-5 border border-gray-300 rounded cursor-pointer disabled:opacity-40"
-                      title={`Edit color for ${s.name}`}
+                      title={`Edit fill color for ${s.name}`}
+                    />
+                    <input
+                      type="color"
+                      value={s.line_color || s.color || '#8FA9C8'}
+                      onChange={(e) => saveStageLineColor(s.id, e.target.value)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        if (s.line_color != null) void saveStageLineColor(s.id, null);
+                      }}
+                      disabled={savingStageId === s.id}
+                      className={`w-8 h-5 border rounded cursor-pointer disabled:opacity-40 ${
+                        s.line_color ? 'border-gray-300' : 'border-dashed border-[#8FA9C8]'
+                      }`}
+                      title={
+                        s.line_color
+                          ? `Line color for ${s.name} — right-click to clear`
+                          : `Line color for ${s.name} — currently follows fill color; click to override`
+                      }
                     />
                     <span className="text-gray-800 flex-1 truncate" title={s.name}>{s.name}</span>
                     <input

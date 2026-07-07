@@ -29,6 +29,7 @@ export interface MunicipalProjectMapRow {
   effective_stage_id: string | null;
   effective_stage_name: string | null;
   effective_stage_color: string | null;
+  effective_stage_line_color: string | null;
   // Joined in client-side from project_stage.abbreviation (municipal_project_v
   // doesn't expose it). Used to compose the on-map units label (e.g. "+80 RC").
   effective_stage_abbreviation: string | null;
@@ -371,6 +372,11 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const stageColor = row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
       const pinColor = row.source_research_run_id ? AGENT_PIN_COLOR : stageColor;
       const polyColor = stageColor;
+      // Stroke color precedence: global override (user pref) > per-stage line_color > fill color.
+      const polyStrokeColor =
+        polygonStyle.strokeColorMode === 'global'
+          ? polygonStyle.strokeColor
+          : (row.effective_stage_line_color || polyColor);
       const isSelected = selectedProjectId === row.id;
 
       const isBeingVerified = verifyingProjectId === row.id;
@@ -498,7 +504,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         if (!poly) {
           poly = new google.maps.Polygon({
             paths: polyPaths,
-            strokeColor: polyColor,
+            strokeColor: polyStrokeColor,
             strokeOpacity: polygonStyle.strokeOpacity,
             strokeWeight: weight,
             fillColor: polyColor,
@@ -512,7 +518,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         } else {
           poly.setPaths(polyPaths);
           poly.setOptions({
-            strokeColor: polyColor,
+            strokeColor: polyStrokeColor,
             strokeOpacity: polygonStyle.strokeOpacity,
             strokeWeight: weight,
             fillColor: polyColor,
