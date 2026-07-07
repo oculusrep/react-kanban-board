@@ -106,6 +106,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [searchMarkers, setSearchMarkers] = useState<google.maps.Marker[]>([]);
   const [showBatchPanel, setShowBatchPanel] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [presentationMode, setPresentationMode] = useState(false);
   const [verifyingPropertyId, setVerifyingPropertyId] = useState<string | null>(null);
   const [verifyingRestaurantStoreNo, setVerifyingRestaurantStoreNo] = useState<string | null>(null);
   const [selectedMunicipalProject, setSelectedMunicipalProject] = useState<MunicipalProjectMapRow | null>(null);
@@ -2074,6 +2075,29 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [verifyingMerchantLocationId]);
 
+  // Presentation mode — hides every overlay so the map fills the viewport for
+  // screenshots. Shift+P toggles; Esc exits. Guarded against typing in inputs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        !!target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+      if (e.shiftKey && (e.key === 'P' || e.key === 'p') && !isTyping) {
+        e.preventDefault();
+        setPresentationMode((v) => !v);
+      } else if (e.key === 'Escape' && presentationMode) {
+        e.preventDefault();
+        setPresentationMode(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [presentationMode]);
+
   // Handle restaurant context menu close
   const handleRestaurantContextMenuClose = () => {
     setRestaurantContextMenu({
@@ -2257,10 +2281,43 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   };
 
   return (
-    <div className="h-screen w-screen bg-gray-50 overflow-hidden">
+    <div
+      className={
+        presentationMode
+          ? 'fixed inset-0 z-[10000] bg-gray-50 overflow-hidden map-presentation-mode'
+          : 'h-screen w-screen bg-gray-50 overflow-hidden'
+      }
+    >
+      {presentationMode && (
+        <>
+          {/* Hide Google Maps native + custom controls (zoom, street view,
+              custom map-type control) inside the presentation-mode root.
+              .gmnoprint is Google's own class for non-attribution controls. */}
+          <style>{`
+            .map-presentation-mode .gmnoprint,
+            .map-presentation-mode .gm-svpc,
+            .map-presentation-mode .gm-fullscreen-control { display: none !important; }
+          `}</style>
+          <button
+            type="button"
+            onClick={() => setPresentationMode(false)}
+            className="fixed bottom-4 right-4 z-[10002] px-3 py-2 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2 hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#002147', color: '#FFFFFF' }}
+            title="Exit presentation mode (Esc)"
+          >
+            <span>Exit presentation</span>
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px]"
+              style={{ backgroundColor: '#FFFFFF', color: '#002147' }}
+            >
+              Esc
+            </span>
+          </button>
+        </>
+      )}
       <div className="h-full flex">
         {/* Left Panel - Batch Processing (Conditional) */}
-        {showBatchPanel && (
+        {showBatchPanel && !presentationMode && (
           <div className="w-80 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col shadow-lg">
             {/* Panel Header */}
             <div className="flex-shrink-0 px-3 py-2 bg-white border-b border-gray-200">
@@ -2286,8 +2343,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
         {/* Main Panel - Map and Testing */}
         <div className="flex-1 flex flex-col">
-          {/* Top Control Bar - Hidden when Street View is active */}
-          <div className={`flex-shrink-0 bg-white shadow-sm border-b border-gray-200 px-4 py-3 ${isStreetViewActive ? 'hidden' : ''}`}>
+          {/* Top Control Bar - Hidden when Street View is active or in presentation mode */}
+          <div className={`flex-shrink-0 bg-white shadow-sm border-b border-gray-200 px-4 py-3 ${isStreetViewActive || presentationMode ? 'hidden' : ''}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 {/* Address Search with Auto-Suggest */}
@@ -2540,7 +2597,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           </div>
 
           {/* Property Search Bar - horizontal filter bar at top */}
-          {showPropertySearch && (
+          {showPropertySearch && !presentationMode && (
             <PropertySearchBar
               isOpen={showPropertySearch}
               onClose={() => {
@@ -2581,7 +2638,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           )}
 
           {/* Property Search Results Table - shown when in table view mode */}
-          {showPropertySearch && propertySearchViewMode === 'table' && propertySearchResults.length > 0 && (
+          {showPropertySearch && propertySearchViewMode === 'table' && propertySearchResults.length > 0 && !presentationMode && (
             <div className="flex-1 overflow-hidden bg-white border-b border-gray-200">
               <PropertySearchResultsTable
                 results={propertySearchResults}
@@ -2617,8 +2674,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             />
 
             {/* Draw and Layers Controls - positioned to the right of GPS/ruler buttons */}
-            {/* Hidden when Street View is active to prevent z-index conflicts */}
-            <div className={`absolute top-[10px] left-[290px] z-[10001] flex items-center gap-1 ${isStreetViewActive ? 'hidden' : ''}`}>
+            {/* Hidden when Street View is active or in presentation mode */}
+            <div className={`absolute top-[10px] left-[290px] z-[10001] flex items-center gap-1 ${isStreetViewActive || presentationMode ? 'hidden' : ''}`}>
               {/* Quick Draw Button - just pencil icon */}
               <button
                 onClick={() => {
@@ -3146,7 +3203,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             </div>
 
             {/* Create Mode Overlay */}
-            {createMode && !isStreetViewActive && (
+            {createMode && !isStreetViewActive && !presentationMode && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[10001]">
                 <div className="flex items-center space-x-2">
                   <span>🎯</span>
@@ -3298,7 +3355,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               onMerchantRightClick={canVerifyRestaurantLocations ? handleMerchantRightClick : undefined}
             />
             <MerchantsDrawer
-              isOpen={showMerchantsDrawer}
+              isOpen={showMerchantsDrawer && !presentationMode}
               onClose={() => setShowMerchantsDrawer(false)}
               map={mapInstance}
             />
@@ -3534,8 +3591,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             />
 
             {/* Site Submit Legend - Show when site submit layer is visible */}
-            {/* Hidden when Street View is active */}
-            {layerState.site_submits?.isVisible && !isStreetViewActive && (
+            {/* Hidden when Street View is active or in presentation mode */}
+            {layerState.site_submits?.isVisible && !isStreetViewActive && !presentationMode && (
               <SiteSubmitLegend
                 visibleStages={visibleStages}
                 onStageToggle={handleStageToggle}
@@ -3552,7 +3609,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Hidden when Street View is active */}
             <DrawingToolbar
               map={mapInstance}
-              isActive={(!!editingLayerId || isQuickDrawMode || isDrawingClosedSearchArea) && !isStreetViewActive}
+              isActive={(!!editingLayerId || isQuickDrawMode || isDrawingClosedSearchArea) && !isStreetViewActive && !presentationMode}
               selectedLayerId={editingLayerId}
               onShapeComplete={async (drawnShape) => {
                 console.log('✏️ Shape drawn:', drawnShape);
@@ -3646,7 +3703,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             />
 
             {/* Selected Shape Actions - Show when a shape is selected in edit mode */}
-            {editingLayerId && selectedShapeId && selectedShapeData && !isStreetViewActive && (
+            {editingLayerId && selectedShapeId && selectedShapeData && !isStreetViewActive && !presentationMode && (
               <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-[10000]">
                 <div className="bg-white rounded-lg shadow-xl border-2 border-blue-500 p-3">
                   <div className="flex items-center space-x-4">
@@ -3723,7 +3780,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         </div>
       </div>
 
-      {/* Sidebars - Rendered outside map container so they're visible in both map and table views */}
+      {/* Sidebars - Rendered outside map container so they're visible in both map and table views.
+          In presentation mode, we hide the whole block via `display: none` rather than unmounting so
+          slideout state (form edits, scroll, expanded sections) survives the toggle. */}
+      <div style={presentationMode ? { display: 'none' } : undefined}>
       {/* Pin Details Slideout - for properties only */}
       {selectedPinType === 'property' && (
         <PinDetailsSlideout
@@ -4210,6 +4270,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           refreshLayer('properties');
         }}
       />
+      </div>
     </div>
   );
 };
