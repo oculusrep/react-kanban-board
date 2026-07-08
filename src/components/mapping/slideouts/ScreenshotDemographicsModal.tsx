@@ -102,7 +102,18 @@ const ScreenshotDemographicsModal: React.FC<Props> = ({
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
-              <th style={{ borderBottom: GRID_LINE }} />
+              <th
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  color: '#FFFFFF',
+                  padding: '0 26px 16px 0',
+                  textAlign: 'left',
+                  borderBottom: GRID_LINE,
+                }}
+              >
+                Demographics
+              </th>
               {COLUMNS.map((col) => (
                 <th
                   key={col.suffix}
