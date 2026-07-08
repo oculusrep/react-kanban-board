@@ -9,6 +9,7 @@ import DemographicIsochronesOverlay from '../layers/DemographicIsochronesOverlay
 import DemographicPolygonOverlay from '../layers/DemographicPolygonOverlay';
 import DemographicsAnalysisModal from './DemographicsAnalysisModal';
 import ScreenshotDemographicsModal from './ScreenshotDemographicsModal';
+import MunicipalUnitsScreenshotModal from './MunicipalUnitsScreenshotModal';
 import { useDemographicsStyleDefaults } from '../../../hooks/useDemographicsStyleDefaults';
 
 // All three modes of the demographic-layers feature:
@@ -223,6 +224,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
+  const [showMunicipalUnitsModal, setShowMunicipalUnitsModal] = useState(false);
   // Minimize collapses the body but keeps the slideout open — overlays
   // stay mounted on the map so rings/isochrones/polygon remain visible
   // while the user works on other things.
@@ -415,6 +417,13 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
         demographics={demographics}
       />
 
+      <MunicipalUnitsScreenshotModal
+        isOpen={showMunicipalUnitsModal}
+        onClose={() => setShowMunicipalUnitsModal(false)}
+        coordinates={coordinates}
+        isochrones={result?.isochrones ?? {}}
+      />
+
       <aside
         data-demographics-slideout="true"
         className={
@@ -482,6 +491,17 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                 title="Open a screenshot-ready dark table (1mi / 3mi / 5min / 10min)"
               >
                 Screenshot
+              </button>
+            )}
+            {!minimized && result && (
+              <button
+                type="button"
+                onClick={() => setShowMunicipalUnitsModal(true)}
+                className="text-xs font-medium hover:underline"
+                style={{ color: BRAND.steel }}
+                title="Total housing units by stage for municipal projects in each catchment"
+              >
+                Units
               </button>
             )}
             <button
