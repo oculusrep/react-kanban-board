@@ -113,7 +113,7 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
       )}
 
       {isOpen && (
-        <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+        <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-[10010]">
           <div className="py-1">
             {/* Recent Items Section */}
             {currentRecentItems && currentRecentItems.length > 0 && (
