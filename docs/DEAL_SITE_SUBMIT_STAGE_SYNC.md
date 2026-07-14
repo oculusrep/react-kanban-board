@@ -93,6 +93,14 @@ Quick smoke tests in the UI:
 2. Reverse: on the same site submit, change stage back to "LOI". Reload the deal — its stage should be "Negotiating LOI".
 3. Move a site submit to "Monitor" (no mapping row). The deal should stay put — no propagation.
 
+## Live map updates (no manual refresh)
+
+The map's `SiteSubmitLayer` subscribes to `postgres_changes` on `site_submit` ([SiteSubmitLayer.tsx:956-1005](../src/components/mapping/layers/SiteSubmitLayer.tsx#L956-L1005)) and refetches when it hears an INSERT/UPDATE/DELETE. For that subscription to receive events, `site_submit` must be in the `supabase_realtime` publication — added in migration [20260714130000_site_submit_realtime_enable.sql](../supabase/migrations/20260714130000_site_submit_realtime_enable.sql).
+
+Result: when you change a deal's stage in the deal view, the sync trigger updates `site_submit`, Realtime broadcasts the UPDATE, the layer refetches, and the pin re-colors — no page refresh needed.
+
+If pins ever stop updating live, check `SELECT tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime'` — the row for `site_submit` must be present.
+
 ## Known limitations
 
 - **No audit-trail attribution.** The propagated update is written by the trigger itself; if you add `deal_stage_history` / `site_submit_stage_history` tables later (as planned for the portal email alerts feature), the trigger will need extension so the history row is attributed to the user who originally moved the stage rather than "OVIS."
