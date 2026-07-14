@@ -1079,6 +1079,24 @@ onUpdate?.(criticalDateId, payload); // Update parent state directly
 - **Test in browser**: Console logs are critical to verify the fix actually works
 - **Don't assume**: Just because code looks right doesn't mean loop is fixed - always verify
 
+### Prerequisite: table must be in the `supabase_realtime` publication
+
+`.on('postgres_changes', {table: 'X'}, ...)` is silently a no-op if table `X` isn't in the publication. No error, no console warning — the subscription just never fires. This has bitten us on `site_submit` (see [DEAL_SITE_SUBMIT_STAGE_SYNC.md](DEAL_SITE_SUBMIT_STAGE_SYNC.md) — the map layer subscribed for months but pins never updated live because the table wasn't published).
+
+**Before wiring up a `postgres_changes` subscription for a new table**, add it to the publication via migration:
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.your_table;
+```
+
+**To verify what's currently broadcast:**
+
+```sql
+SELECT tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime';
+```
+
+Additionally, the table's `REPLICA IDENTITY` must include the primary key (default behavior — only worry if you've explicitly changed it) so UPDATE payloads carry `payload.new.id`.
+
 ---
 
 ## 🔗 CRITICAL RULE #9: Related Data Creation Order
