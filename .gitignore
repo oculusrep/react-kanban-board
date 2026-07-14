@@ -58,6 +58,8 @@ backups/
 !supabase/CLEAN_SLATE_PAYMENT_TRIGGERS.sql
 !supabase/RESTORE_ALL_PAYMENT_TRIGGERS.sql
 !supabase/TEST_REFERRAL_FEE_CALCULATION.sql
+!supabase/deal_submit_stage_backfill.sql
+!supabase/deal_submit_stage_outliers.sql
 
 # Archive folder (old troubleshooting files)
 supabase/archive/
