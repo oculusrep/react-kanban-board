@@ -42,7 +42,7 @@ Body: standard JSON-RPC 2.0. Supports single requests AND batched arrays. Notifi
 | `get_municipalities_in_radius` | RPC `get_municipalities_in_radius_for_site` | read-only; resolves site lat/lng via `COALESCE(verified, sf_property)` then ST_DWithin |
 | `create_research_checklist` | RPC `create_research_run_with_checklist` | atomic — research_run + N checklist items in one transaction |
 | `update_checklist_status` | direct supabase-js update | single-row UPDATE; idempotent |
-| `submit_research_report` | RPC `submit_research_report` | atomic batched write + server-side dup detection + state transition to `awaiting_review` |
+| `submit_research_report` | RPC `submit_research_report` | atomic batched write + server-side dup detection + state transition to `awaiting_review`; **idempotent per run** (replace-on-resubmit — see below) |
 
 Tool input schemas live in `TOOLS` array in [supabase/functions/ovis-research-mcp/index.ts](supabase/functions/ovis-research-mcp/index.ts). Each is a proper JSON Schema the agent's MCP client can read via `tools/list`.
 
@@ -125,6 +125,18 @@ The RPC has `WHERE bm.state = 'GA'` hardcoded. Matches Phase A's boundary backfi
 ### Single batched write at end-of-run
 `submit_research_report` accepts the entire `candidate_records` array in one call. This is explicit in spec §8 ("the single batched write — one call, not one-per-record"). The RPC processes the entire batch as one CTE chain inside one INSERT, so even 100+ records is one round-trip + one transaction.
 
+### Idempotency + cast hardening (added 2026-07-14)
+
+Migration `20260714140000_submit_research_report_idempotent.sql` replaces the v1 RPC in response to the 2026-07-13 duplicate-staging incident (run `7389ced0-…`). Two changes:
+
+1. **Idempotent per run (replace-on-resubmit).** The single batched write is still the contract, but an agent retry can physically call it more than once on the same `research_run_id`. The RPC now:
+   - **Rejects** with `run_already_reviewed` if any staging row for the run has already left `pending` (approved/rejected) — re-staging then would orphan promoted `municipal_project` rows or silently discard reviewer decisions.
+   - Otherwise **deletes the run's existing `pending` rows and re-inserts** the fresh batch. Last-write-wins; a retry can never double-stage. (This supersedes the earlier "gate on `research_run.state`" idea — gating on per-row `approval_state` is safer because it survives partial approvals.)
+
+2. **Defensive numeric/date/uuid casts.** The likely trigger of the incident was a value-level cast crash: the richer "full detail" payload carried an optional field with a non-canonical value (a non-ISO date or non-numeric unit count), and a single bad `::int` / `::date` cast aborted the whole batch transaction. The agent then fell back to stripped-down "minimal" records (same municipalities → the off-checklist guard, the only explicit validation, was ruled out) and later resubmitted full detail, producing the duplicates. The RPC now regex-guards each optional `::int` / `::date` / `::uuid` cast so a malformed value falls back to `NULL` instead of failing the submit — matching the tool's existing "unknown `status_name` → NULL silently" contract.
+
+   > Note on diagnosis: the verbatim first-call error was **not** recoverable — Supabase edge-function/Postgres logs via MCP only retain the last few hours, and the run fired ~13h earlier (~10 PM EDT Jul 13). The failure *class* was pinned by elimination (minimal retry succeeded with identical municipalities), not from a log line.
+
 ---
 
 ## Defaulted without asking (flag in PR review)
@@ -132,7 +144,7 @@ The RPC has `WHERE bm.state = 'GA'` hardcoded. Matches Phase A's boundary backfi
 - **MCP protocol version `2025-03-26`** — the version Anthropic's SDK currently advertises. If OpenClaw is on a different version, the handshake still works (versions are informational, not strict) but worth noting.
 - **`update_checklist_status` does NOT silently insert** when no matching row exists. It returns an error from the supabase-js `.single()` call. This is intentional — if the agent calls this without first creating the checklist, that's a bug worth surfacing.
 - **`update_checklist_status` does NOT touch `created_at`** — only `status` (and optional `notes`). The trigger handles `updated_at`.
-- **`submit_research_report` is single-shot per run** — calling it twice on the same `research_run_id` would insert duplicate staging rows and re-fire the state transition (idempotency was not designed in). The agent's contract is one submit per run. If we ever want resubmit, gate on `research_run.state IN ('running')`.
+- **`submit_research_report` is idempotent per run** (~~single-shot~~ — **resolved 2026-07-14**, migration `20260714140000_submit_research_report_idempotent.sql`). Original v1 was single-shot: calling it twice on the same `research_run_id` blindly appended duplicate staging rows. The 2026-07-13 run hit exactly this — an agent retry double-staged four projects. The RPC now does **replace-on-resubmit**: each call deletes the run's still-`pending` staging rows and re-inserts the fresh batch (last-write-wins, never append). If any staging row for the run has already left `pending` (a human approved/rejected it), the call is **rejected** with `run_already_reviewed` rather than clobbering reviewed data. See the "Idempotency + cast hardening" section below.
 - **Tool input schemas are descriptive but loose** — most numeric fields accept `null` so the agent doesn't have to omit keys for "data not found." String fields like `permit_url` are `string`/`null` rather than strict URI format because the agent will sometimes record "verbal only — see meeting minutes".
 - **No streaming responses** — the JSON-RPC over plain HTTP path. MCP Streamable HTTP supports SSE for long-running tools, but our tools are all sub-second. Trivial to add if a future tool needs it.
 - **The function does NOT log requests** beyond standard Supabase edge function logs. If you want a per-call audit log (for billing OpenClaw or debugging), add a `mcp_request_log` table in a follow-up.
