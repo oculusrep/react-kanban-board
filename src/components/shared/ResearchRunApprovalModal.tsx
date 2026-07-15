@@ -44,6 +44,15 @@ interface StagingRow {
   muni_name: string | null;
   muni_kind: string | null;
 }
+// A committed municipal_project whose centroid is near a staged candidate —
+// the soft "possible duplicate" signal (see find_nearby_municipal_projects RPC).
+interface NearbyProject {
+  municipal_project_id: string;
+  project_name: string | null;
+  municipality_name: string | null;
+  address: string | null;
+  distance_m: number;
+}
 
 // Supabase RPC errors are PostgrestError objects (not Error instances). Rendering
 // them via `String(e)` yields "[object Object]" and hides the real reason —
@@ -99,6 +108,9 @@ export default function ResearchRunApprovalModal({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
+  // Soft dedupe: stagingId -> nearby committed projects, plus an in-flight flag.
+  const [possibleDupes, setPossibleDupes] = useState<Record<string, NearbyProject[]>>({});
+  const [checkingDupes, setCheckingDupes] = useState(false);
 
   // ---- initial load ----
   useEffect(() => {
@@ -167,6 +179,66 @@ export default function ResearchRunApprovalModal({
     return () => { cancelled = true; };
   }, [researchRunId]);
 
+  // ---- soft dedupe: flag staged rows sitting near an already-committed project ----
+  // The hard match (matched_existing_id) covers exact name/address + permit_url.
+  // This catches the same physical project resurfacing under a DIFFERENT name and
+  // address with no shared permit_url: geocode each pending, not-yet-matched row
+  // and ask the DB for committed municipal_project centroids within ~150m.
+  // Non-blocking — a geocode/RPC failure must never break the approval flow.
+  useEffect(() => {
+    let cancelled = false;
+    const candidates = staging.filter(
+      (s) => s.approval_state === 'pending' && !s.matched_existing_id && (s.address ?? '').trim(),
+    );
+    if (candidates.length === 0) {
+      setPossibleDupes({});
+      return;
+    }
+    async function checkNearby() {
+      setCheckingDupes(true);
+      try {
+        const points = (
+          await Promise.all(
+            candidates.map(async (s) => {
+              const g = await geocodingService.geocodeAddress((s.address ?? '').trim());
+              return ('latitude' in g && 'longitude' in g)
+                ? { staging_id: s.id, lat: g.latitude, lng: g.longitude }
+                : null;
+            }),
+          )
+        ).filter(Boolean) as { staging_id: string; lat: number; lng: number }[];
+
+        if (cancelled) return;
+        if (points.length === 0) { setPossibleDupes({}); return; }
+
+        const { data, error: rpcErr } = await supabase.rpc('find_nearby_municipal_projects', {
+          p_points: points,
+          p_radius_meters: 150,
+        });
+        if (rpcErr) throw rpcErr;
+        if (cancelled) return;
+
+        const grouped: Record<string, NearbyProject[]> = {};
+        for (const row of (data ?? []) as any[]) {
+          (grouped[row.staging_id] ??= []).push({
+            municipal_project_id: row.municipal_project_id,
+            project_name: row.project_name,
+            municipality_name: row.municipality_name,
+            address: row.address,
+            distance_m: row.distance_m,
+          });
+        }
+        setPossibleDupes(grouped);
+      } catch (e) {
+        console.warn('Nearby-project dup check failed (non-blocking):', toErrorMessage(e));
+      } finally {
+        if (!cancelled) setCheckingDupes(false);
+      }
+    }
+    checkNearby();
+    return () => { cancelled = true; };
+  }, [staging]);
+
   // ---- group by municipality for display ----
   const grouped = useMemo(() => {
     const m = new Map<string, { name: string; kind: string; rows: StagingRow[] }>();
@@ -183,6 +255,9 @@ export default function ResearchRunApprovalModal({
   const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
   const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
   const matchedExistingCount = staging.filter((s) => s.matched_existing_id && s.approval_state === 'pending').length;
+  const possibleDupCount = staging.filter(
+    (s) => s.approval_state === 'pending' && !s.matched_existing_id && (possibleDupes[s.id]?.length ?? 0) > 0,
+  ).length;
 
   // ---- handlers ----
   const setEdit = (id: string, key: keyof Edits, value: string) => {
@@ -378,6 +453,8 @@ export default function ResearchRunApprovalModal({
                   <span style={{ color: '#4A6B94' }}>
                     Selected: <b>{selected.size}</b> / {pendingCount} pending
                     {matchedExistingCount > 0 && <span style={{ color: '#A27B5C' }}> · {matchedExistingCount} matches existing</span>}
+                    {checkingDupes && <span style={{ color: '#8FA9C8' }}> · checking for nearby projects…</span>}
+                    {possibleDupCount > 0 && <span style={{ color: '#A27B5C' }}> · {possibleDupCount} possible duplicate{possibleDupCount === 1 ? '' : 's'} nearby</span>}
                   </span>
                   <span style={{ color: '#8FA9C8' }}>·</span>
                   <button type="button" onClick={selectAllNew}     className="underline" style={{ color: '#002147' }}>Select all NEW</button>
@@ -423,6 +500,22 @@ export default function ResearchRunApprovalModal({
                                   <span className="px-2 py-0.5 rounded-full border"
                                         style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
                                     MATCHES EXISTING
+                                  </span>
+                                )}
+                                {!r.matched_existing_id && (possibleDupes[r.id]?.length ?? 0) > 0 && (
+                                  <span
+                                    className="px-2 py-0.5 rounded-full border border-dashed"
+                                    style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFFFFF' }}
+                                    title={
+                                      'Committed project(s) already on the map nearby — review before approving:\n' +
+                                      possibleDupes[r.id]
+                                        .map((d) => `• ${d.project_name ?? '(unnamed)'} — ~${Math.round(d.distance_m)}m`
+                                          + `${d.municipality_name ? ` (${d.municipality_name})` : ''}`
+                                          + `${d.address ? `, ${d.address}` : ''}`)
+                                        .join('\n')
+                                    }
+                                  >
+                                    ⚠ POSSIBLE DUPLICATE · ~{Math.round(possibleDupes[r.id][0].distance_m)}m
                                   </span>
                                 )}
                                 {r.approval_state === 'approved' && (
