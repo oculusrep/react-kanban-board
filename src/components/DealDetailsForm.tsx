@@ -144,13 +144,17 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   const prevStageIdRef = useRef<string | null>(null);
   const isFirstLoadRef = useRef(true);
 
+  // Re-sync local form from props only when navigating to a DIFFERENT deal.
+  // Keying on the whole `deal` object caused in-progress edits to be clobbered
+  // by real-time subscription echoes (each echo is a new object reference that
+  // still carries the pre-edit value until the debounced autosave commits).
   useEffect(() => {
     setForm(deal);
     setErrors({});
     setProbabilityManuallySet(false);
     prevStageIdRef.current = deal.stage_id ?? null;
     isFirstLoadRef.current = true;
-  }, [deal]);
+  }, [deal.id]);
 
   // Autosave callback for existing deals (stable reference with useCallback)
   const handleAutosave = useCallback(async (formData: Partial<Deal>) => {
