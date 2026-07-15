@@ -2,10 +2,10 @@ import React, { useEffect, useRef } from 'react';
 
 // Phase 3 of demographic-layers: a single ad-hoc polygon for ESRI
 // enrichment. When drawingActive is true (and no coordinates yet) the
-// component activates google.maps.drawing.DrawingManager in POLYGON
-// mode and fires onComplete with the GeoJSON-style ring coordinates.
-// Otherwise it renders the saved polygon as a static overlay. Color +
-// opacity + stroke weight come from the slideout's style state.
+// component lets the user draw a polygon by clicking vertices on the map
+// (double-click to finish) and fires onComplete with the GeoJSON-style ring
+// coordinates. Otherwise it renders the saved polygon as a static overlay.
+// Color + opacity + stroke weight come from the slideout's style state.
 
 export interface DemographicPolygonOverlayProps {
   map: google.maps.Map | null;
@@ -31,74 +31,83 @@ const DemographicPolygonOverlay: React.FC<DemographicPolygonOverlayProps> = ({
   strokeWeight,
   onComplete,
 }) => {
-  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  const drawPointsRef = useRef<google.maps.LatLng[]>([]);
+  const drawPolygonRef = useRef<google.maps.Polygon | null>(null);
+  const drawListenersRef = useRef<google.maps.MapsEventListener[]>([]);
   const polygonRef = useRef<google.maps.Polygon | null>(null);
 
-  // Drawing mode: activate DrawingManager. Tear down when drawing ends
-  // or active flag flips off. The drawing library is loaded on demand
-  // (the main map loader only requests 'places' and 'geometry').
+  // Drawing mode: collect vertices from map clicks and finish on double-click.
+  // (google.maps.drawing.DrawingManager was removed in Maps JS 3.65, so we build the polygon
+  // manually.) Tear down when drawing ends or the active flag flips off.
   useEffect(() => {
-    if (!map || !drawingActive || coordinates) {
-      if (drawingManagerRef.current) {
-        drawingManagerRef.current.setMap(null);
-        drawingManagerRef.current = null;
+    const teardown = () => {
+      drawListenersRef.current.forEach(l => google.maps.event.removeListener(l));
+      drawListenersRef.current = [];
+      if (drawPolygonRef.current) {
+        drawPolygonRef.current.setMap(null);
+        drawPolygonRef.current = null;
       }
+      drawPointsRef.current = [];
+    };
+
+    if (!map || !drawingActive || coordinates) {
+      teardown();
       return;
     }
 
-    let cancelled = false;
-    let listener: google.maps.MapsEventListener | null = null;
+    drawPointsRef.current = [];
+    drawPolygonRef.current = new google.maps.Polygon({
+      paths: [],
+      strokeColor: color,
+      strokeOpacity,
+      strokeWeight,
+      fillColor: color,
+      fillOpacity,
+      clickable: false,
+      map,
+    });
 
-    (async () => {
-      // @ts-expect-error - importLibrary is the v3.55+ dynamic loader.
-      await google.maps.importLibrary('drawing');
-      if (cancelled) return;
+    // Suppress the map's double-click-to-zoom while drawing, since we use double-click to finish.
+    const prevDoubleClickZoom = map.get('disableDoubleClickZoom');
+    map.setOptions({ disableDoubleClickZoom: true });
 
-      const dm = new google.maps.drawing.DrawingManager({
-        drawingMode: google.maps.drawing.OverlayType.POLYGON,
-        drawingControl: false,
-        polygonOptions: {
-          strokeColor: color,
-          strokeOpacity,
-          strokeWeight,
-          fillColor: color,
-          fillOpacity,
-          clickable: false,
-          editable: false,
-        },
-        map,
-      });
-      drawingManagerRef.current = dm;
+    const restoreZoom = () => map.setOptions({ disableDoubleClickZoom: prevDoubleClickZoom ?? false });
 
-      listener = google.maps.event.addListener(
-        dm,
-        'polygoncomplete',
-        (poly: google.maps.Polygon) => {
-          const path = poly.getPath();
-          const ring: number[][] = [];
-          for (let i = 0; i < path.getLength(); i++) {
-            const p = path.getAt(i);
-            ring.push([p.lng(), p.lat()]);
-          }
-          if (ring.length > 0) ring.push([...ring[0]]);
+    const finish = () => {
+      const pts = drawPointsRef.current;
+      if (pts.length < 3) return;
+      const ring: number[][] = pts.map(p => [p.lng(), p.lat()]);
+      ring.push([...ring[0]]); // close the ring
+      teardown();
+      restoreZoom();
+      onComplete([ring]);
+    };
 
-          // Drop the live polygon — the static overlay branch will
-          // redraw it once parent stores the coordinates.
-          poly.setMap(null);
+    const clickL = map.addListener('click', (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+      drawPointsRef.current = [...drawPointsRef.current, e.latLng];
+      drawPolygonRef.current?.setPath(drawPointsRef.current);
+    });
 
-          dm.setDrawingMode(null);
-          onComplete([ring]);
-        },
-      );
-    })();
+    const dblClickL = map.addListener('dblclick', () => {
+      // A double-click is preceded by two 'click' events at ~the same spot; drop the duplicate
+      // trailing vertex before finishing.
+      const pts = drawPointsRef.current;
+      if (pts.length >= 2) {
+        const a = pts[pts.length - 1];
+        const b = pts[pts.length - 2];
+        if (Math.abs(a.lat() - b.lat()) < 1e-6 && Math.abs(a.lng() - b.lng()) < 1e-6) {
+          drawPointsRef.current = pts.slice(0, -1);
+        }
+      }
+      finish();
+    });
+
+    drawListenersRef.current = [clickL, dblClickL];
 
     return () => {
-      cancelled = true;
-      if (listener) google.maps.event.removeListener(listener);
-      if (drawingManagerRef.current) {
-        drawingManagerRef.current.setMap(null);
-        drawingManagerRef.current = null;
-      }
+      teardown();
+      restoreZoom();
     };
   }, [map, drawingActive, !!coordinates]);
 

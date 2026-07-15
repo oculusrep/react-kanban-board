@@ -34,6 +34,16 @@ function formatUSD(n: number | null): string {
   }).format(n);
 }
 
+// Currency-input helpers. The Model Yr1 Sales override is entered as whole dollars: we keep only
+// digits and re-format with thousands separators as the user types, so what's typed and what's
+// saved can't diverge (a plain text field silently dropped "$1,600,000" → 1600 before).
+function digitsOnly(s: string): string {
+  return s.replace(/[^0-9]/g, '');
+}
+function formatThousands(digits: string): string {
+  return digits ? Number(digits).toLocaleString('en-US') : '';
+}
+
 const labelCls = 'block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1';
 const inputCls =
   'w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500';
@@ -56,7 +66,7 @@ const StarbucksTargetAreaSlideout: React.FC<Props> = ({ isOpen, row, onClose, on
   useEffect(() => {
     setNameDraft(row?.name ?? '');
     setOrepNotesDraft(row?.orep_notes ?? '');
-    setSalesDraft(row?.orep_model_yr1_sales != null ? String(row.orep_model_yr1_sales) : '');
+    setSalesDraft(row?.orep_model_yr1_sales != null ? formatThousands(String(Math.round(row.orep_model_yr1_sales))) : '');
     setSaveError('');
     setDeleteError('');
     setConfirmDelete(false);
@@ -68,13 +78,8 @@ const StarbucksTargetAreaSlideout: React.FC<Props> = ({ isOpen, row, onClose, on
     setSaving(true);
     setSaveError('');
     try {
-      const trimmedSales = salesDraft.trim();
-      let orepSales: number | null = null;
-      if (trimmedSales !== '') {
-        const parsed = Number(trimmedSales.replace(/[$,]/g, ''));
-        if (!Number.isFinite(parsed)) throw new Error('Model Yr1 Sales must be a number (or blank to use the Starbucks value).');
-        orepSales = parsed;
-      }
+      const digits = digitsOnly(salesDraft);
+      const orepSales: number | null = digits === '' ? null : Number(digits);
 
       const payload: Record<string, unknown> = {
         orep_notes: orepNotesDraft.trim() === '' ? null : orepNotesDraft.trim(),
@@ -202,14 +207,22 @@ const StarbucksTargetAreaSlideout: React.FC<Props> = ({ isOpen, row, onClose, on
           {/* Editable: Model Yr1 Sales (override) */}
           <div>
             <label className={labelCls}>Model Yr1 Sales{!isOrep && <span className="text-gray-400 normal-case font-normal"> (OREP override)</span>}</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={salesDraft}
-              onChange={e => setSalesDraft(e.target.value)}
-              className={inputCls}
-              placeholder={!isOrep && row.model_yr1_sales != null ? `Starbucks: ${rawSales}` : 'e.g. 1200000'}
-            />
+            <div className="relative">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={salesDraft}
+                onChange={e => setSalesDraft(formatThousands(digitsOnly(e.target.value)))}
+                className={`${inputCls} pl-5`}
+                placeholder={!isOrep && row.model_yr1_sales != null ? `Starbucks: ${rawSales}` : 'e.g. 1,600,000'}
+              />
+            </div>
+            {salesDraft.trim() !== '' && (
+              <div className="text-[11px] mt-1 font-medium" style={{ color: BRAND.steel }}>
+                = {formatUSD(Number(digitsOnly(salesDraft)))}
+              </div>
+            )}
             <div className="flex items-center justify-between mt-1">
               <span className="text-[11px] text-gray-400">
                 {!isOrep
