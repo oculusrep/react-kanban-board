@@ -32,7 +32,7 @@ unincorporated) — exactly the cross-boundary bleed case.
 
 ### 1. `permit_url` hard match (municipality-agnostic)
 
-Migration: `20260715140000_submit_research_report_permit_url_match.sql`
+Migration: `20260715173138_submit_research_report_permit_url_match.sql`
 
 `matched_existing_id` is now `COALESCE(permit_url_probe, name_address_probe)`.
 `permit_url` is effectively a globally-unique identifier (a link to a specific
@@ -46,7 +46,7 @@ idempotency/replace-on-resubmit, defensive casts) is carried forward unchanged.
 
 ### 2. Soft proximity signal (centroid within ~150m)
 
-Migration: `20260715140100_find_nearby_municipal_projects_rpc.sql`
+Migration: `20260715173150_find_nearby_municipal_projects_rpc.sql`
 Function: `find_nearby_municipal_projects(p_points jsonb, p_radius_meters numeric)`
 
 Read-only, additive, no writes. Takes `[{staging_id, lat, lng}, ...]` and returns
