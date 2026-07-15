@@ -43,6 +43,54 @@ interface BaseRequest {
 interface CommitRequest extends BaseRequest {
   mode?: 'commit';
   municipality_ids: string[];
+  // Optional explicit search-window overrides (YYYY-MM-DD, Eastern). When a
+  // bound is omitted the edge function fills the Quick-tier default. A future
+  // tier picker (Quick/Deep/Custom) supplies these; today they default.
+  pz_window_start?: string;
+  pz_window_end?: string;
+  permit_window_start?: string;
+  permit_window_end?: string;
+}
+
+// ---- Search-window helpers (Eastern local dates, per the OVIS timezone rule) ----
+type SearchWindow = {
+  pz_window_start: string; pz_window_end: string;
+  permit_window_start: string; permit_window_end: string;
+};
+
+// Today in America/New_York as YYYY-MM-DD (en-CA formats ISO-style). Uses the
+// local Eastern date, never toISOString() (which would drift to UTC's date).
+function easternToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+}
+
+// Subtract whole years from a YYYY-MM-DD string, clamping Feb 29 -> Feb 28 on
+// non-leap target years. Pure component math, no UTC round-trip.
+function subtractYearsISO(iso: string, years: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const ty = y - years;
+  const lastDay = new Date(ty, m, 0).getDate(); // day 0 of month m (1-based) = last day of month m
+  const dd = Math.min(d, lastDay);
+  return `${ty}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+// Accept a caller-supplied bound only if it is a well-formed ISO date.
+function isoDateOrNull(v: unknown): string | null {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
+// The window OVIS both sends to the agent and stores on the run (identical, so
+// coverage reflects exactly what was searched). Quick-tier defaults — P&Z 3yr,
+// permits 2yr, ending today — unless a bound is overridden. Bounds default
+// independently, so a Custom run can pin just one side.
+function resolveSearchWindow(body: Partial<CommitRequest>): SearchWindow {
+  const today = easternToday();
+  return {
+    pz_window_start:     isoDateOrNull(body.pz_window_start)     ?? subtractYearsISO(today, 3),
+    pz_window_end:       isoDateOrNull(body.pz_window_end)       ?? today,
+    permit_window_start: isoDateOrNull(body.permit_window_start) ?? subtractYearsISO(today, 2),
+    permit_window_end:   isoDateOrNull(body.permit_window_end)   ?? today,
+  };
 }
 
 /**
@@ -61,6 +109,7 @@ function buildOpenClawMessage(opts: {
   lng: number;
   radiusMiles: number;
   triggeredByUserId: string;
+  window: SearchWindow;
   municipalities: Array<{
     boundary_municipality_id: string;
     kind: string;
@@ -84,6 +133,14 @@ function buildOpenClawMessage(opts: {
     `site_lng: ${opts.lng}`,
     `radius_miles: ${opts.radiusMiles}`,
     `triggered_by_user_id: ${opts.triggeredByUserId}`,
+    // Locked windowing contract — agent reads these four unconditionally and
+    // searches each record type only within its stated bounds (no extra cap).
+    // News/context scopes to pz_window (outer envelope). YYYY-MM-DD, Eastern,
+    // inclusive, *_start older / *_end newer.
+    `pz_window_start: ${opts.window.pz_window_start}`,
+    `pz_window_end: ${opts.window.pz_window_end}`,
+    `permit_window_start: ${opts.window.permit_window_start}`,
+    `permit_window_end: ${opts.window.permit_window_end}`,
     '',
     'Research the following municipalities (do NOT research others — any candidate referencing an off-list boundary_municipality_id will be rejected at submit time):',
     '',
@@ -274,6 +331,11 @@ serve(async (req) => {
     .filter((m) => requested.includes(m.boundary_municipality_id))
     .map((m) => m.boundary_municipality_id);
 
+  // Resolve the search window OVIS will store on the run AND emit to the agent
+  // (identical, so coverage reflects exactly what was searched). Defaults to the
+  // Quick tier unless the caller overrode bounds.
+  const win = resolveSearchWindow(commitBody);
+
   // Create the run + checklist server-side. After this, OpenClaw cannot
   // expand scope — the only valid muni IDs are on the checklist row set.
   const { data: runId, error: createErr } = await service.rpc(
@@ -284,6 +346,10 @@ serve(async (req) => {
       p_boundary_muni_ids: orderedSelected,
       p_openclaw_run_id: null,
       p_triggered_by: userId,
+      p_pz_window_start: win.pz_window_start,
+      p_pz_window_end: win.pz_window_end,
+      p_permit_window_start: win.permit_window_start,
+      p_permit_window_end: win.permit_window_end,
     },
   );
   if (createErr) return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
@@ -323,6 +389,7 @@ serve(async (req) => {
     lng: Number(lng),
     radiusMiles: radius,
     triggeredByUserId: userId,
+    window: win,
     municipalities: selectedMunis,
   });
 
