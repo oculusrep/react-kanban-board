@@ -92,7 +92,7 @@ const StarbucksTargetAreaToggle: React.FC<Props> = ({
       {styleEditorOpen && (
         <div className="mt-2 space-y-1.5">
           {/* Column headers (tiny, just to orient) */}
-          <div className="grid grid-cols-[18px_22px_28px_28px_1fr_30px] items-center gap-1.5 text-[9px] uppercase tracking-wide text-gray-400 px-0.5">
+          <div className="grid grid-cols-[18px_36px_28px_28px_1fr_30px] items-center gap-1.5 text-[9px] uppercase tracking-wide text-gray-400 px-0.5">
             <span className="text-center" title="Show / hide this priority bucket">Show</span>
             <span></span>
             <span className="text-center">Line</span>
@@ -218,7 +218,7 @@ interface BucketStyleRowProps {
 const BucketStyleRow: React.FC<BucketStyleRowProps> = ({ label, title, style, onChange }) => {
   return (
     <div
-      className={`grid grid-cols-[18px_22px_28px_28px_1fr_30px] items-center gap-1.5 text-[11px] text-gray-700 px-0.5 ${
+      className={`grid grid-cols-[18px_36px_28px_28px_1fr_30px] items-center gap-1.5 text-[11px] text-gray-700 px-0.5 ${
         style.visible ? '' : 'opacity-50'
       }`}
     >
