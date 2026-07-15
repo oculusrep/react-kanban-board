@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   StarbucksTargetAreaStyles,
   PriorityKey,
+  StyleBucketKey,
   PriorityStyle,
 } from '../../../hooks/useStarbucksTargetAreaStyles';
 import {
@@ -13,7 +14,7 @@ interface Props {
   isVisible: boolean;
   onToggle: () => void;
   styles: StarbucksTargetAreaStyles;
-  updateStyle: (priority: PriorityKey, partial: Partial<PriorityStyle>) => void;
+  updateStyle: (bucket: StyleBucketKey, partial: Partial<PriorityStyle>) => void;
   resetToDefaults: () => void;
   opsAreaOptions: OpsAreaOption[];
   selectedOpsAreaIds: SelectedOpsAreaIds;
@@ -101,13 +102,20 @@ const StarbucksTargetAreaToggle: React.FC<Props> = ({
           </div>
 
           {([1, 2, 3] as PriorityKey[]).map(priority => (
-            <PriorityStyleRow
+            <BucketStyleRow
               key={priority}
-              priority={priority}
+              label={`P${priority}`}
+              title={`priority ${priority}`}
               style={styles[priority]}
               onChange={partial => updateStyle(priority, partial)}
             />
           ))}
+          <BucketStyleRow
+            label="OREP"
+            title="OREP-drawn areas"
+            style={styles.orep}
+            onChange={partial => updateStyle('orep', partial)}
+          />
 
           <div className="flex justify-end pt-0.5">
             <button
@@ -200,13 +208,14 @@ const OpsAreaFilter: React.FC<OpsAreaFilterProps> = ({
   );
 };
 
-interface PriorityStyleRowProps {
-  priority: PriorityKey;
+interface BucketStyleRowProps {
+  label: string;   // short label shown in the row, e.g. 'P1' or 'OREP'
+  title: string;   // human phrase used in tooltips/aria, e.g. 'priority 1' or 'OREP-drawn areas'
   style: PriorityStyle;
   onChange: (partial: Partial<PriorityStyle>) => void;
 }
 
-const PriorityStyleRow: React.FC<PriorityStyleRowProps> = ({ priority, style, onChange }) => {
+const BucketStyleRow: React.FC<BucketStyleRowProps> = ({ label, title, style, onChange }) => {
   return (
     <div
       className={`grid grid-cols-[18px_22px_28px_28px_1fr_30px] items-center gap-1.5 text-[11px] text-gray-700 px-0.5 ${
@@ -218,16 +227,16 @@ const PriorityStyleRow: React.FC<PriorityStyleRowProps> = ({ priority, style, on
         checked={style.visible}
         onChange={e => onChange({ visible: e.target.checked })}
         className="w-3.5 h-3.5 cursor-pointer mx-auto"
-        aria-label={`Show priority ${priority}`}
-        title={style.visible ? `Hide priority ${priority}` : `Show priority ${priority}`}
+        aria-label={`Show ${title}`}
+        title={style.visible ? `Hide ${title}` : `Show ${title}`}
       />
-      <span className="font-medium tabular-nums">P{priority}</span>
+      <span className="font-medium tabular-nums">{label}</span>
       <input
         type="color"
         value={style.strokeColor}
         onChange={e => onChange({ strokeColor: e.target.value })}
         className="w-7 h-5 rounded border border-gray-300 cursor-pointer p-0"
-        aria-label={`Priority ${priority} line color`}
+        aria-label={`${title} line color`}
         title={`Line color (currently ${style.strokeColor})`}
       />
       <input
@@ -235,7 +244,7 @@ const PriorityStyleRow: React.FC<PriorityStyleRowProps> = ({ priority, style, on
         value={style.fillColor}
         onChange={e => onChange({ fillColor: e.target.value })}
         className="w-7 h-5 rounded border border-gray-300 cursor-pointer p-0"
-        aria-label={`Priority ${priority} fill color`}
+        aria-label={`${title} fill color`}
         title={`Fill color (currently ${style.fillColor})`}
       />
       <input
@@ -246,7 +255,7 @@ const PriorityStyleRow: React.FC<PriorityStyleRowProps> = ({ priority, style, on
         value={style.fillOpacity}
         onChange={e => onChange({ fillOpacity: Number(e.target.value) })}
         className="w-full min-w-0 cursor-pointer"
-        aria-label={`Priority ${priority} fill opacity`}
+        aria-label={`${title} fill opacity`}
         title={`Fill opacity ${style.fillOpacity.toFixed(2)}`}
       />
       <span className="text-gray-500 tabular-nums text-right text-[10px]">

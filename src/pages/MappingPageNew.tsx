@@ -20,7 +20,9 @@ import MerchantContextMenu from '../components/mapping/MerchantContextMenu';
 import StarbucksLicensedStoreLayer, { type StarbucksLicensedStore } from '../components/mapping/layers/StarbucksLicensedStoreLayer';
 import StarbucksLicensedStoreContextMenu from '../components/mapping/StarbucksLicensedStoreContextMenu';
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
+import type { TargetAreaRow } from '../components/mapping/layers/StarbucksTargetAreaLayer';
 import StarbucksTargetAreaToggle from '../components/mapping/layers/StarbucksTargetAreaToggle';
+import StarbucksTargetAreaSlideout from '../components/mapping/slideouts/StarbucksTargetAreaSlideout';
 import { useStarbucksTargetAreaStyles } from '../hooks/useStarbucksTargetAreaStyles';
 import { useStarbucksOpsAreaFilter } from '../hooks/useStarbucksOpsAreaFilter';
 import TrafficCountLayer from '../components/mapping/TrafficCountLayer';
@@ -122,6 +124,14 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
   // Check if user can verify restaurant locations (permission-based)
   const canVerifyRestaurantLocations = hasPermission('can_verify_restaurant_locations');
+
+  // Starbucks Target Areas — edit/draw is gated by an explicit permission (set in the matrix).
+  const canEditSbuxTarget = hasPermission('can_edit_starbucks_target_area');
+  // Selected target-area feature → editable slideout (only opened for editors).
+  const [selectedTargetArea, setSelectedTargetArea] = useState<TargetAreaRow | null>(null);
+  // Active DrawingManager while the user draws a new OREP target-area polygon.
+  const sbuxDrawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  const [isDrawingSbuxTarget, setIsDrawingSbuxTarget] = useState(false);
 
   // Modal states
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
@@ -1269,6 +1279,59 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
   const handleContextMenuClose = () => {
     setContextMenu(prev => ({ ...prev, isVisible: false }));
+  };
+
+  // Start drawing a new OREP target-area polygon (from the "+ SBUX Target" context-menu item).
+  // On completion, prompt for a name and persist via the create_orep_target_area RPC; the layer
+  // re-renders the new polygon in the OREP (blue) style from the DB.
+  const handleAddSbuxTarget = () => {
+    if (!mapInstance || isDrawingSbuxTarget) return;
+    // Make sure the layer is on so the drawn polygon is visible after saving.
+    if (!layerState.starbucks_target_areas?.isVisible) toggleLayer('starbucks_target_areas');
+
+    const dm = new google.maps.drawing.DrawingManager({
+      drawingMode: google.maps.drawing.OverlayType.POLYGON,
+      drawingControl: false,
+      polygonOptions: {
+        strokeColor: '#0000FF',
+        fillColor: '#0000FF',
+        fillOpacity: 0.2,
+        strokeWeight: 2,
+        clickable: false,
+      },
+    });
+    dm.setMap(mapInstance);
+    sbuxDrawingManagerRef.current = dm;
+    setIsDrawingSbuxTarget(true);
+
+    google.maps.event.addListenerOnce(dm, 'polygoncomplete', async (poly: google.maps.Polygon) => {
+      // Tear down the drawing manager and the temporary overlay.
+      dm.setDrawingMode(null);
+      dm.setMap(null);
+      sbuxDrawingManagerRef.current = null;
+      setIsDrawingSbuxTarget(false);
+
+      const pts = poly.getPath().getArray().map(p => [p.lng(), p.lat()] as [number, number]);
+      poly.setMap(null); // remove temp overlay; the layer will render the saved polygon
+      if (pts.length < 3) return;
+
+      const name = window.prompt('Name for this OREP target area:');
+      if (!name || !name.trim()) return;
+
+      // GeoJSON polygons must be closed rings (first point repeated at the end).
+      const ring = [...pts, pts[0]];
+      try {
+        const { error } = await supabase.rpc('create_orep_target_area', {
+          p_name: name.trim(),
+          p_geojson: { type: 'Polygon', coordinates: [ring] },
+        });
+        if (error) throw error;
+        refreshLayer('starbucks_target_areas');
+      } catch (e) {
+        const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e);
+        alert(`Failed to save OREP target area: ${msg}`);
+      }
+    });
   };
 
   // Property context menu handlers
@@ -3362,6 +3425,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               isVisible={layerState.starbucks_target_areas?.isVisible || false}
               styles={starbucksTargetAreaStyles.styles}
               selectedOpsAreaIds={starbucksOpsAreaFilter.selectedIds}
+              onFeatureClick={canEditSbuxTarget ? setSelectedTargetArea : undefined}
             />
 
             {/* Closed Business Search Results Layer (live search) */}
@@ -3493,7 +3557,15 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setDemographicsPrefilled(null);
                 setDemographicsLocation(contextMenu.coordinates);
               }}
+              onAddSbuxTarget={canEditSbuxTarget ? handleAddSbuxTarget : undefined}
               onClose={handleContextMenuClose}
+            />
+
+            {/* Editable slideout for a selected Starbucks target area (editors only) */}
+            <StarbucksTargetAreaSlideout
+              isOpen={!!selectedTargetArea}
+              row={selectedTargetArea}
+              onClose={() => setSelectedTargetArea(null)}
             />
 
             <DemographicsAnalysisSlideout

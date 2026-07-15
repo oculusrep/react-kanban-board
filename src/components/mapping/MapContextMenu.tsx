@@ -8,6 +8,7 @@ interface MapContextMenuProps {
   onCreateProperty: () => void;
   onCreateMunicipalProject?: () => void;
   onShowDemographics?: () => void;
+  onAddSbuxTarget?: () => void;
   onClose: () => void;
 }
 
@@ -19,6 +20,7 @@ const MapContextMenu: React.FC<MapContextMenuProps> = ({
   onCreateProperty,
   onCreateMunicipalProject,
   onShowDemographics,
+  onAddSbuxTarget,
   onClose,
 }) => {
   if (!isVisible || !coordinates) return null;
@@ -92,6 +94,20 @@ const MapContextMenu: React.FC<MapContextMenuProps> = ({
             >
               <span>📊</span>
               <span>Demographics Here</span>
+            </button>
+          )}
+
+          {onAddSbuxTarget && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddSbuxTarget();
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center space-x-2"
+            >
+              <span>🎯</span>
+              <span>+ SBUX Target</span>
             </button>
           )}
 

@@ -81,3 +81,7 @@ menus as a coupled pair and update both.
   the popup wiring was retrofitted on 2026-07-01.
 - [FEATURE_MAP_LAYERS_REQUIREMENTS.md](FEATURE_MAP_LAYERS_REQUIREMENTS.md)
   — the older custom-layer requirements doc.
+- [FEATURE_2026_07_15_STARBUCKS_TARGET_AREA_OREP_EDITS.md](FEATURE_2026_07_15_STARBUCKS_TARGET_AREA_OREP_EDITS.md)
+  — worked example of making a system layer **editable**: per-feature edit
+  slideout, an editable style bucket for user-drawn features, a right-click
+  "draw a polygon" flow, and RLS write policies gated on a matrix permission.

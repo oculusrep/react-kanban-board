@@ -8,7 +8,14 @@ interface TargetArea {
   priority: number | null;
   model_yr1_sales: number | null;
   notes: string | null;
+  source: string | null;
+  orep_notes: string | null;
+  orep_model_yr1_sales: number | null;
 }
+
+// Effective Model Yr1 Sales — OREP override when set, else the raw Starbucks value.
+const effSales = (r: TargetArea): number | null =>
+  r.orep_model_yr1_sales ?? r.model_yr1_sales;
 
 type SortKey = 'name' | 'market_name' | 'priority' | 'model_yr1_sales';
 type SortDir = 'asc' | 'desc';
@@ -47,7 +54,7 @@ export default function StarbucksTargetAreasReport() {
       while (hasMore) {
         const { data, error: err } = await supabase
           .from('starbucks_target_area')
-          .select('id, name, market_name, priority, model_yr1_sales, notes')
+          .select('id, name, market_name, priority, model_yr1_sales, notes, source, orep_notes, orep_model_yr1_sales')
           .range(offset, offset + PAGE_SIZE - 1);
 
         if (err) throw err;
@@ -86,11 +93,11 @@ export default function StarbucksTargetAreasReport() {
     let out = rows.filter(r => {
       if (marketFilter && r.market_name !== marketFilter) return false;
       if (priorityFilter !== '' && String(r.priority ?? '') !== priorityFilter) return false;
-      if (min != null && (r.model_yr1_sales ?? -Infinity) < min) return false;
-      if (max != null && (r.model_yr1_sales ?? Infinity) > max) return false;
-      if (notesOnly && !(r.notes && r.notes.trim())) return false;
+      if (min != null && (effSales(r) ?? -Infinity) < min) return false;
+      if (max != null && (effSales(r) ?? Infinity) > max) return false;
+      if (notesOnly && !((r.notes && r.notes.trim()) || (r.orep_notes && r.orep_notes.trim()))) return false;
       if (term) {
-        const hay = `${r.name ?? ''} ${r.market_name ?? ''} ${r.notes ?? ''}`.toLowerCase();
+        const hay = `${r.name ?? ''} ${r.market_name ?? ''} ${r.notes ?? ''} ${r.orep_notes ?? ''}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
@@ -98,8 +105,9 @@ export default function StarbucksTargetAreasReport() {
 
     out = [...out].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
-      const av = a[sortKey];
-      const bv = b[sortKey];
+      // Sort by the effective (override-aware) sales when sorting on that column.
+      const av = sortKey === 'model_yr1_sales' ? effSales(a) : a[sortKey];
+      const bv = sortKey === 'model_yr1_sales' ? effSales(b) : b[sortKey];
 
       // Push nulls to the end regardless of direction
       if (av == null && bv == null) return 0;
@@ -116,7 +124,7 @@ export default function StarbucksTargetAreasReport() {
   }, [rows, marketFilter, priorityFilter, minSales, maxSales, notesOnly, search, sortKey, sortDir]);
 
   const totalSales = useMemo(() => {
-    return filtered.reduce((sum, r) => sum + (r.model_yr1_sales || 0), 0);
+    return filtered.reduce((sum, r) => sum + (effSales(r) || 0), 0);
   }, [filtered]);
 
   const toggleSort = (key: SortKey) => {
@@ -330,10 +338,15 @@ export default function StarbucksTargetAreasReport() {
                   <td className="px-4 py-3 text-sm text-gray-900 font-medium">{r.name || <span className="text-gray-400">-</span>}</td>
                   <td className="px-4 py-3 text-sm">{priorityBadge(r.priority)}</td>
                   <td className="px-4 py-3 text-sm text-right font-medium" style={{ color: '#4A6B94' }}>
-                    {formatCurrency(r.model_yr1_sales)}
+                    {formatCurrency(effSales(r))}
+                    {r.orep_model_yr1_sales != null && (
+                      <span className="ml-1 text-[10px] font-semibold" style={{ color: '#0000FF' }} title="OREP override">OREP</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600 max-w-md">
-                    {r.notes ? r.notes : <span className="text-gray-300">—</span>}
+                    {r.orep_notes ? (
+                      <span><span className="text-[10px] font-semibold mr-1" style={{ color: '#0000FF' }}>OREP:</span>{r.orep_notes}</span>
+                    ) : r.notes ? r.notes : <span className="text-gray-300">—</span>}
                   </td>
                 </tr>
               ))}

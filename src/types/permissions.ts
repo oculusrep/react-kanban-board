@@ -117,6 +117,7 @@ export interface RolePermissions {
   // Starbucks Layer (confidential — per-user override only, never role default)
   can_view_starbucks_layer?: boolean;
   can_view_site_analysis?: boolean;
+  can_edit_starbucks_target_area?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -684,6 +685,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_view_site_analysis',
     label: 'Starbucks Site Analysis',
     description: 'Use the Site Analysis report (analogous-store comparison for a proposed site)',
+    category: 'starbucks_layer',
+    defaultValue: false,
+  },
+  {
+    key: 'can_edit_starbucks_target_area',
+    label: 'Add / Edit Starbucks Target Areas',
+    description: 'Add OREP-drawn target-area polygons and edit OREP fields (OREP Notes, Model Yr1 Sales override) on the Starbucks GA Target Areas layer',
     category: 'starbucks_layer',
     defaultValue: false,
   },

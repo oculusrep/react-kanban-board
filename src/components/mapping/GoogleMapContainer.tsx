@@ -656,7 +656,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         const loader = new Loader({
           apiKey: apiKey,
           version: 'weekly',
-          libraries: ['places', 'geometry']
+          libraries: ['places', 'geometry', 'drawing']
         });
 
         // Load Google Maps

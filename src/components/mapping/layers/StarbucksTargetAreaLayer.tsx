@@ -5,13 +5,14 @@ import {
   StarbucksTargetAreaStyles,
   DEFAULT_STYLES,
   PriorityKey,
+  StyleBucketKey,
 } from '../../../hooks/useStarbucksTargetAreaStyles';
 
 // One row returned by get_starbucks_target_areas_in_bbox.
 // geom_geojson is GeoJSON Polygon — first ring is the outer boundary; current dataset has no holes.
-interface TargetAreaRow {
+export interface TargetAreaRow {
   id: string;
-  target_area_id: string;
+  target_area_id: string | null;   // null for OREP-drawn polygons (no Starbucks GUID)
   name: string;
   store_type: string | null;
   priority: number | null;
@@ -19,7 +20,10 @@ interface TargetAreaRow {
   notes: string | null;
   market_name: string | null;
   sdm_mdm: string | null;
-  model_yr1_sales: number | null;
+  model_yr1_sales: number | null;        // raw Starbucks value
+  source: 'starbucks' | 'orep';
+  orep_notes: string | null;             // OREP annotation
+  orep_model_yr1_sales: number | null;   // OREP override for model_yr1_sales
   planned_ops_area_id: number | null;
   planned_ops_area_name: string | null;
   geom_geojson: { type: 'Polygon'; coordinates: number[][][] };
@@ -36,27 +40,42 @@ export interface StarbucksTargetAreaLayerProps {
   /**
    * Optional ops-area filter. null = show all; a Set (possibly empty) = only show these ids.
    * Rows with a null planned_ops_area_id are only shown when the filter itself is null.
+   * OREP-drawn polygons (source='orep') bypass this filter entirely — they aren't part of the
+   * Starbucks ops-area hierarchy and should always show when their bucket is visible.
    */
   selectedOpsAreaIds?: Set<number> | null;
+  /**
+   * When provided (i.e. the user can edit), clicking a polygon calls this instead of opening the
+   * read-only InfoWindow — the parent opens the editable slideout. When omitted, click shows the
+   * InfoWindow.
+   */
+  onFeatureClick?: (row: TargetAreaRow) => void;
 }
 
 // Keep alongside each polygon so style-update, hover effects, and the ops-area filter
 // can re-style / attach / detach without rebuilding the polygon set.
 interface PolygonRef {
   polygon: google.maps.Polygon;
-  priority: PriorityKey | null; // null when the row has no/invalid priority
+  bucket: StyleBucketKey;   // 1 | 2 | 3 (Starbucks priority) or 'orep' (OREP-drawn)
   opsAreaId: number | null;
+  isOrep: boolean;
 }
 
 function priorityKeyOf(p: number | null): PriorityKey | null {
   return p === 1 || p === 2 || p === 3 ? (p as PriorityKey) : null;
 }
 
-function styleFor(priority: PriorityKey | null, styles: StarbucksTargetAreaStyles): {
+// Which style bucket a row belongs to: OREP-drawn rows use the 'orep' bucket regardless of priority;
+// Starbucks rows use their priority bucket (falling back to 1 for the rare null/invalid priority).
+function bucketOf(row: TargetAreaRow): StyleBucketKey {
+  if (row.source === 'orep') return 'orep';
+  return priorityKeyOf(row.priority) ?? 1;
+}
+
+function styleFor(bucket: StyleBucketKey, styles: StarbucksTargetAreaStyles): {
   strokeColor: string; fillColor: string; fillOpacity: number; strokeWeight: number;
 } {
-  if (priority == null) return styles[1]; // Priority-1 styling as fallback (rare; current dataset always has priority)
-  return styles[priority];
+  return styles[bucket];
 }
 
 function formatUSD(n: number | null): string {
@@ -78,11 +97,18 @@ function escapeHtml(s: string | null | undefined): string {
 }
 
 function infoWindowHtml(row: TargetAreaRow): string {
-  const sales = formatUSD(row.model_yr1_sales);
+  // Display the OREP override when set, else the raw Starbucks value.
+  const effectiveSales = row.orep_model_yr1_sales ?? row.model_yr1_sales;
+  const sales = formatUSD(effectiveSales);
+  const isOverride = row.orep_model_yr1_sales != null;
+  const orepBadge =
+    row.source === 'orep'
+      ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:8px;background:#0000FF;color:#fff;font-size:9px;font-weight:600;vertical-align:middle;">OREP</span>`
+      : '';
   return `
     <div style="font-family:-apple-system,system-ui,sans-serif;min-width:240px;max-width:320px;">
       <div style="font-weight:600;font-size:13px;color:#002147;margin-bottom:6px;">
-        ${escapeHtml(row.name)}
+        ${escapeHtml(row.name)}${orepBadge}
       </div>
       <div style="font-size:11px;color:#4A6B94;line-height:1.6;">
         <div><strong>Priority:</strong> ${row.priority ?? '—'}</div>
@@ -90,10 +116,15 @@ function infoWindowHtml(row: TargetAreaRow): string {
         <div><strong>RE Availability:</strong> ${escapeHtml(row.re_availability)}</div>
         <div><strong>Market:</strong> ${escapeHtml(row.market_name)}</div>
         <div><strong>SDM:</strong> ${escapeHtml(row.sdm_mdm)}</div>
-        <div><strong>Model Yr1 Sales:</strong> ${sales}</div>
+        <div><strong>Model Yr1 Sales:</strong> ${sales}${isOverride ? ' <span style="font-size:9px;color:#4A6B94;">(OREP)</span>' : ''}</div>
         ${
           row.notes
             ? `<div style="margin-top:6px;font-style:italic;color:#4A6B94;">${escapeHtml(row.notes)}</div>`
+            : ''
+        }
+        ${
+          row.orep_notes
+            ? `<div style="margin-top:6px;color:#002147;"><strong>OREP Notes:</strong> ${escapeHtml(row.orep_notes)}</div>`
             : ''
         }
       </div>
@@ -106,6 +137,7 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
   isVisible,
   styles,
   selectedOpsAreaIds = null,
+  onFeatureClick,
 }) => {
   const effectiveStyles: StarbucksTargetAreaStyles = styles ?? DEFAULT_STYLES;
 
@@ -202,8 +234,9 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
       .map(row => {
         const ring = row.geom_geojson.coordinates[0];
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
-        const pkey = priorityKeyOf(row.priority);
-        const style = styleFor(pkey, effectiveStyles);
+        const bucket = bucketOf(row);
+        const isOrep = row.source === 'orep';
+        const style = styleFor(bucket, effectiveStyles);
 
         const polygon = new google.maps.Polygon({
           paths: path,
@@ -213,37 +246,43 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
           fillColor: style.fillColor,
           fillOpacity: style.fillOpacity,
           clickable: true,
-          zIndex: pkey === 1 ? 30 : pkey === 2 ? 20 : 10,
+          // OREP polygons on top, then P1 > P2 > P3.
+          zIndex: isOrep ? 40 : bucket === 1 ? 30 : bucket === 2 ? 20 : 10,
         });
-        const bucketVisible = pkey != null ? effectiveStyles[pkey].visible : true;
+        const bucketVisible = effectiveStyles[bucket].visible;
         const opsAreaVisible =
-          selectedOpsAreaIds === null
+          isOrep || selectedOpsAreaIds === null
             ? true
             : row.planned_ops_area_id != null && selectedOpsAreaIds.has(row.planned_ops_area_id);
         polygon.setMap(isVisible && bucketVisible && opsAreaVisible ? map : null);
 
         polygon.addListener('mouseover', () => {
-          const current = styleFor(pkey, stylesRef.current);
+          const current = styleFor(bucket, stylesRef.current);
           polygon.setOptions({
             strokeWeight: current.strokeWeight + 1,
             fillOpacity: Math.min(1, current.fillOpacity + 0.15),
           });
         });
         polygon.addListener('mouseout', () => {
-          const current = styleFor(pkey, stylesRef.current);
+          const current = styleFor(bucket, stylesRef.current);
           polygon.setOptions({
             strokeWeight: current.strokeWeight,
             fillOpacity: current.fillOpacity,
           });
         });
         polygon.addListener('click', (event: google.maps.PolyMouseEvent) => {
+          // Editors get the editable slideout; everyone else gets the read-only InfoWindow.
+          if (onFeatureClick) {
+            onFeatureClick(row);
+            return;
+          }
           if (!event.latLng) return;
           iw.setContent(infoWindowHtml(row));
           iw.setPosition(event.latLng);
           iw.open({ map });
         });
 
-        return { polygon, priority: pkey, opsAreaId: row.planned_ops_area_id };
+        return { polygon, bucket, opsAreaId: row.planned_ops_area_id, isOrep };
       });
 
     polygonsRef.current = built;
@@ -254,8 +293,8 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
 
   // Live preview: when styles change, update existing polygons in place (no rebuild).
   useEffect(() => {
-    polygonsRef.current.forEach(({ polygon, priority }) => {
-      const style = styleFor(priority, effectiveStyles);
+    polygonsRef.current.forEach(({ polygon, bucket }) => {
+      const style = styleFor(bucket, effectiveStyles);
       polygon.setOptions({
         strokeColor: style.strokeColor,
         fillColor: style.fillColor,
@@ -269,10 +308,10 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
   // Runs on isVisible flips, per-bucket flips from the style editor, and ops-area filter changes.
   useEffect(() => {
     if (!map) return;
-    polygonsRef.current.forEach(({ polygon, priority, opsAreaId }) => {
-      const bucketVisible = priority != null ? effectiveStyles[priority].visible : true;
+    polygonsRef.current.forEach(({ polygon, bucket, opsAreaId, isOrep }) => {
+      const bucketVisible = effectiveStyles[bucket].visible;
       const opsAreaVisible =
-        selectedOpsAreaIds === null
+        isOrep || selectedOpsAreaIds === null
           ? true
           : opsAreaId != null && selectedOpsAreaIds.has(opsAreaId);
       polygon.setMap(isVisible && bucketVisible && opsAreaVisible ? map : null);
