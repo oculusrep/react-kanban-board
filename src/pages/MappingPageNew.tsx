@@ -129,9 +129,15 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const canEditSbuxTarget = hasPermission('can_edit_starbucks_target_area');
   // Selected target-area feature → editable slideout (only opened for editors).
   const [selectedTargetArea, setSelectedTargetArea] = useState<TargetAreaRow | null>(null);
-  // Active DrawingManager while the user draws a new OREP target-area polygon.
-  const sbuxDrawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  // Manual OREP polygon drawing (google.maps.drawing.DrawingManager was removed in Maps JS 3.65,
+  // so we collect vertices from map clicks and render an in-progress google.maps.Polygon ourselves).
   const [isDrawingSbuxTarget, setIsDrawingSbuxTarget] = useState(false);
+  const [sbuxDrawCount, setSbuxDrawCount] = useState(0);
+  const sbuxDrawPointsRef = useRef<google.maps.LatLng[]>([]);
+  const sbuxDrawPolygonRef = useRef<google.maps.Polygon | null>(null);
+  const sbuxDrawClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  // Read inside the map's shared click listener (stale-closure-safe) to skip pin-drop while drawing.
+  const sbuxDrawingActiveRef = useRef(false);
 
   // Modal states
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
@@ -884,6 +890,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       // "new project" modal because of stale createMode in stacked listeners.
       if (drawingMunicipalProjectIdRef.current) return;
 
+      // Likewise, while drawing an OREP target-area polygon, clicks are vertices — don't drop pins.
+      if (sbuxDrawingActiveRef.current) return;
+
       // Read createMode from the ref so stacked stale listeners (one per render) all see
       // the current value rather than whatever was set when their closure was captured.
       const currentCreateMode = createModeRef.current;
@@ -1281,87 +1290,96 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     setContextMenu(prev => ({ ...prev, isVisible: false }));
   };
 
-  // Start drawing a new OREP target-area polygon (from the "+ SBUX Target" context-menu item).
-  // On completion, prompt for a name and persist via the create_orep_target_area RPC; the layer
-  // re-renders the new polygon in the OREP (blue) style from the DB.
-  const handleAddSbuxTarget = async () => {
-    if (!mapInstance || isDrawingSbuxTarget) return;
-    // Make sure the layer is on so the drawn polygon is visible after saving.
-    if (!layerState.starbucks_target_areas?.isVisible) toggleLayer('starbucks_target_areas');
-
-    // The drawing library may not have been loaded by the initial Loader (the app has multiple
-    // Loaders; one without 'drawing' can win). Load it on demand — same pattern as
-    // DemographicPolygonOverlay / DrawingToolbarLegacy — before touching google.maps.drawing.
-    if (!google.maps.drawing?.DrawingManager) {
-      try {
-        // @ts-expect-error - importLibrary is the v3.55+ dynamic loader.
-        await google.maps.importLibrary('drawing');
-      } catch (e) {
-        console.error('Failed to load Google Maps drawing library:', e);
-        alert('Could not load the drawing tools. Please refresh and try again.');
-        return;
-      }
+  // Redraw the in-progress OREP polygon from the collected vertices.
+  const renderSbuxDrawPolygon = () => {
+    const pts = sbuxDrawPointsRef.current;
+    if (sbuxDrawPolygonRef.current) {
+      sbuxDrawPolygonRef.current.setPath(pts);
     }
-
-    // Bind the map in the constructor (atomically with drawingMode) — same as the working
-    // DemographicPolygonOverlay. Attaching with setMap() after construction can leave polygon
-    // mode inactive in some Maps versions.
-    const dm = new google.maps.drawing.DrawingManager({
-      drawingMode: google.maps.drawing.OverlayType.POLYGON,
-      drawingControl: false,
-      polygonOptions: {
-        strokeColor: '#0000FF',
-        fillColor: '#0000FF',
-        fillOpacity: 0.2,
-        strokeWeight: 2,
-        clickable: false,
-      },
-      map: mapInstance,
-    });
-    // Belt-and-suspenders: make sure polygon mode is active.
-    dm.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
-    sbuxDrawingManagerRef.current = dm;
-    setIsDrawingSbuxTarget(true);
-
-    google.maps.event.addListenerOnce(dm, 'polygoncomplete', async (poly: google.maps.Polygon) => {
-      // Tear down the drawing manager and the temporary overlay.
-      dm.setDrawingMode(null);
-      dm.setMap(null);
-      sbuxDrawingManagerRef.current = null;
-      setIsDrawingSbuxTarget(false);
-
-      const pts = poly.getPath().getArray().map(p => [p.lng(), p.lat()] as [number, number]);
-      poly.setMap(null); // remove temp overlay; the layer will render the saved polygon
-      if (pts.length < 3) return;
-
-      const name = window.prompt('Name for this OREP target area:');
-      if (!name || !name.trim()) return;
-
-      // GeoJSON polygons must be closed rings (first point repeated at the end).
-      const ring = [...pts, pts[0]];
-      try {
-        const { error } = await supabase.rpc('create_orep_target_area', {
-          p_name: name.trim(),
-          p_geojson: { type: 'Polygon', coordinates: [ring] },
-        });
-        if (error) throw error;
-        refreshLayer('starbucks_target_areas');
-      } catch (e) {
-        const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e);
-        alert(`Failed to save OREP target area: ${msg}`);
-      }
-    });
+    setSbuxDrawCount(pts.length);
   };
 
-  // Cancel an in-progress OREP polygon draw (Escape key or the banner's Cancel button).
-  const cancelSbuxDraw = () => {
-    const dm = sbuxDrawingManagerRef.current;
-    if (dm) {
-      dm.setDrawingMode(null);
-      dm.setMap(null);
-      sbuxDrawingManagerRef.current = null;
+  // Tear down the in-progress draw (used by cancel, Escape, and after finishing).
+  const cleanupSbuxDraw = () => {
+    if (sbuxDrawClickListenerRef.current) {
+      google.maps.event.removeListener(sbuxDrawClickListenerRef.current);
+      sbuxDrawClickListenerRef.current = null;
     }
+    if (sbuxDrawPolygonRef.current) {
+      sbuxDrawPolygonRef.current.setMap(null);
+      sbuxDrawPolygonRef.current = null;
+    }
+    sbuxDrawPointsRef.current = [];
+    sbuxDrawingActiveRef.current = false;
+    setSbuxDrawCount(0);
     setIsDrawingSbuxTarget(false);
+  };
+
+  const cancelSbuxDraw = () => cleanupSbuxDraw();
+
+  const undoSbuxPoint = () => {
+    sbuxDrawPointsRef.current = sbuxDrawPointsRef.current.slice(0, -1);
+    renderSbuxDrawPolygon();
+  };
+
+  // Start drawing a new OREP target-area polygon (from the "+ SBUX Target" context-menu item).
+  // google.maps.drawing.DrawingManager was removed in Maps JS 3.65, so we collect vertices from map
+  // clicks and render an in-progress polygon ourselves; "Finish" (>=3 pts) saves via the RPC.
+  const handleAddSbuxTarget = () => {
+    if (!mapInstance || isDrawingSbuxTarget) return;
+    // Make sure the layer is on so the saved polygon is visible afterward.
+    if (!layerState.starbucks_target_areas?.isVisible) toggleLayer('starbucks_target_areas');
+
+    sbuxDrawPointsRef.current = [];
+    sbuxDrawPolygonRef.current = new google.maps.Polygon({
+      paths: [],
+      strokeColor: '#0000FF',
+      strokeOpacity: 0.9,
+      strokeWeight: 2,
+      fillColor: '#0000FF',
+      fillOpacity: 0.2,
+      clickable: false,
+      zIndex: 50,
+      map: mapInstance,
+    });
+
+    sbuxDrawClickListenerRef.current = mapInstance.addListener('click', (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+      sbuxDrawPointsRef.current = [...sbuxDrawPointsRef.current, e.latLng];
+      renderSbuxDrawPolygon();
+    });
+
+    sbuxDrawingActiveRef.current = true;
+    setSbuxDrawCount(0);
+    setIsDrawingSbuxTarget(true);
+  };
+
+  // Finish the in-progress polygon: validate, prompt for a name, and persist via the RPC.
+  const finishSbuxDraw = async () => {
+    const pts = sbuxDrawPointsRef.current;
+    if (pts.length < 3) {
+      alert('Add at least 3 points to form a target area.');
+      return;
+    }
+    const ringPts = pts.map(p => [p.lng(), p.lat()] as [number, number]);
+    cleanupSbuxDraw();
+
+    const name = window.prompt('Name for this OREP target area:');
+    if (!name || !name.trim()) return;
+
+    // GeoJSON polygons must be closed rings (first point repeated at the end).
+    const ring = [...ringPts, ringPts[0]];
+    try {
+      const { error } = await supabase.rpc('create_orep_target_area', {
+        p_name: name.trim(),
+        p_geojson: { type: 'Polygon', coordinates: [ring] },
+      });
+      if (error) throw error;
+      refreshLayer('starbucks_target_areas');
+    } catch (e) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e);
+      alert(`Failed to save OREP target area: ${msg}`);
+    }
   };
 
   useEffect(() => {
@@ -3613,7 +3631,21 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 className="fixed top-24 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 px-4 py-2 rounded-lg shadow-lg text-white text-sm"
                 style={{ backgroundColor: '#002147' }}
               >
-                <span>🎯 Click the map to add points; click the first point (or double-click) to finish.</span>
+                <span>🎯 Click the map to add points ({sbuxDrawCount}). Add at least 3, then Finish.</span>
+                <button
+                  onClick={undoSbuxPoint}
+                  disabled={sbuxDrawCount === 0}
+                  className="underline font-medium disabled:opacity-40"
+                >
+                  Undo
+                </button>
+                <button
+                  onClick={finishSbuxDraw}
+                  disabled={sbuxDrawCount < 3}
+                  className="px-2 py-0.5 rounded bg-white text-[#002147] font-semibold disabled:opacity-40"
+                >
+                  Finish
+                </button>
                 <button onClick={cancelSbuxDraw} className="underline font-medium">
                   Cancel
                 </button>
