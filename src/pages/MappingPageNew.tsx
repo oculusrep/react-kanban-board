@@ -1292,7 +1292,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     // The drawing library may not have been loaded by the initial Loader (the app has multiple
     // Loaders; one without 'drawing' can win). Load it on demand — same pattern as
     // DemographicPolygonOverlay / DrawingToolbarLegacy — before touching google.maps.drawing.
-    if (!google.maps.drawing) {
+    if (!google.maps.drawing?.DrawingManager) {
       try {
         // @ts-expect-error - importLibrary is the v3.55+ dynamic loader.
         await google.maps.importLibrary('drawing');
@@ -1303,6 +1303,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       }
     }
 
+    // Bind the map in the constructor (atomically with drawingMode) — same as the working
+    // DemographicPolygonOverlay. Attaching with setMap() after construction can leave polygon
+    // mode inactive in some Maps versions.
     const dm = new google.maps.drawing.DrawingManager({
       drawingMode: google.maps.drawing.OverlayType.POLYGON,
       drawingControl: false,
@@ -1313,8 +1316,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         strokeWeight: 2,
         clickable: false,
       },
+      map: mapInstance,
     });
-    dm.setMap(mapInstance);
+    // Belt-and-suspenders: make sure polygon mode is active.
+    dm.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
     sbuxDrawingManagerRef.current = dm;
     setIsDrawingSbuxTarget(true);
 
@@ -1347,6 +1352,26 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       }
     });
   };
+
+  // Cancel an in-progress OREP polygon draw (Escape key or the banner's Cancel button).
+  const cancelSbuxDraw = () => {
+    const dm = sbuxDrawingManagerRef.current;
+    if (dm) {
+      dm.setDrawingMode(null);
+      dm.setMap(null);
+      sbuxDrawingManagerRef.current = null;
+    }
+    setIsDrawingSbuxTarget(false);
+  };
+
+  useEffect(() => {
+    if (!isDrawingSbuxTarget) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cancelSbuxDraw();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isDrawingSbuxTarget]);
 
   // Property context menu handlers
   const handlePropertyRightClick = (property: any, x: number, y: number) => {
@@ -3581,6 +3606,19 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               row={selectedTargetArea}
               onClose={() => setSelectedTargetArea(null)}
             />
+
+            {/* Draw-mode banner while adding an OREP target area */}
+            {isDrawingSbuxTarget && (
+              <div
+                className="fixed top-24 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 px-4 py-2 rounded-lg shadow-lg text-white text-sm"
+                style={{ backgroundColor: '#002147' }}
+              >
+                <span>🎯 Click the map to add points; click the first point (or double-click) to finish.</span>
+                <button onClick={cancelSbuxDraw} className="underline font-medium">
+                  Cancel
+                </button>
+              </div>
+            )}
 
             <DemographicsAnalysisSlideout
               isOpen={!!demographicsLocation}
