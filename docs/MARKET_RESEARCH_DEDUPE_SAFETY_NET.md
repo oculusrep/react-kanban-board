@@ -95,6 +95,40 @@ merged. No changes to the submit or approve write paths beyond the
 `matched_existing_id` computation, so the new RPC and the permit_url probe can be
 applied independently.
 
+## Production apply & rollback
+
+Both migrations are **additive and non-destructive** — no `ALTER TABLE`, no
+`UPDATE`/`DELETE`, no dropped columns, no constraint changes, no touch to the
+commit path (`approve_research_staging_rows`). Migration A is a `CREATE OR
+REPLACE` of `submit_research_report` whose ONLY delta vs the currently-deployed
+20260714140000 definition is wrapping `matched_existing_id` in
+`COALESCE(permit_url_probe, name_address_probe)` — verified line-for-line
+identical everywhere else (all guards, casts, INSERT column list preserved).
+Migration B is a brand-new function with no caller until the UI ships, so it is
+inert on the DB until then. Both use `CREATE OR REPLACE`, so re-running is safe.
+
+### Rollback
+
+**Migration B** (`find_nearby_municipal_projects`) — drop it:
+```sql
+DROP FUNCTION IF EXISTS public.find_nearby_municipal_projects(jsonb, numeric);
+```
+
+**Migration A** (`submit_research_report` permit_url match) — restore the prior
+definition by re-applying the *exact* pre-change body, which is the committed
+file `supabase/migrations/20260714140000_submit_research_report_idempotent.sql`.
+It's a `CREATE OR REPLACE` with the same signature, so re-running it reverts
+`matched_existing_id` to the name/address-only probe. No data is touched — rows
+already staged keep whatever `matched_existing_id` they were assigned; only the
+computation for *future* submits changes back.
+```sql
+-- Paste the full body of 20260714140000_submit_research_report_idempotent.sql,
+-- or dump it from the repo:
+--   git show HEAD:supabase/migrations/20260714140000_submit_research_report_idempotent.sql
+```
+Neither rollback affects `municipal_project`, `municipal_project_staging`, or any
+existing row.
+
 ## Not in this branch
 
 Run depth tiers / lookback windowing + per-municipality "researched back to"
