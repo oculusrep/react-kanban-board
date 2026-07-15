@@ -1284,10 +1284,24 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Start drawing a new OREP target-area polygon (from the "+ SBUX Target" context-menu item).
   // On completion, prompt for a name and persist via the create_orep_target_area RPC; the layer
   // re-renders the new polygon in the OREP (blue) style from the DB.
-  const handleAddSbuxTarget = () => {
+  const handleAddSbuxTarget = async () => {
     if (!mapInstance || isDrawingSbuxTarget) return;
     // Make sure the layer is on so the drawn polygon is visible after saving.
     if (!layerState.starbucks_target_areas?.isVisible) toggleLayer('starbucks_target_areas');
+
+    // The drawing library may not have been loaded by the initial Loader (the app has multiple
+    // Loaders; one without 'drawing' can win). Load it on demand — same pattern as
+    // DemographicPolygonOverlay / DrawingToolbarLegacy — before touching google.maps.drawing.
+    if (!google.maps.drawing) {
+      try {
+        // @ts-expect-error - importLibrary is the v3.55+ dynamic loader.
+        await google.maps.importLibrary('drawing');
+      } catch (e) {
+        console.error('Failed to load Google Maps drawing library:', e);
+        alert('Could not load the drawing tools. Please refresh and try again.');
+        return;
+      }
+    }
 
     const dm = new google.maps.drawing.DrawingManager({
       drawingMode: google.maps.drawing.OverlayType.POLYGON,
