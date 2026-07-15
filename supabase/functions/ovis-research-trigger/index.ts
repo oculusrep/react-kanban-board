@@ -43,6 +43,10 @@ interface BaseRequest {
 interface CommitRequest extends BaseRequest {
   mode?: 'commit';
   municipality_ids: string[];
+  // Agent protocol for this run. 'deep' = full enumeration + coverage report;
+  // anything else (incl. omitted) resolves to 'quick' — a sampled sniff test —
+  // so a missing/typo'd value can never accidentally fire an expensive deep run.
+  research_mode?: string;
   // Optional explicit search-window overrides (YYYY-MM-DD, Eastern). When a
   // bound is omitted the edge function fills the Quick-tier default. A future
   // tier picker (Quick/Deep/Custom) supplies these; today they default.
@@ -109,6 +113,7 @@ function buildOpenClawMessage(opts: {
   lng: number;
   radiusMiles: number;
   triggeredByUserId: string;
+  researchMode: string;
   window: SearchWindow;
   municipalities: Array<{
     boundary_municipality_id: string;
@@ -133,6 +138,10 @@ function buildOpenClawMessage(opts: {
     `site_lng: ${opts.lng}`,
     `radius_miles: ${opts.radiusMiles}`,
     `triggered_by_user_id: ${opts.triggeredByUserId}`,
+    // Run protocol: quick = sampled sniff test (no completeness claim);
+    // deep = full enumeration + mandatory coverage report. The agent runs a
+    // materially different protocol per value.
+    `research_mode: ${opts.researchMode}`,
     // Locked windowing contract — agent reads these four unconditionally and
     // searches each record type only within its stated bounds (no extra cap).
     // News/context scopes to pz_window (outer envelope). YYYY-MM-DD, Eastern,
@@ -336,6 +345,10 @@ serve(async (req) => {
   // Quick tier unless the caller overrode bounds.
   const win = resolveSearchWindow(commitBody);
 
+  // Resolve the run protocol. Only an explicit 'deep' opts into the expensive
+  // full-enumeration run; everything else (incl. omitted/typo) is 'quick'.
+  const researchMode = commitBody.research_mode === 'deep' ? 'deep' : 'quick';
+
   // Create the run + checklist server-side. After this, OpenClaw cannot
   // expand scope — the only valid muni IDs are on the checklist row set.
   const { data: runId, error: createErr } = await service.rpc(
@@ -350,6 +363,7 @@ serve(async (req) => {
       p_pz_window_end: win.pz_window_end,
       p_permit_window_start: win.permit_window_start,
       p_permit_window_end: win.permit_window_end,
+      p_research_mode: researchMode,
     },
   );
   if (createErr) return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
@@ -389,6 +403,7 @@ serve(async (req) => {
     lng: Number(lng),
     radiusMiles: radius,
     triggeredByUserId: userId,
+    researchMode,
     window: win,
     municipalities: selectedMunis,
   });
