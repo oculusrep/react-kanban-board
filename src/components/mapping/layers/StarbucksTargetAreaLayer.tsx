@@ -180,10 +180,9 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
           p_east: ne.lng(),
         });
         if (error) throw error;
-        console.log('🎯 SBUX target areas: fetched', (data ?? []).length, 'rows for bbox', boundsKey);
         setRows((data ?? []) as TargetAreaRow[]);
       } catch (err) {
-        console.error('🎯 StarbucksTargetAreaLayer fetch error:', err);
+        console.error('StarbucksTargetAreaLayer fetch error:', err);
       } finally {
         isFetchingRef.current = false;
       }
@@ -287,13 +286,6 @@ const StarbucksTargetAreaLayer: React.FC<StarbucksTargetAreaLayerProps> = ({
       });
 
     polygonsRef.current = built;
-    const shown = built.filter(b => b.polygon.getMap()).length;
-    console.log(
-      `🎯 SBUX target areas: built ${built.length} polygons, ${shown} shown`,
-      `| isVisible=${isVisible}`,
-      `| opsFilter=${selectedOpsAreaIds === null ? 'ALL (null)' : `Set(${selectedOpsAreaIds.size})`}`,
-      `| bucketsVisible=`, { p1: effectiveStyles[1].visible, p2: effectiveStyles[2].visible, p3: effectiveStyles[3].visible, orep: effectiveStyles.orep.visible }
-    );
     // We intentionally exclude `effectiveStyles` from deps — the dedicated style-update
     // effect below handles live re-styling without rebuilding the polygon set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
