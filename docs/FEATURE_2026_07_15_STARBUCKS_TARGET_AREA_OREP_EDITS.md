@@ -59,12 +59,42 @@ New columns on `starbucks_target_area`:
   otherwise the read-only InfoWindow is shown (now also displaying OREP Notes + the effective sales).
 - `StarbucksTargetAreaSlideout.tsx` (new) — edits OREP Notes + Model Yr1 Sales override (+ name and
   delete for OREP-drawn rows). Saves via `supabase.update`, then `refreshLayer('starbucks_target_areas')`.
+  The Model Yr1 Sales override is a **currency input**: it keeps only digits, reformats with thousands
+  separators as you type, and shows a live `= $X` preview so the typed and saved values can't diverge
+  (a plain text field previously dropped part of a formatted entry, saving `$1,600,000` as `1600`).
 - `MappingPageNew.tsx` — permission (`can_edit_starbucks_target_area`) gates the slideout wiring and the
-  "+ SBUX Target" context-menu item; the draw handler runs a `DrawingManager` polygon draw and calls
-  `create_orep_target_area`.
-- `GoogleMapContainer.tsx` — added `'drawing'` to the Maps loader libraries.
+  "+ SBUX Target" context-menu item. The draw handler builds the polygon **manually** (see below) and
+  calls `create_orep_target_area`.
 - `StarbucksTargetAreasReport.tsx` — Model Yr1 Sales column/total/sort/filter now use the effective
   (override-aware) value; OREP Notes surfaced in the notes column and search.
+
+## Drawing without DrawingManager (Maps JS 3.65)
+
+Google **removed `google.maps.drawing.DrawingManager` in Maps JavaScript API v3.65** (which the
+`weekly` channel now serves). Any `new google.maps.drawing.DrawingManager(...)` throws
+*"DrawingManager functionality ... is no longer available"*. So OREP polygons are drawn **manually**:
+
+- `MappingPageNew.handleAddSbuxTarget` collects vertices from map `click` events, renders an
+  in-progress `google.maps.Polygon`, and shows a banner with the point count + **Undo / Finish
+  (≥3 pts) / Cancel** (Esc also cancels). Finish prompts for a name and calls `create_orep_target_area`.
+- The shared map click listener is guarded (`sbuxDrawingActiveRef`) so draw clicks aren't treated as
+  create-mode pin drops.
+- The `'drawing'` entry added to the `GoogleMapContainer` loader libraries is now a harmless no-op.
+
+The same 3.65 removal broke two other consumers:
+- `DemographicPolygonOverlay.tsx` (the Demographics "draw a polygon" tool) — **converted** to the same
+  manual approach (click vertices, double-click to finish; double-click zoom suppressed while drawing).
+- `DrawingToolbarLegacy.tsx` — had **zero imports (dead code)**, so it was **deleted**.
+
+## ⚠️ bbox RPC must keep the ops-area columns (regression note)
+
+`get_starbucks_target_areas_in_bbox` is edited via `DROP FUNCTION` + `CREATE` (its OUT columns change).
+It MUST return `planned_ops_area_id` / `planned_ops_area_name` (added by
+`20260702210000_starbucks_target_area_ops_area_filter`) **in addition to** the OREP columns — the map
+layer filters client-side on `planned_ops_area_id`. The first OREP rewrite dropped them, so with a saved
+ops-area filter every polygon failed the match and **all target areas vanished** ("built N, 0 shown").
+Fixed by `20260715150000_starbucks_target_area_bbox_rpc_restore_ops_area_cols`. Lesson: recreate an RPC
+from its **current** live definition, not an older migration's version.
 
 ## ⚠️ Re-import safety (IMPORTANT)
 
