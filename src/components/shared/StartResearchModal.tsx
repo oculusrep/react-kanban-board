@@ -16,7 +16,51 @@ interface PreviewMuni {
   distance_mi: number;
 }
 
+// One segment of the per-(municipality, record_type) coverage-depth map returned
+// by get_research_coverage. Deep passes only; quick runs never appear here.
+interface CoverageSegment {
+  boundary_municipality_id: string;
+  municipality_name: string | null;
+  record_type: 'pz' | 'permit';
+  segment_start: string;   // YYYY-MM-DD, inclusive
+  segment_end: string;     // YYYY-MM-DD, inclusive
+  pass_count: number;
+  last_searched_at: string | null;
+}
+
+type Tier = 'quick' | 'deep' | 'custom';
+type Mode = 'quick' | 'deep';
+
 const RADIUS_PRESETS = [3, 5, 10, 15];
+
+const TIERS: { key: Tier; label: string; cost: string; blurb: string }[] = [
+  { key: 'quick',  label: 'Quick',  cost: 'Sniff test · ~$5',
+    blurb: 'Sampled scan — is there a growth story here at all? Makes no completeness claim. Run early on every prospect.' },
+  { key: 'deep',   label: 'Deep',   cost: 'Package run · ~$30',
+    blurb: 'Full enumeration of every P&Z agenda + development-scale permit in the window, with a coverage report. Run once on the pitched site.' },
+  { key: 'custom', label: 'Custom', cost: 'Pick mode + window',
+    blurb: 'Choose the protocol and an explicit date range — e.g. to reach further back than the recent default.' },
+];
+
+// ---- Date helpers: Eastern local dates, mirroring the edge function so the
+// windows shown here match what OVIS will send/store (per the OVIS timezone rule).
+function easternToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+}
+function subtractYearsISO(iso: string, years: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const ty = y - years;
+  const lastDay = new Date(ty, m, 0).getDate();
+  const dd = Math.min(d, lastDay);
+  return `${ty}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+function fmtMonthYear(iso: string): string {
+  const [y, m] = iso.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+function fmtDate(ts: string): string {
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 /**
  * supabase-js's FunctionsHttpError exposes the raw Response on `.context`.
@@ -43,6 +87,11 @@ export default function StartResearchModal({
   onClose,
   onStarted,
 }: StartResearchModalProps) {
+  const [tier, setTier] = useState<Tier>('quick');
+  const [customMode, setCustomMode] = useState<Mode>('deep');
+  const [customStart, setCustomStart] = useState<string>(() => subtractYearsISO(easternToday(), 3));
+  const [customEnd, setCustomEnd] = useState<string>(() => easternToday());
+
   const [radius, setRadius] = useState<number>(10);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -50,6 +99,9 @@ export default function StartResearchModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const [coverage, setCoverage] = useState<CoverageSegment[]>([]);
+  const [coverageLoading, setCoverageLoading] = useState(false);
 
   // ---- preview on mount + when radius changes ----
   useEffect(() => {
@@ -83,6 +135,64 @@ export default function StartResearchModal({
     return () => { cancelled = true; };
   }, [siteSubmitId, radius]);
 
+  // ---- coverage map (Deep passes only) on mount ----
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCoverage() {
+      setCoverageLoading(true);
+      try {
+        const { data, error } = await supabase.rpc('get_research_coverage', { p_site_submit_id: siteSubmitId });
+        if (cancelled) return;
+        // Non-blocking context — a coverage failure must never block starting a run.
+        setCoverage(error ? [] : ((data ?? []) as CoverageSegment[]));
+      } finally {
+        if (!cancelled) setCoverageLoading(false);
+      }
+    }
+    loadCoverage();
+    return () => { cancelled = true; };
+  }, [siteSubmitId]);
+
+  // Resolved (mode, window) for the current tier. quick/deep let the edge function
+  // fill the recent default window (it recomputes identically in Eastern time), so
+  // we only send `research_mode`; the dates here are display-only. Custom sends
+  // explicit bounds applied to both record types.
+  const plan = useMemo(() => {
+    const today = easternToday();
+    if (tier === 'custom') {
+      const start = customStart || subtractYearsISO(today, 3);
+      const end = customEnd || today;
+      return {
+        mode: customMode as Mode,
+        explicit: true,
+        pz_window_start: start, pz_window_end: end,
+        permit_window_start: start, permit_window_end: end,
+      };
+    }
+    return {
+      mode: tier as Mode,
+      explicit: false,
+      pz_window_start: subtractYearsISO(today, 3), pz_window_end: today,
+      permit_window_start: subtractYearsISO(today, 2), permit_window_end: today,
+    };
+  }, [tier, customMode, customStart, customEnd]);
+
+  // Coverage grouped: municipality -> record_type -> segments (newest first).
+  const coverageByMuni = useMemo(() => {
+    const m = new Map<string, { name: string; pz: CoverageSegment[]; permit: CoverageSegment[] }>();
+    for (const seg of coverage) {
+      const key = seg.boundary_municipality_id;
+      const name = seg.municipality_name ?? '(unknown municipality)';
+      if (!m.has(key)) m.set(key, { name, pz: [], permit: [] });
+      m.get(key)![seg.record_type].push(seg);
+    }
+    for (const g of m.values()) {
+      const byRecent = (a: CoverageSegment, b: CoverageSegment) => b.segment_start.localeCompare(a.segment_start);
+      g.pz.sort(byRecent); g.permit.sort(byRecent);
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [coverage]);
+
   const counts = useMemo(() => {
     const cityCount = munis.filter((m) => m.kind === 'city' && selected.has(m.boundary_municipality_id)).length;
     const countyCount = munis.filter((m) => m.kind === 'county' && selected.has(m.boundary_municipality_id)).length;
@@ -107,17 +217,23 @@ export default function StartResearchModal({
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        'ovis-research-trigger',
-        {
-          body: {
-            mode: 'commit',
-            site_submit_id: siteSubmitId,
-            radius_miles: radius,
-            municipality_ids: [...selected],
-          },
-        },
-      );
+      const body: Record<string, unknown> = {
+        mode: 'commit',
+        site_submit_id: siteSubmitId,
+        radius_miles: radius,
+        municipality_ids: [...selected],
+        research_mode: plan.mode,
+      };
+      // quick/deep: omit windows so the edge function fills the recent default;
+      // custom: send explicit bounds.
+      if (plan.explicit) {
+        body.pz_window_start = plan.pz_window_start;
+        body.pz_window_end = plan.pz_window_end;
+        body.permit_window_start = plan.permit_window_start;
+        body.permit_window_end = plan.permit_window_end;
+      }
+
+      const { data, error } = await supabase.functions.invoke('ovis-research-trigger', { body });
       if (error) throw new Error(await extractInvokeError(error));
       if (data && typeof data === 'object' && 'error' in data) {
         throw new Error((data as { detail?: string; error?: string }).detail ?? (data as { error: string }).error);
@@ -134,6 +250,8 @@ export default function StartResearchModal({
     }
   };
 
+  const hasCoverage = coverage.length > 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
@@ -145,6 +263,129 @@ export default function StartResearchModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Tier picker */}
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: '#002147' }}>Run type</label>
+            <div className="grid grid-cols-3 gap-2">
+              {TIERS.map((t) => {
+                const active = tier === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setTier(t.key)}
+                    disabled={submitting}
+                    className="px-2 py-2 rounded-lg border text-center transition-colors"
+                    style={{
+                      backgroundColor: active ? '#002147' : '#FFFFFF',
+                      borderColor: active ? '#002147' : '#8FA9C8',
+                    }}
+                  >
+                    <div className="text-sm font-semibold" style={{ color: active ? '#FFFFFF' : '#002147' }}>{t.label}</div>
+                    <div className="text-xs mt-0.5" style={{ color: active ? '#8FA9C8' : '#8FA9C8' }}>{t.cost}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs mt-2" style={{ color: '#8FA9C8' }}>
+              {TIERS.find((t) => t.key === tier)!.blurb}
+            </p>
+          </div>
+
+          {/* Window summary / custom inputs */}
+          <div className="rounded-md border px-3 py-2" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
+            {tier === 'custom' ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium" style={{ color: '#002147' }}>Protocol</span>
+                  {(['quick', 'deep'] as Mode[]).map((mm) => (
+                    <button
+                      key={mm}
+                      type="button"
+                      onClick={() => setCustomMode(mm)}
+                      className="px-2 py-0.5 rounded-full text-xs border"
+                      style={{
+                        backgroundColor: customMode === mm ? '#002147' : '#FFFFFF',
+                        color: customMode === mm ? '#FFFFFF' : '#4A6B94',
+                        borderColor: customMode === mm ? '#002147' : '#8FA9C8',
+                      }}
+                    >
+                      {mm === 'quick' ? 'Quick (sniff)' : 'Deep (enumerate)'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs" style={{ color: '#4A6B94' }}>From</label>
+                  <input
+                    type="date" value={customStart} max={customEnd}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="px-2 py-1 text-sm border rounded" style={{ borderColor: '#8FA9C8', color: '#002147' }}
+                  />
+                  <label className="text-xs" style={{ color: '#4A6B94' }}>to</label>
+                  <input
+                    type="date" value={customEnd} min={customStart} max={easternToday()}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="px-2 py-1 text-sm border rounded" style={{ borderColor: '#8FA9C8', color: '#002147' }}
+                  />
+                </div>
+                <p className="text-xs" style={{ color: '#8FA9C8' }}>Applied to both P&amp;Z and permit searches.</p>
+              </div>
+            ) : (
+              <div className="text-xs" style={{ color: '#4A6B94' }}>
+                <span className="font-medium" style={{ color: '#002147' }}>Search window</span>{' — '}
+                P&amp;Z {fmtMonthYear(plan.pz_window_start)} → {fmtMonthYear(plan.pz_window_end)}
+                {' · '}
+                Permits {fmtMonthYear(plan.permit_window_start)} → {fmtMonthYear(plan.permit_window_end)}
+                {tier === 'deep' && (
+                  <span className="block mt-1" style={{ color: '#8FA9C8' }}>
+                    Deep uses the recent window by default — use Custom to reach further back.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Coverage map (Deep passes to date) */}
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#002147' }}>
+              Deep coverage to date
+            </label>
+            {coverageLoading ? (
+              <div className="text-xs py-1" style={{ color: '#8FA9C8' }}>Checking coverage…</div>
+            ) : !hasCoverage ? (
+              <div className="text-xs italic" style={{ color: '#8FA9C8' }}>
+                No Deep coverage yet — a Deep run here would be the first pass on this site. (Quick sniff tests don't count toward coverage.)
+              </div>
+            ) : (
+              <div className="border rounded-md divide-y" style={{ borderColor: '#8FA9C8' }}>
+                {coverageByMuni.map((g) => (
+                  <div key={g.name} className="px-3 py-2">
+                    <div className="text-sm font-medium" style={{ color: '#002147' }}>{g.name}</div>
+                    {(['pz', 'permit'] as const).map((rt) => {
+                      const segs = rt === 'pz' ? g.pz : g.permit;
+                      if (segs.length === 0) return null;
+                      return (
+                        <div key={rt} className="text-xs mt-0.5" style={{ color: '#4A6B94' }}>
+                          <span className="font-medium">{rt === 'pz' ? 'P&Z' : 'Permits'}:</span>{' '}
+                          {segs.map((s, i) => (
+                            <span key={i}>
+                              {i > 0 && ' · '}
+                              {fmtMonthYear(s.segment_start)}–{fmtMonthYear(s.segment_end)}{' '}
+                              <span style={{ color: '#002147' }}>×{s.pass_count}</span>
+                              {s.last_searched_at && (
+                                <span style={{ color: '#8FA9C8' }}> (last {fmtDate(s.last_searched_at)})</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Radius picker */}
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: '#002147' }}>
@@ -277,7 +518,7 @@ export default function StartResearchModal({
               ? 'Starting…'
               : selected.size === 0
                 ? 'Select at least one municipality'
-                : `Start research on ${selected.size} ${selected.size === 1 ? 'municipality' : 'municipalities'}`}
+                : `Start ${plan.mode === 'deep' ? 'Deep' : 'Quick'} research on ${selected.size} ${selected.size === 1 ? 'municipality' : 'municipalities'}`}
           </button>
         </div>
       </div>
