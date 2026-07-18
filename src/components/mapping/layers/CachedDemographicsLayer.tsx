@@ -147,6 +147,17 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
   const markersRef = useRef<Array<{ marker: google.maps.Marker; key: string }>>([]);
   const [rowCount, setRowCount] = useState(0);
 
+  // The opened cached point, mirrored into a ref so fetchAndRender can read
+  // the current selection when it rebuilds markers. fetchAndRender re-runs
+  // often (the parent's inline onPinClick changes identity on every render),
+  // so applying the filter at creation time is what actually keeps the other
+  // dots hidden — an effect alone loses the race with the rebuild.
+  const activeKey = activeCoordinates
+    ? locationKey(activeCoordinates.lat, activeCoordinates.lng)
+    : null;
+  const activeKeyRef = useRef<string | null>(activeKey);
+  activeKeyRef.current = activeKey;
+
   const wantRings = cachedDemographicsModes.has('rings');
   const wantPolygon = cachedDemographicsModes.has('polygon');
 
@@ -241,10 +252,14 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
 
     clear();
 
+    // When a cached point is open, only its dot stays on the map.
+    const isShown = (key: string) => !activeKeyRef.current || key === activeKeyRef.current;
+
     for (const row of dedupedRings) {
+      const key = locationKey(row.latitude, row.longitude);
       const marker = new google.maps.Marker({
         position: { lat: row.latitude, lng: row.longitude },
-        map,
+        map: isShown(key) ? map : null,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 5,
@@ -265,13 +280,14 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
           driveTimes: row.drive_times ?? undefined,
         });
       });
-      markersRef.current.push({ marker, key: locationKey(row.latitude, row.longitude) });
+      markersRef.current.push({ marker, key });
     }
 
     for (const row of dedupedPolys) {
+      const key = locationKey(row.polygon_centroid_lat, row.polygon_centroid_lng);
       const marker = new google.maps.Marker({
         position: { lat: row.polygon_centroid_lat, lng: row.polygon_centroid_lng },
-        map,
+        map: isShown(key) ? map : null,
         // Square symbol differentiates polygon entries from ring entries.
         icon: {
           path: 'M -6,-6 6,-6 6,6 -6,6 z',
@@ -292,10 +308,7 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
           result: rowToPolygonResult(row),
         });
       });
-      markersRef.current.push({
-        marker,
-        key: locationKey(row.polygon_centroid_lat, row.polygon_centroid_lng),
-      });
+      markersRef.current.push({ marker, key });
     }
 
     setRowCount(markersRef.current.length);
@@ -317,14 +330,11 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
   // it re-applies after fetchAndRender rebuilds the marker set.
   useEffect(() => {
     if (!map) return;
-    const activeKey = activeCoordinates
-      ? locationKey(activeCoordinates.lat, activeCoordinates.lng)
-      : null;
     markersRef.current.forEach(({ marker, key }) => {
       const shouldShow = !activeKey || key === activeKey;
       marker.setMap(shouldShow ? map : null);
     });
-  }, [activeCoordinates, rowCount, map]);
+  }, [activeKey, rowCount, map]);
 
   // Re-fetch on map idle (pan/zoom settled), on visibility flip, on
   // filter changes, and on explicit refresh triggers.

@@ -3666,9 +3666,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             <CachedDemographicsLayer
               map={mapInstance}
               isVisible={layerState.cached_demographics?.isVisible || false}
-              // Only hide the other dots when the slideout was opened from a
-              // cached pin (prefilled set) — not for right-click ad-hoc points.
-              activeCoordinates={demographicsPrefilled ? demographicsLocation : null}
+              // While the demographics slideout is open at a point, hide every
+              // other cached dot so only the open point's dot remains — the map
+              // stays focused on what the user is studying. Cleared on close.
+              activeCoordinates={demographicsLocation}
               onPinClick={(evt) => {
                 setDemographicsPrefilled({
                   mode: evt.mode,
