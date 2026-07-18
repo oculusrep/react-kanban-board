@@ -361,3 +361,39 @@ etc.), the fix is bigger — lift `DemographicRingsOverlay` /
 `DemographicIsochronesOverlay` / `DemographicPolygonOverlay` out of
 the slideout up to `MappingPageNew` and drive them off page-level
 state. Not done yet.
+
+### 2026-07-18 — isolate the open point (hide the other cached dots)
+
+Ask: when you open a cached demographics point, the *other* cached blue
+dots should disappear so the map stays focused on the point you're
+studying; closing the slideout brings them all back.
+
+Implementation. [CachedDemographicsLayer.tsx](../src/components/mapping/layers/CachedDemographicsLayer.tsx)
+gained an optional `activeCoordinates` prop. Each marker stores a rounded
+`locationKey` (same `toFixed(4)` precision as `dedupeByLocation`), and only
+the marker whose key matches the active point is given a `map`; the rest are
+created with `map: null`. [MappingPageNew.tsx](../src/pages/MappingPageNew.tsx)
+passes `activeCoordinates={demographicsLocation}` — i.e. any open demographics
+point, whether reached by clicking a cached dot or by a right-click ad-hoc
+fetch that hit cache.
+
+**The bug in the first attempt** (`a2f67ed1`): the filter lived only in a
+`useEffect` keyed on the selection, and the parent's `onPinClick` is an
+**inline arrow** whose identity changes on every render. Opening the slideout
+re-rendered the parent → `fetchAndRender`'s `useCallback` identity changed →
+the idle-listener effect re-ran it → every marker was rebuilt **visible**. The
+visibility effect lost that race and also didn't re-fire when the marker count
+was unchanged (`setRowCount(sameN)` bails out), so the dots reappeared
+instantly.
+
+**The fix** (`b4082f28`): apply the filter **at marker-creation time** inside
+`fetchAndRender`, reading the current selection from a ref (`activeKeyRef`) so
+every rebuild respects it regardless of how often it runs. The standalone
+effect is kept only to toggle visibility on a pure select/deselect that
+doesn't trigger a re-fetch. The scope was also broadened from cached-pin-only
+opens to any open point.
+
+Not fixed (pre-existing): `onPinClick` still churns `fetchAndRender`'s identity
+every render, causing redundant DB re-queries on the `idle` listener. Wrapping
+the parent handler in `useCallback` would be the clean fix — deferred, since
+the creation-time filter makes it correct (just not maximally efficient).

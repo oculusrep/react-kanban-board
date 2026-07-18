@@ -152,3 +152,20 @@ Shipped in commit `17159087`.
 ### 2026-07-07 — hidden in map presentation mode
 
 The demographics `<aside>` (the sidebar UI, not the overlays) picks up a `data-demographics-slideout` attribute and is hidden by the `Shift+P` presentation-mode CSS in [MappingPageNew.tsx](../src/pages/MappingPageNew.tsx). The rings / isochrones / polygon overlays on the map stay drawn so you can screenshot them cleanly. See [MAP_PRESENTATION_MODE.md](./MAP_PRESENTATION_MODE.md).
+
+### 2026-07-18 — "DT Demos" screenshot box + "Boxes ▾" dropdown
+
+Two changes to the Ad-hoc location slideout header, driven by the screenshot workflow.
+
+**New "DT Demos" screenshot box.** A second screenshot-ready dark table alongside the existing one, but scoped to the **5 / 7 / 10-minute drive-time** catchments. New component [DriveTimeDemosScreenshotModal.tsx](../src/components/mapping/slideouts/DriveTimeDemosScreenshotModal.tsx) mirrors [ScreenshotDemographicsModal.tsx](../src/components/mapping/slideouts/ScreenshotDemographicsModal.tsx) — same rows (Population, Median HH Income, Population Median Age, Education % Some College, Total Employees), same `#2F2F2F` dark styling — with columns keyed `{prefix}_{minutes}min_drive`. Its top-left header reads **"Drive Time Demos"**.
+
+Unlike the existing box (display-only over the current `result`), DT Demos runs **its own ESRI pull** because 7-min isn't in the default fetch (`DEFAULT_DRIVE_TIMES = [5,10,15]`). `handleDTDemos` calls `enrichLocation(lat, lng, DEFAULT_RADII, [5,7,10])` — default radii are kept because an empty `custom_radii` array is truthy in the edge function and would *not* fall back to defaults, risking a failed ring request; those ring columns are simply ignored. The result is stored in isolated local state (`dtDemosData`) and cached there so re-opening the box doesn't re-fetch. The main `result`, the user's selected drive times, and the map overlays are all left untouched.
+
+**"Boxes ▾" dropdown.** The three header actions were consolidated into a single dropdown to stop the header from crowding:
+- **Demo Map** — renamed from "Screenshot" (1mi / 3mi / 5min / 10min table).
+- **DT Demos** — the box above.
+- **Units** — municipal housing units box (unchanged).
+
+Demo Map and Units stay disabled until a fetch produces a `result`; DT Demos is always enabled since it self-fetches. A transparent full-screen backdrop closes the menu on any outside click; menu state resets when a new location opens.
+
+Shipped in commit `d3d55710`.
