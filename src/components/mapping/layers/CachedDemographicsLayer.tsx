@@ -67,6 +67,17 @@ export interface CachedDemographicsLayerProps {
   map: google.maps.Map | null;
   isVisible: boolean;
   onPinClick: (event: CachedDemographicsPinClick) => void;
+  // When a cached point is opened in the slideout, its coordinates are
+  // passed here so every OTHER cached dot is hidden — decluttering the map
+  // while the user studies that point's overlays. Cleared (null) on close,
+  // which brings all the dots back.
+  activeCoordinates?: { lat: number; lng: number } | null;
+}
+
+// Location key matching dedupeByLocation's precision, used to match the
+// active (opened) point against a marker so the rest can be hidden.
+function locationKey(lat: number, lng: number): string {
+  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
 function rangeSinceISO(range: CachedDemographicsTimeRange): string | null {
@@ -122,6 +133,7 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
   map,
   isVisible,
   onPinClick,
+  activeCoordinates,
 }) => {
   const {
     cachedDemographicsTimeRange,
@@ -132,14 +144,14 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
   const { user } = useAuth();
   const trigger = refreshTrigger.cached_demographics || 0;
 
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const [, setRowCount] = useState(0);
+  const markersRef = useRef<Array<{ marker: google.maps.Marker; key: string }>>([]);
+  const [rowCount, setRowCount] = useState(0);
 
   const wantRings = cachedDemographicsModes.has('rings');
   const wantPolygon = cachedDemographicsModes.has('polygon');
 
   const clear = useCallback(() => {
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach(({ marker }) => marker.setMap(null));
     markersRef.current = [];
   }, []);
 
@@ -253,7 +265,7 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
           driveTimes: row.drive_times ?? undefined,
         });
       });
-      markersRef.current.push(marker);
+      markersRef.current.push({ marker, key: locationKey(row.latitude, row.longitude) });
     }
 
     for (const row of dedupedPolys) {
@@ -280,7 +292,10 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
           result: rowToPolygonResult(row),
         });
       });
-      markersRef.current.push(marker);
+      markersRef.current.push({
+        marker,
+        key: locationKey(row.polygon_centroid_lat, row.polygon_centroid_lng),
+      });
     }
 
     setRowCount(markersRef.current.length);
@@ -295,6 +310,21 @@ const CachedDemographicsLayer: React.FC<CachedDemographicsLayerProps> = ({
     onPinClick,
     clear,
   ]);
+
+  // When a cached point is opened in the slideout, hide every other dot so
+  // only the selected point remains visible; restore all dots when the
+  // slideout closes (activeCoordinates back to null). Depends on rowCount so
+  // it re-applies after fetchAndRender rebuilds the marker set.
+  useEffect(() => {
+    if (!map) return;
+    const activeKey = activeCoordinates
+      ? locationKey(activeCoordinates.lat, activeCoordinates.lng)
+      : null;
+    markersRef.current.forEach(({ marker, key }) => {
+      const shouldShow = !activeKey || key === activeKey;
+      marker.setMap(shouldShow ? map : null);
+    });
+  }, [activeCoordinates, rowCount, map]);
 
   // Re-fetch on map idle (pan/zoom settled), on visibility flip, on
   // filter changes, and on explicit refresh triggers.
