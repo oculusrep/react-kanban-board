@@ -9,7 +9,26 @@ interface PastResearchRunsPanelProps {
   onRunClick?: (runId: string) => void;
   /** Callback when the Cancel button is clicked on a pending/running row. */
   onCancelClick?: (runId: string) => void | Promise<void>;
+  /** Callback when a Deep Sweep row is clicked (opens the unified sweep approval). */
+  onSweepClick?: (sweepId: string) => void;
 }
+
+interface SweepRow {
+  id: string;
+  created_at: string;
+  radius_miles: number;
+  total_chunks: number;
+  state: 'running' | 'complete' | 'complete_with_failures' | 'failed' | 'cancelled';
+  done: number;
+  failed: number;
+  running: number;
+  staged: number;
+}
+
+const SWEEP_STATE_LABEL: Record<SweepRow['state'], string> = {
+  running: 'Running', complete: 'Complete', complete_with_failures: 'Complete (with gaps)',
+  failed: 'Failed', cancelled: 'Cancelled',
+};
 
 interface ResearchRunRow {
   id: string;
@@ -48,20 +67,61 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick, onCancelClick }: PastResearchRunsPanelProps) {
+export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick, onCancelClick, onSweepClick }: PastResearchRunsPanelProps) {
   const [runs, setRuns] = useState<ResearchRunRow[] | null>(null);
+  const [sweeps, setSweeps] = useState<SweepRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setError(null);
-      // Fetch runs + cheap counts via two queries. Could be one SQL view later
-      // if this gets called often enough to matter.
+
+      // ---- Deep Sweeps for this site (with per-chunk progress) ----
+      const { data: sweepRows } = await supabase
+        .from('research_sweep')
+        .select('id, created_at, radius_miles, total_chunks, state')
+        .eq('site_submit_id', siteSubmitId)
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      const sweepIds = (sweepRows ?? []).map((s) => s.id);
+      let chunkRows: { sweep_id: string; state: string; research_run_id: string | null }[] = [];
+      if (sweepIds.length > 0) {
+        const { data } = await supabase
+          .from('research_sweep_chunk')
+          .select('sweep_id, state, research_run_id')
+          .in('sweep_id', sweepIds);
+        chunkRows = (data ?? []) as typeof chunkRows;
+      }
+      if (cancelled) return;
+      const sweepChunkRunIds = chunkRows.map((c) => c.research_run_id).filter(Boolean) as string[];
+      let sweepStagingCounts = new Map<string, number>();
+      if (sweepChunkRunIds.length > 0) {
+        const { data: st } = await supabase
+          .from('municipal_project_staging').select('research_run_id').in('research_run_id', sweepChunkRunIds);
+        const runToSweep = new Map(chunkRows.filter((c) => c.research_run_id).map((c) => [c.research_run_id!, c.sweep_id]));
+        for (const row of (st ?? []) as { research_run_id: string }[]) {
+          const sid = runToSweep.get(row.research_run_id);
+          if (sid) sweepStagingCounts.set(sid, (sweepStagingCounts.get(sid) ?? 0) + 1);
+        }
+      }
+      setSweeps((sweepRows ?? []).map((s) => {
+        const cs = chunkRows.filter((c) => c.sweep_id === s.id);
+        return {
+          id: s.id, created_at: s.created_at, radius_miles: s.radius_miles, total_chunks: s.total_chunks, state: s.state,
+          done: cs.filter((c) => c.state === 'done').length,
+          failed: cs.filter((c) => c.state === 'failed').length,
+          running: cs.filter((c) => c.state === 'running' || c.state === 'firing').length,
+          staged: sweepStagingCounts.get(s.id) ?? 0,
+        } as SweepRow;
+      }));
+
+      // ---- Standalone runs (exclude sweep-child runs) ----
       const { data: runRows, error: runsErr } = await supabase
         .from('research_run')
         .select('id, triggered_at, radius_miles, state, needs_review, openclaw_run_id')
         .eq('site_submit_id', siteSubmitId)
+        .is('sweep_id', null)
         .order('triggered_at', { ascending: false });
       if (cancelled) return;
       if (runsErr) { setError(runsErr.message); return; }
@@ -98,13 +158,41 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
   if (error) {
     return <div className="text-xs" style={{ color: '#A27B5C' }}>Failed to load past runs: {error}</div>;
   }
-  if (runs && runs.length === 0) {
+  if (runs && runs.length === 0 && sweeps.length === 0) {
     return <div className="text-xs italic" style={{ color: '#8FA9C8' }}>No research runs yet for this site.</div>;
   }
 
   return (
     <div className="space-y-2">
-      {runs!.map((r) => {
+      {sweeps.map((s) => {
+        const clickable = !!onSweepClick;
+        return (
+          <div
+            key={s.id}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onSweepClick!(s.id) : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') onSweepClick!(s.id); } : undefined}
+            className={`rounded-md border px-3 py-2 text-sm ${clickable ? 'cursor-pointer hover:shadow' : ''}`}
+            style={{ borderColor: '#4A6B94', backgroundColor: '#F8FAFC' }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium border"
+                    style={{ backgroundColor: '#002147', color: '#FFFFFF', borderColor: '#002147' }}>
+                Deep Sweep · {SWEEP_STATE_LABEL[s.state]}
+              </span>
+              <span className="text-xs" style={{ color: '#8FA9C8' }}>{formatTimestamp(s.created_at)}</span>
+            </div>
+            <div className="mt-1 text-xs" style={{ color: '#4A6B94' }}>
+              {s.radius_miles}-mile radius · {s.done}/{s.total_chunks} chunks done
+              {s.running > 0 && <> · {s.running} running</>}
+              {s.failed > 0 && <span style={{ color: '#A27B5C' }}> · {s.failed} failed (gap)</span>}
+              {s.staged > 0 && <> · {s.staged} staged records</>}
+            </div>
+          </div>
+        );
+      })}
+      {(runs ?? []).map((r) => {
         const style = STATE_STYLES[r.state] ?? STATE_STYLES.pending;
         const clickable = !!onRunClick;
         return (
