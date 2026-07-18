@@ -9,6 +9,7 @@ import DemographicIsochronesOverlay from '../layers/DemographicIsochronesOverlay
 import DemographicPolygonOverlay from '../layers/DemographicPolygonOverlay';
 import DemographicsAnalysisModal from './DemographicsAnalysisModal';
 import ScreenshotDemographicsModal from './ScreenshotDemographicsModal';
+import DriveTimeDemosScreenshotModal from './DriveTimeDemosScreenshotModal';
 import MunicipalUnitsScreenshotModal from './MunicipalUnitsScreenshotModal';
 import { useDemographicsStyleDefaults } from '../../../hooks/useDemographicsStyleDefaults';
 
@@ -30,6 +31,10 @@ const DEFAULT_RADII = [1, 3, 5];
 
 const AVAILABLE_DRIVE_TIMES = [5, 7, 10, 15] as const;
 const DEFAULT_DRIVE_TIMES = [5, 10, 15];
+
+// The "DT Demos" screenshot button always pulls these three drive-time
+// catchments from ESRI, independent of the user's selected drive times.
+const DT_DEMOS_DRIVE_TIMES = [5, 7, 10];
 
 // All ring + drive-time overlays default to red. The user can recolor
 // per-item via the Layer style panel.
@@ -224,7 +229,14 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const [showStylePanel, setShowStylePanel] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
+  // DT Demos runs its own ESRI pull for 5/7/10-min drive times, isolated
+  // from the main result + map overlays so it never disturbs them.
+  const [showDTDemosModal, setShowDTDemosModal] = useState(false);
+  const [dtDemosData, setDtDemosData] = useState<DemographicData | null>(null);
+  const [dtDemosLoading, setDtDemosLoading] = useState(false);
   const [showMunicipalUnitsModal, setShowMunicipalUnitsModal] = useState(false);
+  // The Demo Map / DT Demos / Units screenshot boxes share one header dropdown.
+  const [showBoxesMenu, setShowBoxesMenu] = useState(false);
   // Minimize collapses the body but keeps the slideout open — overlays
   // stay mounted on the map so rings/isochrones/polygon remain visible
   // while the user works on other things.
@@ -250,6 +262,9 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     setStrokeWeight(styleDefaults.strokeWeight);
     setShowStylePanel(false);
     setShowModal(false);
+    setShowDTDemosModal(false);
+    setDtDemosData(null);
+    setShowBoxesMenu(false);
     setMinimized(false);
     clearError();
 
@@ -349,6 +364,34 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
     if (r) setResult(r);
   };
 
+  // "DT Demos" — pull the same demographic metrics for the 5/7/10-min
+  // drive-time catchments and open the screenshot-ready dark table. This
+  // runs its own ESRI call (default radii keep the ring request valid;
+  // those columns are ignored) and caches the result locally so re-opening
+  // doesn't re-fetch. Selected drive times, the main result, and the map
+  // overlays are all left untouched.
+  const handleDTDemos = async () => {
+    if (!coordinates) return;
+    if (dtDemosData) {
+      setShowDTDemosModal(true);
+      return;
+    }
+    clearError();
+    setDtDemosLoading(true);
+    const r = await enrichLocation(
+      coordinates.lat,
+      coordinates.lng,
+      DEFAULT_RADII,
+      DT_DEMOS_DRIVE_TIMES,
+      false,
+    );
+    setDtDemosLoading(false);
+    if (r) {
+      setDtDemosData(r.demographics);
+      setShowDTDemosModal(true);
+    }
+  };
+
   const handlePolygonComplete = (coords: number[][][]) => {
     setPolygonDrawing(false);
     setPolygonCoords(coords);
@@ -417,6 +460,12 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
         demographics={demographics}
       />
 
+      <DriveTimeDemosScreenshotModal
+        isOpen={showDTDemosModal}
+        onClose={() => setShowDTDemosModal(false)}
+        demographics={dtDemosData}
+      />
+
       <MunicipalUnitsScreenshotModal
         isOpen={showMunicipalUnitsModal}
         onClose={() => setShowMunicipalUnitsModal(false)}
@@ -482,27 +531,75 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                 View All →
               </button>
             )}
-            {!minimized && result && (
-              <button
-                type="button"
-                onClick={() => setShowScreenshotModal(true)}
-                className="text-xs font-medium hover:underline"
-                style={{ color: BRAND.steel }}
-                title="Open a screenshot-ready dark table (1mi / 3mi / 5min / 10min)"
-              >
-                Screenshot
-              </button>
-            )}
-            {!minimized && result && (
-              <button
-                type="button"
-                onClick={() => setShowMunicipalUnitsModal(true)}
-                className="text-xs font-medium hover:underline"
-                style={{ color: BRAND.steel }}
-                title="Total housing units by stage for municipal projects in each catchment"
-              >
-                Units
-              </button>
+            {!minimized && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowBoxesMenu((o) => !o)}
+                  className="text-xs font-medium hover:underline"
+                  style={{ color: BRAND.steel }}
+                  title="Screenshot-ready boxes: Demo Map, DT Demos, Units"
+                >
+                  {dtDemosLoading ? 'Boxes…' : 'Boxes ▾'}
+                </button>
+                {showBoxesMenu && (
+                  <>
+                    {/* Click-away backdrop */}
+                    <div
+                      className="fixed inset-0 z-[55]"
+                      onClick={() => setShowBoxesMenu(false)}
+                    />
+                    <div
+                      className="absolute right-0 mt-1 z-[56] py-1 rounded-md border shadow-lg"
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        borderColor: BRAND.border,
+                        minWidth: '160px',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        disabled={!result}
+                        onClick={() => {
+                          setShowScreenshotModal(true);
+                          setShowBoxesMenu(false);
+                        }}
+                        className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ color: BRAND.midnight }}
+                        title="Screenshot-ready dark table (1mi / 3mi / 5min / 10min)"
+                      >
+                        Demo Map
+                      </button>
+                      <button
+                        type="button"
+                        disabled={dtDemosLoading}
+                        onClick={() => {
+                          handleDTDemos();
+                          setShowBoxesMenu(false);
+                        }}
+                        className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-40"
+                        style={{ color: BRAND.midnight }}
+                        title="Pull drive-time demographics from ESRI (5min / 7min / 10min)"
+                      >
+                        {dtDemosLoading ? 'DT Demos…' : 'DT Demos'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!result}
+                        onClick={() => {
+                          setShowMunicipalUnitsModal(true);
+                          setShowBoxesMenu(false);
+                        }}
+                        className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ color: BRAND.midnight }}
+                        title="Total housing units by stage for municipal projects in each catchment"
+                      >
+                        Units
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             <button
               type="button"
