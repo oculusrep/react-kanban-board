@@ -43,6 +43,11 @@ interface BaseRequest {
 interface CommitRequest extends BaseRequest {
   mode?: 'commit';
   municipality_ids: string[];
+  // Internal call from the sweep engine (ovis-sweep-tick): bypasses the user
+  // JWT/permission gate after verifying the service-role bearer. triggered_by
+  // carries the sweep's creator (a user.id) since there's no JWT to derive it.
+  internal?: boolean;
+  triggered_by?: string;
   // Agent protocol for this run. 'deep' = full enumeration + coverage report;
   // anything else (incl. omitted) resolves to 'quick' — a sampled sniff test —
   // so a missing/typo'd value can never accidentally fire an expensive deep run.
@@ -166,6 +171,14 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+// Constant-time string compare for the internal service-role bearer check.
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
 // Telegram operator notifications — chat ID hardcoded (Mike's @orep_openclaw_bot).
 // Failures here are swallowed so a notification glitch can never block the
 // trigger response.
@@ -194,19 +207,9 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: CORS });
 
-  // ---- Auth: resolve the calling user from the JWT ----
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const jwt = authHeader.replace(/^Bearer\s+/i, '');
-  if (!jwt) return jsonResponse({ error: 'missing_jwt' }, 401);
-
-  const anonClient = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: `Bearer ${jwt}` } }, auth: { persistSession: false } },
-  );
-  const { data: authData, error: authErr } = await anonClient.auth.getUser(jwt);
-  if (authErr || !authData?.user) return jsonResponse({ error: 'invalid_jwt' }, 401);
-  const authUserId = authData.user.id;
+  // ---- Parse body first (needed to detect an internal sweep-engine call) ----
+  let body: BaseRequest;
+  try { body = await req.json(); } catch { return jsonResponse({ error: 'bad_json' }, 400); }
 
   const service = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -214,32 +217,45 @@ serve(async (req) => {
     { auth: { persistSession: false } },
   );
 
-  // ---- User lookup + permission gate ----
-  // auth.uid() maps to user.auth_user_id (NOT user.id — that's the auth identity,
-  // user.id is the OVIS row id). Looking up by id only worked for the admin
-  // because their two columns happen to match.
-  const { data: userRow, error: userErr } = await service
-    .from('user')
-    .select('id')
-    .eq('auth_user_id', authUserId)
-    .maybeSingle();
-  if (userErr) return jsonResponse({ error: 'user_lookup_failed', detail: userErr.message }, 500);
-  if (!userRow) return jsonResponse({ error: 'user_not_found' }, 403);
-  const userId = userRow.id as string;
+  // ---- Auth: normal user JWT, OR a trusted internal call from the sweep engine.
+  // The internal branch is purely additive — a normal user request takes the
+  // exact same path (getUser -> user lookup -> permission gate) it always did, so
+  // the single-Deep / Quick / Custom flows are unchanged.
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const bearer = authHeader.replace(/^Bearer\s+/i, '');
+  let userId: string | null;
 
-  // Permission gate via the SQL helper (admin bypass + user-override → role-default).
-  // Call via the anonClient so auth.uid() resolves correctly through the user's JWT.
-  const { data: hasAccess, error: permErr } = await anonClient.rpc(
-    'user_has_market_research_run_access',
-  );
-  if (permErr) return jsonResponse({ error: 'permission_check_failed', detail: permErr.message }, 500);
-  if (!hasAccess) {
-    return jsonResponse({ error: 'forbidden', detail: 'can_run_market_research permission required' }, 403);
+  if ((body as CommitRequest).internal === true) {
+    if (!safeEqual(bearer, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)) {
+      return jsonResponse({ error: 'unauthorized_internal' }, 401);
+    }
+    // No JWT to derive the user from; the sweep passes its creator explicitly.
+    userId = (body as CommitRequest).triggered_by ?? null;
+  } else {
+    if (!bearer) return jsonResponse({ error: 'missing_jwt' }, 401);
+    const anonClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: `Bearer ${bearer}` } }, auth: { persistSession: false } },
+    );
+    const { data: authData, error: authErr } = await anonClient.auth.getUser(bearer);
+    if (authErr || !authData?.user) return jsonResponse({ error: 'invalid_jwt' }, 401);
+
+    // auth.uid() maps to user.auth_user_id (NOT user.id — that's the auth identity).
+    const { data: userRow, error: userErr } = await service
+      .from('user').select('id').eq('auth_user_id', authData.user.id).maybeSingle();
+    if (userErr) return jsonResponse({ error: 'user_lookup_failed', detail: userErr.message }, 500);
+    if (!userRow) return jsonResponse({ error: 'user_not_found' }, 403);
+    userId = userRow.id as string;
+
+    // Permission gate via the SQL helper. Call via anonClient so auth.uid() resolves.
+    const { data: hasAccess, error: permErr } = await anonClient.rpc('user_has_market_research_run_access');
+    if (permErr) return jsonResponse({ error: 'permission_check_failed', detail: permErr.message }, 500);
+    if (!hasAccess) {
+      return jsonResponse({ error: 'forbidden', detail: 'can_run_market_research permission required' }, 403);
+    }
   }
 
-  // ---- Parse + validate body ----
-  let body: BaseRequest;
-  try { body = await req.json(); } catch { return jsonResponse({ error: 'bad_json' }, 400); }
   const mode = body.mode ?? 'commit';
   if (!body?.site_submit_id || typeof body.site_submit_id !== 'string') {
     return jsonResponse({ error: 'site_submit_id is required' }, 400);
@@ -402,7 +418,7 @@ serve(async (req) => {
     lat: Number(lat),
     lng: Number(lng),
     radiusMiles: radius,
-    triggeredByUserId: userId,
+    triggeredByUserId: userId ?? '',
     researchMode,
     window: win,
     municipalities: selectedMunis,

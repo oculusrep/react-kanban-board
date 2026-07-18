@@ -263,6 +263,7 @@ export default function SiteSubmitSidebar({
   const [showStartResearchModal, setShowStartResearchModal] = useState(false);
   const [researchRunsRefresh, setResearchRunsRefresh] = useState(0);
   const [openApprovalRunId, setOpenApprovalRunId] = useState<string | null>(null);
+  const [openApprovalSweepId, setOpenApprovalSweepId] = useState<string | null>(null);
   const [researchPanelExpanded, setResearchPanelExpanded] = useState(false);
   const { hasPermission } = usePermissions();
   // Market-research action gate: Starbucks site + can_run_market_research permission + has lat/lng on property.
@@ -1514,6 +1515,7 @@ export default function SiteSubmitSidebar({
                         siteSubmitId={siteSubmit.id}
                         refreshTrigger={researchRunsRefresh}
                         onRunClick={(runId) => setOpenApprovalRunId(runId)}
+                        onSweepClick={(sweepId) => setOpenApprovalSweepId(sweepId)}
                         onCancelClick={async (runId) => {
                           if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
                           try {
@@ -1675,6 +1677,13 @@ export default function SiteSubmitSidebar({
             );
             setResearchRunsRefresh((n) => n + 1);
           }}
+          onSweepStarted={() => {
+            showToast(
+              'Deep Sweep started — 6 chunks will fire sequentially (~2.5 hrs). Track progress in Past Research Runs.',
+              { type: 'success', duration: 5000 },
+            );
+            setResearchRunsRefresh((n) => n + 1);
+          }}
         />
       )}
 
@@ -1699,6 +1708,29 @@ export default function SiteSubmitSidebar({
               `Approved ${summary}${muniNote}`,
               { type: 'success', duration: 4000 },
             );
+            setResearchRunsRefresh((n) => n + 1);
+          }}
+        />
+      )}
+
+      {/* Unified sweep approval — opened by clicking a Deep Sweep row */}
+      {openApprovalSweepId && siteSubmit && (
+        <ResearchRunApprovalModal
+          sweepId={openApprovalSweepId}
+          siteSubmitLabel={
+            siteSubmit.site_submit_name
+            || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
+          }
+          onClose={() => setOpenApprovalSweepId(null)}
+          onDone={({ approved_new, approved_matched, created_municipality_count }) => {
+            const parts: string[] = [];
+            if (approved_new > 0) parts.push(`${approved_new} new`);
+            if (approved_matched > 0) parts.push(`${approved_matched} already existed`);
+            const summary = parts.length ? parts.join(' + ') : '0 records';
+            const muniNote = created_municipality_count > 0
+              ? ` (${created_municipality_count} new ${created_municipality_count === 1 ? 'municipality' : 'municipalities'} created)`
+              : '';
+            showToast(`Approved ${summary}${muniNote}`, { type: 'success', duration: 4000 });
             setResearchRunsRefresh((n) => n + 1);
           }}
         />

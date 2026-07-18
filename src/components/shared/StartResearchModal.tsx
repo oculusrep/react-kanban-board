@@ -6,6 +6,8 @@ interface StartResearchModalProps {
   siteSubmitLabel: string;
   onClose: () => void;
   onStarted: (response: { research_run_id: string; selected_count: number }) => void;
+  // Fired after a Deep Sweep is created (the tick drives the chunks from there).
+  onSweepStarted?: (sweepId: string) => void;
 }
 
 interface PreviewMuni {
@@ -28,10 +30,15 @@ interface CoverageSegment {
   last_searched_at: string | null;
 }
 
-type Tier = 'quick' | 'deep' | 'custom';
+type Tier = 'quick' | 'deep' | 'custom' | 'sweep';
 type Mode = 'quick' | 'deep';
 
 const RADIUS_PRESETS = [3, 5, 10, 15];
+
+// Deep Sweep: full 3yr enumeration as N sequential 6-month chunks.
+const SWEEP_CHUNK_MONTHS = 6;
+const SWEEP_CHUNKS = 6;                 // 36 months / 6
+const SWEEP_COST_LABEL = '~$18';        // 6 chunks x ~$3
 
 const TIERS: { key: Tier; label: string; cost: string; blurb: string }[] = [
   { key: 'quick',  label: 'Quick',  cost: 'Sniff test · ~$5',
@@ -40,6 +47,8 @@ const TIERS: { key: Tier; label: string; cost: string; blurb: string }[] = [
     blurb: 'Full enumeration of every P&Z agenda + development-scale permit in the window, with a coverage report. Run once on the pitched site.' },
   { key: 'custom', label: 'Custom', cost: 'Pick mode + window',
     blurb: 'Choose the protocol and an explicit date range — e.g. to reach further back than the recent default.' },
+  { key: 'sweep',  label: 'Deep Sweep', cost: `3yr · ${SWEEP_COST_LABEL}`,
+    blurb: 'Full 3-year Deep enumeration as 6 sequential 6-month chunks — fires automatically over ~2.5 hrs, with one unified approval when done.' },
 ];
 
 // ---- Date helpers: Eastern local dates, mirroring the edge function so the
@@ -53,6 +62,15 @@ function subtractYearsISO(iso: string, years: number): string {
   const lastDay = new Date(ty, m, 0).getDate();
   const dd = Math.min(d, lastDay);
   return `${ty}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+function subtractMonthsISO(iso: string, months: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const total = (y * 12 + (m - 1)) - months;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  const lastDay = new Date(ny, nm, 0).getDate();
+  const dd = Math.min(d, lastDay);
+  return `${ny}-${String(nm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 }
 function fmtMonthYear(iso: string): string {
   const [y, m] = iso.split('-').map(Number);
@@ -86,8 +104,10 @@ export default function StartResearchModal({
   siteSubmitLabel,
   onClose,
   onStarted,
+  onSweepStarted,
 }: StartResearchModalProps) {
   const [tier, setTier] = useState<Tier>('quick');
+  const [sweepConfirm, setSweepConfirm] = useState(false);
   const [customMode, setCustomMode] = useState<Mode>('deep');
   const [customStart, setCustomStart] = useState<string>(() => subtractYearsISO(easternToday(), 3));
   const [customEnd, setCustomEnd] = useState<string>(() => easternToday());
@@ -177,6 +197,16 @@ export default function StartResearchModal({
     };
   }, [tier, customMode, customStart, customEnd]);
 
+  // Deep Sweep chunk windows: 6 back-to-back 6-month slices, most-recent first.
+  // chunk_index 0 = [today-6mo, today]. Each slice becomes pz_window == permit_window.
+  const sweepWindows = useMemo(() => {
+    const today = easternToday();
+    return Array.from({ length: SWEEP_CHUNKS }, (_, i) => ({
+      window_end: subtractMonthsISO(today, i * SWEEP_CHUNK_MONTHS),
+      window_start: subtractMonthsISO(today, (i + 1) * SWEEP_CHUNK_MONTHS),
+    }));
+  }, []);
+
   // Coverage grouped: municipality -> record_type -> segments (newest first).
   const coverageByMuni = useMemo(() => {
     const m = new Map<string, { name: string; pz: CoverageSegment[]; permit: CoverageSegment[] }>();
@@ -250,6 +280,31 @@ export default function StartResearchModal({
     }
   };
 
+  // Deep Sweep: create the sweep + chunk rows; the ovis-sweep-tick engine fires
+  // the chunks sequentially from there. No trigger call here.
+  const createSweep = async () => {
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase.rpc('create_sweep_with_chunks', {
+        p_site_id: siteSubmitId,
+        p_radius_miles: radius,
+        p_boundary_muni_ids: [...selected],
+        p_windows: sweepWindows,
+      });
+      if (error) throw new Error(error.message);
+      const sweepId = data as string;
+      if (!sweepId) throw new Error('Sweep created but no id returned.');
+      onSweepStarted?.(sweepId);
+      onClose();
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : String(e));
+      setSweepConfirm(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const hasCoverage = coverage.length > 0;
 
   return (
@@ -266,7 +321,7 @@ export default function StartResearchModal({
           {/* Tier picker */}
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: '#002147' }}>Run type</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {TIERS.map((t) => {
                 const active = tier === t.key;
                 return (
@@ -329,6 +384,23 @@ export default function StartResearchModal({
                   />
                 </div>
                 <p className="text-xs" style={{ color: '#8FA9C8' }}>Applied to both P&amp;Z and permit searches.</p>
+              </div>
+            ) : tier === 'sweep' ? (
+              <div className="text-xs space-y-1" style={{ color: '#4A6B94' }}>
+                <div className="font-medium" style={{ color: '#002147' }}>
+                  6 sequential 6-month chunks · {SWEEP_COST_LABEL} · ~2.5 hrs
+                </div>
+                <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                  {sweepWindows.map((w, i) => (
+                    <span key={i}>
+                      {i > 0 && '· '}
+                      {fmtMonthYear(w.window_start)}–{fmtMonthYear(w.window_end)}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ color: '#8FA9C8' }}>
+                  Fires one chunk at a time (rate-limit safe). Each records its own run; a failed chunk is one gap to re-run. All findings surface in a single approval.
+                </div>
               </div>
             ) : (
               <div className="text-xs" style={{ color: '#4A6B94' }}>
@@ -496,30 +568,59 @@ export default function StartResearchModal({
              style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
           <button
             type="button"
-            onClick={onClose}
+            onClick={tier === 'sweep' && sweepConfirm ? () => setSweepConfirm(false) : onClose}
             disabled={submitting}
             className="px-4 py-2 rounded-lg text-sm border"
             style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
           >
-            Cancel
+            {tier === 'sweep' && sweepConfirm ? 'Back' : 'Cancel'}
           </button>
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={submitting || previewLoading || selected.size === 0}
-            className="px-4 py-2 rounded-lg text-sm font-medium"
-            style={{
-              backgroundColor: submitting || selected.size === 0 ? '#8FA9C8' : '#002147',
-              color: '#FFFFFF',
-              opacity: submitting || selected.size === 0 ? 0.7 : 1,
-            }}
-          >
-            {submitting
-              ? 'Starting…'
-              : selected.size === 0
-                ? 'Select at least one municipality'
-                : `Start ${plan.mode === 'deep' ? 'Deep' : 'Quick'} research on ${selected.size} ${selected.size === 1 ? 'municipality' : 'municipalities'}`}
-          </button>
+          {tier === 'sweep' ? (
+            sweepConfirm ? (
+              <button
+                type="button"
+                onClick={createSweep}
+                disabled={submitting || selected.size === 0}
+                className="px-4 py-2 rounded-lg text-sm font-medium"
+                style={{
+                  backgroundColor: submitting || selected.size === 0 ? '#8FA9C8' : '#002147',
+                  color: '#FFFFFF', opacity: submitting || selected.size === 0 ? 0.7 : 1,
+                }}
+              >
+                {submitting ? 'Firing…' : `Confirm — fire ${SWEEP_CHUNKS} chunks (${SWEEP_COST_LABEL})`}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSweepConfirm(true)}
+                disabled={submitting || previewLoading || selected.size === 0}
+                className="px-4 py-2 rounded-lg text-sm font-medium"
+                style={{
+                  backgroundColor: previewLoading || selected.size === 0 ? '#8FA9C8' : '#002147',
+                  color: '#FFFFFF', opacity: previewLoading || selected.size === 0 ? 0.7 : 1,
+                }}
+              >
+                {selected.size === 0 ? 'Select at least one municipality' : `Review Deep Sweep (${SWEEP_CHUNKS} chunks)`}
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={handleStart}
+              disabled={submitting || previewLoading || selected.size === 0}
+              className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{
+                backgroundColor: submitting || selected.size === 0 ? '#8FA9C8' : '#002147',
+                color: '#FFFFFF', opacity: submitting || selected.size === 0 ? 0.7 : 1,
+              }}
+            >
+              {submitting
+                ? 'Starting…'
+                : selected.size === 0
+                  ? 'Select at least one municipality'
+                  : `Start ${plan.mode === 'deep' ? 'Deep' : 'Quick'} research on ${selected.size} ${selected.size === 1 ? 'municipality' : 'municipalities'}`}
+            </button>
+          )}
         </div>
       </div>
     </div>
