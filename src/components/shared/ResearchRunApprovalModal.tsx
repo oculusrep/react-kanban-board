@@ -4,7 +4,11 @@ import { geocodingService } from '../../services/geocodingService';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface ResearchRunApprovalModalProps {
-  researchRunId: string;
+  // Exactly one of researchRunId | sweepId. sweepId opens the UNIFIED approval:
+  // all staged rows across the sweep's chunk runs, grouped by municipality, with
+  // cross-chunk dedupe. researchRunId keeps the original single-run behavior.
+  researchRunId?: string;
+  sweepId?: string;
   siteSubmitLabel: string;
   onClose: () => void;
   onDone: (summary: { approved_new: number; approved_matched: number; created_municipality_count: number }) => void;
@@ -28,6 +32,8 @@ interface ChecklistRow {
 }
 interface StagingRow {
   id: string;
+  research_run_id: string;         // which chunk run staged this (fan-out approve)
+  sweep_chunk_index?: number | null;
   boundary_municipality_id: string | null;
   matched_existing_id: string | null;
   approval_state: 'pending' | 'approved' | 'rejected';
@@ -71,6 +77,16 @@ function toErrorMessage(e: unknown): string {
   return String(e);
 }
 
+// Great-circle distance in meters — for the in-sweep staging-vs-staging dedupe
+// (find_nearby_municipal_projects only compares against COMMITTED projects, so
+// two unapproved sibling rows from adjacent chunk windows need this check).
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000, toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
 // Editable subset — the fields the approval UI lets the user override per row.
 type Edits = Partial<Pick<StagingRow,
   'project_name' | 'address' | 'location_description' | 'parcel_boundary_notes'
@@ -94,13 +110,18 @@ const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number
 
 export default function ResearchRunApprovalModal({
   researchRunId,
+  sweepId,
   siteSubmitLabel,
   onClose,
   onDone,
 }: ResearchRunApprovalModalProps) {
+  const isSweep = !!sweepId;
   const [run, setRun] = useState<RunRow | null>(null);
+  const [sweepState, setSweepState] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
   const [staging, setStaging] = useState<StagingRow[]>([]);
+  // stagingId -> sibling stagingIds within ~150m in the same sweep.
+  const [inSweepDupes, setInSweepDupes] = useState<Record<string, string[]>>({});
   const [edits, setEdits] = useState<Record<string, Edits>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [needsReview, setNeedsReview] = useState<string>('');
@@ -119,10 +140,48 @@ export default function ResearchRunApprovalModal({
       setLoading(true);
       setError(null);
       try {
+        if (isSweep) {
+          // ---- unified sweep mode: all staged rows across the sweep's runs ----
+          const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }] = await Promise.all([
+            supabase.from('research_sweep').select('state').eq('id', sweepId!).single(),
+            supabase.rpc('get_sweep_staging', { p_sweep_id: sweepId! }),
+          ]);
+          if (swErr) throw swErr;
+          if (stErr) throw stErr;
+          if (cancelled) return;
+          setSweepState((sweepRow as { state?: string } | null)?.state ?? null);
+          setRun(null);
+          setChecklist([]);
+          const stagingNorm: StagingRow[] = ((stagingRows ?? []) as any[]).map((r) => ({
+            id: r.id,
+            research_run_id: r.research_run_id,
+            sweep_chunk_index: r.sweep_chunk_index,
+            boundary_municipality_id: r.boundary_municipality_id,
+            matched_existing_id: r.matched_existing_id,
+            approval_state: r.approval_state,
+            project_name: r.project_name,
+            address: r.address,
+            location_description: r.location_description,
+            parcel_boundary_notes: r.parcel_boundary_notes,
+            total_housing_units: r.total_housing_units,
+            builder_developer: r.builder_developer,
+            permit_url: r.permit_url,
+            permit_application_date: r.permit_application_date,
+            source: r.source,
+            notes: r.notes,
+            muni_name: r.muni_name,
+            muni_kind: r.muni_kind,
+          }));
+          setStaging(stagingNorm);
+          setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id).map((s) => s.id)));
+          return;
+        }
+
+        // ---- single-run mode (unchanged) ----
         const { data: runRow, error: runErr } = await supabase
           .from('research_run')
           .select('id, triggered_at, radius_miles, state, needs_review, alt_avenues')
-          .eq('id', researchRunId)
+          .eq('id', researchRunId!)
           .single();
         if (runErr) throw runErr;
 
@@ -130,18 +189,18 @@ export default function ResearchRunApprovalModal({
           supabase
             .from('research_checklist_item')
             .select('boundary_municipality_id, priority, status, notes, boundary_municipality(name, kind)')
-            .eq('research_run_id', researchRunId)
+            .eq('research_run_id', researchRunId!)
             .order('priority'),
           supabase
             .from('municipal_project_staging')
             .select(`
-              id, boundary_municipality_id, matched_existing_id, approval_state,
+              id, research_run_id, boundary_municipality_id, matched_existing_id, approval_state,
               project_name, address, location_description, parcel_boundary_notes,
               total_housing_units, builder_developer, permit_url,
               permit_application_date, source, notes,
               boundary_municipality(name, kind)
             `)
-            .eq('research_run_id', researchRunId)
+            .eq('research_run_id', researchRunId!)
             .order('created_at'),
         ]);
         if (clErr) throw clErr;
@@ -177,7 +236,7 @@ export default function ResearchRunApprovalModal({
     }
     load();
     return () => { cancelled = true; };
-  }, [researchRunId]);
+  }, [researchRunId, sweepId, isSweep]);
 
   // ---- soft dedupe: flag staged rows sitting near an already-committed project ----
   // The hard match (matched_existing_id) covers exact name/address + permit_url.
@@ -192,6 +251,7 @@ export default function ResearchRunApprovalModal({
     );
     if (candidates.length === 0) {
       setPossibleDupes({});
+      setInSweepDupes({});
       return;
     }
     async function checkNearby() {
@@ -209,7 +269,21 @@ export default function ResearchRunApprovalModal({
         ).filter(Boolean) as { staging_id: string; lat: number; lng: number }[];
 
         if (cancelled) return;
-        if (points.length === 0) { setPossibleDupes({}); return; }
+        if (points.length === 0) { setPossibleDupes({}); setInSweepDupes({}); return; }
+
+        // In-sweep staging-vs-staging dedupe: rows within 150m of each other are
+        // likely the same project surfaced in adjacent chunk windows. (The RPC
+        // below only compares against COMMITTED projects, not sibling rows.)
+        const siblings: Record<string, string[]> = {};
+        for (let i = 0; i < points.length; i++) {
+          for (let j = i + 1; j < points.length; j++) {
+            if (haversineMeters(points[i], points[j]) <= 150) {
+              (siblings[points[i].staging_id] ??= []).push(points[j].staging_id);
+              (siblings[points[j].staging_id] ??= []).push(points[i].staging_id);
+            }
+          }
+        }
+        setInSweepDupes(siblings);
 
         const { data, error: rpcErr } = await supabase.rpc('find_nearby_municipal_projects', {
           p_points: points,
@@ -360,13 +434,25 @@ export default function ResearchRunApprovalModal({
         console.warn('Geocoding failed for some rows; they will land without a centroid:', geocodeFailures);
       }
 
-      const { data, error: rpcErr } = await supabase.rpc('approve_research_staging_rows', { p_rows: payload });
-      if (rpcErr) throw rpcErr;
-      onDone({
-        approved_new:               (data as any)?.approved_new               ?? 0,
-        approved_matched:           (data as any)?.approved_matched           ?? 0,
-        created_municipality_count: (data as any)?.created_municipality_count ?? 0,
-      });
+      // Fan out per research_run — approve_research_staging_rows rejects a batch
+      // spanning runs (and flips one run to 'approved'). In single-run mode this
+      // is exactly one group; across a sweep it's one call per chunk run.
+      const byRun = new Map<string, typeof payload>();
+      for (const row of payload) {
+        const rid = staging.find((s) => s.id === row.staging_id)?.research_run_id;
+        if (!rid) continue;
+        if (!byRun.has(rid)) byRun.set(rid, []);
+        byRun.get(rid)!.push(row);
+      }
+      let approved_new = 0, approved_matched = 0, created_municipality_count = 0;
+      for (const rows of byRun.values()) {
+        const { data, error: rpcErr } = await supabase.rpc('approve_research_staging_rows', { p_rows: rows });
+        if (rpcErr) throw rpcErr;
+        approved_new               += (data as any)?.approved_new               ?? 0;
+        approved_matched           += (data as any)?.approved_matched           ?? 0;
+        created_municipality_count += (data as any)?.created_municipality_count ?? 0;
+      }
+      onDone({ approved_new, approved_matched, created_municipality_count });
       onClose();
     } catch (e) {
       setError(toErrorMessage(e));
@@ -380,7 +466,10 @@ export default function ResearchRunApprovalModal({
   // permission. Both produce the same UX (view but don't edit/approve/reject).
   const { hasPermission } = usePermissions();
   const canApprove = hasPermission('can_approve_market_research');
-  const isReadOnlyRun = run?.state === 'approved' || run?.state === 'archived' || !canApprove;
+  const isReadOnlyRun = !canApprove || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
+  const inSweepDupCount = staging.filter(
+    (s) => s.approval_state === 'pending' && (inSweepDupes[s.id]?.length ?? 0) > 0,
+  ).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 p-4">
@@ -393,6 +482,11 @@ export default function ResearchRunApprovalModal({
             {run && (
               <p className="text-xs mt-1" style={{ color: '#8FA9C8' }}>
                 {run.radius_miles}-mile radius · state: {run.state} · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected
+              </p>
+            )}
+            {isSweep && (
+              <p className="text-xs mt-1" style={{ color: '#8FA9C8' }}>
+                Deep Sweep{sweepState ? ` · ${sweepState}` : ''} · all chunks · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected
               </p>
             )}
           </div>
@@ -422,9 +516,10 @@ export default function ResearchRunApprovalModal({
             </div>
           )}
 
-          {!loading && run && (
+          {!loading && (run || isSweep) && (
             <>
-              {/* Checklist (collapsible) */}
+              {/* Checklist (collapsible) — single-run only */}
+              {!isSweep && (
               <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
                 <button
                   type="button"
@@ -446,6 +541,7 @@ export default function ResearchRunApprovalModal({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Bulk controls */}
               {!isReadOnlyRun && (
@@ -455,6 +551,7 @@ export default function ResearchRunApprovalModal({
                     {matchedExistingCount > 0 && <span style={{ color: '#A27B5C' }}> · {matchedExistingCount} matches existing</span>}
                     {checkingDupes && <span style={{ color: '#8FA9C8' }}> · checking for nearby projects…</span>}
                     {possibleDupCount > 0 && <span style={{ color: '#A27B5C' }}> · {possibleDupCount} possible duplicate{possibleDupCount === 1 ? '' : 's'} nearby</span>}
+                    {inSweepDupCount > 0 && <span style={{ color: '#4A6B94' }}> · {inSweepDupCount} in-sweep duplicate{inSweepDupCount === 1 ? '' : 's'}</span>}
                   </span>
                   <span style={{ color: '#8FA9C8' }}>·</span>
                   <button type="button" onClick={selectAllNew}     className="underline" style={{ color: '#002147' }}>Select all NEW</button>
@@ -465,7 +562,9 @@ export default function ResearchRunApprovalModal({
 
               {/* Staged records by municipality */}
               {grouped.length === 0 && (
-                <div className="text-sm italic" style={{ color: '#8FA9C8' }}>No staged records on this run.</div>
+                <div className="text-sm italic" style={{ color: '#8FA9C8' }}>
+                  No staged records {isSweep ? 'in this sweep yet.' : 'on this run.'}
+                </div>
               )}
               {grouped.map((g) => (
                 <div key={g.name} className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
@@ -518,6 +617,15 @@ export default function ResearchRunApprovalModal({
                                     ⚠ POSSIBLE DUPLICATE · ~{Math.round(possibleDupes[r.id][0].distance_m)}m
                                   </span>
                                 )}
+                                {r.approval_state === 'pending' && (inSweepDupes[r.id]?.length ?? 0) > 0 && (
+                                  <span
+                                    className="px-2 py-0.5 rounded-full border border-dashed"
+                                    style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
+                                    title={`Within ~150m of ${inSweepDupes[r.id].length} other staged row(s) in this sweep — likely the same project surfaced in adjacent chunk windows. Approve only one.`}
+                                  >
+                                    ⚠ IN-SWEEP DUPLICATE
+                                  </span>
+                                )}
                                 {r.approval_state === 'approved' && (
                                   <span className="px-2 py-0.5 rounded-full"
                                         style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>APPROVED</span>
@@ -562,7 +670,8 @@ export default function ResearchRunApprovalModal({
                 </div>
               ))}
 
-              {/* Needs review */}
+              {/* Needs review — single-run only */}
+              {run && (
               <div>
                 <label className="block text-sm font-semibold mb-1" style={{ color: '#002147' }}>Needs review</label>
                 <textarea
@@ -580,6 +689,7 @@ export default function ResearchRunApprovalModal({
                   </p>
                 )}
               </div>
+              )}
             </>
           )}
         </div>
