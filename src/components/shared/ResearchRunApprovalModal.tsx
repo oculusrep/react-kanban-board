@@ -12,6 +12,8 @@ interface ResearchRunApprovalModalProps {
   siteSubmitLabel: string;
   onClose: () => void;
   onDone: (summary: { approved_new: number; approved_matched: number; created_municipality_count: number }) => void;
+  // Fired when a run is closed out as reviewed (all rejected / nothing to commit).
+  onReviewed?: () => void;
 }
 
 interface RunRow {
@@ -114,6 +116,7 @@ export default function ResearchRunApprovalModal({
   siteSubmitLabel,
   onClose,
   onDone,
+  onReviewed,
 }: ResearchRunApprovalModalProps) {
   const isSweep = !!sweepId;
   const [run, setRun] = useState<RunRow | null>(null);
@@ -356,10 +359,35 @@ export default function ResearchRunApprovalModal({
       // Mark as rejected locally
       setStaging((rows) => rows.map((r) => r.id === rowId ? { ...r, approval_state: 'rejected' } : r));
       setSelected((prev) => { const next = new Set(prev); next.delete(rowId); return next; });
-      // data: { rejected: bool } — silently ignore false (idempotent no-op)
-      void data;
+      // If that was the last pending row, the RPC auto-closed the run as reviewed.
+      if ((data as { run_reviewed?: boolean } | null)?.run_reviewed) {
+        setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
+        onReviewed?.();
+      }
     } catch (e) {
       setError(toErrorMessage(e));
+    }
+  };
+
+  // Explicit close-out for a run sitting all-rejected (nothing left to commit).
+  const handleMarkReviewed = async () => {
+    if (!run) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('mark_research_run_reviewed', { p_run_id: run.id });
+      if (rpcErr) throw rpcErr;
+      if ((data as { reviewed?: boolean })?.reviewed) {
+        setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
+        onReviewed?.();
+        onClose();
+      } else {
+        setError('Could not mark reviewed — the run still has pending records.');
+      }
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -706,7 +734,18 @@ export default function ResearchRunApprovalModal({
           >
             {isReadOnlyRun ? 'Close' : 'Cancel'}
           </button>
-          {!isReadOnlyRun && (
+          {!isSweep && run?.state === 'awaiting_review' && pendingCount === 0 && canApprove ? (
+            <button
+              type="button"
+              onClick={handleMarkReviewed}
+              disabled={submitting}
+              className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ backgroundColor: submitting ? '#8FA9C8' : '#002147', color: '#FFFFFF', opacity: submitting ? 0.7 : 1 }}
+              title="Nothing left to commit — mark this run reviewed"
+            >
+              {submitting ? 'Marking…' : 'Mark reviewed (nothing to commit)'}
+            </button>
+          ) : !isReadOnlyRun ? (
             <button
               type="button"
               onClick={handleApprove}
@@ -720,7 +759,7 @@ export default function ResearchRunApprovalModal({
             >
               {submitting ? 'Approving…' : `Approve & Commit (${selected.size})`}
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

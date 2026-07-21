@@ -1696,6 +1696,10 @@ export default function SiteSubmitSidebar({
             || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
           }
           onClose={() => setOpenApprovalRunId(null)}
+          onReviewed={() => {
+            showToast('Run marked reviewed — nothing to commit.', { type: 'success', duration: 4000 });
+            setResearchRunsRefresh((n) => n + 1);
+          }}
           onDone={({ approved_new, approved_matched, created_municipality_count }) => {
             const parts: string[] = [];
             if (approved_new > 0) parts.push(`${approved_new} new`);
@@ -1722,6 +1726,7 @@ export default function SiteSubmitSidebar({
             || `${siteSubmit.property?.property_name ?? ''} — ${siteSubmit.client?.client_name ?? ''}`.trim()
           }
           onClose={() => setOpenApprovalSweepId(null)}
+          onReviewed={() => setResearchRunsRefresh((n) => n + 1)}
           onDone={({ approved_new, approved_matched, created_municipality_count }) => {
             const parts: string[] = [];
             if (approved_new > 0) parts.push(`${approved_new} new`);

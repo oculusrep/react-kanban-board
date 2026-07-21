@@ -46,7 +46,7 @@ const STATE_STYLES: Record<ResearchRunRow['state'], { label: string; bg: string;
   running:         { label: 'Running',         bg: '#E8F1FF', fg: '#002147', border: '#4A6B94' },
   awaiting_review: { label: 'Awaiting review', bg: '#FFF7F0', fg: '#A27B5C', border: '#A27B5C' },
   approved:        { label: 'Approved',        bg: '#002147', fg: '#FFFFFF', border: '#002147' },
-  archived:        { label: 'Archived',        bg: '#F8FAFC', fg: '#8FA9C8', border: '#8FA9C8' },
+  archived:        { label: 'Reviewed',        bg: '#F8FAFC', fg: '#4A6B94', border: '#8FA9C8' },
   failed:          { label: 'Failed',          bg: '#FBEAEA', fg: '#8B0000', border: '#8B0000' },
   cancelled:       { label: 'Cancelled',       bg: '#F8FAFC', fg: '#8FA9C8', border: '#8FA9C8' },
 };
