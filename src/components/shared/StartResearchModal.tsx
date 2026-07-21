@@ -30,8 +30,8 @@ interface CoverageSegment {
   last_searched_at: string | null;
 }
 
-type Tier = 'quick' | 'deep' | 'custom' | 'sweep';
-type Mode = 'quick' | 'deep';
+type Tier = 'quick' | 'custom' | 'sweep';
+type Mode = 'quick' | 'deep';   // research_mode still exists; Custom + Deep Sweep emit 'deep'
 
 const RADIUS_PRESETS = [3, 5, 10, 15];
 
@@ -43,10 +43,8 @@ const SWEEP_COST_LABEL = '~$18';        // 6 chunks x ~$3
 const TIERS: { key: Tier; label: string; cost: string; blurb: string }[] = [
   { key: 'quick',  label: 'Quick',  cost: 'Sniff test · ~$5',
     blurb: 'Sampled scan — is there a growth story here at all? Makes no completeness claim. Run early on every prospect.' },
-  { key: 'deep',   label: 'Deep',   cost: 'Package run · ~$30',
-    blurb: 'Full enumeration of every P&Z agenda + development-scale permit in the window, with a coverage report. Run once on the pitched site.' },
   { key: 'custom', label: 'Custom', cost: 'Pick mode + window',
-    blurb: 'Choose the protocol and an explicit date range — e.g. to reach further back than the recent default.' },
+    blurb: 'Choose the protocol (incl. a single Deep enumeration) and an explicit date range — e.g. one 6-month window.' },
   { key: 'sweep',  label: 'Deep Sweep', cost: `3yr · ${SWEEP_COST_LABEL}`,
     blurb: 'Full 3-year Deep enumeration as 6 sequential 6-month chunks — fires automatically over ~2.5 hrs, with one unified approval when done.' },
 ];
@@ -321,7 +319,7 @@ export default function StartResearchModal({
           {/* Tier picker */}
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: '#002147' }}>Run type</label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {TIERS.map((t) => {
                 const active = tier === t.key;
                 return (
@@ -408,11 +406,6 @@ export default function StartResearchModal({
                 P&amp;Z {fmtMonthYear(plan.pz_window_start)} → {fmtMonthYear(plan.pz_window_end)}
                 {' · '}
                 Permits {fmtMonthYear(plan.permit_window_start)} → {fmtMonthYear(plan.permit_window_end)}
-                {tier === 'deep' && (
-                  <span className="block mt-1" style={{ color: '#8FA9C8' }}>
-                    Deep uses the recent window by default — use Custom to reach further back.
-                  </span>
-                )}
               </div>
             )}
           </div>
