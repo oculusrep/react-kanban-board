@@ -4036,6 +4036,14 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               ? selectedMunicipalProject.geometry_geojson
               : null
           }
+          // Match the layer's stage-color precedence so the drawn polygon shows
+          // the stage color immediately (no refresh). Drawing is always launched
+          // from the selected project's slideout, so that's the color source.
+          polygonColor={
+            selectedMunicipalProject?.effective_stage_color ||
+            selectedMunicipalProject?.municipality_display_color ||
+            '#8FA9C8'
+          }
           onCancel={() => setDrawingMunicipalProjectId(null)}
           onSaved={() => {
             setDrawingMunicipalProjectId(null);

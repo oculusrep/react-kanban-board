@@ -9,6 +9,11 @@ interface Props {
   // If present, drawer opens in select/edit mode with this polygon pre-loaded.
   // If null, drawer opens in polygon-draw mode for a fresh capture.
   existingGeometryGeoJson: { type: string; coordinates: unknown } | null;
+  // Effective stage color for this project (same precedence the layer uses:
+  // effective_stage_color > municipality_display_color > brand slate). The
+  // terra-draw polygon renders in this so it matches the baked polygon the
+  // layer will draw after save — no page refresh needed to "see" the stage color.
+  polygonColor: string;
   onCancel: () => void;
   onSaved: () => void;
 }
@@ -30,6 +35,7 @@ const MunicipalProjectDrawer: React.FC<Props> = ({
   map,
   projectId,
   existingGeometryGeoJson,
+  polygonColor,
   onCancel,
   onSaved,
 }) => {
@@ -54,9 +60,9 @@ const MunicipalProjectDrawer: React.FC<Props> = ({
       });
       const polygonMode = new TerraDrawPolygonMode({
         styles: {
-          fillColor: '#002147',
+          fillColor: polygonColor as `#${string}`,
           fillOpacity: 0.25,
-          outlineColor: '#002147',
+          outlineColor: polygonColor as `#${string}`,
           outlineWidth: 2,
         },
       });
