@@ -6,6 +6,7 @@ import PaymentTab from './PaymentTab';
 import ActivityTab from './ActivityTab';
 import FileManager from './FileManager/FileManager';
 import SlideOutPanel from './SlideOutPanel';
+import { CopyMapLinkButton } from './shared/CopyMapLinkButton';
 
 interface Deal {
   id: string;
@@ -122,6 +123,24 @@ export default function DealDetailsSlideout({
       title={deal?.deal_name || 'Deal Details'}
       width="45%"
       canMinimize={true}
+      headerActions={
+        deal ? (
+          <CopyMapLinkButton
+            path={
+              deal.property_id
+                ? `/mapping?property=${deal.property_id}`
+                : deal.site_submit_id
+                ? `/mapping?site-submit=${deal.site_submit_id}`
+                : null
+            }
+            label="Copy Map Link"
+            title="Copy link to this deal's location on the map"
+            disabledTitle="This deal has no linked property or site submit to locate on the map"
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium rounded-md transition-colors"
+            copiedClassName="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md transition-colors"
+          />
+        ) : undefined
+      }
     >
       {loading && (
         <div className="flex items-center justify-center py-12">

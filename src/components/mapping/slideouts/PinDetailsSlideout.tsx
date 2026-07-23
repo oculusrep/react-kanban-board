@@ -14,6 +14,7 @@ import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
 import FormattedField from '../../shared/FormattedField';
 import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink, Map, CheckSquare } from 'lucide-react';
+import { CopyMapLinkButton } from '../../shared/CopyMapLinkButton';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
@@ -2654,6 +2655,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   >
                     <ExternalLink size={16} className="text-white" />
                   </button>
+                )}
+
+                {/* Copy Map Link Button */}
+                {localPropertyData?.id && (
+                  <CopyMapLinkButton
+                    path={`/mapping?property=${localPropertyData.id}`}
+                    title="Copy link to this property on the map"
+                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white"
+                    copiedClassName="p-2 rounded-lg bg-green-500 transition-colors text-white"
+                  />
                 )}
 
                 {/* Center on Pin Button */}

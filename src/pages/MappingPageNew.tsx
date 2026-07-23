@@ -866,6 +866,77 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     }
   }, [location.search, mapInstance, layerState.properties?.isVisible, toggleLayer]);
 
+  // Handle site submit centering from URL parameter (without verify mode)
+  // Used by the "Copy map link" share button so a teammate lands on the pin
+  // with the sidebar open, without entering location-verify mode.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const siteSubmitId = params.get('site-submit');
+    const verifyMode = params.get('verify') === 'true';
+
+    if (siteSubmitId && !verifyMode && mapInstance) {
+      console.log('🗺️ Site submit centering requested (non-verify):', siteSubmitId);
+
+      supabase
+        .from('site_submit')
+        .select(`
+          *,
+          client!site_submit_client_id_fkey (id, client_name),
+          submit_stage!site_submit_submit_stage_id_fkey (id, name),
+          property_unit!site_submit_property_unit_id_fkey (id, property_unit_name),
+          property!site_submit_property_id_fkey (
+            id,
+            property_name,
+            address,
+            city,
+            state,
+            zip,
+            latitude,
+            longitude,
+            verified_latitude,
+            verified_longitude
+          )
+        `)
+        .eq('id', siteSubmitId)
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data) {
+            console.error('Failed to fetch site submit for centering:', error);
+            return;
+          }
+
+          // Priority: verified site submit coords > property coords
+          let lat = data.verified_latitude;
+          let lng = data.verified_longitude;
+          if (!lat || !lng) {
+            lat = data.property?.verified_latitude ?? data.property?.latitude;
+            lng = data.property?.verified_longitude ?? data.property?.longitude;
+          }
+
+          if (lat && lng) {
+            mapInstance.setCenter({ lat, lng });
+            mapInstance.setZoom(16);
+
+            // Enable site submits layer if not already visible
+            if (!layerState.site_submits?.isVisible) {
+              console.log('🎯 Auto-enabling site submits layer');
+              toggleLayer('site_submits');
+            }
+
+            // Open the site submit sidebar
+            setSelectedPinData(data);
+            setSelectedPinType('site_submit');
+            setPinDetailsInitialTab(undefined);
+            setIsPinDetailsOpen(true);
+
+            console.log('✅ Map centered on site submit and sidebar opened');
+          } else {
+            showToast('This site submit has no coordinates yet.', { type: 'info' });
+          }
+        });
+    }
+  }, [location.search, mapInstance, layerState.site_submits?.isVisible, toggleLayer]);
+
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);

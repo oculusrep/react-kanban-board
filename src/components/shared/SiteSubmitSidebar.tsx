@@ -18,6 +18,7 @@ import SiteSubmitCreateForm from './SiteSubmitCreateForm';
 import PortalChatTab from '../portal/PortalChatTab';
 import PortalFilesTab from '../portal/PortalFilesTab';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
+import { CopyMapLinkButton } from './CopyMapLinkButton';
 import { useSiteSubmitEmail } from '../../hooks/useSiteSubmitEmail';
 import EmailComposerModal from '../EmailComposerModal';
 import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
@@ -1339,6 +1340,16 @@ export default function SiteSubmitSidebar({
 
           {/* Portal context: Copy Link and View Toggle text buttons */}
           <div className="flex items-center gap-2">
+            {/* Copy internal map link (team sharing) - not in portal (client-facing) */}
+            {context !== 'portal' && siteSubmitId && (
+              <CopyMapLinkButton
+                path={`/mapping?site-submit=${siteSubmitId}`}
+                title="Copy link to this site submit on the map"
+                className="p-1 rounded text-gray-300 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                copiedClassName="p-1 rounded text-green-400 flex-shrink-0"
+              />
+            )}
+
             {/* Copy coordinates (crosshairs / viewfinder) */}
             {hasCoords && (
               <button
