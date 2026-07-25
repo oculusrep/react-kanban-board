@@ -88,6 +88,7 @@ interface SiteSubmitLayerProps {
   verifyingSiteSubmit?: SiteSubmit | null; // Full site submit data for the one being verified
   onLocationVerified?: (siteSubmitId: string, lat: number, lng: number) => void;
   selectedSiteSubmitId?: string | null; // Site submit to highlight (from Pipeline "View on Map")
+  selectedSiteSubmit?: SiteSubmit | null; // Full data for the selected site submit, so its pin renders even when not in the loaded (client-filtered) list
   onSelectedSiteSubmitPosition?: (lat: number, lng: number, siteSubmitId: string) => void; // Callback with position of selected site submit
 }
 
@@ -104,6 +105,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   verifyingSiteSubmit = null,
   onLocationVerified,
   selectedSiteSubmitId = null,
+  selectedSiteSubmit = null,
   onSelectedSiteSubmitPosition
 }) => {
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
@@ -508,6 +510,18 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         siteSubmitsToRender = [verifyingSiteSubmit, ...siteSubmits];
       } else {
         console.log('✅ Verifying site submit already in loaded list');
+      }
+    }
+
+    // Ensure the selected site submit is included even if not in the loaded list.
+    // This covers deep links (e.g. "Copy map link") and Pipeline "View on Map" where
+    // no client filter is active, so the client-filtered loader returns nothing to highlight.
+    if (selectedSiteSubmit && selectedSiteSubmitId) {
+      const alreadyInList = siteSubmitsToRender.some(ss => ss.id === selectedSiteSubmitId);
+
+      if (!alreadyInList) {
+        console.log('➕ Adding selected site submit to render list:', selectedSiteSubmit.site_submit_name);
+        siteSubmitsToRender = [selectedSiteSubmit, ...siteSubmitsToRender];
       }
     }
 
@@ -1020,7 +1034,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       console.log(`🎨 createMarkers triggered (siteSubmits.length=${siteSubmits.length}, selectedSiteSubmitId=${selectedSiteSubmitId})`);
       createMarkers();
     }
-  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit, markerStyle.shape, markerStyle.useAdvancedMarkers, selectedSiteSubmitId]);
+  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit, markerStyle.shape, markerStyle.useAdvancedMarkers, selectedSiteSubmitId, selectedSiteSubmit]);
 
   // Set up clustering when markers change or cluster config changes (including when empty)
   useEffect(() => {

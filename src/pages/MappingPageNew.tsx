@@ -3439,6 +3439,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               verifyingSiteSubmit={verifyingSiteSubmit}
               onLocationVerified={handleSiteSubmitLocationVerified}
               selectedSiteSubmitId={selectedPinType === 'site_submit' && selectedPinData ? selectedPinData.id : null}
+              selectedSiteSubmit={selectedPinType === 'site_submit' && selectedPinData ? selectedPinData : null}
               onSelectedSiteSubmitPosition={(lat, lng) => {
                 if (mapInstance) mapInstance.setCenter({ lat, lng });
               }}
