@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { RefreshCw, Download, ChevronDown, ChevronUp, ShieldAlert, Trash2 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -180,6 +180,36 @@ export default function ArtyDrawReport() {
       const dateB = new Date(b.date).getTime();
       return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
     });
+  }, [data?.transactions, sortOrder]);
+
+  // Group transactions by day so each day's closing balance can headline the group.
+  // QBO returns same-day rows in an arbitrary order, so the per-row mid-day balances
+  // aren't meaningful — but the end-of-day balance is order-independent and reliable.
+  const groupedByDay = useMemo(() => {
+    if (!data?.transactions) return [];
+
+    // data.transactions arrives in ascending date order with the running balance
+    // computed in that order, so the last row of each date carries its closing balance.
+    const byDate = new Map<string, TransactionLine[]>();
+    for (const txn of data.transactions) {
+      const bucket = byDate.get(txn.date) ?? [];
+      bucket.push(txn);
+      byDate.set(txn.date, bucket);
+    }
+
+    const groups = Array.from(byDate.entries()).map(([date, transactions]) => ({
+      date,
+      transactions,
+      endOfDayBalance: transactions[transactions.length - 1].balance,
+    }));
+
+    groups.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+
+    return groups;
   }, [data?.transactions, sortOrder]);
 
   const formatCurrency = (value: number) => {
@@ -476,11 +506,24 @@ export default function ArtyDrawReport() {
                   </td>
                 </tr>
               ) : (
-                sortedTransactions.map((txn, idx) => (
-                  <tr key={txn.id || idx} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
-                      {formatDate(txn.date)}
-                    </td>
+                groupedByDay.map((group) => (
+                  <Fragment key={group.date}>
+                    {/* Day header — end-of-day balance (the only order-independent figure) */}
+                    <tr className="bg-slate-100 border-t border-slate-300">
+                      <td colSpan={6} className="px-4 py-2 text-sm font-bold text-gray-900">
+                        {formatDate(group.date)}
+                        <span className="ml-2 text-xs font-normal text-gray-500">
+                          end-of-day balance{group.transactions.length > 1 ? ` · ${group.transactions.length} transactions` : ''}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right text-sm font-bold text-gray-900">
+                        {formatCurrency(group.endOfDayBalance)}
+                      </td>
+                      <td></td>
+                    </tr>
+                    {group.transactions.map((txn, idx) => (
+                      <tr key={txn.id || idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap"></td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         txn.type === 'Journal Entry' ? 'bg-blue-100 text-blue-700' :
@@ -538,7 +581,9 @@ export default function ArtyDrawReport() {
                         </button>
                       )}
                     </td>
-                  </tr>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))
               )}
             </tbody>
