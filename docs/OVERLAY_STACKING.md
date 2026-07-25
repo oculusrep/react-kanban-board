@@ -78,3 +78,41 @@ added over the map, the drawer would need to move to `fixed` or be portaled to
 4. Keep the root `position: fixed` (or `absolute`) so it forms a stacking context.
 5. If the overlay genuinely must sit above *everything* (a modal), don't use this
    hook — use the `10010+` tier instead.
+
+## History / troubleshooting
+
+### v1 — offset/hardcoded z-index (before this work)
+Each slideout hardcoded its own z-index in two broken buckets: pin sidebars +
+Merchants tied at `10001` (DOM order decided, not recency); demographics / target /
+municipal / Starbucks down at `50`/`60` and always buried under a pin sidebar. The
+only coordination was the offset-based side-by-side scheme in
+[SLIDEOUT_STACKING_IMPLEMENTATION.md](SLIDEOUT_STACKING_IMPLEMENTATION.md).
+
+### v2 — array-index stacking (first cut of this hook)
+Introduced `useOverlayStack` with `z-index = BASE_Z + position-in-open-list`. Bounded
+and recency-ordered for most cases, **but the bottom overlay sat at exactly `BASE_Z`**,
+so a tie was still possible.
+
+**Symptom:** with a property/site-submit sidebar already open, clicking **Merchants**
+left the drawer *behind* the sidebar.
+
+**Root cause:** the pin sidebars are rendered *outside and after* the map container
+(see the `{/* Sidebars - Rendered outside map container ... */}` block in
+`MappingPageNew.tsx`), i.e. in a later DOM subtree than the map-anchored panels. CSS
+breaks a z-index tie by DOM order, so whenever the drawer and the sidebar both resolved
+to `BASE_Z`, the later-rendered sidebar won. (Ruled out a stacking-context trap first:
+no `transform`/`filter`/`will-change`/`isolation` ancestor exists over the map wrapper
+in normal mode, so the `position: absolute` Merchants drawer does compete in the root
+context — the failure was the tie, not confinement.)
+
+### v3 — monotonic high-water mark (current)
+Every open/click takes a value **strictly greater** than all prior ones, so ties are
+impossible and DOM order never decides. A shared open-counter resets the mark to
+`BASE_Z` once all overlays close, keeping the band bounded. See the current
+[useOverlayStack.ts](../src/hooks/useOverlayStack.ts).
+
+**If Merchants (or any `absolute` overlay) is *still* buried after v3:** that means a
+stacking-context-forming ancestor (`transform`/`filter`/`will-change`/`contain`/
+`perspective`) was added over the map wrapper, confining the drawer's context below the
+root. Fix by switching the drawer to `position: fixed` **and** portaling it to
+`document.body` so it re-joins the root stacking context.
