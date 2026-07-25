@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useOverlayStack } from '../../hooks/useOverlayStack';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLayerManager } from './layers/LayerManager';
@@ -77,6 +78,7 @@ const TriStateCheckbox: React.FC<TriStateCheckboxProps> = ({
 };
 
 const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const {
     layerState,
     toggleLayer,
@@ -335,6 +337,7 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
 
   return (
     <div
+      onMouseDown={bringToFront}
       style={{
         position: 'absolute',
         top: 60,
@@ -347,7 +350,7 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
         boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
         display: 'flex',
         flexDirection: 'column',
-        zIndex: 10001,
+        zIndex,
         fontFamily: 'system-ui, -apple-system, sans-serif',
         color: DARK.textPrimary,
       }}

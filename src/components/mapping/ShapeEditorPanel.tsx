@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapLayerShape, UpdateShapeInput } from '../../services/mapLayerService';
+import { useOverlayStack } from '../../hooks/useOverlayStack';
 
 interface ShapeEditorPanelProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
   onDelete,
   onUpdateLayerDefaults,
 }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const [name, setName] = useState('');
   const [color, setColor] = useState('#3b82f6');
   const [strokeColor, setStrokeColor] = useState('#3b82f6');
@@ -101,7 +103,7 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
   }[shape.shape_type] || 'Shape';
 
   return (
-    <div className="fixed right-4 top-32 w-80 z-[1000] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col max-h-[calc(100vh-9rem)]">
+    <div onMouseDown={bringToFront} style={{ zIndex }} className="fixed right-4 top-32 w-80 bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col max-h-[calc(100vh-9rem)]">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
         <div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import {
   AreaChart,
@@ -45,6 +46,7 @@ interface RestaurantSlideoutProps {
  * that cause bundling conflicts with Google Maps.
  */
 const RestaurantSlideout: React.FC<RestaurantSlideoutProps> = ({ restaurant, onClose, topOffset = 0 }) => {
+  const { zIndex, bringToFront } = useOverlayStack();
   const [fullTrends, setFullTrends] = useState<RestaurantTrend[]>([]);
   const [loadingTrends, setLoadingTrends] = useState(false);
 
@@ -126,8 +128,10 @@ const RestaurantSlideout: React.FC<RestaurantSlideoutProps> = ({ restaurant, onC
 
   return (
     <div
-      className="fixed top-0 right-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-[10001] flex flex-col w-[500px]"
+      onMouseDown={bringToFront}
+      className="fixed top-0 right-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 flex flex-col w-[500px]"
       style={{
+        zIndex,
         top: `${67 + topOffset}px`,
         height: `calc(100vh - ${67 + topOffset}px - 20px)`,
       }}

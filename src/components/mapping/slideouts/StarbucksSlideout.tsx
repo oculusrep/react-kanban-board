@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { StarbucksStoreWithSnapshot, StarbucksSnapshot } from '../layers/StarbucksLayer';
 import {
@@ -37,6 +38,7 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 const StarbucksSlideout: React.FC<StarbucksSlideoutProps> = ({ store, onClose, topOffset = 0 }) => {
+  const { zIndex, bringToFront } = useOverlayStack();
   const [snapshots, setSnapshots] = useState<StarbucksSnapshot[]>(
     store.latest_snapshot ? [store.latest_snapshot] : []
   );
@@ -74,6 +76,7 @@ const StarbucksSlideout: React.FC<StarbucksSlideoutProps> = ({ store, onClose, t
 
   return (
     <div
+      onMouseDown={bringToFront}
       style={{
         position: 'fixed',
         top: 64 + topOffset,
@@ -84,7 +87,7 @@ const StarbucksSlideout: React.FC<StarbucksSlideoutProps> = ({ store, onClose, t
         color: 'white',
         display: 'flex',
         flexDirection: 'column',
-        zIndex: 50,
+        zIndex,
         boxShadow: '-4px 0 20px rgba(0,0,0,0.3)',
         fontFamily: 'system-ui, sans-serif',
       }}

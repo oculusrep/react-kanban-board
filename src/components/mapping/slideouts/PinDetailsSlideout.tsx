@@ -15,6 +15,7 @@ import PropertySquareFootageField from '../../property/PropertySquareFootageFiel
 import FormattedField from '../../shared/FormattedField';
 import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink, Map, CheckSquare } from 'lucide-react';
 import { CopyMapLinkButton } from '../../shared/CopyMapLinkButton';
+import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
@@ -660,6 +661,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   initialTab,
   onOpenFullSiteSubmit
 }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const [activeTab, setActiveTab] = useState<TabType>(
     initialTab || (type === 'site_submit' ? 'submit' : 'property')
   );
@@ -2618,10 +2620,12 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     <>
       {/* Slideout - Match PropertySidebar styling */}
       <div
-        className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-[10001] flex flex-col ${
+        onMouseDown={bringToFront}
+        className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 flex flex-col ${
           !isOpen ? 'translate-x-full' : isMinimized ? 'w-12' : 'w-[500px]'
         } ${isMinimized ? 'overflow-hidden' : ''}`}
         style={{
+          zIndex,
           right: `${rightOffset}px`,
           top: `${67 + topOffset}px`, // Match navbar height + any additional offset (e.g., search bar)
           height: `calc(100vh - ${67 + topOffset}px - 20px)`, // Add 20px bottom margin to prevent cutoff

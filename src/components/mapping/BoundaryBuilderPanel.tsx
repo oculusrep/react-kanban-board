@@ -7,6 +7,7 @@ import {
   SOUTHEASTERN_STATES,
 } from '../../services/boundaryService';
 import BoundarySearchBox from './BoundarySearchBox';
+import { useOverlayStack } from '../../hooks/useOverlayStack';
 
 interface BoundaryBuilderPanelProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ const BoundaryBuilderPanel: React.FC<BoundaryBuilderPanelProps> = ({
   onSaveCollection,
   onSaveMerged,
 }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   // Collection state
   const [collection, setCollection] = useState<FetchedBoundary[]>([]);
   const [loadingBoundaries, setLoadingBoundaries] = useState<Set<string>>(new Set());
@@ -302,7 +304,7 @@ const BoundaryBuilderPanel: React.FC<BoundaryBuilderPanelProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed right-4 top-32 w-96 z-[1000] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col max-h-[calc(100vh-160px)]">
+    <div onMouseDown={bringToFront} style={{ zIndex }} className="fixed right-4 top-32 w-96 bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col max-h-[calc(100vh-160px)]">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { geocodingService } from '../../../services/geocodingService';
 import type { MunicipalProjectMapRow } from '../layers/MunicipalProjectLayer';
@@ -75,6 +76,7 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   onStartDrawingPolygon,
   isDrawingPolygon,
 }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const [stages, setStages] = useState<ProjectStageOption[]>([]);
   const [overrideId, setOverrideId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -323,8 +325,9 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     <aside
       // No backdrop overlay — map stays pan/zoom-able while slideout is open.
       // Close via the × button.
-      className="fixed top-0 right-0 h-full w-[420px] z-[50] shadow-2xl flex flex-col"
-      style={{ backgroundColor: '#FFFFFF' }}
+      onMouseDown={bringToFront}
+      className="fixed top-0 right-0 h-full w-[420px] shadow-2xl flex flex-col"
+      style={{ backgroundColor: '#FFFFFF', zIndex }}
     >
         {/* Header */}
         <header

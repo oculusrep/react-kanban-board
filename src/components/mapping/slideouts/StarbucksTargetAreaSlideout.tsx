@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
 import type { TargetAreaRow } from '../layers/StarbucksTargetAreaLayer';
@@ -49,6 +50,7 @@ const inputCls =
   'w-full text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500';
 
 const StarbucksTargetAreaSlideout: React.FC<Props> = ({ isOpen, row, onClose, onChanged }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const { refreshLayer } = useLayerManager();
 
   const isOrep = row?.source === 'orep';
@@ -127,10 +129,14 @@ const StarbucksTargetAreaSlideout: React.FC<Props> = ({ isOpen, row, onClose, on
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[59] bg-black/20" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/20" style={{ zIndex: zIndex - 1 }} onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed top-0 right-0 h-full w-[380px] max-w-[90vw] bg-white shadow-2xl z-[60] flex flex-col">
+      <div
+        onMouseDown={bringToFront}
+        className="fixed top-0 right-0 h-full w-[380px] max-w-[90vw] bg-white shadow-2xl flex flex-col"
+        style={{ zIndex }}
+      >
         {/* Header */}
         <div className="px-4 py-3 border-b border-gray-200 flex items-start justify-between">
           <div className="min-w-0">

@@ -13,6 +13,7 @@ import {
 import { mapLayerService, type MapLayer, type MapLayerShape } from '../../services/mapLayerService';
 import { US_STATES, SOUTHEASTERN_STATES } from '../../services/boundaryService';
 import * as turf from '@turf/turf';
+import { useOverlayStack } from '../../hooks/useOverlayStack';
 
 interface ClosedBusinessSearchPanelProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
   drawnPolygon,
   onClearDrawnPolygon,
 }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   // Search form state
   const [searchType, setSearchType] = useState<'chain' | 'category'>('chain');
   const [searchTerm, setSearchTerm] = useState('');
@@ -556,7 +558,7 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed right-4 top-32 w-96 z-[1000] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col max-h-[calc(100vh-160px)]">
+    <div onMouseDown={bringToFront} style={{ zIndex }} className="fixed right-4 top-32 w-96 bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col max-h-[calc(100vh-160px)]">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <div>

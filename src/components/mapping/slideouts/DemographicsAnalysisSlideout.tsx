@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import {
   usePropertyGeoenrichment,
   GeoenrichmentResult,
@@ -188,6 +189,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   onClose,
   prefilled,
 }) => {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   // User-persisted style defaults (localStorage). Falls back to the
   // hardcoded red palette when nothing has been saved.
   const { defaults: styleDefaults, saveAsDefaults, resetToFactory } =
@@ -475,12 +477,13 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
 
       <aside
         data-demographics-slideout="true"
+        onMouseDown={bringToFront}
         className={
           minimized
-            ? 'fixed top-4 right-4 z-[50] shadow-2xl rounded-lg overflow-hidden'
-            : 'fixed top-0 right-0 h-full w-[420px] z-[50] shadow-2xl flex flex-col'
+            ? 'fixed top-4 right-4 shadow-2xl rounded-lg overflow-hidden'
+            : 'fixed top-0 right-0 h-full w-[420px] shadow-2xl flex flex-col'
         }
-        style={{ backgroundColor: '#FFFFFF' }}
+        style={{ backgroundColor: '#FFFFFF', zIndex }}
       >
         <header
           className={

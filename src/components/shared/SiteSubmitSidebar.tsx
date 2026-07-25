@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import { useOverlayStack } from '../../hooks/useOverlayStack';
 import SiteSubmitDataTab from './SiteSubmitDataTab';
 import DealDataTab from './DealDataTab';
 import SiteSubmitContactsTab from './SiteSubmitContactsTab';
@@ -224,6 +225,7 @@ export default function SiteSubmitSidebar({
   initialData,
   initialTab,
 }: SiteSubmitSidebarProps) {
+  const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1001,10 +1003,12 @@ export default function SiteSubmitSidebar({
 
   return (
     <div
-      className={`fixed bg-white shadow-2xl z-[10001] transform transition-transform duration-300 ease-in-out flex flex-col ${
+      onMouseDown={bringToFront}
+      className={`fixed bg-white shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
       style={{
+        zIndex,
         width: '500px',
         maxWidth: '90vw',
         top: `${64 + topOffset}px`,
