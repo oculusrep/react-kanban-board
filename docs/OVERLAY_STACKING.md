@@ -40,15 +40,28 @@ const { zIndex, bringToFront } = useOverlayStack(isOpen);
 
 ### How it works / the z-index contract
 
-A module-level ordered list holds the currently-open overlay ids (last = top).
-`z-index = BASE_Z (10001) + position-in-list`. This keeps the whole managed group
-bounded to roughly `10001 .. 10001 + (open overlays)` — realistically `< 10010`.
+A module-level high-water mark (`topZ`, starting at `BASE_Z = 10001`) is bumped on
+every open/click; that overlay takes the new value. Because each raise is strictly
+greater than every prior one, **there are never ties**, so DOM order never decides
+the winner. This is important here: the pin sidebars are rendered in a *later* DOM
+subtree than the map-anchored panels (Merchants, demographics — see the
+`{/* Sidebars - Rendered outside map container ... */}` block in `MappingPageNew`),
+so under any tie the pin sidebar would silently win. Strictly-increasing values
+remove the tie entirely.
 
-That ceiling is deliberate: the app's **always-on-top** tier lives at `10010+`
-(true modals, toasts at max-int, some top-level dropdowns). Managed slideouts must
-stay below it. Each overlay root is `position: fixed/absolute` **with an explicit
-z-index**, so it forms its own stacking context and its children (in-panel
-dropdowns, toasts) are isolated from this ordering.
+Bounding: a shared open-counter resets `topZ` back to `BASE_Z` once every overlay
+has closed, so values can't climb without end across a session. The managed band
+stays low (`10001 .. 10001 + a handful`) and below the app's **always-on-top** tier
+at `10010+` (true modals, toasts at max-int, some top-level dropdowns).
+
+Each overlay root is `position: fixed/absolute` **with an explicit z-index**, so it
+forms its own stacking context and its children (in-panel dropdowns, toasts) are
+isolated from this ordering. Note the Merchants drawer is `position: absolute`
+inside the map wrapper (all others are `fixed`); this works because no ancestor of
+the map wrapper forms a stacking context in normal mode, so it still competes in
+the root context by z-index. If a transform/filter/will-change ancestor is ever
+added over the map, the drawer would need to move to `fixed` or be portaled to
+`document.body` to keep competing.
 
 ### Not included (intentionally)
 

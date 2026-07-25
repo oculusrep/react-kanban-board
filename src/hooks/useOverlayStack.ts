@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Shared stacking manager for right-side map overlays / slideouts.
@@ -6,81 +6,78 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
  * The map can show several slideouts at once (pin details, Merchants,
  * demographics, target area, municipal, Starbucks, ...). Historically each
  * hardcoded its own z-index, so a newly opened slideout could render *behind*
- * one opened earlier — stacking was decided by DOM render order, not by what
- * the user opened last.
+ * one opened earlier — stacking was decided by DOM render order, not recency.
+ * This matters especially because the pin sidebars are rendered in a *later*
+ * DOM subtree than the map-anchored panels (Merchants, demographics), so any
+ * z-index tie is silently won by the pin sidebar.
  *
- * This hook gives every opted-in overlay an incrementing z-index driven by
- * open/click *recency*: the most recently opened — or clicked — overlay is
- * always on top, like windows on a desktop.
+ * This hook gives every opted-in overlay a strictly-increasing z-index driven
+ * by open/click *recency*: the most recently opened — or clicked — overlay is
+ * always on top, like windows on a desktop. Because each raise gets a value
+ * strictly greater than every prior one, there are never ties, so DOM order
+ * never decides.
  *
- * Implementation: a module-level ordered list of the currently-open overlays.
- * z-index = BASE_Z + position-in-list, so the range stays bounded to roughly
- * BASE_Z .. BASE_Z + (open overlays). We deliberately keep the ceiling below
- * the app's ~10010+ "always-on-top" tier (modals, toasts, top-level dropdowns)
- * so those still cover the slideouts. Each overlay root is position:fixed/absolute
- * with an explicit z-index, so it forms its own stacking context and its
- * children (in-panel dropdowns, toasts) are isolated from this ordering.
+ * Bounding: a shared open-counter resets the running value back to BASE_Z once
+ * every overlay has closed, so the numbers can't climb without end across a
+ * session. The managed band stays low (BASE_Z .. BASE_Z + a handful) and below
+ * the app's ~10010+ "always-on-top" tier (true modals, toasts). Each overlay
+ * root is position:fixed/absolute with an explicit z-index, so it forms its own
+ * stacking context and its children (in-panel dropdowns, toasts) are isolated.
  *
  * Usage:
  *   const { zIndex, bringToFront } = useOverlayStack(isOpen);
  *   <div style={{ zIndex }} onMouseDown={bringToFront}> ... </div>
  *
  * Pass `isOpen` for overlays that stay mounted and animate via a prop; pass
- * nothing (defaults to true) for overlays that mount only while visible.
+ * nothing (defaults to true) for overlays that mount only while visible. Call
+ * the hook before any early `return null`, per the Rules of Hooks.
  */
 
 const BASE_Z = 10001;
 
-// Ordered list of open overlay ids — last element is the top-most.
-let openOrder: number[] = [];
-let nextOverlayId = 1;
-const subscribers = new Set<() => void>();
+// Running high-water mark handed out on each raise, and a count of how many
+// overlays are currently open so we can reset the mark back to the floor when
+// the map is clear.
+let topZ = BASE_Z;
+let openCount = 0;
 
-function notify() {
-  subscribers.forEach((fn) => fn());
-}
-
-function raise(id: number) {
-  const i = openOrder.indexOf(id);
-  if (i === openOrder.length - 1) return; // already on top (also covers the empty case)
-  if (i !== -1) openOrder.splice(i, 1);
-  openOrder.push(id);
-  notify();
-}
-
-function remove(id: number) {
-  const i = openOrder.indexOf(id);
-  if (i === -1) return;
-  openOrder.splice(i, 1);
-  notify();
+function nextZ(): number {
+  topZ += 1;
+  return topZ;
 }
 
 export function useOverlayStack(isOpen: boolean = true) {
-  const idRef = useRef(0);
-  if (idRef.current === 0) idRef.current = nextOverlayId++;
-  const id = idRef.current;
+  const [zIndex, setZIndex] = useState(BASE_Z);
 
-  // Re-render this overlay whenever the shared stacking order changes.
-  const [, forceRender] = useState(0);
-  useEffect(() => {
-    const fn = () => forceRender((n) => n + 1);
-    subscribers.add(fn);
-    return () => {
-      subscribers.delete(fn);
-    };
+  // Track this instance's contribution to the open count so we can reset the
+  // shared high-water mark once nothing is open anymore.
+  const countedRef = useRef(false);
+
+  const bringToFront = useCallback(() => {
+    setZIndex(nextZ());
   }, []);
 
-  // Raise to the front when opened; drop out of the stack when closed/unmounted.
   useLayoutEffect(() => {
-    if (isOpen) raise(id);
-    else remove(id);
-    return () => remove(id);
-  }, [isOpen, id]);
+    if (isOpen) {
+      if (!countedRef.current) {
+        countedRef.current = true;
+        openCount += 1;
+      }
+      setZIndex(nextZ());
+    } else if (countedRef.current) {
+      countedRef.current = false;
+      openCount = Math.max(0, openCount - 1);
+      if (openCount === 0) topZ = BASE_Z;
+    }
 
-  const bringToFront = useCallback(() => raise(id), [id]);
-
-  const index = openOrder.indexOf(id);
-  const zIndex = index === -1 ? BASE_Z : BASE_Z + index;
+    return () => {
+      if (countedRef.current) {
+        countedRef.current = false;
+        openCount = Math.max(0, openCount - 1);
+        if (openCount === 0) topZ = BASE_Z;
+      }
+    };
+  }, [isOpen]);
 
   return { zIndex, bringToFront };
 }
