@@ -62,11 +62,16 @@ export function TourMapPage() {
     let cancelled = false;
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
     const mapId = import.meta.env.VITE_GOOGLE_MAP_ID as string | undefined;
-    const loader = new Loader({ apiKey, version: 'weekly', libraries: ['geometry', 'marker', 'routes'] });
+    // The Loader is a process-wide singleton — its options MUST match every other
+    // caller (GoogleMapContainer uses these exact libraries) or it throws
+    // "Loader must not be called again with different options". Pull marker/routes
+    // via importLibrary (on-demand, independent of the Loader options) instead.
+    const loader = new Loader({ apiKey, version: 'weekly', libraries: ['places', 'geometry', 'drawing'] });
     loader
       .load()
       .then(async () => {
         await google.maps.importLibrary('marker');
+        await google.maps.importLibrary('routes');
         if (cancelled || !mapDivRef.current) return;
         const opts: google.maps.MapOptions = {
           center: { lat: 33.749, lng: -84.388 }, // Atlanta default
