@@ -1,8 +1,31 @@
 # Comp Database — Design & Scope
 
-**Status:** Phase 1 built (2026-07-25) — schema live in prod, map layer + capture sidebar shipped in code (not yet deployed)
+**Status:** Phase 1 shipped to production (2026-07-25) — schema live in prod; frontend deployed via `main` (commit `30bf8d78`)
 **Owner:** Mike
 **Last updated:** 2026-07-25
+
+## Next steps
+
+**Immediate (validate Phase 1 in prod):**
+1. Smoke-test on https://ovis.oculusrep.com — toggle **Comp Database**, right-click → **Add Comp Here**,
+   create a comp, add a lease + sale + OM + note, confirm the pin re-colors and counts update.
+2. Seed a few real comps around an active Starbucks target so the layer has content to select from.
+3. Confirm internal-only RLS behaves (non-internal users shouldn't see comp pins).
+
+**Phase 2 — Bulk ingestion (next build):**
+- CoStar / Crexi export (CSV/API) importer → normalize into the schema.
+- Dedupe on `source_reference` + address + tenant + dates; add a `comp_import_batch` provenance table.
+- Wire the sidebar **Files** tab to `dropbox_mapping` (`entity_type='comp_property'`) for OM PDFs (open item #6).
+
+**Phase 3 — AI-agent research:** agent finds OM sales / in-place leases / expirations online, writes
+`source_type='ai_agent'` / `confidence='reported'`, with a human review queue to promote to `verified`;
+expose via the OVIS MCP server (see [[project_ai_architecture]]).
+
+**Phase 4 — Trade-area analytics (deferred):** radius rings → drive-time isochrones; the
+**expiring-leases-near-target** report (fields already indexed); feed comp evidence into the
+[Site Analysis report](STARBUCKS_SITE_ANALYSIS.md).
+
+See the full phase breakdown and open items below.
 
 ## Phase 1 — what shipped
 
@@ -24,7 +47,8 @@
   comp at those coords and opens the sidebar in create mode. Comps are then picked manually off the
   layer for reports (no automated trade-area query yet, per the locked decision).
 
-Deploy note: frontend not yet pushed — `git push origin main` deploys to prod when ready.
+Deployed: commit `30bf8d78` on `main` (2026-07-25). The DB migration was applied to prod directly via
+the Supabase MCP (additive-only new tables) before the frontend push, so schema + UI are in sync.
 
 ## Purpose
 
