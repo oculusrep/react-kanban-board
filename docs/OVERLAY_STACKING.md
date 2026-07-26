@@ -40,15 +40,28 @@ const { zIndex, bringToFront } = useOverlayStack(isOpen);
 
 ### How it works / the z-index contract
 
-A module-level ordered list holds the currently-open overlay ids (last = top).
-`z-index = BASE_Z (10001) + position-in-list`. This keeps the whole managed group
-bounded to roughly `10001 .. 10001 + (open overlays)` — realistically `< 10010`.
+A module-level high-water mark (`topZ`, starting at `BASE_Z = 10001`) is bumped on
+every open/click; that overlay takes the new value. Because each raise is strictly
+greater than every prior one, **there are never ties**, so DOM order never decides
+the winner. This is important here: the pin sidebars are rendered in a *later* DOM
+subtree than the map-anchored panels (Merchants, demographics — see the
+`{/* Sidebars - Rendered outside map container ... */}` block in `MappingPageNew`),
+so under any tie the pin sidebar would silently win. Strictly-increasing values
+remove the tie entirely.
 
-That ceiling is deliberate: the app's **always-on-top** tier lives at `10010+`
-(true modals, toasts at max-int, some top-level dropdowns). Managed slideouts must
-stay below it. Each overlay root is `position: fixed/absolute` **with an explicit
-z-index**, so it forms its own stacking context and its children (in-panel
-dropdowns, toasts) are isolated from this ordering.
+Bounding: a shared open-counter resets `topZ` back to `BASE_Z` once every overlay
+has closed, so values can't climb without end across a session. The managed band
+stays low (`10001 .. 10001 + a handful`) and below the app's **always-on-top** tier
+at `10010+` (true modals, toasts at max-int, some top-level dropdowns).
+
+Each overlay root is `position: fixed/absolute` **with an explicit z-index**, so it
+forms its own stacking context and its children (in-panel dropdowns, toasts) are
+isolated from this ordering. Note the Merchants drawer is `position: absolute`
+inside the map wrapper (all others are `fixed`); this works because no ancestor of
+the map wrapper forms a stacking context in normal mode, so it still competes in
+the root context by z-index. If a transform/filter/will-change ancestor is ever
+added over the map, the drawer would need to move to `fixed` or be portaled to
+`document.body` to keep competing.
 
 ### Not included (intentionally)
 
@@ -65,3 +78,41 @@ dropdowns, toasts) are isolated from this ordering.
 4. Keep the root `position: fixed` (or `absolute`) so it forms a stacking context.
 5. If the overlay genuinely must sit above *everything* (a modal), don't use this
    hook — use the `10010+` tier instead.
+
+## History / troubleshooting
+
+### v1 — offset/hardcoded z-index (before this work)
+Each slideout hardcoded its own z-index in two broken buckets: pin sidebars +
+Merchants tied at `10001` (DOM order decided, not recency); demographics / target /
+municipal / Starbucks down at `50`/`60` and always buried under a pin sidebar. The
+only coordination was the offset-based side-by-side scheme in
+[SLIDEOUT_STACKING_IMPLEMENTATION.md](SLIDEOUT_STACKING_IMPLEMENTATION.md).
+
+### v2 — array-index stacking (first cut of this hook)
+Introduced `useOverlayStack` with `z-index = BASE_Z + position-in-open-list`. Bounded
+and recency-ordered for most cases, **but the bottom overlay sat at exactly `BASE_Z`**,
+so a tie was still possible.
+
+**Symptom:** with a property/site-submit sidebar already open, clicking **Merchants**
+left the drawer *behind* the sidebar.
+
+**Root cause:** the pin sidebars are rendered *outside and after* the map container
+(see the `{/* Sidebars - Rendered outside map container ... */}` block in
+`MappingPageNew.tsx`), i.e. in a later DOM subtree than the map-anchored panels. CSS
+breaks a z-index tie by DOM order, so whenever the drawer and the sidebar both resolved
+to `BASE_Z`, the later-rendered sidebar won. (Ruled out a stacking-context trap first:
+no `transform`/`filter`/`will-change`/`isolation` ancestor exists over the map wrapper
+in normal mode, so the `position: absolute` Merchants drawer does compete in the root
+context — the failure was the tie, not confinement.)
+
+### v3 — monotonic high-water mark (current)
+Every open/click takes a value **strictly greater** than all prior ones, so ties are
+impossible and DOM order never decides. A shared open-counter resets the mark to
+`BASE_Z` once all overlays close, keeping the band bounded. See the current
+[useOverlayStack.ts](../src/hooks/useOverlayStack.ts).
+
+**If Merchants (or any `absolute` overlay) is *still* buried after v3:** that means a
+stacking-context-forming ancestor (`transform`/`filter`/`will-change`/`contain`/
+`perspective`) was added over the map wrapper, confining the drawer's context below the
+root. Fix by switching the drawer to `position: fixed` **and** portaling it to
+`document.body` so it re-joins the root stacking context.

@@ -40,6 +40,9 @@ import DealCompareReportPage from "./pages/DealCompareReportPage";
 import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceReportPage";
 import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage";
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
+import ToursListPage from "./pages/ToursListPage";
+import TourDetailPage from "./pages/TourDetailPage";
+import TourMapPage from "./pages/TourMapPage";
 import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
 import DropboxSyncAdminPage from "./pages/DropboxSyncAdminPage";
 import MunicipalImportPage from "./pages/MunicipalImportPage";
@@ -158,6 +161,9 @@ function App() {
           <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />
           <Route path="deal/new" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
+          <Route path="tours" element={<CoachRoute><ToursListPage /></CoachRoute>} />
+          <Route path="tours/:tourId" element={<CoachRoute><TourDetailPage /></CoachRoute>} />
+          <Route path="tours/:tourId/map" element={<CoachRoute><TourMapPage /></CoachRoute>} />
           <Route path="assignment/new" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
           <Route path="assignment/:assignmentId" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
           <Route path="property/new" element={<CoachRoute><NewPropertyPage /></CoachRoute>} />

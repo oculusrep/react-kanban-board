@@ -37,6 +37,9 @@ import DemographicsAnalysisSlideout, {
   PrefilledCacheState,
 } from '../components/mapping/slideouts/DemographicsAnalysisSlideout';
 import CachedDemographicsLayer from '../components/mapping/layers/CachedDemographicsLayer';
+import CompDatabaseLayer from '../components/mapping/layers/CompDatabaseLayer';
+import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
+import { CompProperty } from '../lib/compTypes';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
@@ -151,6 +154,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | 'starbucks' | null>(null);
   const [selectedStarbucksStore, setSelectedStarbucksStore] = useState<any>(null);
   const [starbucksLogoUrl, setStarbucksLogoUrl] = useState<string | null>(null);
+
+  // Comp Database slideout — independent of the shared pin-details state.
+  const [selectedComp, setSelectedComp] = useState<CompProperty | null>(null);
+  const [compCreateAt, setCompCreateAt] = useState<{ lat: number; lng: number } | null>(null);
 
   // Starbucks Licensed Store layer — verify mode + right-click menu
   const [verifyingLicensedStoreNumber, setVerifyingLicensedStoreNumber] = useState<string | null>(null);
@@ -1359,6 +1366,15 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
   const handleContextMenuClose = () => {
     setContextMenu(prev => ({ ...prev, isVisible: false }));
+  };
+
+  // Drop a new comp at the right-clicked location (opens the comp slideout in create mode).
+  const handleContextMenuCreateComp = () => {
+    if (contextMenu.coordinates) {
+      if (!layerState.comp_database?.isVisible) toggleLayer('comp_database');
+      setSelectedComp(null);
+      setCompCreateAt({ lat: contextMenu.coordinates.lat, lng: contextMenu.coordinates.lng });
+    }
   };
 
   // Redraw the in-progress OREP polygon from the collected vertices.
@@ -3081,6 +3097,36 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       )}
                     </div>
 
+                    {/* Comp Database system layer — comparable leases / sales / OMs */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('comp_database')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.comp_database?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.comp_database?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>📇</span>
+                          <span className="text-sm font-medium text-gray-900">Comp Database</span>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.comp_database?.count ?? 0}
+                        </span>
+                      </div>
+                      {layerState.comp_database?.isVisible && (
+                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500">
+                          Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.
+                        </div>
+                      )}
+                    </div>
+
                     {/* Cached Demographics system layer — pins for prior ESRI enrichment
                         lookups. Click a pin to re-open the slideout without a new ESRI call. */}
                     <div className="p-2 border-b border-gray-200">
@@ -3539,6 +3585,14 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               map={mapInstance}
             />
 
+            {/* Comp Database — comparable leases / sales / OMs tied to locations */}
+            <CompDatabaseLayer
+              map={mapInstance}
+              isVisible={layerState.comp_database?.isVisible || false}
+              selectedCompId={selectedComp?.id ?? null}
+              onPinClick={(comp) => { setCompCreateAt(null); setSelectedComp(comp); }}
+            />
+
             {/* Starbucks Licensed Stores — confidential, permission-gated */}
             <StarbucksLicensedStoreLayer
               map={mapInstance}
@@ -3676,6 +3730,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               isVisible={contextMenu.isVisible}
               coordinates={contextMenu.coordinates}
               onCreateProperty={handleContextMenuCreateProperty}
+              onCreateComp={handleContextMenuCreateComp}
               onCreateMunicipalProject={() => {
                 if (!contextMenu.coordinates) return;
                 setPinDropCoordinates(contextMenu.coordinates);
@@ -4097,6 +4152,17 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         onStartDrawingPolygon={(id) => setDrawingMunicipalProjectId(id)}
         isDrawingPolygon={drawingMunicipalProjectId === selectedMunicipalProject?.id}
       />
+
+      {/* Comp Database Slideout — view/edit an existing comp or create one at dropped coords */}
+      {(selectedComp || compCreateAt) && (
+        <CompDetailSlideout
+          comp={selectedComp}
+          createAt={compCreateAt}
+          topOffset={showPropertySearch ? 45 : 0}
+          onClose={() => { setSelectedComp(null); setCompCreateAt(null); }}
+          onSaved={() => refreshLayer('comp_database')}
+        />
+      )}
 
       {/* Municipal Project Drawer — only mounted while drawing */}
       {drawingMunicipalProjectId && (
