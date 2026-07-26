@@ -7,6 +7,18 @@ export interface TourStopCategory {
   name: string;
   sort_order: number;
   is_active: boolean;
+  default_stop_duration_minutes: number;
+}
+
+export interface TourDay {
+  id: string;
+  tour_id: string;
+  day_number: number;
+  day_date: string | null; // YYYY-MM-DD
+  start_time: string | null; // HH:MM[:SS]
+  end_time: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Tour {
@@ -25,8 +37,10 @@ export interface TourStop {
   id: string;
   tour_id: string;
   site_submit_id: string;
-  position: number;
+  tour_day_id: string | null; // null = unscheduled
+  position: number; // order within its day (or the unscheduled bucket)
   category_id: string | null;
+  stop_duration_minutes: number | null; // null = use category default
   notes: string | null;
   created_at: string;
   updated_at: string;
