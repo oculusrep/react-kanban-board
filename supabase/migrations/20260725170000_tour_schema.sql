@@ -106,6 +106,10 @@ WITH CHECK (public.is_internal_user());
 
 -- ---- tour: portal users read-only, scoped to accessible clients ----
 -- Archived tours remain visible so an account can revisit any saved tour.
+-- NOTE: use the SECURITY DEFINER helper portal_user_contact_id() rather than joining
+-- auth.users directly — the `authenticated` role has no privilege on auth.users, so a
+-- direct join throws "permission denied for table users" whenever this policy is
+-- evaluated (including the RETURNING read-back after an internal user's INSERT).
 CREATE POLICY "tour_portal_select"
 ON tour FOR SELECT
 TO authenticated
@@ -113,9 +117,7 @@ USING (
   EXISTS (
     SELECT 1
     FROM portal_user_client_access puca
-    JOIN contact c ON c.id = puca.contact_id AND c.portal_access_enabled = TRUE
-    JOIN auth.users au ON LOWER(au.email) = LOWER(c.email)
-    WHERE au.id = auth.uid()
+    WHERE puca.contact_id = public.portal_user_contact_id()
     AND puca.client_id = tour.client_id
     AND puca.is_active = TRUE
   )
@@ -137,10 +139,8 @@ USING (
     SELECT 1
     FROM tour t
     JOIN portal_user_client_access puca ON puca.client_id = t.client_id AND puca.is_active = TRUE
-    JOIN contact c ON c.id = puca.contact_id AND c.portal_access_enabled = TRUE
-    JOIN auth.users au ON LOWER(au.email) = LOWER(c.email)
-    WHERE au.id = auth.uid()
-    AND t.id = tour_stop.tour_id
+    WHERE t.id = tour_stop.tour_id
+    AND puca.contact_id = public.portal_user_contact_id()
   )
 );
 

@@ -77,10 +77,10 @@ export function AddToTourButton({
     if (!name || !siteSubmitId) return;
     setBusy(true);
     setStatus(null);
-    const tour = await createTour({ tour_name: name });
+    const { tour, error: createErr } = await createTour({ tour_name: name });
     if (!tour) {
       setBusy(false);
-      setStatus('Failed to create tour');
+      setStatus(createErr ? `Failed to create tour: ${createErr}` : 'Failed to create tour');
       return;
     }
     const res = await addSiteSubmitToTour(tour.id, siteSubmitId);

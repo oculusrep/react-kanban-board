@@ -22,7 +22,7 @@ interface UseToursResult {
     tour_name: string;
     description?: string | null;
     tour_date?: string | null;
-  }) => Promise<Tour | null>;
+  }) => Promise<{ tour: Tour | null; error?: string }>;
 }
 
 export function useTours(clientId: string | null | undefined): UseToursResult {
@@ -66,7 +66,7 @@ export function useTours(clientId: string | null | undefined): UseToursResult {
 
   const createTour = useCallback(
     async (input: { tour_name: string; description?: string | null; tour_date?: string | null }) => {
-      if (!clientId) return null;
+      if (!clientId) return { tour: null, error: 'No client selected' };
       const { data: userData } = await supabase.auth.getUser();
       const { data, error: err } = await supabase
         .from('tour')
@@ -82,10 +82,10 @@ export function useTours(clientId: string | null | undefined): UseToursResult {
 
       if (err) {
         setError(err.message);
-        return null;
+        return { tour: null, error: err.message };
       }
       await refresh();
-      return data as Tour;
+      return { tour: data as Tour };
     },
     [clientId, refresh]
   );
