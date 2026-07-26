@@ -33,6 +33,8 @@ interface DayRender {
   missingCoords: number;
   schedule: DaySchedule | null;
   driveUnavailable: boolean;
+  startCoord: google.maps.LatLngLiteral | null;
+  endCoord: google.maps.LatLngLiteral | null;
 }
 
 export function TourMapPage() {
