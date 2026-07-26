@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { fetchTourStops, removeTourStop } from '../hooks/useTours';
-import type { TourStopWithSiteSubmit } from '../lib/tourTypes';
+import TourDetailSlideout from '../components/tours/TourDetailSlideout';
 
 // ---------------------------------------------------------------------------
-// ToursListPage — bare Phase 1 page to verify staging produces real rows.
-// Lists all tours the current (internal) user can see, with stop counts;
-// expand a tour to see its ordered stops. Drag-and-drop, map, PDF, and route
-// optimization arrive in later phases (see docs/TOUR_FEATURE_PLAN.md).
+// ToursListPage — lists tours the current (internal) user can see, with stop
+// counts. Tour name links to the full page (/tours/:id); "Open" reveals the same
+// detail panel in a slideout (overlay-first). See docs/TOUR_FEATURE_PLAN.md.
 // ---------------------------------------------------------------------------
 
 const MIDNIGHT = '#002147';
@@ -28,9 +27,7 @@ export function ToursListPage() {
   const [tours, setTours] = useState<TourRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [stops, setStops] = useState<TourStopWithSiteSubmit[]>([]);
-  const [stopsLoading, setStopsLoading] = useState(false);
+  const [slideoutTourId, setSlideoutTourId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -59,43 +56,16 @@ export function ToursListPage() {
     load();
   }, []);
 
-  const toggleExpand = async (tourId: string) => {
-    if (expandedId === tourId) {
-      setExpandedId(null);
-      setStops([]);
-      return;
-    }
-    setExpandedId(tourId);
-    setStopsLoading(true);
-    try {
-      setStops(await fetchTourStops(tourId));
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load stops');
-    } finally {
-      setStopsLoading(false);
-    }
-  };
-
-  const handleRemoveStop = async (stopId: string) => {
-    const res = await removeTourStop(stopId);
-    if (res.ok) {
-      setStops((prev) => prev.filter((s) => s.id !== stopId));
-      load();
-    } else {
-      setError(res.error ?? 'Failed to remove stop');
-    }
-  };
-
   return (
     <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
       <h1 style={{ color: MIDNIGHT, fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Tours</h1>
       <p style={{ color: STEEL, fontSize: 13, marginBottom: 20 }}>
-        Phase 1 — verify staging. Stage site submits onto a tour from a site submit, then confirm
-        them here. Drag-and-drop reordering, map route, and PDF export come next.
+        Stage site submits onto a tour with “Add to tour”, then open a tour to reorder stops and
+        set categories. Route optimization, map rendering, and PDF export come next.
       </p>
 
       {error && (
-        <div style={{ padding: 12, border: `1px solid #A27B5C`, borderRadius: 6, color: '#A27B5C', marginBottom: 16 }}>
+        <div style={{ padding: 12, border: '1px solid #A27B5C', borderRadius: 6, color: '#A27B5C', marginBottom: 16 }}>
           {error}
         </div>
       )}
@@ -103,79 +73,54 @@ export function ToursListPage() {
       {loading ? (
         <div style={{ color: SLATE }}>Loading tours…</div>
       ) : tours.length === 0 ? (
-        <div style={{ color: SLATE }}>
-          No tours yet. Use “Add to tour” on a site submit to create one.
-        </div>
+        <div style={{ color: SLATE }}>No tours yet. Use “Add to tour” on a site submit to create one.</div>
       ) : (
         <div style={{ border: `1px solid ${SLATE}`, borderRadius: 8, overflow: 'hidden' }}>
           {tours.map((t, i) => (
-            <div key={t.id} style={{ borderTop: i === 0 ? 'none' : `1px solid #E5EAF1` }}>
-              <button
-                type="button"
-                onClick={() => toggleExpand(t.id)}
-                style={{
-                  display: 'flex',
-                  width: '100%',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 16px',
-                  background: t.is_archived ? '#F8FAFC' : '#FFFFFF',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <div>
-                  <span style={{ color: MIDNIGHT, fontWeight: 600 }}>{t.tour_name}</span>
-                  {t.is_archived && <span style={{ color: SLATE, fontSize: 12, marginLeft: 8 }}>archived</span>}
-                  <div style={{ color: STEEL, fontSize: 12, marginTop: 2 }}>
-                    {t.client?.client_name ?? 'Unknown client'}
-                    {t.tour_date ? ` · ${t.tour_date}` : ''}
-                  </div>
+            <div
+              key={t.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 16px',
+                borderTop: i === 0 ? 'none' : '1px solid #E5EAF1',
+                background: t.is_archived ? '#F8FAFC' : '#FFFFFF',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <Link to={`/tours/${t.id}`} style={{ color: MIDNIGHT, fontWeight: 600, textDecoration: 'none' }}>
+                  {t.tour_name}
+                </Link>
+                {t.is_archived && <span style={{ color: SLATE, fontSize: 12, marginLeft: 8 }}>archived</span>}
+                <div style={{ color: STEEL, fontSize: 12, marginTop: 2 }}>
+                  {t.client?.client_name ?? 'Unknown client'}
+                  {t.tour_date ? ` · ${t.tour_date}` : ''}
                 </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                 <span style={{ color: STEEL, fontSize: 13 }}>
-                  {t.stop_count} stop{t.stop_count === 1 ? '' : 's'} {expandedId === t.id ? '▲' : '▼'}
+                  {t.stop_count} stop{t.stop_count === 1 ? '' : 's'}
                 </span>
-              </button>
-
-              {expandedId === t.id && (
-                <div style={{ padding: '0 16px 12px 16px', background: '#F8FAFC' }}>
-                  {stopsLoading ? (
-                    <div style={{ color: SLATE, padding: '8px 0' }}>Loading stops…</div>
-                  ) : stops.length === 0 ? (
-                    <div style={{ color: SLATE, padding: '8px 0' }}>No stops staged yet.</div>
-                  ) : (
-                    <ol style={{ margin: 0, paddingLeft: 20 }}>
-                      {stops.map((s) => (
-                        <li key={s.id} style={{ padding: '4px 0', color: MIDNIGHT, fontSize: 14 }}>
-                          <span>{s.site_submit?.site_submit_name ?? '(unnamed site submit)'}</span>
-                          {s.category?.name && (
-                            <span style={{ color: STEEL, fontSize: 12, marginLeft: 8 }}>· {s.category.name}</span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveStop(s.id)}
-                            style={{
-                              marginLeft: 10,
-                              border: 'none',
-                              background: 'transparent',
-                              color: '#A27B5C',
-                              fontSize: 12,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            remove
-                          </button>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setSlideoutTourId(t.id)}
+                  style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 12px', fontSize: 13, cursor: 'pointer' }}
+                >
+                  Open
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      <TourDetailSlideout
+        tourId={slideoutTourId}
+        isOpen={!!slideoutTourId}
+        onClose={() => setSlideoutTourId(null)}
+        onChanged={load}
+      />
     </div>
   );
 }
