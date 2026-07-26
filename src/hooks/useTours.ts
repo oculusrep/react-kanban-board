@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import type {
   Tour,
+  TourDay,
   TourStop,
   TourStopCategory,
   TourStopWithSiteSubmit,
@@ -163,9 +164,69 @@ export async function deleteTour(tourId: string): Promise<{ ok: boolean; error?:
 
 export async function updateTourStop(
   stopId: string,
-  fields: Partial<Pick<TourStop, 'category_id' | 'notes'>>
+  fields: Partial<Pick<TourStop, 'category_id' | 'notes' | 'stop_duration_minutes' | 'tour_day_id' | 'position'>>
 ): Promise<{ ok: boolean; error?: string }> {
   const { error: err } = await supabase.from('tour_stop').update(fields).eq('id', stopId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
+// Persist a full day/position layout after a drag. Each entry sets a stop's day
+// (null = unscheduled) and its position within that day.
+export async function persistStopPlacements(
+  placements: { id: string; tour_day_id: string | null; position: number }[]
+): Promise<{ ok: boolean; error?: string }> {
+  for (const p of placements) {
+    const { error: err } = await supabase
+      .from('tour_stop')
+      .update({ tour_day_id: p.tour_day_id, position: p.position })
+      .eq('id', p.id);
+    if (err) return { ok: false, error: err.message };
+  }
+  return { ok: true };
+}
+
+// ---- Tour days ----
+
+export async function fetchTourDays(tourId: string): Promise<TourDay[]> {
+  const { data, error: err } = await supabase
+    .from('tour_day')
+    .select('*')
+    .eq('tour_id', tourId)
+    .order('day_number', { ascending: true });
+  if (err) throw err;
+  return (data || []) as TourDay[];
+}
+
+export async function createTourDay(
+  tourId: string,
+  dayNumber: number,
+  defaults?: { start_time?: string | null; end_time?: string | null }
+): Promise<{ day: TourDay | null; error?: string }> {
+  const { data, error: err } = await supabase
+    .from('tour_day')
+    .insert({
+      tour_id: tourId,
+      day_number: dayNumber,
+      start_time: defaults?.start_time ?? '09:00',
+      end_time: defaults?.end_time ?? '17:00',
+    })
+    .select('*')
+    .single();
+  if (err) return { day: null, error: err.message };
+  return { day: data as TourDay };
+}
+
+export async function updateTourDay(
+  dayId: string,
+  fields: Partial<Pick<TourDay, 'day_date' | 'start_time' | 'end_time' | 'day_number'>>
+): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase.from('tour_day').update(fields).eq('id', dayId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
+// Delete a day; its stops fall back to unscheduled (FK ON DELETE SET NULL).
+export async function deleteTourDay(dayId: string): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase.from('tour_day').delete().eq('id', dayId);
   return err ? { ok: false, error: err.message } : { ok: true };
 }
 
@@ -200,4 +261,4 @@ export async function fetchTourStopCategories(): Promise<TourStopCategory[]> {
   return (data || []) as TourStopCategory[];
 }
 
-export type { Tour, TourStop, TourStopCategory, TourStopWithSiteSubmit, TourWithStopCount };
+export type { Tour, TourDay, TourStop, TourStopCategory, TourStopWithSiteSubmit, TourWithStopCount };
