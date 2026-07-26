@@ -7,6 +7,7 @@ import ActivityTab from './ActivityTab';
 import FileManager from './FileManager/FileManager';
 import SlideOutPanel from './SlideOutPanel';
 import { CopyMapLinkButton } from './shared/CopyMapLinkButton';
+import AddToTourButton from './tours/AddToTourButton';
 
 interface Deal {
   id: string;
@@ -125,20 +126,27 @@ export default function DealDetailsSlideout({
       canMinimize={true}
       headerActions={
         deal ? (
-          <CopyMapLinkButton
-            path={
-              deal.property_id
-                ? `/mapping?property=${deal.property_id}`
-                : deal.site_submit_id
-                ? `/mapping?site-submit=${deal.site_submit_id}`
-                : null
-            }
-            label="Copy Map Link"
-            title="Copy link to this deal's location on the map"
-            disabledTitle="This deal has no linked property or site submit to locate on the map"
-            className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium rounded-md transition-colors"
-            copiedClassName="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md transition-colors"
-          />
+          <div className="flex items-center gap-2">
+            <AddToTourButton
+              siteSubmitId={deal.site_submit_id}
+              clientId={deal.client_id}
+              noSiteSubmitReason="This deal has no linked site submit to add to a tour"
+            />
+            <CopyMapLinkButton
+              path={
+                deal.property_id
+                  ? `/mapping?property=${deal.property_id}`
+                  : deal.site_submit_id
+                  ? `/mapping?site-submit=${deal.site_submit_id}`
+                  : null
+              }
+              label="Copy Map Link"
+              title="Copy link to this deal's location on the map"
+              disabledTitle="This deal has no linked property or site submit to locate on the map"
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium rounded-md transition-colors"
+              copiedClassName="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md transition-colors"
+            />
+          </div>
         ) : undefined
       }
     >

@@ -15,6 +15,7 @@ import PropertySquareFootageField from '../../property/PropertySquareFootageFiel
 import FormattedField from '../../shared/FormattedField';
 import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink, Map, CheckSquare } from 'lucide-react';
 import { CopyMapLinkButton } from '../../shared/CopyMapLinkButton';
+import AddToTourButton from '../../tours/AddToTourButton';
 import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
@@ -2955,6 +2956,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                       )}
                     </div>
                   </div>
+                  {siteSubmit?.id && !isNewSiteSubmit && (
+                    <div className="ml-3 shrink-0">
+                      <AddToTourButton
+                        siteSubmitId={siteSubmit.id}
+                        clientId={siteSubmit.client_id ?? null}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}

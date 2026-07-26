@@ -11,10 +11,14 @@ import { useTours, addSiteSubmitToTour } from '../../hooks/useTours';
 // ---------------------------------------------------------------------------
 
 interface AddToTourButtonProps {
-  siteSubmitId: string;
+  /** The site submit to stage. A tour stop always references a site submit, so this
+   *  may be null (e.g. a deal with no linked site submit) — the button disables then. */
+  siteSubmitId: string | null | undefined;
   clientId: string | null | undefined;
   /** Optional label override. */
   label?: string;
+  /** Reason shown (tooltip) when there is no linked site submit to stage. */
+  noSiteSubmitReason?: string;
   /** Called after a successful stage, e.g. to show a toast or refresh. */
   onStaged?: (tourId: string) => void;
 }
@@ -23,7 +27,13 @@ interface AddToTourButtonProps {
 const MIDNIGHT = '#002147';
 const SLATE = '#8FA9C8';
 
-export function AddToTourButton({ siteSubmitId, clientId, label = 'Add to tour', onStaged }: AddToTourButtonProps) {
+export function AddToTourButton({
+  siteSubmitId,
+  clientId,
+  label = 'Add to tour',
+  noSiteSubmitReason = 'No linked site submit to add to a tour',
+  onStaged,
+}: AddToTourButtonProps) {
   const { tours, loading, createTour, refresh } = useTours(clientId);
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -46,6 +56,7 @@ export function AddToTourButton({ siteSubmitId, clientId, label = 'Add to tour',
   }, [open]);
 
   const stage = async (tourId: string) => {
+    if (!siteSubmitId) return;
     setBusy(true);
     setStatus(null);
     const res = await addSiteSubmitToTour(tourId, siteSubmitId);
@@ -63,7 +74,7 @@ export function AddToTourButton({ siteSubmitId, clientId, label = 'Add to tour',
 
   const handleCreateAndStage = async () => {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || !siteSubmitId) return;
     setBusy(true);
     setStatus(null);
     const tour = await createTour({ tour_name: name });
@@ -86,12 +97,18 @@ export function AddToTourButton({ siteSubmitId, clientId, label = 'Add to tour',
     }
   };
 
-  if (!clientId) {
+  const disabledReason = !siteSubmitId
+    ? noSiteSubmitReason
+    : !clientId
+    ? "This record has no client, so it can't be added to a tour."
+    : null;
+
+  if (disabledReason) {
     return (
       <button
         type="button"
         disabled
-        title="This site submit has no client, so it can't be added to a tour."
+        title={disabledReason}
         style={{ ...buttonStyle, color: SLATE, borderColor: SLATE, cursor: 'not-allowed' }}
       >
         {label}
