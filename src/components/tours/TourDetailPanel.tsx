@@ -140,14 +140,17 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted }: TourDetailPane
   const handleAddDay = async () => {
     const nextNumber = days.reduce((max, d) => Math.max(max, d.day_number), 0) + 1;
     const res = await createTourDay(tourId, nextNumber);
-    if (res.day) setDays((prev) => [...prev, res.day!]);
-    else setError(res.error ?? 'Failed to add day');
+    if (res.day) {
+      setDays((prev) => [...prev, res.day!]);
+      onChanged?.();
+    } else setError(res.error ?? 'Failed to add day');
   };
 
   const patchDay = async (dayId: string, fields: Partial<TourDay>) => {
     setDays((prev) => prev.map((d) => (d.id === dayId ? { ...d, ...fields } : d)));
     const res = await updateTourDay(dayId, fields as any);
     if (!res.ok) setError(res.error ?? 'Failed to update day');
+    else onChanged?.();
   };
 
   const handleDeleteDay = async (day: TourDay) => {
@@ -157,6 +160,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted }: TourDetailPane
     if (res.ok) {
       // Stops FK-set-null to unscheduled; reload to resync.
       await load();
+      onChanged?.();
     } else setError(res.error ?? 'Failed to delete day');
   };
 
@@ -188,7 +192,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted }: TourDetailPane
     if (!res.ok) {
       setError(res.error ?? 'Failed to save new order');
       load();
-    }
+    } else onChanged?.();
   };
 
   const handleCategoryChange = async (stopId: string, categoryId: string) => {
@@ -196,6 +200,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted }: TourDetailPane
     setStops((prev) => prev.map((s) => (s.id === stopId ? { ...s, category_id: value } : s)));
     const res = await updateTourStop(stopId, { category_id: value });
     if (!res.ok) setError(res.error ?? 'Failed to update category');
+    else onChanged?.();
   };
 
   const handleDurationChange = async (stopId: string, raw: string) => {
@@ -203,6 +208,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted }: TourDetailPane
     setStops((prev) => prev.map((s) => (s.id === stopId ? { ...s, stop_duration_minutes: value } : s)));
     const res = await updateTourStop(stopId, { stop_duration_minutes: value });
     if (!res.ok) setError(res.error ?? 'Failed to update duration');
+    else onChanged?.();
   };
 
   const handleNotesBlur = async (stopId: string, notes: string) => {

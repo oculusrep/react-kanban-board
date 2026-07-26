@@ -109,6 +109,12 @@ export function ToursListPage() {
                 >
                   Open
                 </button>
+                <Link
+                  to={`/tours/${t.id}/map`}
+                  style={{ border: `1px solid ${MIDNIGHT}`, color: '#fff', background: MIDNIGHT, borderRadius: 6, padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
+                >
+                  Map
+                </Link>
               </div>
             </div>
           ))}
