@@ -51,6 +51,8 @@ export function TourMapPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [SlideoutComp, setSlideoutComp] = useState<any>(null);
+  // stopId -> computed arrival (clock minutes, if day has a start) + drive minutes to next stop
+  const [stopSchedule, setStopSchedule] = useState<Record<string, { arrivalMin: number | null; minsToNext: number | null }>>({});
 
   // Load the reorder slideout lazily (keeps map bundle lean).
   useEffect(() => {
@@ -131,6 +133,7 @@ export function TourMapPage() {
         stops.filter((s) => s.tour_day_id === dayId).sort((a, b) => a.position - b.position);
 
       const renders: DayRender[] = [];
+      const stopSched: Record<string, { arrivalMin: number | null; minsToNext: number | null }> = {};
 
       for (let di = 0; di < days.length; di++) {
         const day = days[di];
@@ -196,6 +199,13 @@ export function TourMapPage() {
               )
             : null;
 
+        geocoded.forEach((s, idx) => {
+          stopSched[s.id] = {
+            arrivalMin: schedule?.hasStart ? schedule.stops[idx].arrivalMin : null,
+            minsToNext: !driveUnavailable && idx < legSeconds.length ? Math.round(legSeconds[idx] / 60) : null,
+          };
+        });
+
         renders.push({ day, color, ordered: geocoded, missingCoords: missing, schedule, driveUnavailable });
       }
 
@@ -210,6 +220,7 @@ export function TourMapPage() {
       setUnscheduledCount(byDay(null).length);
 
       setDayRenders(renders);
+      setStopSchedule(stopSched);
       if (anyPoint) {
         map.fitBounds(bounds, 80);
         if (stops.length === 1) map.setZoom(14);
@@ -340,6 +351,7 @@ export function TourMapPage() {
           isOpen={reorderOpen}
           onClose={() => setReorderOpen(false)}
           onChanged={() => setRefreshKey((k) => k + 1)}
+          stopSchedule={stopSchedule}
         />
       )}
     </div>

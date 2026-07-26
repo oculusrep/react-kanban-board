@@ -16,6 +16,7 @@ import {
   deleteTour,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
+import { minutesToHHMM } from '../../lib/tourRouting';
 
 // ---------------------------------------------------------------------------
 // TourDetailPanel — overlay-first, drop-in tour editor with multi-day scheduling.
@@ -36,13 +37,16 @@ interface TourDetailPanelProps {
   tourId: string;
   onChanged?: () => void;
   onDeleted?: () => void;
+  /** Per-stop arrival (clock minutes) + drive minutes to next stop, computed by the
+   *  map host. Absent in non-map contexts (list/detail page) — fields hide then. */
+  stopSchedule?: Record<string, { arrivalMin: number | null; minsToNext: number | null }>;
 }
 
 const dayDroppableId = (dayId: string) => `day:${dayId}`;
 const parseDayDroppableId = (id: string): string | null => (id === UNSCHEDULED ? null : id.slice(4));
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '');
 
-export function TourDetailPanel({ tourId, onChanged, onDeleted }: TourDetailPanelProps) {
+export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: TourDetailPanelProps) {
   const [tour, setTour] = useState<Tour | null>(null);
   const [days, setDays] = useState<TourDay[]>([]);
   const [stops, setStops] = useState<TourStopWithSiteSubmit[]>([]);
@@ -264,6 +268,18 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted }: TourDetailPane
                   stop.site_submit?.site_submit_name || '(unnamed site submit)'
                 )}
               </div>
+              {(() => {
+                const sched = stopSchedule?.[stop.id];
+                if (!sched) return null;
+                const parts: string[] = [];
+                if (sched.arrivalMin != null) parts.push(`Arrive ${minutesToHHMM(sched.arrivalMin)}`);
+                parts.push(sched.minsToNext != null ? `${sched.minsToNext} min to next` : 'last stop');
+                return (
+                  <div style={{ fontSize: 12, color: STEEL, marginTop: 2, fontWeight: 500 }}>
+                    {parts.join(' · ')}
+                  </div>
+                );
+              })()}
               <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <select
                   value={stop.category_id ?? ''}
