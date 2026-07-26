@@ -147,6 +147,34 @@ export async function reorderTourStops(orderedStopIds: string[]): Promise<{ ok: 
   return { ok: true };
 }
 
+export async function updateTour(
+  tourId: string,
+  fields: Partial<Pick<Tour, 'tour_name' | 'description' | 'tour_date' | 'is_archived'>>
+): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase.from('tour').update(fields).eq('id', tourId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
+export async function deleteTour(tourId: string): Promise<{ ok: boolean; error?: string }> {
+  // tour_stop rows cascade-delete via FK.
+  const { error: err } = await supabase.from('tour').delete().eq('id', tourId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
+export async function updateTourStop(
+  stopId: string,
+  fields: Partial<Pick<TourStop, 'category_id' | 'notes'>>
+): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase.from('tour_stop').update(fields).eq('id', stopId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
+export async function fetchTour(tourId: string): Promise<Tour | null> {
+  const { data, error: err } = await supabase.from('tour').select('*').eq('id', tourId).single();
+  if (err) throw err;
+  return (data as Tour) ?? null;
+}
+
 export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSubmit[]> {
   const { data, error: err } = await supabase
     .from('tour_stop')
