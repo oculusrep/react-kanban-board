@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Loader } from '@googlemaps/js-api-loader';
-import { fetchTour, fetchTourDays, fetchTourStopsForMap } from '../hooks/useTours';
+import { fetchTour, fetchTourDays, fetchTourStopsForMap, persistStopPlacements } from '../hooks/useTours';
 import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import {
   computeDaySchedule,
@@ -239,6 +239,36 @@ export function TourMapPage() {
     return () => clearTimeout(h);
   }, [mapReady, refreshKey, draw]);
 
+  const [optimizingDayId, setOptimizingDayId] = useState<string | null>(null);
+
+  // Reorder a day's stops for the shortest driving loop from the first stop
+  // (Google Directions waypoint optimization). Keeps stop 1 as the start.
+  const optimizeDay = async (dr: DayRender) => {
+    if (!dirServiceRef.current || dr.ordered.length < 3) return;
+    setOptimizingDayId(dr.day.id);
+    setError(null);
+    try {
+      const stops = dr.ordered;
+      const res = await dirServiceRef.current.route({
+        origin: { lat: stops[0].lat!, lng: stops[0].lng! },
+        destination: { lat: stops[0].lat!, lng: stops[0].lng! },
+        waypoints: stops.slice(1).map((s) => ({ location: { lat: s.lat!, lng: s.lng! }, stopover: true })),
+        optimizeWaypoints: true,
+        travelMode: google.maps.TravelMode.DRIVING,
+      });
+      const order = res.routes[0].waypoint_order || [];
+      const newOrder = [stops[0], ...order.map((i) => stops[i + 1])];
+      const placements = newOrder.map((s, idx) => ({ id: s.id, tour_day_id: dr.day.id, position: idx }));
+      const r = await persistStopPlacements(placements);
+      if (!r.ok) setError(r.error ?? 'Failed to save optimized order');
+      setRefreshKey((k) => k + 1);
+    } catch (e: any) {
+      setError(`Optimize failed: ${e?.message ?? e}`);
+    } finally {
+      setOptimizingDayId(null);
+    }
+  };
+
   const overEnd = (day: TourDay, sched: DaySchedule | null) => {
     const end = parseTimeToMinutes(day.end_time);
     return sched?.hasStart && end != null && sched.finishMin > end;
@@ -289,6 +319,17 @@ export function TourMapPage() {
                   {dr.day.start_time ? minutesToHHMM(parseTimeToMinutes(dr.day.start_time)!) : '—'}
                   {dr.day.end_time ? `–${minutesToHHMM(parseTimeToMinutes(dr.day.end_time)!)}` : ''}
                 </span>
+                {dr.ordered.length >= 3 && (
+                  <button
+                    type="button"
+                    onClick={() => optimizeDay(dr)}
+                    disabled={optimizingDayId === dr.day.id}
+                    title="Reorder this day's stops for the shortest drive (keeps stop 1 as the start)"
+                    style={{ marginLeft: 'auto', border: `1px solid ${dr.color}`, color: '#fff', background: dr.color, borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: optimizingDayId === dr.day.id ? 'wait' : 'pointer', opacity: optimizingDayId === dr.day.id ? 0.6 : 1 }}
+                  >
+                    {optimizingDayId === dr.day.id ? 'Optimizing…' : 'Optimize'}
+                  </button>
+                )}
               </div>
 
               {dr.ordered.length === 0 ? (
