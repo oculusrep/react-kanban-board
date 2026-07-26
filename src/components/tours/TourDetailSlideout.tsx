@@ -7,12 +7,16 @@ interface TourDetailSlideoutProps {
   isOpen: boolean;
   onClose: () => void;
   onChanged?: () => void;
+  /** Computed per-stop arrival + drive-to-next, when hosted alongside the map. */
+  stopSchedule?: Record<string, { arrivalMin: number | null; minsToNext: number | null }>;
 }
 
-export function TourDetailSlideout({ tourId, isOpen, onClose, onChanged }: TourDetailSlideoutProps) {
+export function TourDetailSlideout({ tourId, isOpen, onClose, onChanged, stopSchedule }: TourDetailSlideoutProps) {
   return (
     <SlideOutPanel isOpen={isOpen} onClose={onClose} title="Tour" width="540px">
-      {tourId && <TourDetailPanel tourId={tourId} onChanged={onChanged} onDeleted={onClose} />}
+      {tourId && (
+        <TourDetailPanel tourId={tourId} onChanged={onChanged} onDeleted={onClose} stopSchedule={stopSchedule} />
+      )}
     </SlideOutPanel>
   );
 }
