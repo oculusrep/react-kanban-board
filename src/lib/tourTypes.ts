@@ -61,3 +61,17 @@ export interface TourStopWithSiteSubmit extends TourStop {
 export interface TourWithStopCount extends Tour {
   stop_count: number;
 }
+
+// A stop flattened with its resolved map coordinate + effective duration (for the map).
+export interface TourStopGeo {
+  id: string;
+  tour_day_id: string | null;
+  position: number;
+  site_submit_id: string;
+  site_submit_name: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  effective_duration_minutes: number;
+  lat: number | null;
+  lng: number | null;
+}

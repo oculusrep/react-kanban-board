@@ -251,6 +251,46 @@ export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSu
   return (data || []) as unknown as TourStopWithSiteSubmit[];
 }
 
+// Stops with resolved lat/lng + effective duration, for the map/route view.
+export async function fetchTourStopsForMap(tourId: string): Promise<import('../lib/tourTypes').TourStopGeo[]> {
+  const { resolveStopCoord } = await import('../lib/tourRouting');
+  const { data, error: err } = await supabase
+    .from('tour_stop')
+    .select(
+      `id, tour_day_id, position, site_submit_id, category_id, stop_duration_minutes,
+       category:category_id ( name, default_stop_duration_minutes ),
+       site_submit:site_submit_id (
+         id, site_submit_name,
+         verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
+         property:property_id ( latitude, longitude, verified_latitude, verified_longitude )
+       )`
+    )
+    .eq('tour_id', tourId)
+    .order('position', { ascending: true });
+
+  if (err) throw err;
+
+  return (data || []).map((row: any) => {
+    const coord = resolveStopCoord(row.site_submit);
+    const effective =
+      row.stop_duration_minutes != null
+        ? row.stop_duration_minutes
+        : row.category?.default_stop_duration_minutes ?? 5;
+    return {
+      id: row.id,
+      tour_day_id: row.tour_day_id,
+      position: row.position,
+      site_submit_id: row.site_submit_id,
+      site_submit_name: row.site_submit?.site_submit_name ?? null,
+      category_id: row.category_id,
+      category_name: row.category?.name ?? null,
+      effective_duration_minutes: effective,
+      lat: coord?.lat ?? null,
+      lng: coord?.lng ?? null,
+    };
+  });
+}
+
 export async function fetchTourStopCategories(): Promise<TourStopCategory[]> {
   const { data, error: err } = await supabase
     .from('tour_stop_category')
