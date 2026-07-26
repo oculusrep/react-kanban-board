@@ -24,7 +24,6 @@ const SHOW_ALL_MIN_ZOOM = 13;
 interface FavoriteRow {
   id: string;
   name: string;
-  is_default: boolean;
   brand_ids: Set<string>;
 }
 
@@ -131,9 +130,6 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
   // Favorites state
   const [favorites, setFavorites] = useState<FavoriteRow[]>([]);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
-  // Flips true after the first load completes, so the auto-apply effect below
-  // doesn't fire (and burn its one-shot) against the empty pre-load array.
-  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [favoritesError, setFavoritesError] = useState<string | null>(null);
   const [newFavoriteOpen, setNewFavoriteOpen] = useState(false);
   const [editingFavorite, setEditingFavorite] = useState<{ id: string; name: string } | null>(null);
@@ -143,12 +139,6 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
   const [openMenuFavoriteId, setOpenMenuFavoriteId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Guards the "apply the org default on first open" behavior so it runs at
-  // most once per map session. The component instance persists across
-  // drawer open/close (parent keeps it mounted), so this ref survives too —
-  // reopening the drawer won't re-apply and clobber the user's later edits.
-  const didApplyDefaultRef = useRef(false);
-
   const loadFavorites = useCallback(async () => {
     setFavoritesLoading(true);
     setFavoritesError(null);
@@ -156,13 +146,12 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
       // Supabase RLS filters to own + shared favorites automatically.
       const { data, error: qerr } = await supabase
         .from('merchant_favorite')
-        .select('id, name, is_default, brands:merchant_favorite_brand(brand_id)')
+        .select('id, name, brands:merchant_favorite_brand(brand_id)')
         .order('name', { ascending: true });
       if (qerr) throw qerr;
       const rows: FavoriteRow[] = (data || []).map((f: any) => ({
         id: f.id,
         name: f.name,
-        is_default: !!f.is_default,
         brand_ids: new Set<string>((f.brands || []).map((b: any) => b.brand_id)),
       }));
       setFavorites(rows);
@@ -171,7 +160,6 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
       setFavoritesError(e?.message || 'Failed to load favorites');
     } finally {
       setFavoritesLoading(false);
-      setFavoritesLoaded(true);
     }
   }, []);
 
@@ -211,31 +199,6 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
     if (!isOpen) return;
     loadFavorites();
   }, [isOpen, loadFavorites]);
-
-  // On the first open of the session, default the merchants layer to visible
-  // and apply the org-default favorite (its brand set) so pins pop up on the
-  // map immediately. Skip if the user already has brands selected — we never
-  // override a deliberate choice — and only fire once (didApplyDefaultRef).
-  useEffect(() => {
-    if (!isOpen || didApplyDefaultRef.current) return;
-    // Wait for favorites to actually load so the default is available — the
-    // pre-load array is empty and would waste the one-shot.
-    if (!favoritesLoaded) return;
-    didApplyDefaultRef.current = true;
-    if (merchantSelectedBrandIds.size > 0) return;
-    const def = favorites.find((f) => f.is_default);
-    if (!def || def.brand_ids.size === 0) return;
-    if (!merchantsVisible) toggleLayer('merchants');
-    setMerchantSelectedBrandIds(new Set(def.brand_ids));
-  }, [
-    isOpen,
-    favoritesLoaded,
-    favorites,
-    merchantSelectedBrandIds,
-    merchantsVisible,
-    toggleLayer,
-    setMerchantSelectedBrandIds,
-  ]);
 
   const selectedBrandList = useMemo(() => {
     return brands

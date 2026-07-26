@@ -15,7 +15,7 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants';
 
 export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
@@ -240,15 +240,6 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     type: 'merchants',
     icon: '🏬',
     description: 'Branded retail / restaurant / service locations with brand-logo pins',
-    defaultVisible: false,
-    isSystemLayer: true,
-  },
-  {
-    id: 'comp_database',
-    name: 'Comp Database',
-    type: 'comp_database',
-    icon: '📇',
-    description: 'Comparable leases, sales and Operating Memorandums tied to locations',
     defaultVisible: false,
     isSystemLayer: true,
   },

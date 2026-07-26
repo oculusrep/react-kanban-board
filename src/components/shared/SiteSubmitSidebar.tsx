@@ -20,7 +20,6 @@ import PortalChatTab from '../portal/PortalChatTab';
 import PortalFilesTab from '../portal/PortalFilesTab';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
 import { CopyMapLinkButton } from './CopyMapLinkButton';
-import AddToTourButton from '../tours/AddToTourButton';
 import { useSiteSubmitEmail } from '../../hooks/useSiteSubmitEmail';
 import EmailComposerModal from '../EmailComposerModal';
 import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
@@ -1177,13 +1176,6 @@ export default function SiteSubmitSidebar({
             </button>
           </div>
         </div>
-
-        {/* Add to tour (staging) - real site submits only (incl. deal-linked green header) */}
-        {siteSubmit?.id && !isDealDirectMode && (
-          <div className="mt-2">
-            <AddToTourButton siteSubmitId={siteSubmit.id} clientId={siteSubmit.client_id} />
-          </div>
-        )}
 
         {/* Address and unit info */}
         <div className="mt-2">

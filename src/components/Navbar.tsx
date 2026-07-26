@@ -639,9 +639,6 @@ export default function Navbar() {
           <Link to="/mapping" className={linkClass("/mapping")}>
             🗺️ Map
           </Link>
-          <Link to="/tours" className={linkClass("/tours")}>
-            Tours
-          </Link>
 
           <DropdownMenu
             title="Properties"
@@ -769,12 +766,6 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   🗺️ Map
-                </button>
-                <button
-                  onClick={() => navigate('/tours')}
-                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                >
-                  Tours
                 </button>
               </div>
             </div>

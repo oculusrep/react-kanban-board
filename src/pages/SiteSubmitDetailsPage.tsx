@@ -24,7 +24,6 @@ import DigestComposeModal from '../components/portal/DigestComposeModal';
 import { Bell } from 'lucide-react';
 import { CLIENT_VISIBLE_STAGES } from '../components/client-pipeline/pipelineConfig';
 import QuickAddTaskButton from '../components/tasks/QuickAddTaskButton';
-import AddToTourButton from '../components/tours/AddToTourButton';
 import OpenTasksPanel from '../components/tasks/OpenTasksPanel';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
@@ -631,9 +630,6 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     linkedObjectId={siteSubmitId}
                     linkedObjectLabel={formData.site_submit_name || 'Site Submit'}
                   />
-                )}
-                {!isNewSiteSubmit && siteSubmitId && (
-                  <AddToTourButton siteSubmitId={siteSubmitId} clientId={formData.client_id} />
                 )}
                 {!isNewSiteSubmit && (
                   <>
