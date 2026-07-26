@@ -1331,6 +1331,60 @@ export type Database = {
           },
         ]
       }
+      boundary_municipality: {
+        Row: {
+          centroid: unknown
+          created_at: string
+          fips_state: string
+          geoid: string
+          geometry: unknown
+          id: string
+          kind: string
+          lsadc: string | null
+          name: string
+          population: number | null
+          raw_name: string
+          source: string
+          source_year: number | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          centroid: unknown
+          created_at?: string
+          fips_state: string
+          geoid: string
+          geometry: unknown
+          id?: string
+          kind: string
+          lsadc?: string | null
+          name: string
+          population?: number | null
+          raw_name: string
+          source?: string
+          source_year?: number | null
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          centroid?: unknown
+          created_at?: string
+          fips_state?: string
+          geoid?: string
+          geometry?: unknown
+          id?: string
+          kind?: string
+          lsadc?: string | null
+          name?: string
+          population?: number | null
+          raw_name?: string
+          source?: string
+          source_year?: number | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       broker: {
         Row: {
           id: string
@@ -1976,6 +2030,173 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["auth_user_id"]
+          },
+        ]
+      }
+      comp_note: {
+        Row: {
+          body: string
+          comp_property_id: string
+          created_at: string | null
+          created_by_id: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          body: string
+          comp_property_id: string
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          body?: string
+          comp_property_id?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comp_note_comp_property_id_fkey"
+            columns: ["comp_property_id"]
+            isOneToOne: false
+            referencedRelation: "comp_property"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comp_property: {
+        Row: {
+          address: string | null
+          anchor_tenant: string | null
+          building_sqft: number | null
+          city: string | null
+          confidence: string
+          county: string | null
+          created_at: string | null
+          created_by_id: string | null
+          id: string
+          land_acres: number | null
+          latitude: number | null
+          longitude: number | null
+          name: string | null
+          parcel_id: string | null
+          property_id: string | null
+          property_type_id: string | null
+          source_captured_at: string | null
+          source_reference: string | null
+          source_type: string
+          source_url: string | null
+          state: string | null
+          trade_area: string | null
+          updated_at: string | null
+          verified_at: string | null
+          verified_by_id: string | null
+          verified_latitude: number | null
+          verified_longitude: number | null
+          year_built: number | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          anchor_tenant?: string | null
+          building_sqft?: number | null
+          city?: string | null
+          confidence?: string
+          county?: string | null
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          land_acres?: number | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string | null
+          parcel_id?: string | null
+          property_id?: string | null
+          property_type_id?: string | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          state?: string | null
+          trade_area?: string | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+          verified_latitude?: number | null
+          verified_longitude?: number | null
+          year_built?: number | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          anchor_tenant?: string | null
+          building_sqft?: number | null
+          city?: string | null
+          confidence?: string
+          county?: string | null
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          land_acres?: number | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string | null
+          parcel_id?: string | null
+          property_id?: string | null
+          property_type_id?: string | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          state?: string | null
+          trade_area?: string | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+          verified_latitude?: number | null
+          verified_longitude?: number | null
+          year_built?: number | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comp_property_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comp_property_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comp_property_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comp_property_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comp_property_property_type_id_fkey"
+            columns: ["property_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_type"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -4037,6 +4258,42 @@ export type Database = {
           },
         ]
       }
+      deal_submit_stage_map: {
+        Row: {
+          created_at: string
+          deal_stage_id: string
+          id: string
+          submit_stage_id: string
+        }
+        Insert: {
+          created_at?: string
+          deal_stage_id: string
+          id?: string
+          submit_stage_id: string
+        }
+        Update: {
+          created_at?: string
+          deal_stage_id?: string
+          id?: string
+          submit_stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_submit_stage_map_deal_stage_id_fkey"
+            columns: ["deal_stage_id"]
+            isOneToOne: true
+            referencedRelation: "deal_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_submit_stage_map_submit_stage_id_fkey"
+            columns: ["submit_stage_id"]
+            isOneToOne: true
+            referencedRelation: "submit_stage"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deal_synopsis: {
         Row: {
           alert_level: string | null
@@ -4624,6 +4881,69 @@ export type Database = {
           sample_latitude?: number
           sample_longitude?: number
           sample_population?: number | null
+        }
+        Relationships: []
+      }
+      esri_enrichment_log: {
+        Row: {
+          cache_hit: boolean
+          called_at: string
+          demographics: Json
+          drive_times: number[] | null
+          error: string | null
+          id: string
+          isochrones: Json | null
+          latitude: number | null
+          longitude: number | null
+          mode: string
+          polygon: Json | null
+          polygon_centroid_lat: number | null
+          polygon_centroid_lng: number | null
+          polygon_vertex_count: number | null
+          radii: number[] | null
+          success: boolean
+          tapestry: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          cache_hit?: boolean
+          called_at?: string
+          demographics: Json
+          drive_times?: number[] | null
+          error?: string | null
+          id?: string
+          isochrones?: Json | null
+          latitude?: number | null
+          longitude?: number | null
+          mode: string
+          polygon?: Json | null
+          polygon_centroid_lat?: number | null
+          polygon_centroid_lng?: number | null
+          polygon_vertex_count?: number | null
+          radii?: number[] | null
+          success: boolean
+          tapestry?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          cache_hit?: boolean
+          called_at?: string
+          demographics?: Json
+          drive_times?: number[] | null
+          error?: string | null
+          id?: string
+          isochrones?: Json | null
+          latitude?: number | null
+          longitude?: number | null
+          mode?: string
+          polygon?: Json | null
+          polygon_centroid_lat?: number | null
+          polygon_centroid_lng?: number | null
+          polygon_vertex_count?: number | null
+          radii?: number[] | null
+          success?: boolean
+          tapestry?: Json | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -5682,6 +6002,126 @@ export type Database = {
         }
         Relationships: []
       }
+      lease_comp: {
+        Row: {
+          all_in_rent_psf: number | null
+          annual_base_rent: number | null
+          base_rent_psf: number | null
+          comp_property_id: string
+          confidence: string
+          created_at: string | null
+          created_by_id: string | null
+          escalation_pct: number | null
+          free_rent_months: number | null
+          id: string
+          lease_commencement_date: string | null
+          lease_expiration_date: string | null
+          lease_term_months: number | null
+          lease_type: string | null
+          merchant_brand_id: string | null
+          nnn_psf: number | null
+          occupancy_status: string | null
+          option_periods: Json | null
+          rent_steps: Json | null
+          reported_tenant_sales: number | null
+          sales_psf: number | null
+          source_captured_at: string | null
+          source_reference: string | null
+          source_type: string
+          source_url: string | null
+          suite: string | null
+          tenant_name: string | null
+          tenant_sqft: number | null
+          ti_psf: number | null
+          updated_at: string | null
+          verified_at: string | null
+          verified_by_id: string | null
+        }
+        Insert: {
+          all_in_rent_psf?: number | null
+          annual_base_rent?: number | null
+          base_rent_psf?: number | null
+          comp_property_id: string
+          confidence?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          escalation_pct?: number | null
+          free_rent_months?: number | null
+          id?: string
+          lease_commencement_date?: string | null
+          lease_expiration_date?: string | null
+          lease_term_months?: number | null
+          lease_type?: string | null
+          merchant_brand_id?: string | null
+          nnn_psf?: number | null
+          occupancy_status?: string | null
+          option_periods?: Json | null
+          rent_steps?: Json | null
+          reported_tenant_sales?: number | null
+          sales_psf?: number | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          suite?: string | null
+          tenant_name?: string | null
+          tenant_sqft?: number | null
+          ti_psf?: number | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+        }
+        Update: {
+          all_in_rent_psf?: number | null
+          annual_base_rent?: number | null
+          base_rent_psf?: number | null
+          comp_property_id?: string
+          confidence?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          escalation_pct?: number | null
+          free_rent_months?: number | null
+          id?: string
+          lease_commencement_date?: string | null
+          lease_expiration_date?: string | null
+          lease_term_months?: number | null
+          lease_type?: string | null
+          merchant_brand_id?: string | null
+          nnn_psf?: number | null
+          occupancy_status?: string | null
+          option_periods?: Json | null
+          rent_steps?: Json | null
+          reported_tenant_sales?: number | null
+          sales_psf?: number | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          suite?: string | null
+          tenant_name?: string | null
+          tenant_sqft?: number | null
+          ti_psf?: number | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lease_comp_comp_property_id_fkey"
+            columns: ["comp_property_id"]
+            isOneToOne: false
+            referencedRelation: "comp_property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lease_comp_merchant_brand_id_fkey"
+            columns: ["merchant_brand_id"]
+            isOneToOne: false
+            referencedRelation: "merchant_brand"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       legal_loi_decision: {
         Row: {
           ai_confidence: number | null
@@ -6276,9 +6716,14 @@ export type Database = {
       }
       merchant_brand: {
         Row: {
+          brandfetch_checked_at: string | null
           brandfetch_domain: string | null
+          brandfetch_logo_status: string
           category_id: string
           created_at: string
+          custom_logo_uploaded_at: string | null
+          custom_logo_uploaded_by: string | null
+          custom_logo_url: string | null
           id: string
           is_active: boolean
           last_ingested_at: string | null
@@ -6288,14 +6733,21 @@ export type Database = {
           logo_variant: string
           name: string
           normalized_name: string
+          places_display_name: string | null
+          places_name_exclude: string | null
           places_search_query: string | null
           places_type_filter: string | null
           updated_at: string
         }
         Insert: {
+          brandfetch_checked_at?: string | null
           brandfetch_domain?: string | null
+          brandfetch_logo_status?: string
           category_id: string
           created_at?: string
+          custom_logo_uploaded_at?: string | null
+          custom_logo_uploaded_by?: string | null
+          custom_logo_url?: string | null
           id?: string
           is_active?: boolean
           last_ingested_at?: string | null
@@ -6305,14 +6757,21 @@ export type Database = {
           logo_variant?: string
           name: string
           normalized_name: string
+          places_display_name?: string | null
+          places_name_exclude?: string | null
           places_search_query?: string | null
           places_type_filter?: string | null
           updated_at?: string
         }
         Update: {
+          brandfetch_checked_at?: string | null
           brandfetch_domain?: string | null
+          brandfetch_logo_status?: string
           category_id?: string
           created_at?: string
+          custom_logo_uploaded_at?: string | null
+          custom_logo_uploaded_by?: string | null
+          custom_logo_url?: string | null
           id?: string
           is_active?: boolean
           last_ingested_at?: string | null
@@ -6322,6 +6781,8 @@ export type Database = {
           logo_variant?: string
           name?: string
           normalized_name?: string
+          places_display_name?: string | null
+          places_name_exclude?: string | null
           places_search_query?: string | null
           places_type_filter?: string | null
           updated_at?: string
@@ -6332,6 +6793,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "merchant_category"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_brand_custom_logo_uploaded_by_fkey"
+            columns: ["custom_logo_uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "user"
             referencedColumns: ["id"]
           },
         ]
@@ -6415,6 +6883,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_default: boolean
           name: string
           owner_user_id: string
           updated_at: string
@@ -6422,13 +6891,15 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_default?: boolean
           name: string
-          owner_user_id: string
+          owner_user_id?: string
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
+          is_default?: boolean
           name?: string
           owner_user_id?: string
           updated_at?: string
@@ -6525,6 +6996,10 @@ export type Database = {
           phone: string | null
           previous_status: string | null
           status_changed_at: string | null
+          verified_at: string | null
+          verified_by: string | null
+          verified_latitude: number | null
+          verified_longitude: number | null
           website: string | null
         }
         Insert: {
@@ -6542,6 +7017,10 @@ export type Database = {
           phone?: string | null
           previous_status?: string | null
           status_changed_at?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_latitude?: number | null
+          verified_longitude?: number | null
           website?: string | null
         }
         Update: {
@@ -6559,6 +7038,10 @@ export type Database = {
           phone?: string | null
           previous_status?: string | null
           status_changed_at?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_latitude?: number | null
+          verified_longitude?: number | null
           website?: string | null
         }
         Relationships: [
@@ -6567,6 +7050,13 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "merchant_brand"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_location_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "user"
             referencedColumns: ["id"]
           },
         ]
@@ -6638,88 +7128,128 @@ export type Database = {
         Row: {
           address: string
           apt_units: number | null
+          builder_developer: string | null
           centroid: unknown
           cottage_units: number | null
           created_at: string
+          created_by_id: string | null
           duplex_units: number | null
           geocoded_address: string | null
           geometry: unknown
           id: string
+          label_offset_x_px: number | null
+          label_offset_y_px: number | null
+          location_description: string | null
           municipality_id: string
           notes: string | null
+          parcel_boundary_notes: string | null
           parcel_numbers: string[]
+          permit_application_date: string | null
+          permit_url: string | null
           phase_label: string
           project_name: string
           property_id: string | null
           raw_stages: Json
           single_family_lots: number | null
+          source: string | null
           source_import_id: string | null
+          source_research_run_id: string | null
           source_row_number: number | null
           status_override_id: string | null
           status_stage_id: string | null
           total_housing_units: number | null
           townhouse_units: number | null
           updated_at: string
+          updated_by_id: string | null
           zoning: string | null
           zoning_approval_date: string | null
         }
         Insert: {
           address: string
           apt_units?: number | null
+          builder_developer?: string | null
           centroid?: unknown
           cottage_units?: number | null
           created_at?: string
+          created_by_id?: string | null
           duplex_units?: number | null
           geocoded_address?: string | null
           geometry?: unknown
           id?: string
+          label_offset_x_px?: number | null
+          label_offset_y_px?: number | null
+          location_description?: string | null
           municipality_id: string
           notes?: string | null
+          parcel_boundary_notes?: string | null
           parcel_numbers?: string[]
+          permit_application_date?: string | null
+          permit_url?: string | null
           phase_label?: string
           project_name?: string
           property_id?: string | null
           raw_stages?: Json
           single_family_lots?: number | null
+          source?: string | null
           source_import_id?: string | null
+          source_research_run_id?: string | null
           source_row_number?: number | null
           status_override_id?: string | null
           status_stage_id?: string | null
           total_housing_units?: number | null
           townhouse_units?: number | null
           updated_at?: string
+          updated_by_id?: string | null
           zoning?: string | null
           zoning_approval_date?: string | null
         }
         Update: {
           address?: string
           apt_units?: number | null
+          builder_developer?: string | null
           centroid?: unknown
           cottage_units?: number | null
           created_at?: string
+          created_by_id?: string | null
           duplex_units?: number | null
           geocoded_address?: string | null
           geometry?: unknown
           id?: string
+          label_offset_x_px?: number | null
+          label_offset_y_px?: number | null
+          location_description?: string | null
           municipality_id?: string
           notes?: string | null
+          parcel_boundary_notes?: string | null
           parcel_numbers?: string[]
+          permit_application_date?: string | null
+          permit_url?: string | null
           phase_label?: string
           project_name?: string
           property_id?: string | null
           raw_stages?: Json
           single_family_lots?: number | null
+          source?: string | null
           source_import_id?: string | null
+          source_research_run_id?: string | null
           source_row_number?: number | null
           status_override_id?: string | null
           status_stage_id?: string | null
           total_housing_units?: number | null
           townhouse_units?: number | null
           updated_at?: string
+          updated_by_id?: string | null
           zoning?: string | null
           zoning_approval_date?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "municipal_project_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
           {
             foreignKeyName: "municipal_project_municipality_id_fkey"
             columns: ["municipality_id"]
@@ -6763,6 +7293,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "municipal_project_source_research_run_id_fkey"
+            columns: ["source_research_run_id"]
+            isOneToOne: false
+            referencedRelation: "research_run"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "municipal_project_status_override_id_fkey"
             columns: ["status_override_id"]
             isOneToOne: false
@@ -6771,6 +7308,172 @@ export type Database = {
           },
           {
             foreignKeyName: "municipal_project_status_stage_id_fkey"
+            columns: ["status_stage_id"]
+            isOneToOne: false
+            referencedRelation: "project_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
+        ]
+      }
+      municipal_project_staging: {
+        Row: {
+          address: string | null
+          approval_state: string
+          approved_at: string | null
+          approved_municipal_project_id: string | null
+          apt_units: number | null
+          boundary_municipality_id: string | null
+          builder_developer: string | null
+          cottage_units: number | null
+          created_at: string
+          duplex_units: number | null
+          id: string
+          location_description: string | null
+          matched_existing_id: string | null
+          municipality_id: string | null
+          notes: string | null
+          parcel_boundary_notes: string | null
+          parcel_numbers: string[]
+          permit_application_date: string | null
+          permit_url: string | null
+          phase_label: string
+          project_name: string | null
+          raw_stages: Json
+          research_run_id: string
+          single_family_lots: number | null
+          source: string
+          status_stage_id: string | null
+          total_housing_units: number | null
+          townhouse_units: number | null
+          updated_at: string
+          zoning: string | null
+          zoning_approval_date: string | null
+        }
+        Insert: {
+          address?: string | null
+          approval_state?: string
+          approved_at?: string | null
+          approved_municipal_project_id?: string | null
+          apt_units?: number | null
+          boundary_municipality_id?: string | null
+          builder_developer?: string | null
+          cottage_units?: number | null
+          created_at?: string
+          duplex_units?: number | null
+          id?: string
+          location_description?: string | null
+          matched_existing_id?: string | null
+          municipality_id?: string | null
+          notes?: string | null
+          parcel_boundary_notes?: string | null
+          parcel_numbers?: string[]
+          permit_application_date?: string | null
+          permit_url?: string | null
+          phase_label?: string
+          project_name?: string | null
+          raw_stages?: Json
+          research_run_id: string
+          single_family_lots?: number | null
+          source: string
+          status_stage_id?: string | null
+          total_housing_units?: number | null
+          townhouse_units?: number | null
+          updated_at?: string
+          zoning?: string | null
+          zoning_approval_date?: string | null
+        }
+        Update: {
+          address?: string | null
+          approval_state?: string
+          approved_at?: string | null
+          approved_municipal_project_id?: string | null
+          apt_units?: number | null
+          boundary_municipality_id?: string | null
+          builder_developer?: string | null
+          cottage_units?: number | null
+          created_at?: string
+          duplex_units?: number | null
+          id?: string
+          location_description?: string | null
+          matched_existing_id?: string | null
+          municipality_id?: string | null
+          notes?: string | null
+          parcel_boundary_notes?: string | null
+          parcel_numbers?: string[]
+          permit_application_date?: string | null
+          permit_url?: string | null
+          phase_label?: string
+          project_name?: string | null
+          raw_stages?: Json
+          research_run_id?: string
+          single_family_lots?: number | null
+          source?: string
+          status_stage_id?: string | null
+          total_housing_units?: number | null
+          townhouse_units?: number | null
+          updated_at?: string
+          zoning?: string | null
+          zoning_approval_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "municipal_project_staging_approved_municipal_project_id_fkey"
+            columns: ["approved_municipal_project_id"]
+            isOneToOne: false
+            referencedRelation: "municipal_project"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_staging_approved_municipal_project_id_fkey"
+            columns: ["approved_municipal_project_id"]
+            isOneToOne: false
+            referencedRelation: "municipal_project_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_staging_boundary_municipality_id_fkey"
+            columns: ["boundary_municipality_id"]
+            isOneToOne: false
+            referencedRelation: "boundary_municipality"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_staging_matched_existing_id_fkey"
+            columns: ["matched_existing_id"]
+            isOneToOne: false
+            referencedRelation: "municipal_project"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_staging_matched_existing_id_fkey"
+            columns: ["matched_existing_id"]
+            isOneToOne: false
+            referencedRelation: "municipal_project_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_staging_municipality_id_fkey"
+            columns: ["municipality_id"]
+            isOneToOne: false
+            referencedRelation: "municipality"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_staging_research_run_id_fkey"
+            columns: ["research_run_id"]
+            isOneToOne: false
+            referencedRelation: "research_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_staging_status_stage_id_fkey"
             columns: ["status_stage_id"]
             isOneToOne: false
             referencedRelation: "project_stage"
@@ -7534,6 +8237,90 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operating_memorandum: {
+        Row: {
+          asking_cap_rate: number | null
+          asking_price: number | null
+          broker_name: string | null
+          brokerage: string | null
+          comp_property_id: string
+          confidence: string
+          created_at: string | null
+          created_by_id: string | null
+          guidance: string | null
+          id: string
+          list_date: string | null
+          sale_comp_id: string | null
+          source_captured_at: string | null
+          source_reference: string | null
+          source_type: string
+          source_url: string | null
+          title: string | null
+          updated_at: string | null
+          verified_at: string | null
+          verified_by_id: string | null
+        }
+        Insert: {
+          asking_cap_rate?: number | null
+          asking_price?: number | null
+          broker_name?: string | null
+          brokerage?: string | null
+          comp_property_id: string
+          confidence?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          guidance?: string | null
+          id?: string
+          list_date?: string | null
+          sale_comp_id?: string | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          title?: string | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+        }
+        Update: {
+          asking_cap_rate?: number | null
+          asking_price?: number | null
+          broker_name?: string | null
+          brokerage?: string | null
+          comp_property_id?: string
+          confidence?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          guidance?: string | null
+          id?: string
+          list_date?: string | null
+          sale_comp_id?: string | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          title?: string | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operating_memorandum_comp_property_id_fkey"
+            columns: ["comp_property_id"]
+            isOneToOne: false
+            referencedRelation: "comp_property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operating_memorandum_sale_comp_id_fkey"
+            columns: ["sale_comp_id"]
+            isOneToOne: false
+            referencedRelation: "sale_comp"
             referencedColumns: ["id"]
           },
         ]
@@ -8597,23 +9384,29 @@ export type Database = {
       }
       project_stage: {
         Row: {
+          abbreviation: string | null
           color: string | null
           created_at: string
           id: string
+          line_color: string | null
           name: string
           sort_order: number
         }
         Insert: {
+          abbreviation?: string | null
           color?: string | null
           created_at?: string
           id?: string
+          line_color?: string | null
           name: string
           sort_order?: number
         }
         Update: {
+          abbreviation?: string | null
           color?: string | null
           created_at?: string
           id?: string
+          line_color?: string | null
           name?: string
           sort_order?: number
         }
@@ -10442,6 +11235,270 @@ export type Database = {
         }
         Relationships: []
       }
+      research_checklist_item: {
+        Row: {
+          boundary_municipality_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          priority: number
+          research_run_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          boundary_municipality_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          priority: number
+          research_run_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          boundary_municipality_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          priority?: number
+          research_run_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_checklist_item_boundary_municipality_id_fkey"
+            columns: ["boundary_municipality_id"]
+            isOneToOne: false
+            referencedRelation: "boundary_municipality"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_checklist_item_research_run_id_fkey"
+            columns: ["research_run_id"]
+            isOneToOne: false
+            referencedRelation: "research_run"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_run: {
+        Row: {
+          alt_avenues: string | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          needs_review: string | null
+          openclaw_run_id: string | null
+          permit_window_end: string | null
+          permit_window_start: string | null
+          pz_window_end: string | null
+          pz_window_start: string | null
+          radius_miles: number
+          research_mode: string | null
+          site_submit_id: string
+          state: string
+          sweep_chunk_index: number | null
+          sweep_id: string | null
+          triggered_at: string
+          triggered_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          alt_avenues?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          needs_review?: string | null
+          openclaw_run_id?: string | null
+          permit_window_end?: string | null
+          permit_window_start?: string | null
+          pz_window_end?: string | null
+          pz_window_start?: string | null
+          radius_miles?: number
+          research_mode?: string | null
+          site_submit_id: string
+          state?: string
+          sweep_chunk_index?: number | null
+          sweep_id?: string | null
+          triggered_at?: string
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          alt_avenues?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          needs_review?: string | null
+          openclaw_run_id?: string | null
+          permit_window_end?: string | null
+          permit_window_start?: string | null
+          pz_window_end?: string | null
+          pz_window_start?: string | null
+          radius_miles?: number
+          research_mode?: string | null
+          site_submit_id?: string
+          state?: string
+          sweep_chunk_index?: number | null
+          sweep_id?: string | null
+          triggered_at?: string
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_run_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "research_run_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_run_sweep_id_fkey"
+            columns: ["sweep_id"]
+            isOneToOne: false
+            referencedRelation: "research_sweep"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_run_triggered_by_fkey"
+            columns: ["triggered_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_sweep: {
+        Row: {
+          boundary_municipality_ids: string[]
+          chunk_timeout_minutes: number
+          created_at: string
+          id: string
+          radius_miles: number
+          research_mode: string
+          site_submit_id: string
+          state: string
+          total_chunks: number
+          triggered_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          boundary_municipality_ids: string[]
+          chunk_timeout_minutes?: number
+          created_at?: string
+          id?: string
+          radius_miles: number
+          research_mode?: string
+          site_submit_id: string
+          state?: string
+          total_chunks: number
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          boundary_municipality_ids?: string[]
+          chunk_timeout_minutes?: number
+          created_at?: string
+          id?: string
+          radius_miles?: number
+          research_mode?: string
+          site_submit_id?: string
+          state?: string
+          total_chunks?: number
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_sweep_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "research_sweep_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_sweep_triggered_by_fkey"
+            columns: ["triggered_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_sweep_chunk: {
+        Row: {
+          chunk_index: number
+          created_at: string
+          fired_at: string | null
+          id: string
+          research_run_id: string | null
+          state: string
+          sweep_id: string
+          terminal_at: string | null
+          updated_at: string
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          chunk_index: number
+          created_at?: string
+          fired_at?: string | null
+          id?: string
+          research_run_id?: string | null
+          state?: string
+          sweep_id: string
+          terminal_at?: string | null
+          updated_at?: string
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          chunk_index?: number
+          created_at?: string
+          fired_at?: string | null
+          id?: string
+          research_run_id?: string | null
+          state?: string
+          sweep_id?: string
+          terminal_at?: string | null
+          updated_at?: string
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_sweep_chunk_research_run_id_fkey"
+            columns: ["research_run_id"]
+            isOneToOne: false
+            referencedRelation: "research_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_sweep_chunk_sweep_id_fkey"
+            columns: ["sweep_id"]
+            isOneToOne: false
+            referencedRelation: "research_sweep"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_location: {
         Row: {
           category: string | null
@@ -10706,6 +11763,95 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      sale_comp: {
+        Row: {
+          broker: string | null
+          buyer_name: string | null
+          cap_rate: number | null
+          comp_property_id: string
+          confidence: string
+          created_at: string | null
+          created_by_id: string | null
+          financing: string | null
+          grm: number | null
+          id: string
+          noi: number | null
+          occupancy_at_sale: number | null
+          price_psf: number | null
+          sale_condition: string | null
+          sale_date: string | null
+          sale_price: number | null
+          seller_name: string | null
+          source_captured_at: string | null
+          source_reference: string | null
+          source_type: string
+          source_url: string | null
+          updated_at: string | null
+          verified_at: string | null
+          verified_by_id: string | null
+        }
+        Insert: {
+          broker?: string | null
+          buyer_name?: string | null
+          cap_rate?: number | null
+          comp_property_id: string
+          confidence?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          financing?: string | null
+          grm?: number | null
+          id?: string
+          noi?: number | null
+          occupancy_at_sale?: number | null
+          price_psf?: number | null
+          sale_condition?: string | null
+          sale_date?: string | null
+          sale_price?: number | null
+          seller_name?: string | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+        }
+        Update: {
+          broker?: string | null
+          buyer_name?: string | null
+          cap_rate?: number | null
+          comp_property_id?: string
+          confidence?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          financing?: string | null
+          grm?: number | null
+          id?: string
+          noi?: number | null
+          occupancy_at_sale?: number | null
+          price_psf?: number | null
+          sale_condition?: string | null
+          sale_date?: string | null
+          sale_price?: number | null
+          seller_name?: string | null
+          source_captured_at?: string | null
+          source_reference?: string | null
+          source_type?: string
+          source_url?: string | null
+          updated_at?: string | null
+          verified_at?: string | null
+          verified_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_comp_comp_property_id_fkey"
+            columns: ["comp_property_id"]
+            isOneToOne: false
+            referencedRelation: "comp_property"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       salesforce_Commission_Split__c: {
         Row: {
@@ -12514,6 +13660,93 @@ export type Database = {
         }
         Relationships: []
       }
+      starbucks_licensed_store: {
+        Row: {
+          actual_open_date: string | null
+          address: string | null
+          city: string | null
+          county_name: string | null
+          created_at: string
+          latitude: number | null
+          licensee_name: string | null
+          lifecycle_status: string | null
+          longitude: number | null
+          ls_pipeline_decision_date: string | null
+          market_name: string | null
+          ops_district_role: string | null
+          ownership_type: string | null
+          postal_code: string | null
+          project_number: string | null
+          segment: string | null
+          state: string | null
+          store_age: number | null
+          store_name: string | null
+          store_number: string
+          store_sqft: number | null
+          store_type: string | null
+          suite: string | null
+          updated_at: string
+          verified_latitude: number | null
+          verified_longitude: number | null
+        }
+        Insert: {
+          actual_open_date?: string | null
+          address?: string | null
+          city?: string | null
+          county_name?: string | null
+          created_at?: string
+          latitude?: number | null
+          licensee_name?: string | null
+          lifecycle_status?: string | null
+          longitude?: number | null
+          ls_pipeline_decision_date?: string | null
+          market_name?: string | null
+          ops_district_role?: string | null
+          ownership_type?: string | null
+          postal_code?: string | null
+          project_number?: string | null
+          segment?: string | null
+          state?: string | null
+          store_age?: number | null
+          store_name?: string | null
+          store_number: string
+          store_sqft?: number | null
+          store_type?: string | null
+          suite?: string | null
+          updated_at?: string
+          verified_latitude?: number | null
+          verified_longitude?: number | null
+        }
+        Update: {
+          actual_open_date?: string | null
+          address?: string | null
+          city?: string | null
+          county_name?: string | null
+          created_at?: string
+          latitude?: number | null
+          licensee_name?: string | null
+          lifecycle_status?: string | null
+          longitude?: number | null
+          ls_pipeline_decision_date?: string | null
+          market_name?: string | null
+          ops_district_role?: string | null
+          ownership_type?: string | null
+          postal_code?: string | null
+          project_number?: string | null
+          segment?: string | null
+          state?: string | null
+          store_age?: number | null
+          store_name?: string | null
+          store_number?: string
+          store_sqft?: number | null
+          store_type?: string | null
+          suite?: string | null
+          updated_at?: string
+          verified_latitude?: number | null
+          verified_longitude?: number | null
+        }
+        Relationships: []
+      }
       starbucks_snapshot: {
         Row: {
           annual_rent: number | null
@@ -12613,6 +13846,7 @@ export type Database = {
           market: string | null
           open_date: string | null
           relo_date: string | null
+          state: string | null
           store_name: string | null
           store_number: string
           updated_at: string
@@ -12626,6 +13860,7 @@ export type Database = {
           market?: string | null
           open_date?: string | null
           relo_date?: string | null
+          state?: string | null
           store_name?: string | null
           store_number: string
           updated_at?: string
@@ -12639,11 +13874,113 @@ export type Database = {
           market?: string | null
           open_date?: string | null
           relo_date?: string | null
+          state?: string | null
           store_name?: string | null
           store_number?: string
           updated_at?: string
         }
         Relationships: []
+      }
+      starbucks_store_demographics: {
+        Row: {
+          educ_some_college_plus_pct_1_mile: number | null
+          educ_some_college_plus_pct_10min_drive: number | null
+          educ_some_college_plus_pct_3_mile: number | null
+          educ_some_college_plus_pct_5min_drive: number | null
+          employees_1_mile: number | null
+          employees_10min_drive: number | null
+          employees_3_mile: number | null
+          employees_5min_drive: number | null
+          enriched_at: string
+          enriched_latitude: number | null
+          enriched_longitude: number | null
+          esri_raw: Json | null
+          hh_income_median_1_mile: number | null
+          hh_income_median_10min_drive: number | null
+          hh_income_median_3_mile: number | null
+          hh_income_median_5min_drive: number | null
+          median_age_1_mile: number | null
+          median_age_10min_drive: number | null
+          median_age_3_mile: number | null
+          median_age_5min_drive: number | null
+          pop_1_mile: number | null
+          pop_10min_drive: number | null
+          pop_3_mile: number | null
+          pop_5min_drive: number | null
+          store_number: string
+          tapestry_code: string | null
+          tapestry_lifemode: string | null
+          tapestry_name: string | null
+        }
+        Insert: {
+          educ_some_college_plus_pct_1_mile?: number | null
+          educ_some_college_plus_pct_10min_drive?: number | null
+          educ_some_college_plus_pct_3_mile?: number | null
+          educ_some_college_plus_pct_5min_drive?: number | null
+          employees_1_mile?: number | null
+          employees_10min_drive?: number | null
+          employees_3_mile?: number | null
+          employees_5min_drive?: number | null
+          enriched_at?: string
+          enriched_latitude?: number | null
+          enriched_longitude?: number | null
+          esri_raw?: Json | null
+          hh_income_median_1_mile?: number | null
+          hh_income_median_10min_drive?: number | null
+          hh_income_median_3_mile?: number | null
+          hh_income_median_5min_drive?: number | null
+          median_age_1_mile?: number | null
+          median_age_10min_drive?: number | null
+          median_age_3_mile?: number | null
+          median_age_5min_drive?: number | null
+          pop_1_mile?: number | null
+          pop_10min_drive?: number | null
+          pop_3_mile?: number | null
+          pop_5min_drive?: number | null
+          store_number: string
+          tapestry_code?: string | null
+          tapestry_lifemode?: string | null
+          tapestry_name?: string | null
+        }
+        Update: {
+          educ_some_college_plus_pct_1_mile?: number | null
+          educ_some_college_plus_pct_10min_drive?: number | null
+          educ_some_college_plus_pct_3_mile?: number | null
+          educ_some_college_plus_pct_5min_drive?: number | null
+          employees_1_mile?: number | null
+          employees_10min_drive?: number | null
+          employees_3_mile?: number | null
+          employees_5min_drive?: number | null
+          enriched_at?: string
+          enriched_latitude?: number | null
+          enriched_longitude?: number | null
+          esri_raw?: Json | null
+          hh_income_median_1_mile?: number | null
+          hh_income_median_10min_drive?: number | null
+          hh_income_median_3_mile?: number | null
+          hh_income_median_5min_drive?: number | null
+          median_age_1_mile?: number | null
+          median_age_10min_drive?: number | null
+          median_age_3_mile?: number | null
+          median_age_5min_drive?: number | null
+          pop_1_mile?: number | null
+          pop_10min_drive?: number | null
+          pop_3_mile?: number | null
+          pop_5min_drive?: number | null
+          store_number?: string
+          tapestry_code?: string | null
+          tapestry_lifemode?: string | null
+          tapestry_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "starbucks_store_demographics_store_number_fkey"
+            columns: ["store_number"]
+            isOneToOne: true
+            referencedRelation: "starbucks_store"
+            referencedColumns: ["store_number"]
+          },
+        ]
       }
       starbucks_target_area: {
         Row: {
@@ -12668,6 +14005,8 @@ export type Database = {
           model_yr1_tc: number | null
           name: string
           notes: string | null
+          orep_model_yr1_sales: number | null
+          orep_notes: string | null
           planned_ops_area_id: number | null
           planned_ops_area_name: string | null
           priority: number | null
@@ -12679,11 +14018,12 @@ export type Database = {
           recommendation_id: string | null
           region_id: number | null
           sdm_mdm: string | null
+          source: string
           state_province: string | null
           store_type: string | null
           target_area_created_dt: string | null
           target_area_created_user: string | null
-          target_area_id: string
+          target_area_id: string | null
           target_area_proximity_alert: string | null
           target_area_secondary_concept: string | null
           target_area_store_format: string | null
@@ -12716,6 +14056,8 @@ export type Database = {
           model_yr1_tc?: number | null
           name: string
           notes?: string | null
+          orep_model_yr1_sales?: number | null
+          orep_notes?: string | null
           planned_ops_area_id?: number | null
           planned_ops_area_name?: string | null
           priority?: number | null
@@ -12727,11 +14069,12 @@ export type Database = {
           recommendation_id?: string | null
           region_id?: number | null
           sdm_mdm?: string | null
+          source?: string
           state_province?: string | null
           store_type?: string | null
           target_area_created_dt?: string | null
           target_area_created_user?: string | null
-          target_area_id: string
+          target_area_id?: string | null
           target_area_proximity_alert?: string | null
           target_area_secondary_concept?: string | null
           target_area_store_format?: string | null
@@ -12764,6 +14107,8 @@ export type Database = {
           model_yr1_tc?: number | null
           name?: string
           notes?: string | null
+          orep_model_yr1_sales?: number | null
+          orep_notes?: string | null
           planned_ops_area_id?: number | null
           planned_ops_area_name?: string | null
           priority?: number | null
@@ -12775,11 +14120,12 @@ export type Database = {
           recommendation_id?: string | null
           region_id?: number | null
           sdm_mdm?: string | null
+          source?: string
           state_province?: string | null
           store_type?: string | null
           target_area_created_dt?: string | null
           target_area_created_user?: string | null
-          target_area_id?: string
+          target_area_id?: string | null
           target_area_proximity_alert?: string | null
           target_area_secondary_concept?: string | null
           target_area_store_format?: string | null
@@ -13934,6 +15280,164 @@ export type Database = {
         }
         Relationships: []
       }
+      tour: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          created_by_id: string | null
+          description: string | null
+          id: string
+          is_archived: boolean
+          tour_date: string | null
+          tour_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          created_by_id?: string | null
+          description?: string | null
+          id?: string
+          is_archived?: boolean
+          tour_date?: string | null
+          tour_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          description?: string | null
+          id?: string
+          is_archived?: boolean
+          tour_date?: string | null
+          tour_name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client_velocity_stats"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "tour_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_aging"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "tour_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_hunter_reconnect"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "tour_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      tour_stop: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          position: number
+          site_submit_id: string
+          tour_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          position?: number
+          site_submit_id: string
+          tour_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          position?: number
+          site_submit_id?: string
+          tour_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_stop_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "tour_stop_category"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_stop_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "portal_site_submit_status"
+            referencedColumns: ["site_submit_id"]
+          },
+          {
+            foreignKeyName: "tour_stop_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_stop_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tour"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_stop_category: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       traffic_cache: {
         Row: {
           created_at: string
@@ -14737,42 +16241,61 @@ export type Database = {
         Row: {
           address: string | null
           apt_units: number | null
+          builder_developer: string | null
           centroid: unknown
           centroid_lat: number | null
           centroid_lng: number | null
           computed_stage_name: string | null
           cottage_units: number | null
           created_at: string | null
+          created_by_id: string | null
           duplex_units: number | null
           effective_stage_color: string | null
           effective_stage_id: string | null
+          effective_stage_line_color: string | null
           effective_stage_name: string | null
           geocoded_address: string | null
           geometry: unknown
           geometry_geojson: Json | null
           id: string | null
+          label_offset_x_px: number | null
+          label_offset_y_px: number | null
+          location_description: string | null
           municipality_display_color: string | null
           municipality_id: string | null
           municipality_name: string | null
           municipality_state: string | null
           notes: string | null
+          parcel_boundary_notes: string | null
           parcel_numbers: string[] | null
+          permit_application_date: string | null
+          permit_url: string | null
           phase_label: string | null
           project_name: string | null
           property_id: string | null
           raw_stages: Json | null
           single_family_lots: number | null
+          source: string | null
           source_import_id: string | null
+          source_research_run_id: string | null
           source_row_number: number | null
           status_override_id: string | null
           status_stage_id: string | null
           total_housing_units: number | null
           townhouse_units: number | null
           updated_at: string | null
+          updated_by_id: string | null
           zoning: string | null
           zoning_approval_date: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "municipal_project_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
           {
             foreignKeyName: "municipal_project_municipality_id_fkey"
             columns: ["municipality_id"]
@@ -14816,6 +16339,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "municipal_project_source_research_run_id_fkey"
+            columns: ["source_research_run_id"]
+            isOneToOne: false
+            referencedRelation: "research_run"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "municipal_project_status_override_id_fkey"
             columns: ["status_override_id"]
             isOneToOne: false
@@ -14828,6 +16358,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "project_stage"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "municipal_project_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -16088,6 +17625,8 @@ export type Database = {
         }
         Returns: Json
       }
+      advance_sweep: { Args: { p_sweep_id: string }; Returns: Json }
+      approve_research_staging_rows: { Args: { p_rows: Json }; Returns: Json }
       calculate_deal_payment_dates: {
         Args: { p_deal_id: string }
         Returns: undefined
@@ -16107,6 +17646,7 @@ export type Database = {
       }
       can_manage_operations: { Args: never; Returns: boolean }
       can_manage_portal: { Args: never; Returns: boolean }
+      cancel_research_run: { Args: { p_run_id: string }; Returns: Json }
       cleanup_orphaned_auth_identity: {
         Args: { p_email: string }
         Returns: Json
@@ -16119,9 +17659,63 @@ export type Database = {
         }
         Returns: undefined
       }
+      count_nearby_for_store: {
+        Args: { p_store_number: string }
+        Returns: {
+          store_type: string
+          within_10min: number
+          within_1mi: number
+          within_3mi: number
+          within_5min: number
+        }[]
+      }
+      count_nearby_stores_by_type: {
+        Args: {
+          p_exclude_store?: string
+          p_iso_10min?: Json
+          p_iso_5min?: Json
+          p_lat: number
+          p_lng: number
+        }
+        Returns: {
+          store_type: string
+          within_10min: number
+          within_1mi: number
+          within_3mi: number
+          within_5min: number
+        }[]
+      }
+      create_orep_target_area: {
+        Args: { p_geojson: Json; p_name: string }
+        Returns: string
+      }
       create_payment_splits_for_payment: {
         Args: { p_payment_id: string; p_user_id?: string }
         Returns: undefined
+      }
+      create_research_run_with_checklist: {
+        Args: {
+          p_boundary_muni_ids: string[]
+          p_openclaw_run_id?: string
+          p_permit_window_end?: string
+          p_permit_window_start?: string
+          p_pz_window_end?: string
+          p_pz_window_start?: string
+          p_radius_miles: number
+          p_research_mode?: string
+          p_site_id: string
+          p_triggered_by?: string
+        }
+        Returns: string
+      }
+      create_sweep_with_chunks: {
+        Args: {
+          p_boundary_muni_ids: string[]
+          p_radius_miles: number
+          p_site_id: string
+          p_windows: Json
+        }
+        Returns: string
       }
       create_timeline_critical_dates: {
         Args: { p_deal_id: string }
@@ -16168,6 +17762,40 @@ export type Database = {
         | { Args: { table_name: string }; Returns: string }
       enablelongtransactions: { Args: never; Returns: string }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      find_analogous_stores: {
+        Args: {
+          p_limit?: number
+          p_state?: string
+          p_store_type: string
+          p_subject: Json
+          p_tapestry_code?: string
+        }
+        Returns: {
+          city: string
+          demographics: Json
+          distance: number
+          latitude: number
+          longitude: number
+          match_score: number
+          state: string
+          store_name: string
+          store_number: string
+          store_type: string
+          tapestry_code: string
+          tapestry_name: string
+        }[]
+      }
+      find_nearby_municipal_projects: {
+        Args: { p_points: Json; p_radius_meters?: number }
+        Returns: {
+          address: string
+          distance_m: number
+          municipal_project_id: string
+          municipality_name: string
+          project_name: string
+          staging_id: string
+        }[]
+      }
       generate_payments_for_deal: {
         Args: { deal_uuid: string }
         Returns: string
@@ -16279,6 +17907,16 @@ export type Database = {
         Args: { p_client_id: string; p_stage_label: string }
         Returns: number
       }
+      get_municipalities_in_radius_for_site: {
+        Args: { p_radius_miles?: number; p_site_id: string }
+        Returns: {
+          boundary_municipality_id: string
+          distance_mi: number
+          geoid: string
+          kind: string
+          name: string
+        }[]
+      }
       get_portal_file_visibility_overrides: {
         Args: { p_entity_id: string; p_entity_type: string }
         Returns: {
@@ -16295,6 +17933,26 @@ export type Database = {
           client_name: string
         }[]
       }
+      get_research_coverage: {
+        Args: { p_site_submit_id: string }
+        Returns: {
+          boundary_municipality_id: string
+          last_searched_at: string
+          municipality_name: string
+          pass_count: number
+          record_type: string
+          segment_end: string
+          segment_start: string
+        }[]
+      }
+      get_starbucks_target_area_ops_areas: {
+        Args: never
+        Returns: {
+          count: number
+          planned_ops_area_id: number
+          planned_ops_area_name: string
+        }[]
+      }
       get_starbucks_target_areas_in_bbox: {
         Args: {
           p_east: number
@@ -16309,9 +17967,14 @@ export type Database = {
           model_yr1_sales: number
           name: string
           notes: string
+          orep_model_yr1_sales: number
+          orep_notes: string
+          planned_ops_area_id: number
+          planned_ops_area_name: string
           priority: number
           re_availability: string
           sdm_mdm: string
+          source: string
           store_type: string
           target_area_id: string
         }[]
@@ -16330,6 +17993,30 @@ export type Database = {
           road_type: string
         }[]
       }
+      get_sweep_staging: {
+        Args: { p_sweep_id: string }
+        Returns: {
+          address: string
+          approval_state: string
+          boundary_municipality_id: string
+          builder_developer: string
+          id: string
+          location_description: string
+          matched_existing_id: string
+          muni_kind: string
+          muni_name: string
+          notes: string
+          parcel_boundary_notes: string
+          permit_application_date: string
+          permit_url: string
+          project_name: string
+          research_run_id: string
+          source: string
+          sweep_chunk_index: number
+          total_housing_units: number
+        }[]
+      }
+      get_sweep_tick_secret: { Args: never; Returns: string }
       get_user_ovis_role: { Args: never; Returns: string }
       get_user_role:
         | { Args: never; Returns: string }
@@ -16370,6 +18057,15 @@ export type Database = {
         Returns: string
       }
       longtransactionsenabled: { Args: never; Returns: boolean }
+      mark_chunk_failed: {
+        Args: { p_chunk_id: string; p_run_id?: string }
+        Returns: undefined
+      }
+      mark_chunk_fired: {
+        Args: { p_chunk_id: string; p_run_id: string }
+        Returns: undefined
+      }
+      mark_research_run_reviewed: { Args: { p_run_id: string }; Returns: Json }
       merchants_can_edit_favorite: {
         Args: { fav_id: string }
         Returns: boolean
@@ -16451,6 +18147,10 @@ export type Database = {
       regenerate_payment_splits_for_deal: {
         Args: { p_deal_id: string }
         Returns: string
+      }
+      reject_research_staging_row: {
+        Args: { p_staging_id: string }
+        Returns: Json
       }
       reset_portal_file_visibility: {
         Args: {
@@ -17061,6 +18761,15 @@ export type Database = {
         }
         Returns: string
       }
+      submit_research_report: {
+        Args: {
+          p_alt_avenues?: string
+          p_candidates: Json
+          p_needs_review?: string
+          p_run_id: string
+        }
+        Returns: number
+      }
       sync_deal_field_to_critical_date: {
         Args: { p_deal_id: string; p_field_name: string; p_new_value: string }
         Returns: undefined
@@ -17080,6 +18789,11 @@ export type Database = {
         }
         Returns: string
       }
+      upsert_boundary_municipalities: { Args: { rows: Json }; Returns: number }
+      user_can_edit_starbucks_target_area: { Args: never; Returns: boolean }
+      user_has_market_research_approve_access: { Args: never; Returns: boolean }
+      user_has_market_research_run_access: { Args: never; Returns: boolean }
+      user_has_municipal_access: { Args: never; Returns: boolean }
       user_has_portal_client_access: {
         Args: { p_client_id: string; p_user_id: string }
         Returns: boolean
