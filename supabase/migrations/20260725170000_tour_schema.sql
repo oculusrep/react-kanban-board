@@ -23,10 +23,9 @@ CREATE TABLE IF NOT EXISTS tour_stop_category (
 
 INSERT INTO tour_stop_category (name, sort_order)
 VALUES
-  ('Flyby', 10),
-  ('Tabletop', 20),
-  ('Scheduled Showing', 30),
-  ('Drive-by', 40)
+  ('Scheduled Stop', 10),
+  ('Flyby', 20),
+  ('Tabletop', 30)
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================================
