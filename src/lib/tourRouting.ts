@@ -78,16 +78,25 @@ export interface DaySchedule {
 // legSeconds: driving seconds between consecutive stops (length = stops-1).
 // stopDurationsMin: service minutes per stop (length = stops).
 // startMin: day start (minutes since midnight) or null (then times are elapsed from 0).
+// opts.leadSeconds: drive from a start address to the first stop (added before first arrival).
+// opts.tailSeconds: drive from the last stop to an end address (added to the finish time).
 export function computeDaySchedule(
   startMin: number | null,
   legSeconds: number[],
-  stopDurationsMin: number[]
+  stopDurationsMin: number[],
+  opts?: { leadSeconds?: number; tailSeconds?: number }
 ): DaySchedule {
   const base = startMin ?? 0;
   const stops: ScheduledStop[] = [];
   let cursor = base;
   let totalDrive = 0;
   const totalStop = stopDurationsMin.reduce((a, b) => a + b, 0);
+
+  const lead = (opts?.leadSeconds ?? 0) / 60;
+  if (lead > 0) {
+    totalDrive += lead;
+    cursor += lead;
+  }
 
   for (let i = 0; i < stopDurationsMin.length; i++) {
     if (i > 0) {
@@ -99,6 +108,12 @@ export function computeDaySchedule(
     const depart = arrival + stopDurationsMin[i];
     stops.push({ arrivalMin: arrival, departMin: depart });
     cursor = depart;
+  }
+
+  const tail = (opts?.tailSeconds ?? 0) / 60;
+  if (tail > 0) {
+    totalDrive += tail;
+    cursor += tail;
   }
 
   return {

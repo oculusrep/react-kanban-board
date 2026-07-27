@@ -17,6 +17,7 @@ import {
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
 import { minutesToHHMM } from '../../lib/tourRouting';
+import { geocodingService } from '../../services/geocodingService';
 
 // ---------------------------------------------------------------------------
 // TourDetailPanel — overlay-first, drop-in tour editor with multi-day scheduling.
@@ -54,6 +55,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
+  const [geocoding, setGeocoding] = useState<string | null>(null); // `${dayId}:start|end`
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -155,6 +157,34 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
     const res = await updateTourDay(dayId, fields as any);
     if (!res.ok) setError(res.error ?? 'Failed to update day');
     else onChanged?.();
+  };
+
+  // Geocode a typed start/end address and store address + lat/lng on the day.
+  const handleEndpointBlur = async (day: TourDay, which: 'start' | 'end', raw: string) => {
+    const trimmed = raw.trim();
+    const addrCol = which === 'start' ? 'start_location_address' : 'end_location_address';
+    const latCol = which === 'start' ? 'start_latitude' : 'end_latitude';
+    const lngCol = which === 'start' ? 'start_longitude' : 'end_longitude';
+    const current = which === 'start' ? day.start_location_address : day.end_location_address;
+    if (trimmed === (current ?? '')) return;
+
+    if (!trimmed) {
+      await patchDay(day.id, { [addrCol]: null, [latCol]: null, [lngCol]: null } as any);
+      return;
+    }
+    setGeocoding(`${day.id}:${which}`);
+    const result = await geocodingService.geocodeAddress(trimmed);
+    setGeocoding(null);
+    if ('error' in result) {
+      setError(`Couldn't locate "${trimmed}" — saved the text, but it won't route until fixed.`);
+      await patchDay(day.id, { [addrCol]: trimmed, [latCol]: null, [lngCol]: null } as any);
+      return;
+    }
+    await patchDay(day.id, {
+      [addrCol]: result.formatted_address,
+      [latCol]: result.latitude,
+      [lngCol]: result.longitude,
+    } as any);
   };
 
   const handleDeleteDay = async (day: TourDay) => {
@@ -400,20 +430,43 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
             id: dayDroppableId(day.id),
             totalMin: dayTotal(day.id),
             title: (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 700, color: MIDNIGHT, fontSize: 14 }}>Day {day.day_number}</span>
-                <input type="date" value={day.day_date ?? ''} onChange={(e) => patchDay(day.id, { day_date: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
-                <label style={{ fontSize: 12, color: STEEL, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  Start
-                  <input type="time" value={hhmm(day.start_time)} onChange={(e) => patchDay(day.id, { start_time: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
-                </label>
-                <label style={{ fontSize: 12, color: STEEL, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  End
-                  <input type="time" value={hhmm(day.end_time)} onChange={(e) => patchDay(day.id, { end_time: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
-                </label>
-                <button type="button" onClick={() => handleDeleteDay(day)} title="Delete day" style={{ border: 'none', background: 'transparent', color: TERRACOTTA, fontSize: 11, cursor: 'pointer' }}>
-                  delete day
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, color: MIDNIGHT, fontSize: 14 }}>Day {day.day_number}</span>
+                  <input type="date" value={day.day_date ?? ''} onChange={(e) => patchDay(day.id, { day_date: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
+                  <label style={{ fontSize: 12, color: STEEL, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    Start
+                    <input type="time" value={hhmm(day.start_time)} onChange={(e) => patchDay(day.id, { start_time: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
+                  </label>
+                  <label style={{ fontSize: 12, color: STEEL, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    End
+                    <input type="time" value={hhmm(day.end_time)} onChange={(e) => patchDay(day.id, { end_time: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
+                  </label>
+                  <button type="button" onClick={() => handleDeleteDay(day)} title="Delete day" style={{ border: 'none', background: 'transparent', color: TERRACOTTA, fontSize: 11, cursor: 'pointer' }}>
+                    delete day
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input
+                    key={`start-${day.id}-${day.start_location_address ?? ''}`}
+                    defaultValue={day.start_location_address ?? ''}
+                    placeholder="Start at (airport, hotel…) — optional"
+                    onBlur={(e) => handleEndpointBlur(day, 'start', e.target.value)}
+                    title={day.start_latitude == null && day.start_location_address ? 'Not geocoded — won’t route' : undefined}
+                    style={{ flex: 1, minWidth: 150, border: `1px solid ${day.start_location_address && day.start_latitude == null ? TERRACOTTA : SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                  />
+                  <input
+                    key={`end-${day.id}-${day.end_location_address ?? ''}`}
+                    defaultValue={day.end_location_address ?? ''}
+                    placeholder="End at — optional"
+                    onBlur={(e) => handleEndpointBlur(day, 'end', e.target.value)}
+                    title={day.end_latitude == null && day.end_location_address ? 'Not geocoded — won’t route' : undefined}
+                    style={{ flex: 1, minWidth: 150, border: `1px solid ${day.end_location_address && day.end_latitude == null ? TERRACOTTA : SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                  />
+                  {(geocoding === `${day.id}:start` || geocoding === `${day.id}:end`) && (
+                    <span style={{ fontSize: 11, color: SLATE }}>locating…</span>
+                  )}
+                </div>
               </div>
             ),
           })

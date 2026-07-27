@@ -17,6 +17,13 @@ export interface TourDay {
   day_date: string | null; // YYYY-MM-DD
   start_time: string | null; // HH:MM[:SS]
   end_time: string | null;
+  // Optional non-site start/end (airport, hotel, office…). Geocoded in the app.
+  start_location_address: string | null;
+  start_latitude: number | null;
+  start_longitude: number | null;
+  end_location_address: string | null;
+  end_latitude: number | null;
+  end_longitude: number | null;
   created_at: string;
   updated_at: string;
 }

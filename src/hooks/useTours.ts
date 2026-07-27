@@ -218,7 +218,21 @@ export async function createTourDay(
 
 export async function updateTourDay(
   dayId: string,
-  fields: Partial<Pick<TourDay, 'day_date' | 'start_time' | 'end_time' | 'day_number'>>
+  fields: Partial<
+    Pick<
+      TourDay,
+      | 'day_date'
+      | 'start_time'
+      | 'end_time'
+      | 'day_number'
+      | 'start_location_address'
+      | 'start_latitude'
+      | 'start_longitude'
+      | 'end_location_address'
+      | 'end_latitude'
+      | 'end_longitude'
+    >
+  >
 ): Promise<{ ok: boolean; error?: string }> {
   const { error: err } = await supabase.from('tour_day').update(fields).eq('id', dayId);
   return err ? { ok: false, error: err.message } : { ok: true };
