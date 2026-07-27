@@ -1277,7 +1277,12 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         labelOverlay.onAdd = function() {
           const panes = this.getPanes();
           if (panes) {
-            panes.overlayLayer.appendChild(labelDiv);
+            // floatPane is the top-most pane (above markers/pins) so the mileage
+            // label is never hidden under layers/pins; pointer-events:none lets
+            // clicks pass through to the map so measuring still works.
+            labelDiv.style.pointerEvents = 'none';
+            labelDiv.style.zIndex = '10000';
+            panes.floatPane.appendChild(labelDiv);
           }
         };
         labelOverlay.draw = function() {
@@ -1361,6 +1366,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         clickable: true,
         draggable: true, // Make markers draggable
         title: 'Drag to move, click to remove',
+        zIndex: 10000, // Above site submit / property pins while measuring
       });
 
       markers.push(marker);
@@ -1531,7 +1537,10 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           labelOverlay.onAdd = function() {
             const panes = this.getPanes();
             if (panes) {
-              panes.overlayLayer.appendChild(labelDiv);
+              // floatPane = top-most pane, so the mileage label sits above pins/layers.
+              labelDiv.style.pointerEvents = 'none';
+              labelDiv.style.zIndex = '10000';
+              panes.floatPane.appendChild(labelDiv);
             }
           };
           labelOverlay.draw = function() {
