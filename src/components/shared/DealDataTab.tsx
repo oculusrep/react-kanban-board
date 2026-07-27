@@ -158,42 +158,11 @@ function Field({
     ? `${baseFormattedValue} ${suffix}`
     : baseFormattedValue;
 
-  const PencilButton = () => (
-    <button
-      onClick={() => onStartEditing(fieldKey, value)}
-      className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-      title="Edit"
-    >
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-      </svg>
-    </button>
-  );
-
-  const EditActions = () => (
-    <div className="flex items-center gap-1 ml-2">
-      <button
-        onClick={() => onSaveField(fieldKey)}
-        disabled={saving}
-        className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-        title="Save"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-      </button>
-      <button
-        onClick={onCancelEditing}
-        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-        title="Cancel"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-
+  // NOTE: these controls are inlined as plain JSX (not defined as inline
+  // components) on purpose. An inline component gets a new identity on every
+  // render, so React would replace its DOM node — and a re-render triggered by
+  // a mousedown (e.g. overlay bring-to-front) would then swallow the click.
+  // See memory: feedback_mousedown_rerender_swallows_clicks.
   return (
     <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">
       <span className="text-sm text-gray-500">{label}</span>
@@ -225,14 +194,44 @@ function Field({
                 autoFocus
               />
             )}
-            <EditActions />
+            <div className="flex items-center gap-1 ml-2">
+              <button
+                onClick={() => onSaveField(fieldKey)}
+                disabled={saving}
+                className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+                title="Save"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={onCancelEditing}
+                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                title="Cancel"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </>
         ) : (
           <>
             <span className="text-sm font-medium text-gray-900 flex-1">
               {formattedValue}
             </span>
-            {isEditable && <PencilButton />}
+            {isEditable && (
+              <button
+                onClick={() => onStartEditing(fieldKey, value)}
+                className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                title="Edit"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            )}
           </>
         )}
       </div>

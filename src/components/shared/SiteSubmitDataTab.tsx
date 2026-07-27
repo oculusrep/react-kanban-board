@@ -99,6 +99,49 @@ interface FieldProps {
   onEditValueChange: (value: any) => void;
 }
 
+// Hoisted to module scope (stable identity) so a re-render — e.g. one triggered by
+// an overlay bring-to-front on mousedown — never replaces their DOM node and swallows
+// the ensuing click. See memory: feedback_mousedown_rerender_swallows_clicks.
+function FieldEditPencil({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+      title="Edit"
+    >
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+      </svg>
+    </button>
+  );
+}
+
+function FieldEditActions({ onSave, onCancel, saving }: { onSave: () => void; onCancel: () => void; saving: boolean }) {
+  return (
+    <div className="flex items-center gap-1 ml-2">
+      <button
+        onClick={onSave}
+        disabled={saving}
+        className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+        title="Save"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </button>
+      <button
+        onClick={onCancel}
+        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+        title="Cancel"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function Field({
   label,
   value,
@@ -132,50 +175,18 @@ function Field({
     ? `${baseFormattedValue} ${suffix}`
     : baseFormattedValue;
 
-  const PencilButton = () => (
-    <button
-      onClick={() => onStartEditing(table!, field!, value)}
-      className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-      title="Edit"
-    >
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-      </svg>
-    </button>
-  );
-
-  const EditActions = () => (
-    <div className="flex items-center gap-1 ml-2">
-      <button
-        onClick={() => onSaveField(table!, field!)}
-        disabled={saving}
-        className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-        title="Save"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-      </button>
-      <button
-        onClick={onCancelEditing}
-        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-        title="Cancel"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-
   // Textarea field layout (stacked)
   if (type === 'textarea') {
     return (
       <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
         <div className="flex items-center justify-between mb-1">
           <span className="text-sm text-gray-500">{label}</span>
-          {isEditable && table && field && !isCurrentlyEditing && <PencilButton />}
-          {isCurrentlyEditing && <EditActions />}
+          {isEditable && table && field && !isCurrentlyEditing && (
+            <FieldEditPencil onClick={() => onStartEditing(table!, field!, value)} />
+          )}
+          {isCurrentlyEditing && (
+            <FieldEditActions onSave={() => onSaveField(table!, field!)} onCancel={onCancelEditing} saving={saving} />
+          )}
         </div>
         {isCurrentlyEditing ? (
           <textarea
@@ -226,14 +237,16 @@ function Field({
                 autoFocus
               />
             )}
-            <EditActions />
+            <FieldEditActions onSave={() => onSaveField(table!, field!)} onCancel={onCancelEditing} saving={saving} />
           </>
         ) : (
           <>
             <span className="text-sm font-medium text-gray-900 flex-1">
               {formattedValue}
             </span>
-            {isEditable && table && field && <PencilButton />}
+            {isEditable && table && field && (
+              <FieldEditPencil onClick={() => onStartEditing(table!, field!, value)} />
+            )}
           </>
         )}
       </div>
