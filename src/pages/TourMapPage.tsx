@@ -144,6 +144,16 @@ export function TourMapPage() {
         const geocoded = dayStops.filter((s) => s.lat != null && s.lng != null);
         const missing = dayStops.length - geocoded.length;
 
+        const startCoord: google.maps.LatLngLiteral | null =
+          day.start_latitude != null && day.start_longitude != null
+            ? { lat: day.start_latitude, lng: day.start_longitude }
+            : null;
+        const endCoord: google.maps.LatLngLiteral | null =
+          day.end_latitude != null && day.end_longitude != null
+            ? { lat: day.end_latitude, lng: day.end_longitude }
+            : null;
+
+        // Numbered site markers
         geocoded.forEach((s, idx) => {
           const pos = { lat: s.lat!, lng: s.lng! };
           overlaysRef.current.markers.push(
@@ -153,42 +163,54 @@ export function TourMapPage() {
           anyPoint = true;
         });
 
-        let legSeconds: number[] = [];
+        // Non-site start / end markers (A = start, B = end)
+        if (startCoord) {
+          overlaysRef.current.markers.push(makeMarker(map, startCoord, 'A', '#2E7D32', `Day ${day.day_number} start · ${day.start_location_address ?? ''}`));
+          bounds.extend(startCoord);
+          anyPoint = true;
+        }
+        if (endCoord) {
+          overlaysRef.current.markers.push(makeMarker(map, endCoord, 'B', '#B00020', `Day ${day.day_number} end · ${day.end_location_address ?? ''}`));
+          bounds.extend(endCoord);
+          anyPoint = true;
+        }
+
+        // Ordered route points: [start?] + stops + [end?]
+        const routePts: google.maps.LatLngLiteral[] = [
+          ...(startCoord ? [startCoord] : []),
+          ...geocoded.map((s) => ({ lat: s.lat!, lng: s.lng! })),
+          ...(endCoord ? [endCoord] : []),
+        ];
+
+        let legSeconds: number[] = []; // between consecutive STOPS only
+        let leadSeconds = 0; // start address → first stop
+        let tailSeconds = 0; // last stop → end address
         let driveUnavailable = false;
 
-        if (geocoded.length >= 2) {
+        if (routePts.length >= 2) {
           try {
             const res = await dirServiceRef.current.route({
-              origin: { lat: geocoded[0].lat!, lng: geocoded[0].lng! },
-              destination: { lat: geocoded[geocoded.length - 1].lat!, lng: geocoded[geocoded.length - 1].lng! },
-              waypoints: geocoded.slice(1, -1).map((s) => ({ location: { lat: s.lat!, lng: s.lng! }, stopover: true })),
+              origin: routePts[0],
+              destination: routePts[routePts.length - 1],
+              waypoints: routePts.slice(1, -1).map((p) => ({ location: p, stopover: true })),
               travelMode: google.maps.TravelMode.DRIVING,
             });
             const route = res.routes[0];
-            legSeconds = route.legs.map((l) => l.duration?.value ?? 0);
-            const line = new google.maps.Polyline({
-              path: route.overview_path,
-              map,
-              strokeColor: color,
-              strokeOpacity: 0.85,
-              strokeWeight: 4,
-              zIndex: 10,
-            });
-            overlaysRef.current.lines.push(line);
+            const allLegs = route.legs.map((l) => l.duration?.value ?? 0); // length routePts.length - 1
+            const sOff = startCoord ? 1 : 0;
+            if (startCoord) leadSeconds = allLegs[0] ?? 0;
+            if (endCoord) tailSeconds = allLegs[allLegs.length - 1] ?? 0;
+            for (let k = 0; k < Math.max(0, geocoded.length - 1); k++) legSeconds.push(allLegs[sOff + k] ?? 0);
+            overlaysRef.current.lines.push(
+              new google.maps.Polyline({ path: route.overview_path, map, strokeColor: color, strokeOpacity: 0.85, strokeWeight: 4, zIndex: 10 })
+            );
           } catch {
-            // Fall back to a straight geodesic line; drive times unknown.
+            // Fall back to a straight geodesic line through the route points; drive times unknown.
             driveUnavailable = true;
-            legSeconds = new Array(geocoded.length - 1).fill(0);
-            const line = new google.maps.Polyline({
-              path: geocoded.map((s) => ({ lat: s.lat!, lng: s.lng! })),
-              map,
-              strokeColor: color,
-              strokeOpacity: 0.5,
-              strokeWeight: 3,
-              geodesic: true,
-              zIndex: 10,
-            });
-            overlaysRef.current.lines.push(line);
+            legSeconds = new Array(Math.max(0, geocoded.length - 1)).fill(0);
+            overlaysRef.current.lines.push(
+              new google.maps.Polyline({ path: routePts, map, strokeColor: color, strokeOpacity: 0.5, strokeWeight: 3, geodesic: true, zIndex: 10 })
+            );
           }
         }
 
@@ -197,18 +219,26 @@ export function TourMapPage() {
             ? computeDaySchedule(
                 parseTimeToMinutes(day.start_time),
                 legSeconds,
-                geocoded.map((s) => s.effective_duration_minutes)
+                geocoded.map((s) => s.effective_duration_minutes),
+                { leadSeconds, tailSeconds }
               )
             : null;
 
         geocoded.forEach((s, idx) => {
+          const isLast = idx === geocoded.length - 1;
           stopSched[s.id] = {
             arrivalMin: schedule?.hasStart ? schedule.stops[idx].arrivalMin : null,
-            minsToNext: !driveUnavailable && idx < legSeconds.length ? Math.round(legSeconds[idx] / 60) : null,
+            minsToNext: driveUnavailable
+              ? null
+              : isLast
+              ? endCoord
+                ? Math.round(tailSeconds / 60)
+                : null
+              : Math.round((legSeconds[idx] ?? 0) / 60),
           };
         });
 
-        renders.push({ day, color, ordered: geocoded, missingCoords: missing, schedule, driveUnavailable });
+        renders.push({ day, color, ordered: geocoded, missingCoords: missing, schedule, driveUnavailable, startCoord, endCoord });
       }
 
       // Unscheduled stops → gray markers, no route.
@@ -243,23 +273,43 @@ export function TourMapPage() {
 
   const [optimizingDayId, setOptimizingDayId] = useState<string | null>(null);
 
-  // Reorder a day's stops for the shortest driving loop from the first stop
-  // (Google Directions waypoint optimization). Keeps stop 1 as the start.
+  // True when a day has enough optimizable waypoints to reorder.
+  // With a start address, all stops are waypoints; without one, stop 1 is the
+  // fixed origin so only the rest are waypoints.
+  const canOptimizeDay = (dr: DayRender) => (dr.startCoord ? dr.ordered.length : dr.ordered.length - 1) >= 2;
+
+  // Reorder a day's stops for the shortest driving route (Google Directions
+  // waypoint optimization). A start/end address (airport, hotel…) anchors the
+  // route as a fixed origin/destination so ALL sites in between get optimized;
+  // with no start address, stop 1 stays the origin; with no end address the
+  // route loops back to the origin.
   const optimizeDay = async (dr: DayRender) => {
-    if (!dirServiceRef.current || dr.ordered.length < 3) return;
+    if (!dirServiceRef.current) return;
+    const stops = dr.ordered;
+    const stop0 = stops[0] ? { lat: stops[0].lat!, lng: stops[0].lng! } : null;
+    if (!stop0) return;
+    const hasStart = !!dr.startCoord;
+    const hasEnd = !!dr.endCoord;
+
+    const leadFixed = hasStart ? [] : stops.slice(0, 1);
+    const wp = hasStart ? stops : stops.slice(1);
+    if (wp.length < 2) return; // nothing meaningful to reorder
+
+    const origin = hasStart ? dr.startCoord! : stop0;
+    const destination = hasEnd ? dr.endCoord! : hasStart ? dr.startCoord! : stop0;
+
     setOptimizingDayId(dr.day.id);
     setError(null);
     try {
-      const stops = dr.ordered;
       const res = await dirServiceRef.current.route({
-        origin: { lat: stops[0].lat!, lng: stops[0].lng! },
-        destination: { lat: stops[0].lat!, lng: stops[0].lng! },
-        waypoints: stops.slice(1).map((s) => ({ location: { lat: s.lat!, lng: s.lng! }, stopover: true })),
+        origin,
+        destination,
+        waypoints: wp.map((s) => ({ location: { lat: s.lat!, lng: s.lng! }, stopover: true })),
         optimizeWaypoints: true,
         travelMode: google.maps.TravelMode.DRIVING,
       });
       const order = res.routes[0].waypoint_order || [];
-      const newOrder = [stops[0], ...order.map((i) => stops[i + 1])];
+      const newOrder = [...leadFixed, ...order.map((i) => wp[i])];
       const placements = newOrder.map((s, idx) => ({ id: s.id, tour_day_id: dr.day.id, position: idx }));
       const r = await persistStopPlacements(placements);
       if (!r.ok) setError(r.error ?? 'Failed to save optimized order');
@@ -321,18 +371,25 @@ export function TourMapPage() {
                   {dr.day.start_time ? minutesToHHMM(parseTimeToMinutes(dr.day.start_time)!) : '—'}
                   {dr.day.end_time ? `–${minutesToHHMM(parseTimeToMinutes(dr.day.end_time)!)}` : ''}
                 </span>
-                {dr.ordered.length >= 3 && (
+                {canOptimizeDay(dr) && (
                   <button
                     type="button"
                     onClick={() => optimizeDay(dr)}
                     disabled={optimizingDayId === dr.day.id}
-                    title="Reorder this day's stops for the shortest drive (keeps stop 1 as the start)"
+                    title="Reorder this day's stops for the shortest drive (respects any start/end address)"
                     style={{ marginLeft: 'auto', border: `1px solid ${dr.color}`, color: '#fff', background: dr.color, borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: optimizingDayId === dr.day.id ? 'wait' : 'pointer', opacity: optimizingDayId === dr.day.id ? 0.6 : 1 }}
                   >
                     {optimizingDayId === dr.day.id ? 'Optimizing…' : 'Optimize'}
                   </button>
                 )}
               </div>
+
+              {(dr.startCoord || dr.endCoord) && (
+                <div style={{ fontSize: 11, color: STEEL, paddingLeft: 20, marginBottom: 4 }}>
+                  {dr.startCoord && <div>▶ Start: {dr.day.start_location_address ?? 'set'}</div>}
+                  {dr.endCoord && <div>■ End: {dr.day.end_location_address ?? 'set'}</div>}
+                </div>
+              )}
 
               {dr.ordered.length === 0 ? (
                 <div style={{ fontSize: 12, color: SLATE, paddingLeft: 20 }}>No mappable stops.</div>
