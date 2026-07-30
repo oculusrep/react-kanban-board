@@ -59,6 +59,10 @@ export const config = {
     ovisUrl: process.env.OVIS_URL || 'http://localhost:5173',
     port: parseInt(process.env.PORT || '3001', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
+    // Poll hunter_run_log for pending runs and auto-execute them.
+    // Set HUNTER_POLLING_ENABLED=false to disable auto-runs (e.g. while
+    // reworking the workflow) without redeploying code changes.
+    pollingEnabled: process.env.HUNTER_POLLING_ENABLED !== 'false',
   },
 
   // Lead Scoring - Geographic priorities

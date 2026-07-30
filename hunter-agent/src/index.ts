@@ -250,15 +250,19 @@ async function main(): Promise<void> {
     }
     logger.info('Database connection successful');
 
-    // Check for pending runs on startup
-    await processPendingRuns();
+    if (config.app.pollingEnabled) {
+      // Check for pending runs on startup
+      await processPendingRuns();
 
-    // Poll for pending runs every 30 seconds
-    setInterval(processPendingRuns, 30000);
+      // Poll for pending runs every 30 seconds
+      setInterval(processPendingRuns, 30000);
+    } else {
+      logger.warn('Pending-run polling is DISABLED (HUNTER_POLLING_ENABLED=false). Auto-runs will not execute; use POST /run to trigger manually.');
+    }
 
     app.listen(config.app.port, () => {
       logger.info(`Hunter Agent listening on port ${config.app.port}`);
-      logger.info('Polling for pending runs every 30 seconds');
+      logger.info(config.app.pollingEnabled ? 'Polling for pending runs every 30 seconds' : 'Polling disabled — manual /run only');
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
