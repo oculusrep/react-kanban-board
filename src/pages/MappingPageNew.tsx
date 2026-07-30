@@ -2865,6 +2865,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               onMapLoad={handleMapLoad}
               onCenterOnLocationReady={(fn) => setCenterOnLocation(() => fn)}
               className={createMode ? 'cursor-crosshair' : ''}
+              persistViewKey="main-map"
             />
 
             {/* Draw and Layers Controls - positioned to the right of GPS/ruler buttons */}

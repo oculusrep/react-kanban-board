@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { mapLayerService, MapLayer } from '../../../services/mapLayerService';
+import {
+  loadLayerVisibility,
+  saveLayerVisibility,
+  loadCustomLayerVisibility,
+  saveCustomLayerVisibility,
+} from '../../../utils/mapViewPersistence';
 
 // Layer configuration types
 export interface LayerConfig {
@@ -338,10 +344,13 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   // Initialize layer state once
   useEffect(() => {
     console.log('🗺️ LayerManager initializing with layers:', DEFAULT_LAYERS.map(l => l.id));
+    // Restore each layer's last visibility from localStorage so users don't have
+    // to re-toggle their layers after navigating away from the map and back.
+    const savedVisibility = loadLayerVisibility();
     const initialState: LayerState = {};
     DEFAULT_LAYERS.forEach(layer => {
       initialState[layer.id] = {
-        isVisible: layer.defaultVisible,
+        isVisible: savedVisibility[layer.id] ?? layer.defaultVisible,
         isLoading: false,
         count: 0,
         hasError: false,
@@ -351,6 +360,17 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setLayerState(initialState);
   }, []); // Empty dependency array - run only once
 
+  // Persist system layer visibility whenever it changes.
+  useEffect(() => {
+    const ids = Object.keys(layerState);
+    if (ids.length === 0) return; // skip the empty pre-init state
+    const visibility: Record<string, boolean> = {};
+    ids.forEach(id => {
+      visibility[id] = !!layerState[id]?.isVisible;
+    });
+    saveLayerVisibility(visibility);
+  }, [layerState]);
+
   // Fetch custom map layers
   const fetchCustomLayers = useCallback(async () => {
     setCustomLayersLoading(true);
@@ -358,12 +378,14 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
       const layers = await mapLayerService.getLayers({ includeShapes: true });
       console.log('🗺️ Fetched custom layers:', layers.map(l => ({ name: l.name, shapes: l.shapes?.length })));
       setCustomLayers(layers);
-      // Initialize visibility for new layers (default to false)
+      // Initialize visibility for each layer, restoring the user's last saved
+      // choice from localStorage; layers with no saved state default to false.
+      const savedCustomVisibility = loadCustomLayerVisibility();
       setCustomLayerVisibility(prev => {
         const updated = { ...prev };
         layers.forEach(layer => {
           if (updated[layer.id] === undefined) {
-            updated[layer.id] = false;
+            updated[layer.id] = savedCustomVisibility[layer.id] ?? false;
           }
         });
         return updated;
@@ -379,6 +401,12 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   useEffect(() => {
     fetchCustomLayers();
   }, [fetchCustomLayers]);
+
+  // Persist custom layer visibility whenever it changes.
+  useEffect(() => {
+    if (Object.keys(customLayerVisibility).length === 0) return;
+    saveCustomLayerVisibility(customLayerVisibility);
+  }, [customLayerVisibility]);
 
   const toggleLayer = useCallback((layerId: string) => {
     setLayerState(prev => ({

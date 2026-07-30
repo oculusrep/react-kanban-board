@@ -5,6 +5,7 @@ import { useGPSTracking } from '../../hooks/useGPSTracking';
 import { GPSControls } from './GPSTrackingButton';
 import { calculateStraightLineDistance, calculateDrivingDistance, formatDistance, getDepartureTime, getTimeLabel, type DrivingDistanceResult, type StraightLineDistance } from '../../services/distanceService';
 import { DistanceInfoBox } from './DistanceInfoBox';
+import { loadMapView, saveMapViewFromInstance } from '../../utils/mapViewPersistence';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -13,6 +14,10 @@ interface GoogleMapContainerProps {
   onMapLoad?: (map: google.maps.Map) => void;
   onCenterOnLocationReady?: (centerFunction: () => void) => void;
   controlsTopOffset?: number; // Offset in pixels to push map controls down (e.g., when search box is overlaid)
+  // When set, the map's center + zoom are persisted to localStorage under this
+  // key and restored on the next mount. Opt-in so shared uses of this component
+  // (search results map, portal map) that frame their own view aren't affected.
+  persistViewKey?: string;
 }
 
 const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
@@ -21,7 +26,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   className = '',
   onMapLoad,
   onCenterOnLocationReady,
-  controlsTopOffset = 0
+  controlsTopOffset = 0,
+  persistViewKey
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -692,12 +698,16 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           console.warn('⚠️ VITE_GOOGLE_MAP_ID not set - AdvancedMarkerElement will not work. Falling back to legacy markers.');
         }
 
+        // Restore the user's last view (center + zoom) if this instance opts
+        // into persistence. Falls back to the default location otherwise.
+        const savedView = persistViewKey ? loadMapView(persistViewKey) : null;
+
         // Create map instance
         // Note: When mapId is set (for AdvancedMarkerElement), styles must NOT be used
         // Cloud-based styling via mapId and JSON styles are mutually exclusive
         const mapOptions: google.maps.MapOptions = {
-          center: mapCenter,
-          zoom: location ? 12 : 10,
+          center: savedView ? { lat: savedView.lat, lng: savedView.lng } : mapCenter,
+          zoom: savedView ? savedView.zoom : (location ? 12 : 10),
           mapTypeId: google.maps.MapTypeId.ROADMAP,
           mapTypeControl: false, // Disable default map type control
           streetViewControl: true,
@@ -768,10 +778,21 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         // Store map instance
         mapInstanceRef.current = map;
 
+        // Persist the view (center + zoom) after the user pans/zooms so we can
+        // restore it on the next mount. 'idle' fires once movement settles.
+        if (persistViewKey) {
+          map.addListener('idle', () => saveMapViewFromInstance(persistViewKey, map));
+        }
+
         // Callback for when map is recreated (due to Map ID swap for labels toggle)
         const handleMapRecreated = (newMap: google.maps.Map) => {
           console.log('🔄 Map recreated with new Map ID, updating references...');
           mapInstanceRef.current = newMap;
+
+          // Re-attach view persistence to the recreated instance
+          if (persistViewKey) {
+            newMap.addListener('idle', () => saveMapViewFromInstance(persistViewKey, newMap));
+          }
 
           // Re-add the map type control to the new map
           const newMapTypeControl = createCustomMapTypeControl(newMap, setLabelsVisible, handleMapRecreated, controlsTopOffset);
