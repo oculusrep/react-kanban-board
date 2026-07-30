@@ -51,6 +51,9 @@ export default defineConfig({
       workbox: {
         maximumFileSizeToCacheInBytes: 16 * 1024 * 1024, // 16 MB — Vercel's production bundle is ~9 MB and growing; bump gives headroom until we code-split
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // Don't let the service worker fall back to index.html for cross-origin
+        // requests (Google Maps, Supabase, etc.) — those must go to the network.
+        navigateFallbackDenylist: [/^https?:\/\//i],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -65,18 +68,12 @@ export default defineConfig({
                 statuses: [0, 200]
               }
             }
-          },
-          {
-            urlPattern: /^https:\/\/maps\.googleapis\.com\/.*/i,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'google-maps-cache',
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 7
-              }
-            }
           }
+          // NOTE: Do NOT add a runtimeCaching rule for maps.googleapis.com.
+          // Google's Maps JS API bootstrap dynamically loads versioned
+          // sub-resources; routing it through a service worker cache causes
+          // "Google Maps JavaScript API could not load" + workbox no-response
+          // errors. Let Maps requests always go network-only (browser default).
         ]
       }
     })
