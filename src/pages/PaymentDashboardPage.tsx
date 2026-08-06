@@ -188,6 +188,7 @@ const PaymentDashboardPage: React.FC = () => {
           qb_invoice_number,
           qb_sync_status,
           qb_last_sync,
+          referral_fee_usd,
           referral_fee_paid,
           referral_fee_paid_date,
           locked,
@@ -266,10 +267,12 @@ const PaymentDashboardPage: React.FC = () => {
         const allBrokersPaid = brokerSplits.length > 0 && brokerSplits.every(b => b.paid);
         const totalBrokerAmount = brokerSplits.reduce((sum, b) => sum + (b.split_broker_total || 0), 0);
 
-        // Calculate per-payment referral fee (proportional to payment amount)
+        // Per-payment referral fee: use the stored, trigger-calculated value on the
+        // payment (proportional to each payment's amount). Do NOT divide the deal total
+        // evenly by number_of_payments — payments can be unequal, which made the
+        // dashboard disagree with the Deal tab's payment detail view.
         const dealTotalPayments = payment.deal?.number_of_payments || 1;
-        const dealReferralFeeTotal = payment.deal?.referral_fee_usd || 0;
-        const paymentReferralFee = dealReferralFeeTotal / dealTotalPayments;
+        const paymentReferralFee = payment.referral_fee_usd || 0;
 
         return {
           payment_id: payment.id,
