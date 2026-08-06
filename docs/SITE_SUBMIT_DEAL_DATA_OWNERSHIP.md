@@ -24,6 +24,24 @@ The three records each own their own copy of the economics. Snapshots flow forwa
 
 **Never** write to `property.*` from a site-submit-context UI. **Never** write to `site_submit.*` from a deal-context UI. Each record snapshots from the previous one at creation and diverges independently.
 
+> **Scope:** this "edits never propagate" rule is about the **economic field set** below. The **account/client association (`client_id`) is a deliberate exception** — see next section.
+
+## Account (client) is the exception — it DOES sync
+
+The `client_id` foreign key is **not** snapshot-and-diverge data like the economics. It identifies *who the submit/deal is for*, and the site submit and its linked deal must always agree on that. So editing the account in the sidebar **writes to both records at once**:
+
+| Context | Editable via | Writes to |
+|---|---|---|
+| Site submit with **no** deal (blue sidebar) | [SiteSubmitDataTab.tsx](../src/components/shared/SiteSubmitDataTab.tsx) `handleClientChange` | `site_submit.client_id` |
+| Site submit **with** a linked deal (green sidebar) | [DealDataTab.tsx](../src/components/shared/DealDataTab.tsx) `handleClientChange` | `deal.client_id` **and** `site_submit.client_id` |
+| Deal-direct mode (legacy deal, no linked submit; `siteSubmit.id === ''`) | [DealDataTab.tsx](../src/components/shared/DealDataTab.tsx) `handleClientChange` | `deal.client_id` only |
+
+The account field is rendered as a type-ahead [ClientSelector](../src/components/mapping/ClientSelector.tsx) (active clients only) when the sidebar is editable, and read-only (name only) in the portal client view.
+
+Notes:
+- Changing the account does **not** clear the `assignment_id` on either record. Assignments are client-scoped, so after a swap the linked assignment may belong to the old client — this is intentionally left visible/editable rather than silently nulled, because a deal's assignment can carry commission splits. The assignment selector is already client-filtered.
+- This is the only field that intentionally propagates across the two records. If you're adding another cross-record sync, document it here — the default assumption in this codebase is that it does *not* propagate.
+
 ## The economic field set
 
 These columns exist on all three tables with parallel meaning (prefix on `deal`, unprefixed on the others):
@@ -122,3 +140,5 @@ Both applied to production on 2026-05-14. 2,716 of 2,946 site submits and 44 of 
 4. **"Adding a new creation path for site submits."** — Snapshot the property economics at insert time. See the three existing creation paths for the pattern. Skipping this leaves the new submit with NULL economics that won't render in the sidebar.
 
 5. **"Pencil-editing a field in the green deal sidebar."** — Writes go to `deal.deal_*`, not `site_submit.*` and not `property.*`. The `DealDataTab` handler is hardwired to the `deal` table — see [DealDataTab.tsx:329-350](../src/components/shared/DealDataTab.tsx#L329-L350).
+
+6. **"Everything is snapshot-and-diverge, so the account must be too."** — No. `client_id` is the one field that intentionally syncs across `site_submit` and `deal`. See [Account (client) is the exception](#account-client-is-the-exception--it-does-sync). Don't "fix" the account propagation by making it one-sided.
