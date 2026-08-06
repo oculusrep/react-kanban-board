@@ -10,6 +10,8 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import AssignmentSelector from '../mapping/AssignmentSelector';
+import ClientSelector from '../mapping/ClientSelector';
+import { ClientSearchResult } from '../../hooks/useClientSearch';
 import CreateAssignmentModal from './CreateAssignmentModal';
 import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
@@ -312,6 +314,29 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
     setEditValue(value);
   }, []);
 
+  // Handle client (account) change. This site submit has no linked deal (deals
+  // render DealDataTab instead), so only the site_submit row is updated here.
+  const handleClientChange = async (client: ClientSearchResult | null) => {
+    if (client?.id === siteSubmit.client_id) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('site_submit')
+        .update({ client_id: client?.id || null })
+        .eq('id', siteSubmit.id);
+      if (error) throw error;
+
+      onUpdate({
+        client_id: client?.id || null,
+        client: client ? { id: client.id, client_name: client.client_name } : null,
+      });
+    } catch (err) {
+      console.error('Error updating client:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Handle assignment change
   const handleAssignmentChange = async (assignment: AssignmentSearchResult | null) => {
     setSaving(true);
@@ -389,12 +414,32 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
     <div className="p-4 overflow-y-auto flex-1">
       {/* Submit Details Section */}
       <FieldGroup title="Submit Details">
-        {/* Client (read-only display) */}
+        {/* Client (account) - editable selector */}
         <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">
           <span className="text-sm text-gray-500">Client</span>
-          <span className="text-sm font-medium text-gray-900">
-            {siteSubmit.client?.client_name || '-'}
-          </span>
+          {isEditable ? (
+            <ClientSelector
+              selectedClient={
+                siteSubmit.client_id
+                  ? {
+                      id: siteSubmit.client_id,
+                      client_name: siteSubmit.client?.client_name || '',
+                      type: null,
+                      phone: null,
+                      deal_count: 0,
+                      site_submit_count: 0,
+                    }
+                  : null
+              }
+              onClientSelect={handleClientChange}
+              placeholder="Select client..."
+              className="text-sm"
+            />
+          ) : (
+            <span className="text-sm font-medium text-gray-900">
+              {siteSubmit.client?.client_name || '-'}
+            </span>
+          )}
         </div>
 
         {/* Date Submitted - editable */}

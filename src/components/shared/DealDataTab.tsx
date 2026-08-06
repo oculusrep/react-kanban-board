@@ -9,6 +9,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { SiteSubmitData } from './SiteSubmitSidebar';
 import DemographicsSection from './DemographicsSection';
+import ClientSelector from '../mapping/ClientSelector';
+import { ClientSearchResult } from '../../hooks/useClientSearch';
 
 interface DealData {
   id: string;
@@ -356,6 +358,39 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
     setEditValue(value);
   }, []);
 
+  // Handle client (account) change — propagate to BOTH the deal and the linked
+  // site submit so they stay in sync. In deal-direct mode there is no site
+  // submit (siteSubmit.id is empty), so only the deal is updated.
+  const handleClientChange = useCallback(async (client: ClientSearchResult | null) => {
+    if (client?.id === siteSubmit.client_id) return;
+    const newClientId = client?.id || null;
+    setSaving(true);
+    try {
+      const { error: dealError } = await supabase
+        .from('deal')
+        .update({ client_id: newClientId })
+        .eq('id', dealId);
+      if (dealError) throw dealError;
+
+      if (siteSubmit.id) {
+        const { error: submitError } = await supabase
+          .from('site_submit')
+          .update({ client_id: newClientId })
+          .eq('id', siteSubmit.id);
+        if (submitError) throw submitError;
+      }
+
+      onUpdate({
+        client_id: newClientId,
+        client: client ? { id: client.id, client_name: client.client_name } : null,
+      });
+    } catch (err) {
+      console.error('Error updating client:', err);
+    } finally {
+      setSaving(false);
+    }
+  }, [dealId, siteSubmit.id, siteSubmit.client_id, onUpdate]);
+
   // Determine property type for conditional field display
   const recordTypeLabel = siteSubmit.property?.property_record_type?.label?.toLowerCase() || '';
   const isLand = recordTypeLabel.includes('land');
@@ -401,12 +436,32 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
           fieldKey="loi_written_date"
         />
 
-        {/* Client (read-only display) */}
+        {/* Client (account) - editable; propagates to both deal and site submit */}
         <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">
           <span className="text-sm text-gray-500">Client</span>
-          <span className="text-sm font-medium text-gray-900">
-            {siteSubmit.client?.client_name || '-'}
-          </span>
+          {isEditable ? (
+            <ClientSelector
+              selectedClient={
+                siteSubmit.client_id
+                  ? {
+                      id: siteSubmit.client_id,
+                      client_name: siteSubmit.client?.client_name || '',
+                      type: null,
+                      phone: null,
+                      deal_count: 0,
+                      site_submit_count: 0,
+                    }
+                  : null
+              }
+              onClientSelect={handleClientChange}
+              placeholder="Select client..."
+              className="text-sm"
+            />
+          ) : (
+            <span className="text-sm font-medium text-gray-900">
+              {siteSubmit.client?.client_name || '-'}
+            </span>
+          )}
         </div>
 
         {/* Fields based on property type */}
