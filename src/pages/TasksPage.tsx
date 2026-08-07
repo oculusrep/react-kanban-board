@@ -19,6 +19,8 @@ import { isCategoryVisibleTo } from '../lib/taskCategory';
 import { isOverdue } from '../lib/taskOverdue';
 import { localDateString } from '../types/taskBlock';
 import { supabase } from '../lib/supabaseClient';
+import { MapPin } from 'lucide-react';
+import { mapPathForProperty, mapPathForSiteSubmit, mapPathForDeal } from '../utils/taskMapLink';
 import TaskDetailSlideout from '../components/tasks/TaskDetailSlideout';
 
 // All-tasks flat view (spec §15.3). The future "block-style" dashboard with
@@ -68,15 +70,21 @@ interface LinkedToCellProps {
 }
 
 const LinkedToCell: React.FC<LinkedToCellProps> = ({ task }) => {
-  const links: { label: string; to: string }[] = [];
-  if (task.client) links.push({ label: task.client.client_name || 'Client', to: `/client/${task.client.id}` });
-  if (task.deal) links.push({ label: task.deal.deal_name || 'Deal', to: `/deal/${task.deal.id}` });
-  if (task.property) links.push({ label: task.property.property_name || task.property.address || 'Property', to: `/property/${task.property.id}` });
-  if (task.site_submit) links.push({ label: task.site_submit.site_submit_name || 'Site Submit', to: `/site-submit/${task.site_submit.id}` });
-  if (task.assignment) links.push({ label: task.assignment.assignment_name || 'Assignment', to: `/assignment/${task.assignment.id}` });
+  // Deal / property / site submit chips open the map (pin centered + slideout);
+  // the rest keep their record-page route. A deal with no linked
+  // property/site submit falls back to the deal page. See utils/taskMapLink.
+  const links: { label: string; to: string; isMap: boolean }[] = [];
+  if (task.client) links.push({ label: task.client.client_name || 'Client', to: `/client/${task.client.id}`, isMap: false });
+  if (task.deal) {
+    const mapPath = mapPathForDeal(task.deal);
+    links.push({ label: task.deal.deal_name || 'Deal', to: mapPath ?? `/deal/${task.deal.id}`, isMap: !!mapPath });
+  }
+  if (task.property) links.push({ label: task.property.property_name || task.property.address || 'Property', to: mapPathForProperty(task.property.id), isMap: true });
+  if (task.site_submit) links.push({ label: task.site_submit.site_submit_name || 'Site Submit', to: mapPathForSiteSubmit(task.site_submit.id), isMap: true });
+  if (task.assignment) links.push({ label: task.assignment.assignment_name || 'Assignment', to: `/assignment/${task.assignment.id}`, isMap: false });
   if (task.contact) {
     const name = [task.contact.first_name, task.contact.last_name].filter(Boolean).join(' ') || 'Contact';
-    links.push({ label: name, to: `/contact/${task.contact.id}` });
+    links.push({ label: name, to: `/contact/${task.contact.id}`, isMap: false });
   }
   if (links.length === 0) return <span className="text-xs" style={{ color: COLORS.slate }}>—</span>;
   return (
@@ -85,9 +93,11 @@ const LinkedToCell: React.FC<LinkedToCellProps> = ({ task }) => {
         <Link
           key={i}
           to={l.to}
-          className="text-xs px-1.5 py-0.5 rounded hover:underline"
+          className="text-xs px-1.5 py-0.5 rounded hover:underline inline-flex items-center gap-1"
           style={{ backgroundColor: COLORS.slate + '33', color: COLORS.steel }}
+          title={l.isMap ? 'Open on map' : 'Open record'}
         >
+          {l.isMap && <MapPin size={11} aria-hidden />}
           {l.label}
         </Link>
       ))}

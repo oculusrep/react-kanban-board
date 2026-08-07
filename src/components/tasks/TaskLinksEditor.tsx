@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { updateTask } from '../../hooks/useTasks';
 import { TaskWithRelations, TaskLinkableObjectType } from '../../types/task';
+import { mapPathForProperty, mapPathForSiteSubmit, mapPathForDeal } from '../../utils/taskMapLink';
 
 // Editable links section for the TaskDetailSlideout. Lets a user add a new
 // link, change an existing one, or clear it — for any of the six linkable
@@ -149,15 +151,42 @@ const currentLinkLabel = (
   }
 };
 
+// Where the chip's name link points. For the three mappable object types it
+// opens the map with the pin centered + slideout open (spec: overlay-first);
+// everything else keeps its record-page route. A deal with no linked
+// property/site submit falls back to the deal page.
+const linkTargetFor = (
+  task: TaskWithRelations,
+  config: LinkConfig,
+  currentId: string
+): { to: string; isMap: boolean } => {
+  switch (config.type) {
+    case 'property':
+      return { to: mapPathForProperty(currentId), isMap: true };
+    case 'site_submit':
+      return { to: mapPathForSiteSubmit(currentId), isMap: true };
+    case 'deal': {
+      const mapPath = task.deal ? mapPathForDeal(task.deal) : null;
+      return mapPath
+        ? { to: mapPath, isMap: true }
+        : { to: `${config.routePrefix}${currentId}`, isMap: false };
+    }
+    default:
+      return { to: `${config.routePrefix}${currentId}`, isMap: false };
+  }
+};
+
 interface LinkRowProps {
   taskId: string;
   config: LinkConfig;
   currentId: string | null;
   currentLabel: string | null;
+  linkTo: string;
+  isMap: boolean;
   onChanged: () => void;
 }
 
-const LinkRow: React.FC<LinkRowProps> = ({ taskId, config, currentId, currentLabel, onChanged }) => {
+const LinkRow: React.FC<LinkRowProps> = ({ taskId, config, currentId, currentLabel, linkTo, isMap, onChanged }) => {
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchHit[]>([]);
@@ -224,11 +253,12 @@ const LinkRow: React.FC<LinkRowProps> = ({ taskId, config, currentId, currentLab
         {!editing && currentId && (
           <div className="flex items-center gap-1 flex-wrap">
             <Link
-              to={`${config.routePrefix}${currentId}`}
-              className="text-xs px-2 py-0.5 rounded hover:underline"
+              to={linkTo}
+              className="text-xs px-2 py-0.5 rounded hover:underline inline-flex items-center gap-1"
               style={{ backgroundColor: COLORS.slate + '33', color: COLORS.steel }}
-              title="Open (still navigates as a page; future overlay)"
+              title={isMap ? 'Open on map' : 'Open record'}
             >
+              {isMap && <MapPin size={11} aria-hidden />}
               {currentLabel}
             </Link>
             <button
@@ -329,20 +359,25 @@ export const TaskLinksEditor: React.FC<TaskLinksEditorProps> = ({ task, onChange
     () =>
       LINK_CONFIGS.map((cfg) => {
         const { id, label } = currentLinkLabel(task, cfg.type);
-        return { cfg, id, label };
+        const { to, isMap } = id
+          ? linkTargetFor(task, cfg, id)
+          : { to: `${cfg.routePrefix}`, isMap: false };
+        return { cfg, id, label, to, isMap };
       }),
     [task]
   );
 
   return (
     <div className="space-y-1">
-      {rows.map(({ cfg, id, label }) => (
+      {rows.map(({ cfg, id, label, to, isMap }) => (
         <LinkRow
           key={cfg.type}
           taskId={task.id}
           config={cfg}
           currentId={id}
           currentLabel={label}
+          linkTo={to}
+          isMap={isMap}
           onChanged={onChanged}
         />
       ))}

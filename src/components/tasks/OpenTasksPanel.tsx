@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { MapPin } from 'lucide-react';
 import { completeTask, deleteTask, useTaskList } from '../../hooks/useTasks';
+import { taskMapPath } from '../../utils/taskMapLink';
 import {
   TaskLinkableObjectType,
   TaskWithRelations,
@@ -197,6 +200,19 @@ export const OpenTasksPanel: React.FC<OpenTasksPanelProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {(() => {
+                  const mapPath = taskMapPath(task);
+                  return mapPath ? (
+                    <Link
+                      to={mapPath}
+                      className="text-xs px-1.5 py-0.5 rounded hover:bg-gray-100 inline-flex items-center"
+                      style={{ color: COLORS.steel }}
+                      title="Open on map"
+                    >
+                      <MapPin size={13} aria-hidden />
+                    </Link>
+                  ) : null;
+                })()}
                 <button
                   type="button"
                   onClick={() => handleDelete(task)}
