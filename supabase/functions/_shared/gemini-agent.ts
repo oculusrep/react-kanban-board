@@ -1043,14 +1043,14 @@ export async function runEmailTriageAgent(
       // Get all tags from emails in this thread
       const { data: threadTags } = await supabase
         .from('email_object_link')
-        .select('object_type, object_id, reason')
+        .select('object_type, object_id')
         .in('email_id', threadEmailIds);
 
       if (threadTags && threadTags.length > 0) {
         console.log(`[Agent] THREAD INHERITANCE: Found ${threadTags.length} tags from thread`);
 
         // Get unique tags (dedupe by object_type + object_id)
-        const uniqueTags = new Map<string, { object_type: string; object_id: string; reason: string }>();
+        const uniqueTags = new Map<string, { object_type: string; object_id: string }>();
         for (const tag of threadTags) {
           const key = `${tag.object_type}:${tag.object_id}`;
           if (!uniqueTags.has(key)) {
