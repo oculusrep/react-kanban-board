@@ -46,9 +46,16 @@ export default function PortalFilesTab({
   const [propertyCurrentPath, setPropertyCurrentPath] = useState('');
   const [dealCurrentPath, setDealCurrentPath] = useState('');
 
-  // Drag state for each section
+  // Drag state for each section (native file drop = upload)
   const [propertyDragOver, setPropertyDragOver] = useState(false);
   const [dealDragOver, setDealDragOver] = useState(false);
+
+  // Drag state for moving an existing file/folder into another folder (internal move)
+  const [movingItem, setMovingItem] = useState<
+    { path: string; name: string; type: string; section: 'property' | 'deal' } | null
+  >(null);
+  const [moveDropTarget, setMoveDropTarget] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<{ section: 'property' | 'deal'; message: string } | null>(null);
 
   // Upload errors
   const [propertyUploadError, setPropertyUploadError] = useState<string | null>(null);
@@ -310,6 +317,9 @@ export default function PortalFilesTab({
 
   // Handle drag events
   const handleDragOver = (e: React.DragEvent, section: 'property' | 'deal') => {
+    // Only treat drags carrying OS files as uploads. Internal item moves are
+    // handled per-folder/breadcrumb and must not trigger the upload overlay.
+    if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     e.stopPropagation();
     if (section === 'property') {
@@ -433,6 +443,76 @@ export default function PortalFilesTab({
 
     // Clear the input
     e.target.value = '';
+  };
+
+  // ---- Internal move: drag an existing file/folder onto another folder ----
+  // Moves are restricted to within the same section (Property vs Deal live in
+  // separate Dropbox root folders). Uses the hook's moveItem → Dropbox filesMoveV2.
+  const handleMoveDragStart = (
+    e: React.DragEvent,
+    item: any,
+    section: 'property' | 'deal'
+  ) => {
+    if (!canUpload) return;
+    setMovingItem({ path: item.path, name: item.name, type: item.type, section });
+    setMoveError(null);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', item.path);
+    e.stopPropagation();
+  };
+
+  const handleMoveDragEnd = () => {
+    setMovingItem(null);
+    setMoveDropTarget(null);
+  };
+
+  // Whether the dragged item can drop into targetPath (a folder or a section root)
+  const canDropInto = (targetPath: string, section: 'property' | 'deal') => {
+    if (!movingItem || movingItem.section !== section) return false;
+    // Can't drop onto itself, or move a folder into itself/its own descendants
+    if (targetPath === movingItem.path || targetPath.startsWith(movingItem.path + '/')) return false;
+    // No-op if already in that folder
+    const currentParent = movingItem.path.substring(0, movingItem.path.lastIndexOf('/'));
+    if (currentParent === targetPath) return false;
+    return true;
+  };
+
+  const handleMoveDragOverTarget = (
+    e: React.DragEvent,
+    targetPath: string,
+    section: 'property' | 'deal'
+  ) => {
+    if (!canDropInto(targetPath, section)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setMoveDropTarget(targetPath);
+  };
+
+  const handleMoveDragLeaveTarget = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setMoveDropTarget(null);
+  };
+
+  const handleMoveDropTarget = async (
+    e: React.DragEvent,
+    targetPath: string,
+    section: 'property' | 'deal',
+    filesHook: ReturnType<typeof useDropboxFiles>
+  ) => {
+    if (!canDropInto(targetPath, section)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const item = movingItem!;
+    setMoveDropTarget(null);
+    setMovingItem(null);
+    try {
+      // moveItem appends the item name to targetPath and refreshes the list internally
+      await filesHook.moveItem(item.path, targetPath);
+    } catch (err) {
+      console.error('Move error:', err);
+      setMoveError({ section, message: `Failed to move "${item.name}"` });
+    }
   };
 
   const getFileIcon = (fileName: string) => {
@@ -753,23 +833,42 @@ export default function PortalFilesTab({
               </div>
             ) : (
               <>
-                {/* Breadcrumb */}
-                {currentPath && (
-                  <div className="px-4 py-2 border-b border-gray-100 flex items-center space-x-1 text-sm text-gray-600">
-                    <button
-                      onClick={() => setCurrentPath('')}
-                      className="hover:text-blue-600"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                      </svg>
-                    </button>
-                    <span>/</span>
-                    <button onClick={navigateUp} className="hover:text-blue-600">
-                      {currentPath.split('/').pop()}
-                    </button>
-                  </div>
-                )}
+                {/* Breadcrumb (also drop targets: drag a file/folder here to move it up/out) */}
+                {currentPath && (() => {
+                  const rootTarget = filesHook.folderPath || '';
+                  const parentRel = currentPath.substring(0, currentPath.lastIndexOf('/'));
+                  const parentTarget = rootTarget + parentRel;
+                  return (
+                    <div className="px-4 py-2 border-b border-gray-100 flex items-center space-x-1 text-sm text-gray-600">
+                      <button
+                        onClick={() => setCurrentPath('')}
+                        onDragOver={(e) => handleMoveDragOverTarget(e, rootTarget, entityType)}
+                        onDragLeave={handleMoveDragLeaveTarget}
+                        onDrop={(e) => handleMoveDropTarget(e, rootTarget, entityType, filesHook)}
+                        title="Move to top-level folder"
+                        className={`hover:text-blue-600 rounded px-0.5 ${
+                          moveDropTarget === rootTarget ? 'ring-2 ring-blue-400 bg-blue-50' : ''
+                        }`}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                      </button>
+                      <span>/</span>
+                      <button
+                        onClick={navigateUp}
+                        onDragOver={(e) => handleMoveDragOverTarget(e, parentTarget, entityType)}
+                        onDragLeave={handleMoveDragLeaveTarget}
+                        onDrop={(e) => handleMoveDropTarget(e, parentTarget, entityType, filesHook)}
+                        className={`hover:text-blue-600 rounded px-0.5 ${
+                          moveDropTarget === parentTarget ? 'ring-2 ring-blue-400 bg-blue-50' : ''
+                        }`}
+                      >
+                        {currentPath.split('/').pop()}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Upload progress */}
                 {filesHook.uploading && (
@@ -783,6 +882,13 @@ export default function PortalFilesTab({
                 {uploadError && (
                   <div className="px-4 py-2 border-b border-gray-100 text-sm text-red-600">
                     {uploadError}
+                  </div>
+                )}
+
+                {/* Move error */}
+                {moveError?.section === entityType && (
+                  <div className="px-4 py-2 border-b border-gray-100 text-sm text-red-600">
+                    {moveError.message}
                   </div>
                 )}
 
@@ -822,10 +928,25 @@ export default function PortalFilesTab({
                       return (
                         <div key={folder.id}>
                           <div
-                            className={`px-4 py-2 flex items-center space-x-3 hover:bg-gray-50 ${
-                              !isVisible && isInternalUser ? 'opacity-50' : ''
+                            draggable={canUpload}
+                            onDragStart={(e) => handleMoveDragStart(e, folder, entityType)}
+                            onDragEnd={handleMoveDragEnd}
+                            onDragOver={(e) => handleMoveDragOverTarget(e, folder.path, entityType)}
+                            onDragLeave={handleMoveDragLeaveTarget}
+                            onDrop={(e) => handleMoveDropTarget(e, folder.path, entityType, filesHook)}
+                            className={`group px-4 py-2 flex items-center space-x-2 hover:bg-gray-50 transition-colors ${
+                              canUpload ? 'cursor-move' : ''
+                            } ${!isVisible && isInternalUser ? 'opacity-50' : ''} ${
+                              movingItem?.path === folder.path ? 'opacity-40' : ''
+                            } ${
+                              moveDropTarget === folder.path ? 'ring-2 ring-inset ring-blue-400 bg-blue-50' : ''
                             }`}
                           >
+                            {canUpload && (
+                              <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-400 flex-shrink-0 cursor-grab active:cursor-grabbing" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                              </svg>
+                            )}
                             <button
                               onClick={() => navigateToFolder(folder)}
                               className="flex-1 min-w-0 flex items-center space-x-3 text-left"
@@ -922,10 +1043,20 @@ export default function PortalFilesTab({
                       return (
                         <div key={file.id}>
                           <div
-                            className={`px-4 py-2 flex items-center space-x-3 hover:bg-gray-50 ${
-                              !isVisible && isInternalUser ? 'opacity-50' : ''
+                            draggable={canUpload}
+                            onDragStart={(e) => handleMoveDragStart(e, file, entityType)}
+                            onDragEnd={handleMoveDragEnd}
+                            className={`group px-4 py-2 flex items-center space-x-2 hover:bg-gray-50 transition-colors ${
+                              canUpload ? 'cursor-move' : ''
+                            } ${!isVisible && isInternalUser ? 'opacity-50' : ''} ${
+                              movingItem?.path === file.path ? 'opacity-40' : ''
                             }`}
                           >
+                            {canUpload && (
+                              <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-400 flex-shrink-0 cursor-grab active:cursor-grabbing" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                              </svg>
+                            )}
                             <button
                               onClick={() => handleFileView(file)}
                               className="flex-1 min-w-0 flex items-center space-x-3 text-left"
