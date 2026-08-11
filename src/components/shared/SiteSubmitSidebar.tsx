@@ -33,9 +33,18 @@ import PastResearchRunsPanel from './PastResearchRunsPanel';
 import ResearchRunApprovalModal from './ResearchRunApprovalModal';
 import { usePermissions } from '../../hooks/usePermissions';
 
-// Starbucks client_id — gates the "Start Research" action to Starbucks site_submits only.
-// See docs/MARKET_RESEARCH_AGENT_V1_PLAN.md decision #7.
+// Starbucks client_id — gates the "Start Research" action to the Starbucks account
+// family: the Starbucks client itself OR any client whose parent_id is Starbucks
+// (child accounts like "Starbucks - JW (Coastal GA)"). See
+// docs/MARKET_RESEARCH_AGENT_V1_PLAN.md decision #7.
 const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
+
+// True when a client belongs to the Starbucks account family (self or child of Starbucks).
+const isStarbucksFamily = (
+  clientId: string | null | undefined,
+  clientParentId: string | null | undefined,
+): boolean =>
+  clientId === STARBUCKS_CLIENT_ID || clientParentId === STARBUCKS_CLIENT_ID;
 
 export interface SiteSubmitData {
   id: string;
@@ -149,6 +158,7 @@ export interface SiteSubmitData {
   client: {
     id: string;
     client_name: string | null;
+    parent_id: string | null;
   } | null;
   assignment: {
     id: string;
@@ -270,10 +280,10 @@ export default function SiteSubmitSidebar({
   const [openApprovalSweepId, setOpenApprovalSweepId] = useState<string | null>(null);
   const [researchPanelExpanded, setResearchPanelExpanded] = useState(false);
   const { hasPermission } = usePermissions();
-  // Market-research action gate: Starbucks site + can_run_market_research permission + has lat/lng on property.
+  // Market-research action gate: Starbucks-family site (self or child) + can_run_market_research permission + has lat/lng on property.
   const canStartResearch =
     !!siteSubmit
-    && siteSubmit.client_id === STARBUCKS_CLIENT_ID
+    && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)
     && hasPermission('can_run_market_research')
     && (siteSubmit.property?.verified_latitude != null
         || siteSubmit.property?.latitude != null);
@@ -493,7 +503,8 @@ export default function SiteSubmitSidebar({
             ),
             client:client_id (
               id,
-              client_name
+              client_name,
+              parent_id
             ),
             assignment:assignment_id (
               id,
@@ -611,7 +622,7 @@ export default function SiteSubmitSidebar({
         if (dealRow.client_id) {
           const { data: clientRow } = await supabase
             .from('client')
-            .select('id, client_name')
+            .select('id, client_name, parent_id')
             .eq('id', dealRow.client_id)
             .single();
           if (clientRow) client = clientRow;

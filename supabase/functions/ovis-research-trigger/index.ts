@@ -27,6 +27,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 
+// Gates research runs to the Starbucks account family: the Starbucks client itself
+// OR any client whose parent_id is Starbucks (child accounts like
+// "Starbucks - JW (Coastal GA)"). Mirrors the frontend gate in SiteSubmitSidebar.tsx.
 const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
 
 const CORS = {
@@ -279,13 +282,17 @@ serve(async (req) => {
       id, client_id, property_id, site_submit_name,
       sf_property_latitude, sf_property_longitude,
       verified_latitude, verified_longitude,
+      client:client_id ( parent_id ),
       property:property_id ( property_name, latitude, longitude, verified_latitude, verified_longitude )
     `)
     .eq('id', body.site_submit_id)
     .maybeSingle();
   if (siteErr) return jsonResponse({ error: 'site_lookup_failed', detail: siteErr.message }, 500);
   if (!site) return jsonResponse({ error: 'site_submit_not_found' }, 404);
-  if (site.client_id !== STARBUCKS_CLIENT_ID) {
+  const clientParentId = (site as { client?: { parent_id?: string | null } | null }).client?.parent_id ?? null;
+  const inStarbucksFamily =
+    site.client_id === STARBUCKS_CLIENT_ID || clientParentId === STARBUCKS_CLIENT_ID;
+  if (!inStarbucksFamily) {
     return jsonResponse({ error: 'not_a_starbucks_site' }, 403);
   }
   // Coordinate priority: verified beats unverified, regardless of table.
