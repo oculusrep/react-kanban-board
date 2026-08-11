@@ -871,10 +871,11 @@ export default function SiteSubmitSidebar({
 
   // Handle status change. Cases that trigger a deal-creation prompt:
   //   1. Any client moving to LOI without a deal.
-  //   2. Starbucks moving to Pre-Submittal or Submitted-Reviewing without a
-  //      deal — lets the team attach deal files at the earliest funnel stages.
+  //   2. A Starbucks-family site (Starbucks or a child account) moving to
+  //      Pre-Submittal or Submitted-Reviewing without a deal — lets the team
+  //      attach deal files at the earliest funnel stages.
   const handleStatusChange = (newStageId: string, newStageName: string) => {
-    const isStarbucks = siteSubmit?.client?.client_name === 'Starbucks';
+    const isStarbucks = isStarbucksFamily(siteSubmit?.client_id, siteSubmit?.client?.parent_id);
     const triggerStage: 'LOI' | 'Pre-Submittal' | 'Submitted-Reviewing' | null =
       !siteSubmit?.deal_id
         ? newStageName === 'LOI'
@@ -928,17 +929,17 @@ export default function SiteSubmitSidebar({
     handleUpdate({ deal_id: dealId });
   };
 
-  // Auto-fire the deal-conversion prompt when a Starbucks site_submit is opened
-  // in the Pre-Submittal or Submitted-Reviewing stage with no deal yet. Tracks
-  // already-prompted IDs in a ref so dismissing "Not Now" doesn't re-pester the
-  // user while the slideout is still mounted; the user can change status away
-  // and back to re-trigger.
+  // Auto-fire the deal-conversion prompt when a Starbucks-family site_submit
+  // (Starbucks or a child account) is opened in the Pre-Submittal or
+  // Submitted-Reviewing stage with no deal yet. Tracks already-prompted IDs in a
+  // ref so dismissing "Not Now" doesn't re-pester the user while the slideout is
+  // still mounted; the user can change status away and back to re-trigger.
   const autoPromptedSiteSubmitIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!siteSubmit || !isEditable) return;
     if (context !== 'map' && context !== 'deal') return;
     if (siteSubmit.deal_id) return;
-    if (siteSubmit.client?.client_name !== 'Starbucks') return;
+    if (!isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)) return;
     const stageName = siteSubmit.submit_stage?.name;
     if (stageName !== 'Pre-Submittal' && stageName !== 'Submitted-Reviewing') return;
     if (autoPromptedSiteSubmitIdsRef.current.has(siteSubmit.id)) return;
@@ -953,7 +954,8 @@ export default function SiteSubmitSidebar({
   }, [
     siteSubmit?.id,
     siteSubmit?.deal_id,
-    siteSubmit?.client?.client_name,
+    siteSubmit?.client_id,
+    siteSubmit?.client?.parent_id,
     siteSubmit?.submit_stage?.name,
     siteSubmit?.submit_stage?.id,
     context,
