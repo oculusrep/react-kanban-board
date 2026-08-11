@@ -11,6 +11,8 @@ interface PastResearchRunsPanelProps {
   onCancelClick?: (runId: string) => void | Promise<void>;
   /** Callback when a Deep Sweep row is clicked (opens the unified sweep approval). */
   onSweepClick?: (sweepId: string) => void;
+  /** Callback when the Cancel button is clicked on a still-running Deep Sweep. */
+  onCancelSweepClick?: (sweepId: string) => void | Promise<void>;
 }
 
 interface SweepRow {
@@ -67,7 +69,7 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick, onCancelClick, onSweepClick }: PastResearchRunsPanelProps) {
+export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick, onCancelClick, onSweepClick, onCancelSweepClick }: PastResearchRunsPanelProps) {
   const [runs, setRuns] = useState<ResearchRunRow[] | null>(null);
   const [sweeps, setSweeps] = useState<SweepRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +183,20 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
                     style={{ backgroundColor: '#002147', color: '#FFFFFF', borderColor: '#002147' }}>
                 Deep Sweep · {SWEEP_STATE_LABEL[s.state]}
               </span>
-              <span className="text-xs" style={{ color: '#8FA9C8' }}>{formatTimestamp(s.created_at)}</span>
+              <div className="flex items-center gap-2">
+                {onCancelSweepClick && s.state === 'running' && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void onCancelSweepClick(s.id); }}
+                    className="text-xs px-2 py-0.5 rounded border"
+                    style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFFFFF' }}
+                    title="Stop this sweep and cancel its in-flight chunk"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <span className="text-xs" style={{ color: '#8FA9C8' }}>{formatTimestamp(s.created_at)}</span>
+              </div>
             </div>
             <div className="mt-1 text-xs" style={{ color: '#4A6B94' }}>
               {s.radius_miles}-mile radius · {s.done}/{s.total_chunks} chunks done

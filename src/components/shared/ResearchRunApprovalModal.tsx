@@ -14,7 +14,31 @@ interface ResearchRunApprovalModalProps {
   onDone: (summary: { approved_new: number; approved_matched: number; created_municipality_count: number }) => void;
   // Fired when a run is closed out as reviewed (all rejected / nothing to commit).
   onReviewed?: () => void;
+  // Sweep mode only: fired after the failed chunks are handed back to the engine.
+  onRerun?: (summary: { reset_count: number; healed_count: number }) => void;
 }
+
+// One gap chunk (a 6-month window whose Deep run didn't land) to be re-fired.
+interface SweepGap {
+  chunk_index: number;
+  window_start: string;
+  window_end: string;
+}
+// Authoritative gap classification from get_sweep_gaps (keyed off RUN state, not
+// chunk state — so chunks whose run succeeded after a premature timeout are NOT
+// treated as gaps and never re-fired/duplicated).
+interface SweepGapInfo {
+  sweep_state: string | null;
+  gap_count: number;
+  healable_count: number;
+  gaps: SweepGap[];
+}
+
+// Re-run cost estimate scales with the number of gap chunks. This is a FLOOR:
+// the Aug 10 Hall County sweep ran ~$5.3/chunk on a dense county, inflated by an
+// (unrelated, now-fixed on the OpenClaw side) bug routing PDF reads to Opus.
+// TODO: re-baseline against a post-fix Deep run before tightening this number.
+const PER_CHUNK_COST_USD = 3;
 
 interface RunRow {
   id: string;
@@ -79,6 +103,12 @@ function toErrorMessage(e: unknown): string {
   return String(e);
 }
 
+// A gap chunk window (YYYY-MM-DD) → "Mon YYYY" for the re-run confirmation.
+function fmtWindow(iso: string): string {
+  const [y, m] = iso.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
 // Great-circle distance in meters — for the in-sweep staging-vs-staging dedupe
 // (find_nearby_municipal_projects only compares against COMMITTED projects, so
 // two unapproved sibling rows from adjacent chunk windows need this check).
@@ -117,10 +147,14 @@ export default function ResearchRunApprovalModal({
   onClose,
   onDone,
   onReviewed,
+  onRerun,
 }: ResearchRunApprovalModalProps) {
   const isSweep = !!sweepId;
   const [run, setRun] = useState<RunRow | null>(null);
   const [sweepState, setSweepState] = useState<string | null>(null);
+  const [gapInfo, setGapInfo] = useState<SweepGapInfo | null>(null);
+  const [rerunConfirm, setRerunConfirm] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
   const [staging, setStaging] = useState<StagingRow[]>([]);
   // stagingId -> sibling stagingIds within ~150m in the same sweep.
@@ -145,14 +179,17 @@ export default function ResearchRunApprovalModal({
       try {
         if (isSweep) {
           // ---- unified sweep mode: all staged rows across the sweep's runs ----
-          const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }] = await Promise.all([
+          const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }, { data: gaps }] = await Promise.all([
             supabase.from('research_sweep').select('state').eq('id', sweepId!).single(),
             supabase.rpc('get_sweep_staging', { p_sweep_id: sweepId! }),
+            // Non-blocking: a gap-lookup failure must never break the approval view.
+            supabase.rpc('get_sweep_gaps', { p_sweep_id: sweepId! }),
           ]);
           if (swErr) throw swErr;
           if (stErr) throw stErr;
           if (cancelled) return;
           setSweepState((sweepRow as { state?: string } | null)?.state ?? null);
+          setGapInfo((gaps as SweepGapInfo | null) ?? null);
           setRun(null);
           setChecklist([]);
           const stagingNorm: StagingRow[] = ((stagingRows ?? []) as any[]).map((r) => ({
@@ -494,6 +531,30 @@ export default function ResearchRunApprovalModal({
   // permission. Both produce the same UX (view but don't edit/approve/reject).
   const { hasPermission } = usePermissions();
   const canApprove = hasPermission('can_approve_market_research');
+  const canRun = hasPermission('can_run_market_research');
+  // Re-run is offered only on a FINISHED sweep that still has real gaps.
+  const canRerunGaps =
+    isSweep && canRun && !!gapInfo && gapInfo.gap_count > 0
+    && gapInfo.sweep_state !== 'running' && gapInfo.sweep_state !== 'cancelled';
+  const rerunCostLabel = `~$${(gapInfo?.gap_count ?? 0) * PER_CHUNK_COST_USD}`;
+
+  const handleRerunGaps = async () => {
+    if (!sweepId) return;
+    setError(null);
+    setRerunning(true);
+    try {
+      const { data, error: rerr } = await supabase.rpc('rerun_sweep_gaps', { p_sweep_id: sweepId });
+      if (rerr) throw rerr;
+      const res = (data ?? {}) as { reset_count?: number; healed_count?: number };
+      onRerun?.({ reset_count: res.reset_count ?? 0, healed_count: res.healed_count ?? 0 });
+      onClose();
+    } catch (e) {
+      setError(toErrorMessage(e));
+      setRerunConfirm(false);
+    } finally {
+      setRerunning(false);
+    }
+  };
   const isReadOnlyRun = !canApprove || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
   const inSweepDupCount = staging.filter(
     (s) => s.approval_state === 'pending' && (inSweepDupes[s.id]?.length ?? 0) > 0,
@@ -517,16 +578,71 @@ export default function ResearchRunApprovalModal({
                 Deep Sweep{sweepState ? ` · ${sweepState}` : ''} · all chunks · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected
               </p>
             )}
+            {isSweep && (gapInfo?.healable_count ?? 0) > 0 && (
+              <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
+                {gapInfo!.healable_count} chunk{gapInfo!.healable_count === 1 ? '' : 's'} finished after the timeout — their records are already included below and won't be re-run.
+              </p>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="px-2 py-1 rounded text-sm"
-            style={{ color: '#4A6B94' }}
-            title="Close"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            {canRerunGaps && !rerunConfirm && (
+              <button
+                onClick={() => setRerunConfirm(true)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium border"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFFFFF' }}
+                title="Re-fire the failed chunks sequentially"
+              >
+                Re-run {gapInfo!.gap_count} gap{gapInfo!.gap_count === 1 ? '' : 's'}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="px-2 py-1 rounded text-sm"
+              style={{ color: '#4A6B94' }}
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
         </div>
+
+        {/* Re-run gaps confirmation */}
+        {canRerunGaps && rerunConfirm && (
+          <div className="px-5 py-3 border-b" style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+            <div className="text-sm font-medium" style={{ color: '#002147' }}>
+              Re-run {gapInfo!.gap_count} failed chunk{gapInfo!.gap_count === 1 ? '' : 's'} · {rerunCostLabel}
+            </div>
+            <div className="text-xs mt-1 flex flex-wrap gap-x-2 gap-y-0.5" style={{ color: '#4A6B94' }}>
+              {gapInfo!.gaps.map((g, i) => (
+                <span key={g.chunk_index}>
+                  {i > 0 && '· '}
+                  {fmtWindow(g.window_start)}–{fmtWindow(g.window_end)}
+                </span>
+              ))}
+            </div>
+            <div className="text-xs mt-1" style={{ color: '#8FA9C8' }}>
+              Fires one chunk at a time (rate-limit safe), same as the original sweep. Successful chunks are untouched. Estimate is a floor — dense counties can run higher.
+            </div>
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={handleRerunGaps}
+                disabled={rerunning}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium"
+                style={{ backgroundColor: rerunning ? '#8FA9C8' : '#002147', color: '#FFFFFF', opacity: rerunning ? 0.7 : 1 }}
+              >
+                {rerunning ? 'Re-running…' : `Confirm — re-run ${gapInfo!.gap_count} gap${gapInfo!.gap_count === 1 ? '' : 's'} (${rerunCostLabel})`}
+              </button>
+              <button
+                onClick={() => setRerunConfirm(false)}
+                disabled={rerunning}
+                className="px-3 py-1.5 rounded-lg text-sm border"
+                style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">

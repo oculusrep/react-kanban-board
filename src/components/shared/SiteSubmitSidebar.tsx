@@ -1550,6 +1550,21 @@ export default function SiteSubmitSidebar({
                         refreshTrigger={researchRunsRefresh}
                         onRunClick={(runId) => setOpenApprovalRunId(runId)}
                         onSweepClick={(sweepId) => setOpenApprovalSweepId(sweepId)}
+                        onCancelSweepClick={async (sweepId) => {
+                          if (!window.confirm('Cancel this Deep Sweep? Remaining chunks won\'t fire and the in-flight chunk (if any) will be stopped. Chunks already completed keep their staged records.')) return;
+                          try {
+                            const { data, error } = await supabase.rpc('cancel_sweep', { p_sweep_id: sweepId });
+                            if (error) throw error;
+                            const wasCancelled = (data as { cancelled?: boolean })?.cancelled;
+                            showToast(
+                              wasCancelled ? 'Sweep cancelled.' : 'Sweep was already finished.',
+                              { type: wasCancelled ? 'success' : 'info', duration: 3000 },
+                            );
+                            setResearchRunsRefresh((n) => n + 1);
+                          } catch (e) {
+                            showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
+                          }
+                        }}
                         onCancelClick={async (runId) => {
                           if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
                           try {
@@ -1761,6 +1776,14 @@ export default function SiteSubmitSidebar({
           }
           onClose={() => setOpenApprovalSweepId(null)}
           onReviewed={() => setResearchRunsRefresh((n) => n + 1)}
+          onRerun={({ reset_count, healed_count }) => {
+            const healNote = healed_count > 0 ? ` (${healed_count} mislabeled chunk${healed_count === 1 ? '' : 's'} healed)` : '';
+            showToast(
+              `Re-running ${reset_count} gap${reset_count === 1 ? '' : 's'} — chunks fire sequentially${healNote}.`,
+              { type: 'success', duration: 5000 },
+            );
+            setResearchRunsRefresh((n) => n + 1);
+          }}
           onDone={({ approved_new, approved_matched, created_municipality_count }) => {
             const parts: string[] = [];
             if (approved_new > 0) parts.push(`${approved_new} new`);
