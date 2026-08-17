@@ -18,6 +18,15 @@ function fmtSqft(v: number | null | undefined): string {
   return new Intl.NumberFormat('en-US').format(v) + ' sqft';
 }
 
+function fmtDate(v: string | null | undefined): string {
+  if (!v) return 'N/A';
+  // DATE column ("YYYY-MM-DD"): parse as local, not UTC, to avoid off-by-one
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(v);
+  if (isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = ({ store, onClose }) => {
   // Prefer verified coords if present (shows the actual pin position)
   const lat = store.verified_latitude ?? store.latitude;
@@ -78,6 +87,7 @@ const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = 
           <tbody>
             <Row label="Store Type" value={store.store_type || 'N/A'} highlight />
             <Row label="Segment"    value={store.segment || 'N/A'} />
+            <Row label="Open Date"  value={fmtDate(store.actual_open_date)} />
             <Row label="Address"    value={[store.address, store.suite].filter(Boolean).join(', ') || 'N/A'} />
             <Row label="City"       value={store.city || 'N/A'} />
             <Row label="State"      value={store.state || 'N/A'} />

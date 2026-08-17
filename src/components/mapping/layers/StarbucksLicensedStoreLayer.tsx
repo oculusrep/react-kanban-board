@@ -88,6 +88,16 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
   const isFetchingRef = useRef(false);
   const lastFetchBoundsRef = useRef<string | null>(null);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Skip exactly one viewport refetch right after a verify-drop so the freshly
+  // dropped pin can't be snapped back before the save round-trips.
+  const skipNextFetchRef = useRef(false);
+  // Read inside fetchStores (which is memoized) to suppress refetches mid-drag.
+  const verifyingStoreNumberRef = useRef<string | null>(null);
+  // Keep parent callbacks in refs so their (unstable) identities don't force the
+  // marker-rebuild effect to re-run — rebuilding markers mid-drag drops the drag.
+  const onPinClickRef = useRef(onPinClick);
+  const onLocationVerifiedRef = useRef(onLocationVerified);
+  const onRightClickRef = useRef(onRightClick);
 
   const { refreshTrigger } = useLayerManager();
   const layerRefreshTrigger = refreshTrigger.starbucks_licensed_stores || 0;
@@ -95,6 +105,13 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
   useEffect(() => {
     openPopupRef.current = openPopup;
   }, [openPopup]);
+
+  useEffect(() => {
+    verifyingStoreNumberRef.current = verifyingStoreNumber;
+    onPinClickRef.current = onPinClick;
+    onLocationVerifiedRef.current = onLocationVerified;
+    onRightClickRef.current = onRightClick;
+  }, [verifyingStoreNumber, onPinClick, onLocationVerified, onRightClick]);
 
   const createPopupOverlay = useCallback(
     (store: StarbucksLicensedStore, position: google.maps.LatLng) => {
@@ -151,6 +168,17 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
 
   const fetchStores = useCallback(async (forceRefresh = false) => {
     if (!map || isFetchingRef.current) return;
+
+    // Don't refetch while a pin is being dragged for verification — recreating
+    // the markers would tear the draggable marker down and abort the drag.
+    if (!forceRefresh && verifyingStoreNumberRef.current) return;
+
+    // Skip the one refetch queued right after a verify-drop so the optimistic
+    // coordinates aren't clobbered before the save completes.
+    if (!forceRefresh && skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
 
     const bounds = map.getBounds();
     if (!bounds) return;
@@ -239,7 +267,7 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
             event.domEvent.stopPropagation();
             event.domEvent.preventDefault?.();
           }
-          onPinClick?.(store);
+          onPinClickRef.current?.(store);
           if (openPopupRef.current) openPopupRef.current.overlay.setMap(null);
           setTimeout(() => {
             const position = new google.maps.LatLng(coords.lat, coords.lng);
@@ -249,30 +277,38 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
           }, 10);
         });
 
-        if (isVerifying && onLocationVerified) {
+        if (isVerifying) {
           marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
-            if (event.latLng) {
-              onLocationVerified(store.store_number, event.latLng.lat(), event.latLng.lng());
-            }
+            if (!event.latLng) return;
+            const newLat = event.latLng.lat();
+            const newLng = event.latLng.lng();
+            // Suppress the next viewport refetch and optimistically move the pin so
+            // it stays put while the save round-trips (prevents snap-back).
+            skipNextFetchRef.current = true;
+            setStores(prev => prev.map(s =>
+              s.store_number === store.store_number
+                ? { ...s, verified_latitude: newLat, verified_longitude: newLng }
+                : s
+            ));
+            onLocationVerifiedRef.current?.(store.store_number, newLat, newLng);
           });
         }
 
-        if (onRightClick) {
-          marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
-            if (event.domEvent) {
-              event.domEvent.preventDefault();
-              event.domEvent.stopPropagation();
-              onRightClick(store, event.domEvent.clientX, event.domEvent.clientY);
-            }
-          });
-        }
+        marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
+          const dom = event.domEvent as MouseEvent | undefined;
+          if (dom) {
+            dom.preventDefault();
+            dom.stopPropagation();
+            onRightClickRef.current?.(store, dom.clientX, dom.clientY);
+          }
+        });
 
         return marker;
       })
       .filter((m): m is google.maps.Marker => m !== null);
 
     setMarkers(newMarkers);
-  }, [stores, selectedStoreNumber, verifyingStoreNumber, isVisible, map, createPopupOverlay, onPinClick, onLocationVerified, onRightClick]);
+  }, [stores, selectedStoreNumber, verifyingStoreNumber, isVisible, map, createPopupOverlay]);
 
   useEffect(() => {
     return () => {
