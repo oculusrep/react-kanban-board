@@ -134,3 +134,62 @@ existing row.
 Run depth tiers / lookback windowing + per-municipality "researched back to"
 coverage is the second, separately-sequenced piece — tracked apart from this
 dedupe work.
+
+---
+
+# Review UX follow-up — reversible reject, comparison panels, filters (2026-08-13)
+
+The safety-net work above surfaced the *signals* (hard match, possible-duplicate,
+in-sweep-duplicate) but only as **badges with hover tooltips**. In practice the
+reviewer still had to scroll every row, couldn't see the competing record next to
+the one being judged, and — worst — **reject was a one-way door** with no undo.
+This follow-up closes those UX gaps. No change to the dedupe *logic*; it's all in
+how the signals are presented and acted on.
+
+Component: `src/components/shared/ResearchRunApprovalModal.tsx`
+Migration: `20260813120000_unreject_research_staging_row.sql`
+
+### 1. Reversible reject (Undo)
+
+Rejected staging rows were already soft-deleted (`approval_state='rejected'`, kept
+forever for audit — `20260606130000`); there was simply no RPC to flip one back.
+
+- New `unreject_research_staging_row(p_staging_id)` — inverse of
+  `reject_research_staging_row`. Moves `rejected → pending` and **re-opens** a run
+  that reject had auto-closed: from `archived` **or** `approved` back to
+  `awaiting_review` (either terminal state can still carry rejected rows).
+- Every rejected row now shows an **↩ Undo** button. It is gated on `canApprove`,
+  **not** `isReadOnlyRun`, on purpose: a single run that auto-archived after
+  "reject all" is otherwise read-only, which would re-trap the user — Undo is the
+  one control that must survive the terminal state (it's what un-terminals it).
+
+### 2. Comparison panels (which record do I reject?)
+
+The competing record now renders **inline** beneath the badges, instead of only in
+a tooltip:
+
+- **Possible duplicate** (near a committed project): a panel listing each nearby
+  `municipal_project` — name, distance, municipality, address — so the reviewer
+  sees exactly what they'd be duplicating on the map.
+- **In-sweep duplicate** (sibling staged rows from adjacent chunk windows): a panel
+  listing each sibling (name, address, units, chunk, state) plus a
+  **"Keep this · reject the other(s)"** one-click resolver (`handleKeepOne`). It
+  rejects the still-pending siblings and keeps/selects this row. Each reject is
+  reversible via Undo, so it's a fast path, not a commitment.
+
+### 3. Filters — cut the scroll on big sweeps
+
+Filter chips above the list (`focusFlagged`, `hideApproved`, `hideRejected`) plus a
+**flagged-first sort** (`sortWeight`: flagged-pending → clean-pending → approved →
+rejected) applied per municipality group (`displayGroups`). "⚠ Needs attention"
+focus mode hides clean pending rows so only matches / possible / in-sweep dupes
+remain. Decided rows stay reachable (so Undo/history remain visible) unless
+explicitly hidden.
+
+### Follow-ups deferred
+
+- "View on map" deep-link from a possible-duplicate entry to the committed
+  `municipal_project` pin (skipped for now to avoid guessing the map route).
+- The nearby/in-sweep check re-geocodes on every `staging` mutation (pre-existing);
+  a keep-one action that rejects several siblings triggers several re-geocode
+  passes. Fine at current volumes; revisit if sweeps get large.

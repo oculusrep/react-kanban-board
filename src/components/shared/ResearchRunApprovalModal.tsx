@@ -169,6 +169,12 @@ export default function ResearchRunApprovalModal({
   // Soft dedupe: stagingId -> nearby committed projects, plus an in-flight flag.
   const [possibleDupes, setPossibleDupes] = useState<Record<string, NearbyProject[]>>({});
   const [checkingDupes, setCheckingDupes] = useState(false);
+  // Review filters — cut the scroll on big sweeps. "Focus" hides clean pending
+  // rows (no match / no dupe) so only the ambiguous ones remain; the hide-*
+  // toggles collapse already-decided rows. Flagged rows always sort to the top.
+  const [focusFlagged, setFocusFlagged] = useState(false);
+  const [hideApproved, setHideApproved] = useState(false);
+  const [hideRejected, setHideRejected] = useState(false);
 
   // ---- initial load ----
   useEffect(() => {
@@ -373,6 +379,59 @@ export default function ResearchRunApprovalModal({
     (s) => s.approval_state === 'pending' && !s.matched_existing_id && (possibleDupes[s.id]?.length ?? 0) > 0,
   ).length;
 
+  // Staging rows keyed by id — for resolving in-sweep sibling ids to their row
+  // (so the comparison panel can show the competing record side by side).
+  const stagingById = useMemo(() => {
+    const m = new Map<string, StagingRow>();
+    for (const r of staging) m.set(r.id, r);
+    return m;
+  }, [staging]);
+
+  // Per-row dedupe flags — drives the "needs attention" sort/filter and which
+  // comparison panels render. matched = hard match; possible = near a committed
+  // project; inSweep = near a sibling staged row in this same sweep.
+  const rowFlags = (r: StagingRow) => {
+    const matched = !!r.matched_existing_id;
+    return {
+      matched,
+      possible: !matched && (possibleDupes[r.id]?.length ?? 0) > 0,
+      inSweep: (inSweepDupes[r.id]?.length ?? 0) > 0,
+    };
+  };
+  const isFlagged = (r: StagingRow) => {
+    const f = rowFlags(r);
+    return f.matched || f.possible || f.inSweep;
+  };
+  // Sort weight: ambiguous & unresolved first, decided last.
+  //   0 flagged pending · 1 clean pending · 2 approved · 3 rejected
+  const sortWeight = (r: StagingRow) => {
+    if (r.approval_state === 'approved') return 2;
+    if (r.approval_state === 'rejected') return 3;
+    return isFlagged(r) ? 0 : 1;
+  };
+
+  // Apply the review filters + flagged-first sort on top of the municipality
+  // grouping. Groups emptied by filtering are dropped so the list stays tight.
+  const displayGroups = useMemo(() => {
+    return grouped
+      .map((g) => ({
+        ...g,
+        rows: g.rows
+          .filter((r) => {
+            if (hideApproved && r.approval_state === 'approved') return false;
+            if (hideRejected && r.approval_state === 'rejected') return false;
+            // Focus mode drops only the clean pending rows (decided rows stay
+            // visible so approve/reject history and Undo remain reachable).
+            if (focusFlagged && r.approval_state === 'pending' && !isFlagged(r)) return false;
+            return true;
+          })
+          .slice()
+          .sort((a, b) => sortWeight(a) - sortWeight(b)),
+      }))
+      .filter((g) => g.rows.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grouped, focusFlagged, hideApproved, hideRejected, possibleDupes, inSweepDupes]);
+
   // ---- handlers ----
   const setEdit = (id: string, key: keyof Edits, value: string) => {
     setEdits((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }));
@@ -400,6 +459,55 @@ export default function ResearchRunApprovalModal({
       if ((data as { run_reviewed?: boolean } | null)?.run_reviewed) {
         setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
         onReviewed?.();
+      }
+    } catch (e) {
+      setError(toErrorMessage(e));
+    }
+  };
+
+  // Reverse a reject: flip the row back to pending and re-select it. If the run
+  // had auto-closed on the last reject, the RPC re-opens it to awaiting_review.
+  const handleUnreject = async (rowId: string) => {
+    setError(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('unreject_research_staging_row', { p_staging_id: rowId });
+      if (rpcErr) throw rpcErr;
+      if (!(data as { unrejected?: boolean } | null)?.unrejected) return;
+      setStaging((rows) => rows.map((r) => r.id === rowId ? { ...r, approval_state: 'pending' } : r));
+      // Re-select unless it hard-matches an existing record (those default off).
+      const row = staging.find((s) => s.id === rowId);
+      if (!row?.matched_existing_id) {
+        setSelected((prev) => { const next = new Set(prev); next.add(rowId); return next; });
+      }
+      if ((data as { run_reopened?: boolean } | null)?.run_reopened) {
+        setRun((prev) => (prev ? { ...prev, state: 'awaiting_review' } : prev));
+      }
+    } catch (e) {
+      setError(toErrorMessage(e));
+    }
+  };
+
+  // In-sweep dedupe resolver: keep the given row and reject its still-pending
+  // siblings in one action. Each reject is reversible (Undo), so this is a fast
+  // path, not a commitment. Rejects sequentially — the RPC also auto-closes the
+  // run on the last pending row, which we reflect via run_reviewed.
+  const handleKeepOne = async (keepId: string, siblingIds: string[]) => {
+    setError(null);
+    const targets = siblingIds.filter((id) => stagingById.get(id)?.approval_state === 'pending');
+    try {
+      for (const id of targets) {
+        const { data, error: rpcErr } = await supabase.rpc('reject_research_staging_row', { p_staging_id: id });
+        if (rpcErr) throw rpcErr;
+        setStaging((rows) => rows.map((r) => r.id === id ? { ...r, approval_state: 'rejected' } : r));
+        setSelected((prev) => { const next = new Set(prev); next.delete(id); return next; });
+        if ((data as { run_reviewed?: boolean } | null)?.run_reviewed) {
+          setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
+          onReviewed?.();
+        }
+      }
+      // Make sure the kept row is selected for commit.
+      if (stagingById.get(keepId)?.approval_state === 'pending') {
+        setSelected((prev) => { const next = new Set(prev); next.add(keepId); return next; });
       }
     } catch (e) {
       setError(toErrorMessage(e));
@@ -704,13 +812,46 @@ export default function ResearchRunApprovalModal({
                 </div>
               )}
 
+              {/* Review filters — cut the scroll on big sweeps */}
+              {staging.length > 0 && (() => {
+                const flaggedPendingCount = staging.filter((s) => s.approval_state === 'pending' && isFlagged(s)).length;
+                const chip = (active: boolean, onClick: () => void, label: string, title: string) => (
+                  <button
+                    type="button"
+                    onClick={onClick}
+                    title={title}
+                    className="px-2 py-0.5 rounded-full border text-xs"
+                    style={active
+                      ? { backgroundColor: '#002147', color: '#FFFFFF', borderColor: '#002147' }
+                      : { backgroundColor: '#FFFFFF', color: '#4A6B94', borderColor: '#8FA9C8' }}
+                  >
+                    {label}
+                  </button>
+                );
+                return (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs" style={{ color: '#8FA9C8' }}>Filter:</span>
+                    {chip(focusFlagged, () => setFocusFlagged((v) => !v),
+                      `⚠ Needs attention${flaggedPendingCount ? ` (${flaggedPendingCount})` : ''}`,
+                      'Show only pending rows flagged as a match or possible/in-sweep duplicate — hides the clean pending rows.')}
+                    {approvedCount > 0 && chip(hideApproved, () => setHideApproved((v) => !v), hideApproved ? 'Approved hidden' : `Hide approved (${approvedCount})`, 'Collapse rows already approved.')}
+                    {rejectedCount > 0 && chip(hideRejected, () => setHideRejected((v) => !v), hideRejected ? 'Rejected hidden' : `Hide rejected (${rejectedCount})`, 'Collapse rejected rows (Undo still available when shown).')}
+                  </div>
+                );
+              })()}
+
               {/* Staged records by municipality */}
-              {grouped.length === 0 && (
+              {staging.length === 0 && (
                 <div className="text-sm italic" style={{ color: '#8FA9C8' }}>
                   No staged records {isSweep ? 'in this sweep yet.' : 'on this run.'}
                 </div>
               )}
-              {grouped.map((g) => (
+              {staging.length > 0 && displayGroups.length === 0 && (
+                <div className="text-sm italic" style={{ color: '#8FA9C8' }}>
+                  No records match the current filter.
+                </div>
+              )}
+              {displayGroups.map((g) => (
                 <div key={g.name} className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
                   <div className="px-3 py-2 border-b text-sm font-semibold"
                        style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#002147' }}>
@@ -779,6 +920,63 @@ export default function ResearchRunApprovalModal({
                                         style={{ borderColor: '#8FA9C8', color: '#8FA9C8' }}>REJECTED</span>
                                 )}
                               </div>
+                              {/* Comparison panel: show the competing record(s)
+                                  inline so the reviewer can judge which to keep,
+                                  instead of guessing from a badge tooltip. */}
+                              {!r.matched_existing_id && (possibleDupes[r.id]?.length ?? 0) > 0 && (
+                                <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
+                                     style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+                                  <div className="font-medium" style={{ color: '#A27B5C' }}>
+                                    Already on the map nearby — approving this may duplicate it:
+                                  </div>
+                                  <ul className="mt-1 space-y-0.5" style={{ color: '#4A6B94' }}>
+                                    {possibleDupes[r.id].map((d) => (
+                                      <li key={d.municipal_project_id}>
+                                        • <b style={{ color: '#002147' }}>{d.project_name ?? '(unnamed project)'}</b>
+                                        {' '}· ~{Math.round(d.distance_m)}m
+                                        {d.municipality_name ? ` · ${d.municipality_name}` : ''}
+                                        {d.address ? ` · ${d.address}` : ''}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {r.approval_state === 'pending' && (inSweepDupes[r.id]?.length ?? 0) > 0 && (() => {
+                                const sibs = (inSweepDupes[r.id] ?? [])
+                                  .map((id) => stagingById.get(id))
+                                  .filter((s): s is StagingRow => !!s);
+                                const pendingSibs = sibs.filter((s) => s.approval_state === 'pending');
+                                return (
+                                  <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
+                                       style={{ borderColor: '#4A6B94', backgroundColor: '#F8FAFC' }}>
+                                    <div className="font-medium" style={{ color: '#4A6B94' }}>
+                                      Same location staged {sibs.length === 1 ? 'again' : `${sibs.length}×`} in this sweep — likely the same project. Keep one:
+                                    </div>
+                                    <ul className="mt-1 space-y-0.5" style={{ color: '#4A6B94' }}>
+                                      {sibs.map((s) => (
+                                        <li key={s.id}>
+                                          • <b style={{ color: '#002147' }}>{s.project_name ?? '(unnamed)'}</b>
+                                          {s.address ? ` · ${s.address}` : ''}
+                                          {s.total_housing_units != null ? ` · ${s.total_housing_units} units` : ''}
+                                          {s.sweep_chunk_index != null ? ` · chunk ${s.sweep_chunk_index}` : ''}
+                                          {s.approval_state !== 'pending' ? ` · ${s.approval_state}` : ''}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {isPending && !isReadOnlyRun && pendingSibs.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleKeepOne(r.id, pendingSibs.map((s) => s.id))}
+                                        className="mt-1.5 text-xs px-2 py-1 rounded border"
+                                        style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
+                                        title="Keep this record and reject the other staged copies (each reject is reversible with Undo)."
+                                      >
+                                        Keep this · reject the other{pendingSibs.length === 1 ? '' : 's'} ({pendingSibs.length})
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               <div className="grid grid-cols-2 gap-2 mt-2">
                                 {EDITABLE_FIELDS.map((f) => (
                                   <div key={f.key} className={f.full ? 'col-span-2' : ''}>
@@ -801,9 +999,20 @@ export default function ResearchRunApprovalModal({
                                 onClick={() => handleReject(r.id)}
                                 className="text-xs px-2 py-1 rounded border self-start"
                                 style={{ borderColor: '#A27B5C', color: '#A27B5C' }}
-                                title="Reject this row (kept for audit)"
+                                title="Reject this row (kept for audit; reversible with Undo)"
                               >
                                 Reject
+                              </button>
+                            )}
+                            {r.approval_state === 'rejected' && canApprove && (
+                              <button
+                                type="button"
+                                onClick={() => handleUnreject(r.id)}
+                                className="text-xs px-2 py-1 rounded border self-start"
+                                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                                title="Undo — restore this row to pending"
+                              >
+                                ↩ Undo
                               </button>
                             )}
                           </div>
