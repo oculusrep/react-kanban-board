@@ -287,6 +287,7 @@ export interface Payment {
   // Commission calculation fields
   agci?: number | null;                // Agent Gross Commission Income (calculated by trigger)
   referral_fee_usd?: number | null;    // Referral fee amount (calculated by trigger)
+  bor_fee_usd?: number | null;         // Broker of Record: flat fee Oculus keeps from this installment
   amount_override?: boolean | null;    // True if payment amount was manually overridden
   override_at?: string | null;         // Timestamp when amount was overridden
 

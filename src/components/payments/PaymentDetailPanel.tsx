@@ -10,6 +10,7 @@ import { usePaymentSplitCalculations } from '../../hooks/usePaymentSplitCalculat
 import { usePaymentDisbursement } from '../../hooks/usePaymentDisbursement';
 import { supabase } from '../../lib/supabaseClient';
 import { deleteQBInvoice } from '../../services/quickbooksService';
+import { isBorDeal } from '../../lib/bor';
 
 interface PaymentDetailPanelProps {
   payment: Payment;
@@ -246,6 +247,14 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
 
   // Use AGCI directly from the payment record (calculated by database trigger)
   const paymentAGCI = payment.agci || 0;
+
+  // Broker of Record: the pass-through to the referral partner = payment amount - BOR Fee.
+  // See docs/BOR_DEAL_FEATURE_SPEC.md
+  const isBor = isBorDeal(deal);
+  const borFee = payment.bor_fee_usd ?? deal.bor_fee_usd ?? 0;
+  const borPassThrough = (payment.payment_amount || 0) - borFee;
+  const borPayeeName =
+    getReferralPayeeName() || clients?.find(c => c.id === deal.client_id)?.client_name || null;
   const calculatedSplits = usePaymentSplitCalculations(
     splits, 
     dealAmounts, 
@@ -344,9 +353,11 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
       <div className="p-6">
         {/* Header */}
         <div className="mb-6">
-          <h4 className="text-base font-medium text-gray-900">Commission Breakdown</h4>
+          <h4 className="text-base font-medium text-gray-900">{isBor ? 'Referral Fee Disbursement' : 'Commission Breakdown'}</h4>
           <p className="text-xs text-gray-600 mt-1">
-            Payment #{payment.payment_sequence} • AGCI: ${paymentAGCI.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {isBor
+              ? `Payment #${payment.payment_sequence} • Pass-through: $${borPassThrough.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `Payment #${payment.payment_sequence} • AGCI: $${paymentAGCI.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </p>
         </div>
 
@@ -464,7 +475,42 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
 
         {/* Broker Split Cards or No Broker Split Section */}
         <div className="space-y-4">
-          {splits.length === 0 ? (
+          {isBor ? (
+            /* BOR pass-through — full commission less the BOR Fee, remitted to the referral partner */
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <div className="space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-900">
+                      Referral Fee (Pass-Through){borPayeeName ? ` - ${borPayeeName}` : ''}
+                    </h5>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Full commission (${(payment.payment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) less the BOR Fee, remitted to the referral partner
+                    </p>
+                  </div>
+                  <div className="text-sm font-semibold text-blue-900">
+                    ${borPassThrough.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600 whitespace-nowrap">BOR Fee (Oculus keeps):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={payment.bor_fee_usd ?? deal.bor_fee_usd ?? ''}
+                    onChange={(e) => onUpdatePayment({ bor_fee_usd: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                    className="w-32 text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  Marking this paid will create the QuickBooks Bill to the referral partner and recognize the BOR Fee as income — QB wiring lands in the next update.
+                </p>
+              </div>
+            </div>
+          ) : splits.length === 0 ? (
             /* No Broker Split Section - shown when there are no broker commission splits */
             <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
               <div className="space-y-2">
@@ -499,8 +545,8 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
             ))
           )}
 
-          {/* Referral Fee Row - only show if payment has referral fee amount */}
-          {deal.referral_fee_usd && deal.referral_fee_usd > 0 && payment.referral_fee_usd && payment.referral_fee_usd > 0 && (
+          {/* Referral Fee Row - only show if payment has referral fee amount (not on BOR deals) */}
+          {!isBor && !!deal.referral_fee_usd && deal.referral_fee_usd > 0 && !!payment.referral_fee_usd && payment.referral_fee_usd > 0 && (
             <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
               <div className="space-y-2">
                 <div className="flex justify-between items-start">

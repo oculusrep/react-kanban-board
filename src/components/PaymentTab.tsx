@@ -7,6 +7,7 @@ import PaymentGenerationSection from './PaymentGenerationSection';
 import PaymentListSection from './payments/PaymentListSection';
 import PaymentStatusCard from './PaymentStatusCard';
 import CommissionBreakdownBar from './CommissionBreakdownBar';
+import { isBorDeal } from '../lib/bor';
 import BillToSection from './BillToSection';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
 import { useToast } from '../hooks/useToast';
@@ -674,15 +675,27 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
           </div>
         </div>
 
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <div className="text-sm font-medium text-purple-600">AGCI Available</div>
-          <div className="text-2xl font-bold text-purple-900">
-            ${formatUSD(deal.agci || 0)}
+        {isBorDeal(deal) ? (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="text-sm font-medium text-purple-600">BOR Fee (Oculus)</div>
+            <div className="text-2xl font-bold text-purple-900">
+              ${formatUSD(deal.bor_fee_usd || 0)}
+            </div>
+            <div className="text-xs text-purple-600 mt-1">
+              Kept by Oculus; the rest passes through
+            </div>
           </div>
-          <div className="text-xs text-purple-600 mt-1">
-            After house & referral fees
+        ) : (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="text-sm font-medium text-purple-600">AGCI Available</div>
+            <div className="text-2xl font-bold text-purple-900">
+              ${formatUSD(deal.agci || 0)}
+            </div>
+            <div className="text-xs text-purple-600 mt-1">
+              After house & referral fees
+            </div>
           </div>
-        </div>
+        )}
 
        <PaymentStatusCard 
         statusSummary={statusSummary}
@@ -691,12 +704,14 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       />
       </div>
 
-      {/* Commission Breakdown Bar */}
-      <CommissionBreakdownBar
-        deal={deal}
-        commissionSplits={commissionSplits}
-        className="mb-6"
-      />
+      {/* Commission Breakdown Bar - hidden for BOR (no house/broker splits) */}
+      {!isBorDeal(deal) && (
+        <CommissionBreakdownBar
+          deal={deal}
+          commissionSplits={commissionSplits}
+          className="mb-6"
+        />
+      )}
 
       {/* Bill-To Section for QuickBooks */}
       <BillToSection
