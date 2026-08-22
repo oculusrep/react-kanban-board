@@ -209,6 +209,7 @@ Kanban card shows **$5,000**. GCI dashboards show **$0** from this deal (filtere
 - [x] Navbar: "Add New BOR Deal" menu item → `/deal/new?type=bor`.
 - [x] DealDetailsPage: prefill BOR transaction type + Deal Team = Mike; "New BOR Deal" title.
 - [x] DealDetailsForm BOR variant: relabel Client→"Referral Partner", hide Property Unit / Site Submit / Transaction Type, add **BOR Fee** field (persisted in all save/insert payloads). Shared constants in `src/lib/bor.ts`.
+- [x] Overview tab slimmed for BOR: hide Forecasting section + LOI Written/Signed + Contract X Date fields (kept Stage, Target Close, Booked, Closed, Loss Reason).
 - [x] Commission tab BOR variant: `CommissionSplitSection` hidden; `CommissionDetailsSection` slim view (full commission, commission %, BOR Fee, computed pass-through, # payments) for BOR.
 - [x] Kanban: card amount + column totals use `bor_fee_usd` for BOR deals (`kanbanAmount` helper in KanbanBoard); deal-value line hidden on BOR cards.
 - [ ] Payment tab: per-installment editable BOR Fee; derived pass-through; "Pay Referral Partner" checkbox. (Note: "Payment Management" section on the Commission tab still says "based on commission splits" — reword for BOR here.)
