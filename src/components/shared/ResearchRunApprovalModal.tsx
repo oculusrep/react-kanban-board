@@ -159,6 +159,11 @@ export default function ResearchRunApprovalModal({
   const [staging, setStaging] = useState<StagingRow[]>([]);
   // stagingId -> sibling stagingIds within ~150m in the same sweep.
   const [inSweepDupes, setInSweepDupes] = useState<Record<string, string[]>>({});
+  // stagingId set for rows whose address only geocoded to a street/region centroid
+  // (not an address-level point). Proximity dedupe is unreliable for these — every
+  // project on the same road collapses to one point — so they're EXCLUDED from
+  // both dedupe checks and flagged with a note instead of a false duplicate.
+  const [lowPrecisionGeo, setLowPrecisionGeo] = useState<Set<string>>(new Set());
   const [edits, setEdits] = useState<Record<string, Edits>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [needsReview, setNeedsReview] = useState<string>('');
@@ -298,23 +303,34 @@ export default function ResearchRunApprovalModal({
     if (candidates.length === 0) {
       setPossibleDupes({});
       setInSweepDupes({});
+      setLowPrecisionGeo(new Set());
       return;
     }
     async function checkNearby() {
       setCheckingDupes(true);
       try {
-        const points = (
+        // Geocode every candidate, capturing precision. A street-only address
+        // ("Baker Place Road") geocodes to the road centroid (GEOMETRIC_CENTER),
+        // so EVERY project on that road lands on the same point — proximity can't
+        // tell them apart. We keep those points out of the 150m math and flag the
+        // rows instead, rather than emit a wall of false duplicates.
+        const geocoded = (
           await Promise.all(
             candidates.map(async (s) => {
               const g = await geocodingService.geocodeAddress((s.address ?? '').trim());
-              return ('latitude' in g && 'longitude' in g)
-                ? { staging_id: s.id, lat: g.latitude, lng: g.longitude }
-                : null;
+              if (!('latitude' in g && 'longitude' in g)) return null;
+              const lowPrecision = g.location_type === 'GEOMETRIC_CENTER' || g.location_type === 'APPROXIMATE';
+              return { staging_id: s.id, lat: g.latitude, lng: g.longitude, lowPrecision };
             }),
           )
-        ).filter(Boolean) as { staging_id: string; lat: number; lng: number }[];
+        ).filter(Boolean) as { staging_id: string; lat: number; lng: number; lowPrecision: boolean }[];
 
         if (cancelled) return;
+
+        setLowPrecisionGeo(new Set(geocoded.filter((p) => p.lowPrecision).map((p) => p.staging_id)));
+
+        // Only address-level points feed the proximity checks.
+        const points = geocoded.filter((p) => !p.lowPrecision);
         if (points.length === 0) { setPossibleDupes({}); setInSweepDupes({}); return; }
 
         // In-sweep staging-vs-staging dedupe: rows within 150m of each other are
@@ -332,7 +348,7 @@ export default function ResearchRunApprovalModal({
         setInSweepDupes(siblings);
 
         const { data, error: rpcErr } = await supabase.rpc('find_nearby_municipal_projects', {
-          p_points: points,
+          p_points: points.map((p) => ({ staging_id: p.staging_id, lat: p.lat, lng: p.lng })),
           p_radius_meters: 150,
         });
         if (rpcErr) throw rpcErr;
@@ -400,7 +416,9 @@ export default function ResearchRunApprovalModal({
   };
   const isFlagged = (r: StagingRow) => {
     const f = rowFlags(r);
-    return f.matched || f.possible || f.inSweep;
+    // Low-precision rows count as "needs attention": the dup check couldn't run,
+    // so focus mode must keep them visible rather than hide an undetectable dupe.
+    return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id));
   };
   // Sort weight: ambiguous & unresolved first, decided last.
   //   0 flagged pending · 1 clean pending · 2 approved · 3 rejected
@@ -430,7 +448,7 @@ export default function ResearchRunApprovalModal({
       }))
       .filter((g) => g.rows.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grouped, focusFlagged, hideApproved, hideRejected, possibleDupes, inSweepDupes]);
+  }, [grouped, focusFlagged, hideApproved, hideRejected, possibleDupes, inSweepDupes, lowPrecisionGeo]);
 
   // ---- handlers ----
   const setEdit = (id: string, key: keyof Edits, value: string) => {
@@ -909,6 +927,15 @@ export default function ResearchRunApprovalModal({
                                     title={`Within ~150m of ${inSweepDupes[r.id].length} other staged row(s) in this sweep — likely the same project surfaced in adjacent chunk windows. Approve only one.`}
                                   >
                                     ⚠ IN-SWEEP DUPLICATE
+                                  </span>
+                                )}
+                                {r.approval_state === 'pending' && !r.matched_existing_id && lowPrecisionGeo.has(r.id) && (
+                                  <span
+                                    className="px-2 py-0.5 rounded-full border border-dashed"
+                                    style={{ borderColor: '#8FA9C8', color: '#8FA9C8', backgroundColor: '#FFFFFF' }}
+                                    title="This address only geocoded to a street/area centroid, not a specific address, so the duplicate check couldn't run reliably for this row — every project on the same road lands on the same point. Compare the address by hand before approving."
+                                  >
+                                    ℹ APPROX. LOCATION · dup-check skipped
                                   </span>
                                 )}
                                 {r.approval_state === 'approved' && (

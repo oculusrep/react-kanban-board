@@ -8,6 +8,12 @@ export interface GeocodeResult {
   zip?: string;
   county?: string;
   provider?: 'google' | 'openstreetmap';
+  // Google's precision of the returned point. ROOFTOP / RANGE_INTERPOLATED are
+  // address-level; GEOMETRIC_CENTER / APPROXIMATE are coarse (a street centroid
+  // or a region) — a street-only address collapses every project on that road
+  // to one point. Undefined on the OSM fallback path. Consumers doing proximity
+  // math (e.g. dedupe) should down-weight non-address-level results.
+  location_type?: 'ROOFTOP' | 'RANGE_INTERPOLATED' | 'GEOMETRIC_CENTER' | 'APPROXIMATE';
 }
 
 export interface GeocodeError {
@@ -162,6 +168,7 @@ class GeocodingService {
         zip: components.zip || undefined,
         county: components.county || undefined,
         provider: 'google',
+        location_type: geometry.location_type,
       };
 
     } catch (error) {
