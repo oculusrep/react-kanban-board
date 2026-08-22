@@ -9,6 +9,12 @@ import { Link } from "react-router-dom";
 import useKanbanData from "../hooks/useKanbanData";
 import { supabase } from "../lib/supabaseClient";
 import { DealCard } from "../lib/types"; // Import from central types
+import { isBorDeal } from "../lib/bor";
+
+// Broker of Record cards show the BOR Fee (Oculus's cut), not the full commission
+// or deal value. See docs/BOR_DEAL_FEATURE_SPEC.md.
+const kanbanAmount = (card: DealCard): number =>
+  isBorDeal(card) ? (card.bor_fee_usd ?? 0) : (card.fee ?? 0);
 import ConfirmDialog from "./ConfirmDialog";
 import Toast from "./Toast";
 import { useToast } from "../hooks/useToast";
@@ -606,7 +612,7 @@ export default function KanbanBoard() {
             }
 
             const totalFee = cardsInColumn.reduce(
-              (sum, card) => sum + (card.fee ?? 0),
+              (sum, card) => sum + kanbanAmount(card),
               0
             );
             const isLastColumn = index === columns.length - 1;
@@ -751,14 +757,17 @@ export default function KanbanBoard() {
                                 </Link>
                               </div>
                               <div style={{ color: '#4A6B94' }}>
-                                {formatCurrency(card.fee)}
+                                {formatCurrency(kanbanAmount(card))}
                               </div>
                               <div className="text-gray-500 text-xs">
                                 {card.client_name || 'No Client'}
                               </div>
-                              <div style={{ color: '#4A6B94' }}>
-                                {formatCurrency(card.deal_value)}
-                              </div>
+                              {/* BOR cards show only the BOR Fee above; the full deal value is pass-through and intentionally hidden */}
+                              {!isBorDeal(card) && (
+                                <div style={{ color: '#4A6B94' }}>
+                                  {formatCurrency(card.deal_value)}
+                                </div>
+                              )}
                               {/* Handoff Toggle + Behind Schedule Badge */}
                               {(() => {
                                 const daysInStage = getDaysInStage(card.last_stage_change_at, card.created_at);

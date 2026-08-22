@@ -19,6 +19,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import DealSynopsis from '../components/DealSynopsis';
 import { useToast } from '../hooks/useToast';
 import { useTrackPageView, useRecentlyViewed } from '../hooks/useRecentlyViewed';
+import { BOR_TRANSACTION_TYPE_ID, MIKE_DEAL_TEAM_ID } from '../lib/bor';
 
 export default function DealDetailsPage() {
   const { dealId } = useParams<{ dealId: string }>();
@@ -28,6 +29,7 @@ export default function DealDetailsPage() {
   const [deal, setDeal] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isNewDeal, setIsNewDeal] = useState(false);
+  const [newDealIsBor, setNewDealIsBor] = useState(false);
   const [dealSidebarOpen, setDealSidebarOpen] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCreateDealPrompt, setShowCreateDealPrompt] = useState(false);
@@ -90,18 +92,20 @@ export default function DealDetailsPage() {
   // Set page title
   useEffect(() => {
     if (isNewDeal) {
-      document.title = "New Deal | OVIS";
+      document.title = newDealIsBor ? "New BOR Deal | OVIS" : "New Deal | OVIS";
     } else if (deal?.deal_name) {
       document.title = `${deal.deal_name} | OVIS`;
     } else {
       document.title = "Deal | OVIS";
     }
-  }, [deal, isNewDeal]);
+  }, [deal, isNewDeal, newDealIsBor]);
 
   useEffect(() => {
     const fetchDeal = async () => {
       if (actualDealId === 'new') {
-        console.log('Creating new blank deal...');
+        // Broker of Record deal (from "Add New BOR Deal") — see docs/BOR_DEAL_FEATURE_SPEC.md
+        const isBor = searchParams.get('type') === 'bor';
+        console.log(isBor ? 'Creating new blank BOR deal...' : 'Creating new blank deal...');
         // Create a blank deal object for new deals
         const blankDeal = {
           id: null,
@@ -128,12 +132,18 @@ export default function DealDetailsPage() {
           booked: null,
           loss_reason: null,
           is_active: true,
+          // BOR defaults: pre-select the BOR transaction type and default the
+          // Deal Team to Mike. bor_fee_usd is the flat Oculus fee (entered later).
+          transaction_type_id: isBor ? BOR_TRANSACTION_TYPE_ID : null,
+          deal_team_id: isBor ? MIKE_DEAL_TEAM_ID : null,
+          bor_fee_usd: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
         console.log('Blank deal created:', blankDeal);
         setDeal(blankDeal);
         setIsNewDeal(true);
+        setNewDealIsBor(isBor);
         return;
       }
 

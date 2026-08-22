@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { prepareInsert, prepareUpdate } from "../lib/supabaseHelpers";
+import { BOR_TRANSACTION_TYPE_ID } from "../lib/bor";
 import { formatCurrency, formatPercent, formatIntegerPercent } from "../utils/format";
 import FormattedInput from "./FormattedInput";
 import FormattedField from "./shared/FormattedField";
@@ -55,6 +56,7 @@ interface Deal {
   deal_value: number | null;
   commission_percent: number | null;
   flat_fee_override: number | null;
+  bor_fee_usd?: number | null; // Broker of Record deals: flat fee Oculus keeps
   fee: number | null;
   house_percent: number | null;
   origination_percent: number | null;
@@ -181,6 +183,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       deal_value: formData.deal_value,
       commission_percent: formData.commission_percent,
       flat_fee_override: formData.flat_fee_override,
+      bor_fee_usd: formData.bor_fee_usd,
       fee: calculatedFee,
       target_close_date: formData.target_close_date,
       loi_signed_date: formData.loi_signed_date,
@@ -376,6 +379,9 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
 
   const calculatedFee =
     form.flat_fee_override ?? (form.deal_value ?? 0) * ((form.commission_percent ?? 0) / 100);
+
+  // Broker of Record deals show a slimmed-down form. See docs/BOR_DEAL_FEATURE_SPEC.md
+  const isBor = form.transaction_type_id === BOR_TRANSACTION_TYPE_ID;
 
   // Helper: get current stage label
   const getStageLabel = () => stageOptions.find(s => s.id === form.stage_id)?.label;
@@ -599,6 +605,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       deal_value: form.deal_value,
       commission_percent: form.commission_percent,
       flat_fee_override: form.flat_fee_override,
+      bor_fee_usd: form.bor_fee_usd,
       fee: calculatedFee,
       target_close_date: form.target_close_date,
       loi_signed_date: form.loi_signed_date,
@@ -731,6 +738,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
+      bor_fee_usd: updatedForm.bor_fee_usd,
       fee: calculatedFee,
       target_close_date: updatedForm.target_close_date,
       loi_signed_date: updatedForm.loi_signed_date,
@@ -832,6 +840,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
+      bor_fee_usd: updatedForm.bor_fee_usd,
       fee: calculatedFee,
       target_close_date: updatedForm.target_close_date,
       loi_signed_date: updatedForm.loi_signed_date,
@@ -933,6 +942,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
+      bor_fee_usd: updatedForm.bor_fee_usd,
       fee: calculatedFee,
       target_close_date: updatedForm.target_close_date,
       loi_signed_date: updatedForm.loi_signed_date,
@@ -1064,7 +1074,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
             )}
           </div>
           <AlwaysEditableAutocomplete
-            label="Client"
+            label={isBor ? "Referral Partner" : "Client"}
             search={clientSearch}
             setSearch={setClientSearch}
             suggestions={clientSuggestions}
@@ -1083,20 +1093,25 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
             onChange={(id) => updateField("property_id", id)}
             label="Property"
           />
-          <PropertyUnitSelector
-            value={form.property_unit_id}
-            onChange={(id) => updateField("property_unit_id", id)}
-            propertyId={form.property_id} // Filter units by selected property
-            label="Property Unit"
-          />
+          {/* BOR deals: Property Unit / Site Submit / Transaction Type hidden for quick entry */}
+          {!isBor && (
+            <PropertyUnitSelector
+              value={form.property_unit_id}
+              onChange={(id) => updateField("property_unit_id", id)}
+              propertyId={form.property_id} // Filter units by selected property
+              label="Property Unit"
+            />
+          )}
 
           {/* Row 3: Site Submit (left) + Deal Team (right) */}
-          <SiteSubmitSelector
-            value={form.site_submit_id}
-            onChange={(id) => updateField("site_submit_id", id)}
-            label="Site Submit"
-            onViewDetails={onViewSiteSubmitDetails}
-          />
+          {!isBor && (
+            <SiteSubmitSelector
+              value={form.site_submit_id}
+              onChange={(id) => updateField("site_submit_id", id)}
+              label="Site Submit"
+              onViewDetails={onViewSiteSubmitDetails}
+            />
+          )}
           <CustomSelect
             label="Deal Team"
             value={form.deal_team_id}
@@ -1106,14 +1121,18 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
           />
 
           {/* Row 4: Transaction Type (left) + empty (right) */}
-          <CustomSelect
-            label="Transaction Type"
-            value={form.transaction_type_id}
-            onChange={(v) => updateField("transaction_type_id", v)}
-            options={transactionTypeOptions}
-            placeholder="-- Select Transaction Type --"
-          />
-          <div></div>
+          {!isBor && (
+            <>
+              <CustomSelect
+                label="Transaction Type"
+                value={form.transaction_type_id}
+                onChange={(v) => updateField("transaction_type_id", v)}
+                options={transactionTypeOptions}
+                placeholder="-- Select Transaction Type --"
+              />
+              <div></div>
+            </>
+          )}
 
           {errors.deal_name && <FieldError msg={errors.deal_name} className="col-span-2" />}
         </div>
@@ -1156,6 +1175,21 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
               {isNaN(calculatedFee) ? "" : formatCurrency(calculatedFee, 2)}
             </div>
           </div>
+
+          {/* BOR deals: the flat fee Oculus keeps (the rest passes through to the referral partner) */}
+          {isBor && (
+            <div>
+              <FormattedField
+                label="BOR Fee"
+                type="currency"
+                value={form.bor_fee_usd ?? null}
+                onChange={(v) => updateField("bor_fee_usd", v)}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Oculus's compensation. The remaining {isNaN(calculatedFee) ? "commission" : formatCurrency(calculatedFee, 2)} less this fee passes through to the referral partner.
+              </p>
+            </div>
+          )}
         </div>
       </Section>
 

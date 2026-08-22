@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Deal, Broker, CommissionSplit, DealUpdateHandler } from '../lib/types';
 import CommissionDetailsSection from './CommissionDetailsSection';
 import CommissionSplitSection from './CommissionSplitSection';
+import { isBorDeal } from '../lib/bor';
 import { useCommissionCalculations } from '../hooks/useCommissionCalculations';
 
 interface CommissionTabProps {
@@ -469,16 +470,19 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       )}
 
       {/* Commission Details Section - Now using the separate component */}
-      <CommissionDetailsSection 
-        deal={deal} 
-        onFieldUpdate={updateField} 
+      <CommissionDetailsSection
+        deal={deal}
+        onFieldUpdate={updateField}
+        isBor={isBorDeal(deal)}
       />
 
-      {/* Commission Splits Section - NOW USING THE SEPARATE COMPONENT */}
-      <CommissionSplitSection 
-        deal={deal} 
-        onDealUpdate={onDealUpdate} 
-      />
+      {/* Commission Splits Section - hidden for BOR deals (no broker splits) */}
+      {!isBorDeal(deal) && (
+        <CommissionSplitSection
+          deal={deal}
+          onDealUpdate={onDealUpdate}
+        />
+      )}
 
       {/* Payment Management Section */}
       <Section title="Payment Management" help="Manage payments based on commission splits">

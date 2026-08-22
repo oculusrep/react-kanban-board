@@ -368,6 +368,10 @@ export default function Navbar() {
       action: () => navigate('/deal/new')
     },
     {
+      label: "Add New BOR Deal",
+      action: () => navigate('/deal/new?type=bor')
+    },
+    {
       label: "Search Deals",
       action: () => setSearchModals(prev => ({ ...prev, deals: true }))
     }

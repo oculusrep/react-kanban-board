@@ -14,6 +14,7 @@ export interface Deal {
   // Commission fields
   commission_percent?: number | null;
   flat_fee_override?: number | null;
+  bor_fee_usd?: number | null; // Broker of Record deals: flat fee Oculus keeps
   fee?: number | null;
   
   // Deal-level commission breakdown
@@ -92,6 +93,9 @@ export interface DealCard {
   synopsis_alert_level?: 'green' | 'yellow' | 'red' | null;
   // Kanban-specific fields
   fee?: number | null;
+  // Broker of Record: card shows bor_fee_usd (Oculus's cut) instead of fee/deal_value
+  transaction_type_id?: string | null;
+  bor_fee_usd?: number | null;
   stage_id?: string | null;
   kanban_position?: number | null;
   closed_date?: string | null;

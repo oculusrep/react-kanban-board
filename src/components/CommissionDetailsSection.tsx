@@ -8,6 +8,8 @@ import { useCommissionCalculations } from '../hooks/useCommissionCalculations';
 interface CommissionDetailsSectionProps {
   deal: Deal;
   onFieldUpdate: (field: string, value: any) => void;
+  // Broker of Record deals show a slim view — no house/broker splits. See docs/BOR_DEAL_FEATURE_SPEC.md
+  isBor?: boolean;
 }
 
 interface SectionProps {
@@ -38,7 +40,8 @@ const Section: React.FC<SectionProps> = ({ title, help, children }) => {
 
 const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
   deal,
-  onFieldUpdate
+  onFieldUpdate,
+  isBor = false
 }) => {
   const { baseAmounts } = useCommissionCalculations(deal);
   const formatCurrency = (amount: number | null): string => {
@@ -53,6 +56,59 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
     if (percent === null || percent === undefined) return '0.0%';
     return `${percent.toFixed(1)}%`;
   };
+
+  // Broker of Record: there are no splits — Oculus keeps the flat BOR Fee and
+  // passes the rest through to the referral partner. Show only what's relevant.
+  if (isBor) {
+    const passThrough = (deal.fee ?? 0) - (deal.bor_fee_usd ?? 0);
+    return (
+      <Section title="Commission Details" help="Broker of Record: Oculus keeps the flat BOR Fee; the remainder passes through to the referral partner.">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <FormattedField
+            label="Commission Rate %"
+            type="percentage"
+            value={deal.commission_percent ?? null}
+            onChange={(v) => onFieldUpdate('commission_percent', v)}
+            maxValue={100}
+          />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Full Commission (Calculated Fee)</label>
+            <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
+              {formatCurrency(deal.fee ?? null)}
+            </div>
+          </div>
+
+          <FormattedField
+            label="Number of Payments"
+            type="number"
+            value={deal.number_of_payments ?? null}
+            onChange={(v) => onFieldUpdate('number_of_payments', v)}
+            decimalPlaces={0}
+          />
+
+          <FormattedField
+            label="BOR Fee (Oculus keeps)"
+            type="currency"
+            value={deal.bor_fee_usd ?? null}
+            onChange={(v) => onFieldUpdate('bor_fee_usd', v)}
+          />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Pass-Through to Referral Partner</label>
+            <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
+              {formatCurrency(passThrough)}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 text-xs text-gray-500">
+          Full commission is collected and passed through to the referral partner (your Client);
+          only the BOR Fee is Oculus income. No broker splits apply.
+        </div>
+      </Section>
+    );
+  }
 
   return (
     <Section title="Commission Details" help="Set commission percentages and amounts. Click any percentage to edit.">

@@ -33,7 +33,7 @@ export default function useKanbanData() {
         // Fetch deals WITHOUT client join first
         const { data: dealData, error: dealError } = await supabase
           .from('deal')
-          .select('id, deal_name, fee, deal_value, closed_date, stage_id, kanban_position, client_id, created_at, last_stage_change_at, is_behind_schedule, weeks_behind, current_handoff_holder, current_handoff_date, current_handoff_document')
+          .select('id, deal_name, fee, deal_value, transaction_type_id, bor_fee_usd, closed_date, stage_id, kanban_position, client_id, created_at, last_stage_change_at, is_behind_schedule, weeks_behind, current_handoff_holder, current_handoff_date, current_handoff_document')
           .order('kanban_position', { ascending: true });
 
         console.log('💼 Deals:', dealData?.length || 0, 'deals fetched');
@@ -79,6 +79,8 @@ export default function useKanbanData() {
           deal_name: deal.deal_name,
           fee: deal.fee,
           deal_value: deal.deal_value,
+          transaction_type_id: deal.transaction_type_id,
+          bor_fee_usd: deal.bor_fee_usd,
           closed_date: deal.closed_date,
           stage_id: deal.stage_id,
           kanban_position: deal.kanban_position,
