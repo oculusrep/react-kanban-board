@@ -1232,22 +1232,27 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
             value={form.target_close_date}
             onChange={(v) => updateField("target_close_date", v)}
           />
-          <DateInput
-            label="LOI Written Date"
-            value={form.loi_date}
-            onChange={(v) => updateField("loi_date", v)}
-            tooltip="Date LOI was written/sent. Syncs with Site Submit."
-          />
-          <DateInput
-            label="LOI Signed Date"
-            value={form.loi_signed_date}
-            onChange={(v) => updateField("loi_signed_date", v)}
-          />
-          <DateInput
-            label="Contract X Date"
-            value={form.contract_signed_date}
-            onChange={(v) => updateField("contract_signed_date", v)}
-          />
+          {/* BOR deals have no LOI/contract milestones — hidden */}
+          {!isBor && (
+            <>
+              <DateInput
+                label="LOI Written Date"
+                value={form.loi_date}
+                onChange={(v) => updateField("loi_date", v)}
+                tooltip="Date LOI was written/sent. Syncs with Site Submit."
+              />
+              <DateInput
+                label="LOI Signed Date"
+                value={form.loi_signed_date}
+                onChange={(v) => updateField("loi_signed_date", v)}
+              />
+              <DateInput
+                label="Contract X Date"
+                value={form.contract_signed_date}
+                onChange={(v) => updateField("contract_signed_date", v)}
+              />
+            </>
+          )}
           <DateInput
             label="Booked Date"
             value={form.booked_date}
@@ -1286,28 +1291,30 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
         </div>
       </Section>
 
-      {/* SECTION: Forecasting */}
-      <ForecastingSection
-        dealId={form.id}
-        isNewDeal={isNewDeal}
-        transactionTypeLabel={transactionTypeOptions.find(t => t.id === form.transaction_type_id)?.label}
-        clientId={form.client_id}
-        stageLabel={stageLabel}
-        loiDate={form.loi_date ?? null}
-        loiSignedDate={form.loi_signed_date}
-        contractSignedDate={form.contract_signed_date}
-        lastStageChangeAt={form.last_stage_change_at}
-        createdAt={form.created_at ?? null}
-        contingencyPeriodDays={form.contingency_period_days ?? null}
-        rentCommencementDays={form.rent_commencement_days ?? null}
-        dueDiligenceDays={form.due_diligence_days ?? null}
-        closingDeadlineDays={form.closing_deadline_days ?? null}
-        estimatedExecutionDate={form.estimated_execution_date ?? null}
-        isBehindSchedule={form.is_behind_schedule ?? false}
-        weeksBehind={form.weeks_behind ?? 0}
-        onChange={(field, value) => updateField(field, value)}
-        defaultCollapsed={!isNewDeal}
-      />
+      {/* SECTION: Forecasting — not applicable to BOR pass-through deals */}
+      {!isBor && (
+        <ForecastingSection
+          dealId={form.id}
+          isNewDeal={isNewDeal}
+          transactionTypeLabel={transactionTypeOptions.find(t => t.id === form.transaction_type_id)?.label}
+          clientId={form.client_id}
+          stageLabel={stageLabel}
+          loiDate={form.loi_date ?? null}
+          loiSignedDate={form.loi_signed_date}
+          contractSignedDate={form.contract_signed_date}
+          lastStageChangeAt={form.last_stage_change_at}
+          createdAt={form.created_at ?? null}
+          contingencyPeriodDays={form.contingency_period_days ?? null}
+          rentCommencementDays={form.rent_commencement_days ?? null}
+          dueDiligenceDays={form.due_diligence_days ?? null}
+          closingDeadlineDays={form.closing_deadline_days ?? null}
+          estimatedExecutionDate={form.estimated_execution_date ?? null}
+          isBehindSchedule={form.is_behind_schedule ?? false}
+          weeksBehind={form.weeks_behind ?? 0}
+          onChange={(field, value) => updateField(field, value)}
+          defaultCollapsed={!isNewDeal}
+        />
+      )}
 
       {/* Record Metadata - only show for existing deals */}
       {!isNewDeal && deal.id && (
