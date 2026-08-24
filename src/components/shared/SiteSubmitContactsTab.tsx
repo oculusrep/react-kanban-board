@@ -494,8 +494,9 @@ export default function SiteSubmitContactsTab({
         />
       )}
 
-      {/* Add Deal Contacts Modal — reuses AddContactsModal but inserts into deal_contact */}
-      {showAddDealModal && dealId && propertyId && (
+      {/* Add Deal Contacts Modal — reuses AddContactsModal but inserts into deal_contact.
+          Only needs dealId (BOR/property-less deals have no propertyId). */}
+      {showAddDealModal && dealId && (
         <AddDealContactsModal
           isOpen={showAddDealModal}
           onClose={() => setShowAddDealModal(false)}
@@ -514,8 +515,8 @@ export default function SiteSubmitContactsTab({
         />
       )}
 
-      {/* Contact Form Modal */}
-      {showContactForm && propertyId && (
+      {/* Contact Form Modal — allow in a deal context even without a property (BOR) */}
+      {showContactForm && (propertyId || dealId) && (
         <ContactFormModal
           isOpen={showContactForm}
           onClose={() => {
