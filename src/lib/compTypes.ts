@@ -4,13 +4,44 @@
 
 export type CompSourceType = 'manual' | 'costar' | 'crexi' | 'om' | 'ai_agent';
 export type CompConfidence = 'unverified' | 'reported' | 'verified';
-export type LeaseType = 'nnn' | 'gross' | 'modified_gross' | 'ground';
+export type LeaseType = 'ground_lease' | 'bts_nnn' | 'bts_nn' | 'multi_tenant';
 export type OccupancyStatus = 'occupied' | 'vacant' | 'dark';
 export type SaleCondition = 'arms_length' | 'distressed' | 'portfolio' | 'related_party' | 'other';
 
 export const SOURCE_TYPES: CompSourceType[] = ['manual', 'costar', 'crexi', 'om', 'ai_agent'];
 export const CONFIDENCE_LEVELS: CompConfidence[] = ['unverified', 'reported', 'verified'];
-export const LEASE_TYPES: LeaseType[] = ['nnn', 'gross', 'modified_gross', 'ground'];
+export const LEASE_TYPES: LeaseType[] = ['ground_lease', 'bts_nnn', 'bts_nn', 'multi_tenant'];
+
+// Display labels + which lease-comp fields are relevant per type (drives conditional entry fields).
+export const LEASE_TYPE_OPTIONS: { value: LeaseType; label: string }[] = [
+  { value: 'ground_lease', label: 'Ground Lease' },
+  { value: 'bts_nnn', label: 'BTS (NNN)' },
+  { value: 'bts_nn', label: 'BTS (NN)' },
+  { value: 'multi_tenant', label: 'Multi-Tenant' },
+];
+
+export const LEASE_TYPE_LABEL: Record<LeaseType, string> = {
+  ground_lease: 'Ground Lease',
+  bts_nnn: 'BTS (NNN)',
+  bts_nn: 'BTS (NN)',
+  multi_tenant: 'Multi-Tenant',
+};
+
+// Fields shown in the Add/Edit Lease card for each lease type. Everything not listed here is always
+// shown (tenant, brand, dates, term, escalation, options, reported sales, source, confidence).
+export type LeaseField =
+  | 'suite' | 'tenant_sqft' | 'annual_base_rent' | 'base_rent_psf' | 'nnn_psf' | 'ti_psf' | 'free_rent_months';
+
+export const LEASE_TYPE_FIELDS: Record<LeaseType, LeaseField[]> = {
+  // Ground lease = land only: a flat annual ground rent, no building SF / NNN / TI / suite.
+  ground_lease: ['annual_base_rent'],
+  // Build-to-suit single tenant (triple net): building SF + rent PSF + NNN + TI + free rent, no suite.
+  bts_nnn: ['tenant_sqft', 'base_rent_psf', 'nnn_psf', 'ti_psf', 'free_rent_months'],
+  // Build-to-suit single tenant (double net): same fields; the NN vs NNN distinction is the type itself.
+  bts_nn: ['tenant_sqft', 'base_rent_psf', 'nnn_psf', 'ti_psf', 'free_rent_months'],
+  // Tenant within a multi-tenant center: adds Suite.
+  multi_tenant: ['suite', 'tenant_sqft', 'base_rent_psf', 'nnn_psf', 'ti_psf', 'free_rent_months'],
+};
 export const OCCUPANCY_STATUSES: OccupancyStatus[] = ['occupied', 'vacant', 'dark'];
 export const SALE_CONDITIONS: SaleCondition[] = ['arms_length', 'distressed', 'portfolio', 'related_party', 'other'];
 

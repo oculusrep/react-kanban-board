@@ -3,9 +3,11 @@ import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../utils/format';
 import geocodingService from '../../../services/geocodingService';
+import FormattedField from '../../shared/FormattedField';
 import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
-  SOURCE_TYPES, CONFIDENCE_LEVELS, LEASE_TYPES, OCCUPANCY_STATUSES, SALE_CONDITIONS,
+  SOURCE_TYPES, CONFIDENCE_LEVELS, OCCUPANCY_STATUSES, SALE_CONDITIONS,
+  LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS,
 } from '../../../lib/compTypes';
 import {
   allInRentPsf, effectiveRentPsf, monthsRemaining,
@@ -48,6 +50,32 @@ const Field: React.FC<{ label: string; children: React.ReactNode; className?: st
   <div className={className}>
     <label className={labelCls}>{label}</label>
     {children}
+  </div>
+);
+
+// Property/site-submit-style form controls (match FormattedField's label + input styling), used in
+// the lease/sale entry cards so currency, text, date and selects all read like the property sidebar.
+const ffLabelCls = 'block text-form-label font-medium text-gray-700 mb-form-label-gap';
+const ffInputCls =
+  'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-form-input-lg min-h-input';
+
+const TxtField: React.FC<{
+  label: string; value: string; onChange: (v: string) => void;
+  type?: 'text' | 'date'; placeholder?: string; className?: string;
+}> = ({ label, value, onChange, type = 'text', placeholder, className }) => (
+  <div className={className}>
+    <label className={ffLabelCls}>{label}</label>
+    <input type={type} className={ffInputCls} value={value} placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)} />
+  </div>
+);
+
+const SelField: React.FC<{
+  label: string; value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string;
+}> = ({ label, value, onChange, children, className }) => (
+  <div className={className}>
+    <label className={ffLabelCls}>{label}</label>
+    <select className={ffInputCls} value={value} onChange={(e) => onChange(e.target.value)}>{children}</select>
   </div>
 );
 
@@ -504,7 +532,7 @@ const OverviewBody: React.FC<{
 // ===========================================================================
 const emptyLease = {
   tenant_name: '', merchant_brand_id: '', suite: '', tenant_sqft: '', lease_type: '',
-  base_rent_psf: '', nnn_psf: '', lease_commencement_date: '', lease_expiration_date: '',
+  base_rent_psf: '', annual_base_rent: '', nnn_psf: '', lease_commencement_date: '', lease_expiration_date: '',
   lease_term_months: '', escalation_pct: '', free_rent_months: '', ti_psf: '',
   reported_tenant_sales: '', occupancy_status: '', source_type: 'manual', confidence: 'unverified',
 };
@@ -514,14 +542,14 @@ const LeasesTab: React.FC<{
 }> = ({ compId, leases, brands, userId, reload }) => {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [f, setF] = useState({ ...emptyLease });
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<any>) => setF((p) => ({ ...p, [k]: e.target.value }));
 
   const startNew = () => { setF({ ...emptyLease }); setEditing('new'); };
   const startEdit = (l: LeaseComp) => {
     setF({
       tenant_name: l.tenant_name ?? '', merchant_brand_id: l.merchant_brand_id ?? '', suite: l.suite ?? '',
       tenant_sqft: l.tenant_sqft?.toString() ?? '', lease_type: l.lease_type ?? '',
-      base_rent_psf: l.base_rent_psf?.toString() ?? '', nnn_psf: l.nnn_psf?.toString() ?? '',
+      base_rent_psf: l.base_rent_psf?.toString() ?? '', annual_base_rent: l.annual_base_rent?.toString() ?? '',
+      nnn_psf: l.nnn_psf?.toString() ?? '',
       lease_commencement_date: l.lease_commencement_date ?? '', lease_expiration_date: l.lease_expiration_date ?? '',
       lease_term_months: l.lease_term_months?.toString() ?? '', escalation_pct: l.escalation_pct?.toString() ?? '',
       free_rent_months: l.free_rent_months?.toString() ?? '', ti_psf: l.ti_psf?.toString() ?? '',
@@ -531,21 +559,39 @@ const LeasesTab: React.FC<{
     setEditing(l.id);
   };
 
+  // Conditional entry fields for the selected lease type (Ground Lease / BTS / Multi-Tenant).
+  const type = (f.lease_type || '') as LeaseType | '';
+  const typeFields: LeaseField[] = type && LEASE_TYPE_FIELDS[type] ? LEASE_TYPE_FIELDS[type] : [];
+  const has = (x: LeaseField) => typeFields.includes(x);
+
+  // string / number binders for the property-styled controls
+  const setV = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
+  const money = (k: keyof typeof f) => ({
+    value: num(f[k]),
+    onChange: (v: number | null) => setF((p) => ({ ...p, [k]: v == null ? '' : String(v) })),
+  });
+
   const save = async () => {
     const base = num(f.base_rent_psf);
     const nnn = num(f.nnn_psf);
     const sqft = num(f.tenant_sqft);
+    // Ground lease captures a flat annual ground rent directly; others derive annual = PSF × SF.
+    const annualDirect = num(f.annual_base_rent);
     const payload: any = {
       comp_property_id: compId,
-      tenant_name: str(f.tenant_name), merchant_brand_id: f.merchant_brand_id || null, suite: str(f.suite),
-      tenant_sqft: sqft, lease_type: f.lease_type || null,
-      base_rent_psf: base, nnn_psf: nnn,
-      all_in_rent_psf: allInRentPsf(base, nnn),
-      annual_base_rent: base != null && sqft != null ? base * sqft : null,
+      tenant_name: str(f.tenant_name), merchant_brand_id: f.merchant_brand_id || null,
+      suite: has('suite') ? str(f.suite) : null,
+      tenant_sqft: has('tenant_sqft') ? sqft : null,
+      lease_type: f.lease_type || null,
+      base_rent_psf: has('base_rent_psf') ? base : null,
+      nnn_psf: has('nnn_psf') ? nnn : null,
+      all_in_rent_psf: has('base_rent_psf') ? allInRentPsf(base, nnn) : null,
+      annual_base_rent: annualDirect != null ? annualDirect : (base != null && sqft != null ? base * sqft : null),
       lease_commencement_date: f.lease_commencement_date || null,
       lease_expiration_date: f.lease_expiration_date || null,
       lease_term_months: num(f.lease_term_months), escalation_pct: num(f.escalation_pct),
-      free_rent_months: num(f.free_rent_months), ti_psf: num(f.ti_psf),
+      free_rent_months: has('free_rent_months') ? num(f.free_rent_months) : null,
+      ti_psf: has('ti_psf') ? num(f.ti_psf) : null,
       reported_tenant_sales: num(f.reported_tenant_sales),
       sales_psf: salesPsf(num(f.reported_tenant_sales), sqft),
       occupancy_status: f.occupancy_status || null,
@@ -567,55 +613,61 @@ const LeasesTab: React.FC<{
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Tenant Name"><input className={inputCls} value={f.tenant_name} onChange={set('tenant_name')} /></Field>
-          <Field label="Brand (known chain)">
-            <select className={inputCls} value={f.merchant_brand_id} onChange={set('merchant_brand_id')}>
-              <option value="">—</option>
-              {brands.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Suite"><input className={inputCls} value={f.suite} onChange={set('suite')} /></Field>
-          <Field label="Tenant SF"><input className={inputCls} value={f.tenant_sqft} onChange={set('tenant_sqft')} /></Field>
-          <Field label="Lease Type">
-            <select className={inputCls} value={f.lease_type} onChange={set('lease_type')}>
-              <option value="">—</option>
-              {LEASE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Field>
-          <Field label="Occupancy">
-            <select className={inputCls} value={f.occupancy_status} onChange={set('occupancy_status')}>
-              <option value="">—</option>
-              {OCCUPANCY_STATUSES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Field>
-          <Field label="Base Rent PSF"><input className={inputCls} value={f.base_rent_psf} onChange={set('base_rent_psf')} /></Field>
-          <Field label="NNN PSF"><input className={inputCls} value={f.nnn_psf} onChange={set('nnn_psf')} /></Field>
-          <Field label="Commencement"><input type="date" className={inputCls} value={f.lease_commencement_date} onChange={set('lease_commencement_date')} /></Field>
-          <Field label="Expiration"><input type="date" className={inputCls} value={f.lease_expiration_date} onChange={set('lease_expiration_date')} /></Field>
-          <Field label="Term (months)"><input className={inputCls} value={f.lease_term_months} onChange={set('lease_term_months')} /></Field>
-          <Field label="Escalation %/yr"><input className={inputCls} value={f.escalation_pct} onChange={set('escalation_pct')} /></Field>
-          <Field label="Free Rent (months)"><input className={inputCls} value={f.free_rent_months} onChange={set('free_rent_months')} /></Field>
-          <Field label="TI PSF"><input className={inputCls} value={f.ti_psf} onChange={set('ti_psf')} /></Field>
-          <Field label="Reported Tenant Sales (annual)" className="col-span-2"><input className={inputCls} value={f.reported_tenant_sales} onChange={set('reported_tenant_sales')} /></Field>
-          <Field label="Source">
-            <select className={inputCls} value={f.source_type} onChange={set('source_type')}>
-              {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </Field>
-          <Field label="Confidence">
-            <select className={inputCls} value={f.confidence} onChange={set('confidence')}>
-              {CONFIDENCE_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </Field>
+          <TxtField label="Tenant Name" value={f.tenant_name} onChange={setV('tenant_name')} />
+          <SelField label="Brand (known chain)" value={f.merchant_brand_id} onChange={setV('merchant_brand_id')}>
+            <option value="">—</option>
+            {brands.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+          </SelField>
+          <SelField label="Lease Type" value={f.lease_type} onChange={setV('lease_type')}>
+            <option value="">Select a type…</option>
+            {LEASE_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </SelField>
+          <SelField label="Occupancy" value={f.occupancy_status} onChange={setV('occupancy_status')}>
+            <option value="">—</option>
+            {OCCUPANCY_STATUSES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </SelField>
+
+          {/* Type-specific rent fields */}
+          {has('suite') && <TxtField label="Suite" value={f.suite} onChange={setV('suite')} />}
+          {has('tenant_sqft') && <FormattedField label="Tenant SF" type="number" decimalPlaces={0} {...money('tenant_sqft')} />}
+          {has('annual_base_rent') && <FormattedField label="Annual Ground Rent" type="currency" decimalPlaces={0} {...money('annual_base_rent')} />}
+          {has('base_rent_psf') && <FormattedField label="Base Rent PSF" type="currency" {...money('base_rent_psf')} />}
+          {has('nnn_psf') && <FormattedField label="NNN PSF" type="currency" {...money('nnn_psf')} />}
+          {has('ti_psf') && <FormattedField label="TI PSF" type="currency" {...money('ti_psf')} />}
+          {has('free_rent_months') && <FormattedField label="Free Rent (months)" type="number" decimalPlaces={0} {...money('free_rent_months')} />}
+
+          {/* Common term fields */}
+          <TxtField label="Commencement" type="date" value={f.lease_commencement_date} onChange={setV('lease_commencement_date')} />
+          <TxtField label="Expiration" type="date" value={f.lease_expiration_date} onChange={setV('lease_expiration_date')} />
+          <FormattedField label="Term (months)" type="number" decimalPlaces={0} {...money('lease_term_months')} />
+          <FormattedField label="Escalation %/yr" type="percentage" {...money('escalation_pct')} />
+          <FormattedField label="Reported Tenant Sales (annual)" type="currency" decimalPlaces={0} {...money('reported_tenant_sales')} />
+          <div />
+          <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
+            {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </SelField>
+          <SelField label="Confidence" value={f.confidence} onChange={setV('confidence')}>
+            {CONFIDENCE_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </SelField>
         </div>
-        {/* Live calculators */}
-        <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2 space-y-0.5">
-          <div>All-in rent PSF: <b>{dash(allInRentPsf(num(f.base_rent_psf), num(f.nnn_psf)), (n) => `$${n.toFixed(2)}`)}</b></div>
-          <div>Effective rent PSF (net of free rent + escalations): <b>{dash(
-            effectiveRentPsf({ baseRentPsf: num(f.base_rent_psf), termMonths: num(f.lease_term_months), escalationPct: num(f.escalation_pct), freeRentMonths: num(f.free_rent_months) }),
-            (n) => `$${n.toFixed(2)}`)}</b></div>
-          <div>Months remaining: <b>{dash(monthsRemaining(f.lease_expiration_date || null))}</b></div>
-        </div>
+
+        {!type && <p className="text-xs text-gray-400">Select a lease type to reveal the relevant rent fields.</p>}
+
+        {/* Live calculators (PSF-based; not shown for ground leases) */}
+        {has('base_rent_psf') && (
+          <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2 space-y-0.5">
+            <div>All-in rent PSF: <b>{dash(allInRentPsf(num(f.base_rent_psf), num(f.nnn_psf)), (n) => `$${n.toFixed(2)}`)}</b></div>
+            <div>Effective rent PSF (net of free rent + escalations): <b>{dash(
+              effectiveRentPsf({ baseRentPsf: num(f.base_rent_psf), termMonths: num(f.lease_term_months), escalationPct: num(f.escalation_pct), freeRentMonths: num(f.free_rent_months) }),
+              (n) => `$${n.toFixed(2)}`)}</b></div>
+            <div>Months remaining: <b>{dash(monthsRemaining(f.lease_expiration_date || null))}</b></div>
+          </div>
+        )}
+        {!has('base_rent_psf') && f.lease_expiration_date && (
+          <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2">
+            Months remaining: <b>{dash(monthsRemaining(f.lease_expiration_date || null))}</b>
+          </div>
+        )}
         <div className="flex gap-2">
           <button onClick={save} className="flex-1 py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a]">Save Lease</button>
           <button onClick={() => setEditing(null)} className="px-4 py-2 rounded border border-gray-300 text-sm">Cancel</button>
@@ -642,7 +694,7 @@ const LeasesTab: React.FC<{
             <span>Base: {dash(l.base_rent_psf, (n) => `$${n.toFixed(2)}`)}</span>
             <span>NNN: {dash(l.nnn_psf, (n) => `$${n.toFixed(2)}`)}</span>
             <span>All-in: {dash(l.all_in_rent_psf, (n) => `$${n.toFixed(2)}`)}</span>
-            <span>Type: {l.lease_type ?? '—'}</span>
+            <span>Type: {l.lease_type ? LEASE_TYPE_LABEL[l.lease_type] : '—'}</span>
             <span>Exp: {l.lease_expiration_date ?? '—'}</span>
             <span>Remaining: {dash(monthsRemaining(l.lease_expiration_date))} mo</span>
           </div>
@@ -665,7 +717,11 @@ const SalesTab: React.FC<{
 }> = ({ compId, sales, buildingSqft, userId, reload }) => {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [f, setF] = useState({ ...emptySale });
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<any>) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const setV = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
+  const money = (k: keyof typeof f) => ({
+    value: num(f[k]),
+    onChange: (v: number | null) => setF((p) => ({ ...p, [k]: v == null ? '' : String(v) })),
+  });
 
   const startNew = () => { setF({ ...emptySale }); setEditing('new'); };
   const startEdit = (s: SaleComp) => {
@@ -707,26 +763,23 @@ const SalesTab: React.FC<{
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Sale Date"><input type="date" className={inputCls} value={f.sale_date} onChange={set('sale_date')} /></Field>
-          <Field label="Sale Price"><input className={inputCls} value={f.sale_price} onChange={set('sale_price')} /></Field>
-          <Field label="NOI"><input className={inputCls} value={f.noi} onChange={set('noi')} /></Field>
-          <Field label="Cap Rate % (blank = auto)"><input className={inputCls} value={f.cap_rate} onChange={set('cap_rate')} placeholder={derivedCap != null ? derivedCap.toFixed(2) : ''} /></Field>
-          <Field label="Buyer"><input className={inputCls} value={f.buyer_name} onChange={set('buyer_name')} /></Field>
-          <Field label="Seller"><input className={inputCls} value={f.seller_name} onChange={set('seller_name')} /></Field>
-          <Field label="Broker"><input className={inputCls} value={f.broker} onChange={set('broker')} /></Field>
-          <Field label="Occupancy % at Sale"><input className={inputCls} value={f.occupancy_at_sale} onChange={set('occupancy_at_sale')} /></Field>
-          <Field label="Financing" className="col-span-2"><input className={inputCls} value={f.financing} onChange={set('financing')} /></Field>
-          <Field label="Sale Condition">
-            <select className={inputCls} value={f.sale_condition} onChange={set('sale_condition')}>
-              <option value="">—</option>
-              {SALE_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </Field>
-          <Field label="Source">
-            <select className={inputCls} value={f.source_type} onChange={set('source_type')}>
-              {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </Field>
+          <TxtField label="Sale Date" type="date" value={f.sale_date} onChange={setV('sale_date')} />
+          <FormattedField label="Sale Price" type="currency" decimalPlaces={0} {...money('sale_price')} />
+          <FormattedField label="NOI" type="currency" decimalPlaces={0} {...money('noi')} />
+          <FormattedField label="Cap Rate % (blank = auto)" type="percentage" {...money('cap_rate')}
+            placeholder={derivedCap != null ? derivedCap.toFixed(2) : '0'} />
+          <TxtField label="Buyer" value={f.buyer_name} onChange={setV('buyer_name')} />
+          <TxtField label="Seller" value={f.seller_name} onChange={setV('seller_name')} />
+          <TxtField label="Broker" value={f.broker} onChange={setV('broker')} />
+          <FormattedField label="Occupancy % at Sale" type="percentage" decimalPlaces={0} {...money('occupancy_at_sale')} />
+          <TxtField label="Financing" className="col-span-2" value={f.financing} onChange={setV('financing')} />
+          <SelField label="Sale Condition" value={f.sale_condition} onChange={setV('sale_condition')}>
+            <option value="">—</option>
+            {SALE_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </SelField>
+          <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
+            {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </SelField>
         </div>
         <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2 space-y-0.5">
           <div>Derived cap rate (NOI ÷ price): <b>{dash(derivedCap, (n) => `${n.toFixed(2)}%`)}</b></div>
