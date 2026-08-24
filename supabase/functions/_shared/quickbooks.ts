@@ -449,6 +449,25 @@ export async function findOrCreateServiceItem(
 }
 
 /**
+ * Find a service item by exact name. Returns the Id or null if not found.
+ * Use this (instead of findOrCreateServiceItem) when the item must already exist
+ * with a specific account mapping — auto-creating would map it to a default
+ * income account. e.g. the BOR pass-through item mapped to a clearing liability.
+ */
+export async function findServiceItemByName(
+  connection: QBConnection,
+  itemName: string
+): Promise<string | null> {
+  const searchQuery = `SELECT * FROM Item WHERE Name = '${itemName.replace(/'/g, "\\'")}'`
+  const searchResult = await qbApiRequest<{ QueryResponse: { Item?: { Id: string }[] } }>(
+    connection,
+    'GET',
+    `query?query=${encodeURIComponent(searchQuery)}`
+  )
+  return searchResult.QueryResponse.Item?.[0]?.Id ?? null
+}
+
+/**
  * Create an invoice in QuickBooks
  */
 export async function createInvoice(

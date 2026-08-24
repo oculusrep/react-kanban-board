@@ -5,6 +5,7 @@ import {
   refreshTokenIfNeeded,
   findOrCreateCustomer,
   findOrCreateServiceItem,
+  findServiceItemByName,
   createInvoice,
   getInvoice,
   updateInvoice,
@@ -22,6 +23,11 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+// transaction_type.id for "BOR Referral Fee" (see src/lib/bor.ts)
+const BOR_TRANSACTION_TYPE_ID = '71c1b4eb-d468-44b6-a52a-f5f9b1bbf7da'
+// QBO Service item that maps to the BOR Pass-Through Clearing liability
+const BOR_INVOICE_ITEM_NAME = 'BOR Commission (Pass-Through)'
 
 interface SyncInvoiceRequest {
   paymentId: string
@@ -123,6 +129,7 @@ serve(async (req) => {
         deal:deal_id (
           id,
           deal_name,
+          transaction_type_id,
           deal_team_id,
           number_of_payments,
           contract_signed_date,
@@ -322,8 +329,29 @@ serve(async (req) => {
         )
       }
 
-      // Find or create the service item (Brokerage Fee)
-      const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
+      // Choose the invoice line item. BOR deals invoice through the pass-through
+      // item (mapped to the BOR Pass-Through Clearing liability) so the full
+      // commission is held as a liability, not booked as income. It must already
+      // exist — do NOT auto-create (that would map it to an income account).
+      const isBor = deal.transaction_type_id === BOR_TRANSACTION_TYPE_ID
+      let serviceItemId: string
+      let serviceItemName: string
+      if (isBor) {
+        serviceItemName = BOR_INVOICE_ITEM_NAME
+        const found = await findServiceItemByName(connection, serviceItemName)
+        if (!found) {
+          return new Response(
+            JSON.stringify({
+              error: `QuickBooks item "${serviceItemName}" not found. Create it in QuickBooks mapped to your BOR Pass-Through Clearing account, then retry.`
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+          )
+        }
+        serviceItemId = found
+      } else {
+        serviceItemName = 'Brokerage Fee'
+        serviceItemId = await findOrCreateServiceItem(connection, serviceItemName)
+      }
 
       // Build description matching create invoice format
       // Format: "Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with Deal Name"
@@ -338,7 +366,7 @@ serve(async (req) => {
         Amount: Number(payment.payment_amount),
         DetailType: 'SalesItemLineDetail',
         SalesItemLineDetail: {
-          ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
+          ItemRef: { value: serviceItemId, name: serviceItemName },
           Qty: 1,
           UnitPrice: Number(payment.payment_amount),
           ServiceDate: deal.contract_signed_date  // Service date = contract signed date
@@ -627,8 +655,28 @@ serve(async (req) => {
       }
     )
 
-    // Find or create the service item (Brokerage Fee)
-    const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
+    // Choose the invoice line item. BOR deals invoice through the pass-through
+    // item (mapped to the BOR Pass-Through Clearing liability); it must already
+    // exist (auto-create would map it to income).
+    const isBor = deal.transaction_type_id === BOR_TRANSACTION_TYPE_ID
+    let serviceItemId: string
+    let serviceItemName: string
+    if (isBor) {
+      serviceItemName = BOR_INVOICE_ITEM_NAME
+      const found = await findServiceItemByName(connection, serviceItemName)
+      if (!found) {
+        return new Response(
+          JSON.stringify({
+            error: `QuickBooks item "${serviceItemName}" not found. Create it in QuickBooks mapped to your BOR Pass-Through Clearing account, then retry.`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        )
+      }
+      serviceItemId = found
+    } else {
+      serviceItemName = 'Brokerage Fee'
+      serviceItemId = await findOrCreateServiceItem(connection, serviceItemName)
+    }
 
     // Get the next invoice number by querying QBO for the highest DocNumber
     let nextDocNumber: string | undefined
@@ -673,7 +721,7 @@ serve(async (req) => {
       Amount: Number(payment.payment_amount),
       DetailType: 'SalesItemLineDetail',
       SalesItemLineDetail: {
-        ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
+        ItemRef: { value: serviceItemId, name: serviceItemName },
         Qty: 1,
         UnitPrice: Number(payment.payment_amount),
         ServiceDate: deal.contract_signed_date  // Service date = contract signed date
