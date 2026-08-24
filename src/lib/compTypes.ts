@@ -114,7 +114,9 @@ export interface LeaseComp extends CompProvenance {
   reported_tenant_sales: number | null;
   sales_psf: number | null;
   occupancy_status: OccupancyStatus | null;
+  notes: string | null;
   created_by_id: string | null;
+  updated_by_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -134,7 +136,9 @@ export interface SaleComp extends CompProvenance {
   financing: string | null;
   sale_condition: SaleCondition | null;
   occupancy_at_sale: number | null;
+  notes: string | null;
   created_by_id: string | null;
+  updated_by_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -150,7 +154,9 @@ export interface OperatingMemorandum extends CompProvenance {
   asking_price: number | null;
   asking_cap_rate: number | null;
   guidance: string | null;
+  notes: string | null;
   created_by_id: string | null;
+  updated_by_id: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../utils/format';
 import geocodingService from '../../../services/geocodingService';
 import FormattedField from '../../shared/FormattedField';
+import UserByIdDisplay from '../../shared/UserByIdDisplay';
 import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
   SOURCE_TYPES, CONFIDENCE_LEVELS, OCCUPANCY_STATUSES, SALE_CONDITIONS,
@@ -76,6 +77,31 @@ const SelField: React.FC<{
   <div className={className}>
     <label className={ffLabelCls}>{label}</label>
     <select className={ffInputCls} value={value} onChange={(e) => onChange(e.target.value)}>{children}</select>
+  </div>
+);
+
+const TxtAreaField: React.FC<{
+  label: string; value: string; onChange: (v: string) => void; rows?: number; className?: string; placeholder?: string;
+}> = ({ label, value, onChange, rows = 2, className, placeholder }) => (
+  <div className={className}>
+    <label className={ffLabelCls}>{label}</label>
+    <textarea className={ffInputCls} rows={rows} value={value} placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)} />
+  </div>
+);
+
+const fmtDateTime = (s: string | null): string =>
+  s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+
+// Created / last-modified footer for a lease / sale / OM record.
+const AuditFooter: React.FC<{
+  created_by_id: string | null; created_at: string; updated_by_id: string | null; updated_at: string;
+}> = ({ created_by_id, created_at, updated_by_id, updated_at }) => (
+  <div className="text-[11px] text-gray-400 mt-2 pt-1.5 border-t border-gray-100">
+    <span>Created{created_by_id && <UserByIdDisplay userId={created_by_id} />} · {fmtDateTime(created_at)}</span>
+    {updated_by_id && (
+      <span> · Modified<UserByIdDisplay userId={updated_by_id} /> · {fmtDateTime(updated_at)}</span>
+    )}
   </div>
 );
 
@@ -535,7 +561,7 @@ const emptyLease = {
   annual_base_rent: '', nnn_psf: '', ti_annual: '',
   lease_commencement_date: '', lease_expiration_date: '',
   lease_term_years: '', escalation_pct: '', rent_bump_frequency: '', option_periods: '',
-  reported_tenant_sales: '', occupancy_status: '', source_type: 'manual', confidence: 'unverified',
+  reported_tenant_sales: '', occupancy_status: '', notes: '', source_type: 'manual', confidence: 'unverified',
 };
 
 const LeasesTab: React.FC<{
@@ -555,7 +581,7 @@ const LeasesTab: React.FC<{
       lease_term_years: l.lease_term_years?.toString() ?? '', escalation_pct: l.escalation_pct?.toString() ?? '',
       rent_bump_frequency: l.rent_bump_frequency ?? '', option_periods: l.option_periods ?? '',
       reported_tenant_sales: l.reported_tenant_sales?.toString() ?? '', occupancy_status: l.occupancy_status ?? '',
-      source_type: l.source_type, confidence: l.confidence,
+      notes: l.notes ?? '', source_type: l.source_type, confidence: l.confidence,
     });
     setEditing(l.id);
   };
@@ -602,10 +628,11 @@ const LeasesTab: React.FC<{
       reported_tenant_sales: num(f.reported_tenant_sales),
       sales_psf: salesPsf(num(f.reported_tenant_sales), sqft),
       occupancy_status: f.occupancy_status || null,
+      notes: str(f.notes),
       source_type: f.source_type, confidence: f.confidence,
     };
     if (editing === 'new') { payload.created_by_id = userId; await supabase.from('lease_comp').insert(payload); }
-    else await supabase.from('lease_comp').update(payload).eq('id', editing);
+    else { payload.updated_by_id = userId; await supabase.from('lease_comp').update(payload).eq('id', editing); }
     setEditing(null);
     reload();
   };
@@ -665,6 +692,8 @@ const LeasesTab: React.FC<{
           </SelField>
         </div>
 
+        <TxtAreaField label="Notes" value={f.notes} onChange={setV('notes')} rows={2} placeholder="Any other notes on this lease…" />
+
         {!type && <p className="text-xs text-gray-400">Select a lease type to reveal the relevant rent fields.</p>}
 
         {/* Live calculators — derived PSF + remaining term */}
@@ -712,6 +741,8 @@ const LeasesTab: React.FC<{
             <span>Exp: {l.lease_expiration_date ?? '—'}</span>
             <span>Remaining: {dash(monthsRemaining(l.lease_expiration_date))} mo</span>
           </div>
+          {l.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{l.notes}</p>}
+          <AuditFooter created_by_id={l.created_by_id} created_at={l.created_at} updated_by_id={l.updated_by_id} updated_at={l.updated_at} />
         </div>
       ))}
     </div>
@@ -723,7 +754,7 @@ const LeasesTab: React.FC<{
 // ===========================================================================
 const emptySale = {
   sale_date: '', sale_price: '', cap_rate: '', noi: '', buyer_name: '', seller_name: '',
-  broker: '', financing: '', sale_condition: '', occupancy_at_sale: '', source_type: 'manual', confidence: 'unverified',
+  broker: '', financing: '', sale_condition: '', occupancy_at_sale: '', notes: '', source_type: 'manual', confidence: 'unverified',
 };
 
 const SalesTab: React.FC<{
@@ -743,7 +774,8 @@ const SalesTab: React.FC<{
       sale_date: s.sale_date ?? '', sale_price: s.sale_price?.toString() ?? '', cap_rate: s.cap_rate?.toString() ?? '',
       noi: s.noi?.toString() ?? '', buyer_name: s.buyer_name ?? '', seller_name: s.seller_name ?? '',
       broker: s.broker ?? '', financing: s.financing ?? '', sale_condition: s.sale_condition ?? '',
-      occupancy_at_sale: s.occupancy_at_sale?.toString() ?? '', source_type: s.source_type, confidence: s.confidence,
+      occupancy_at_sale: s.occupancy_at_sale?.toString() ?? '', notes: s.notes ?? '',
+      source_type: s.source_type, confidence: s.confidence,
     });
     setEditing(s.id);
   };
@@ -760,10 +792,11 @@ const SalesTab: React.FC<{
       noi: num(f.noi), price_psf: pricePsf(price, buildingSqft),
       buyer_name: str(f.buyer_name), seller_name: str(f.seller_name), broker: str(f.broker),
       financing: str(f.financing), sale_condition: f.sale_condition || null,
-      occupancy_at_sale: num(f.occupancy_at_sale), source_type: f.source_type, confidence: f.confidence,
+      occupancy_at_sale: num(f.occupancy_at_sale), notes: str(f.notes),
+      source_type: f.source_type, confidence: f.confidence,
     };
     if (editing === 'new') { payload.created_by_id = userId; await supabase.from('sale_comp').insert(payload); }
-    else await supabase.from('sale_comp').update(payload).eq('id', editing);
+    else { payload.updated_by_id = userId; await supabase.from('sale_comp').update(payload).eq('id', editing); }
     setEditing(null);
     reload();
   };
@@ -794,6 +827,7 @@ const SalesTab: React.FC<{
           <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
           </SelField>
+          <TxtAreaField label="Notes" className="col-span-2" value={f.notes} onChange={setV('notes')} rows={2} placeholder="Any other notes on this sale…" />
         </div>
         <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2 space-y-0.5">
           <div>Derived cap rate (NOI ÷ price): <b>{dash(derivedCap, (n) => `${n.toFixed(2)}%`)}</b></div>
@@ -826,6 +860,8 @@ const SalesTab: React.FC<{
             <span>$/SF: {dash(s.price_psf, (n) => `$${n.toFixed(0)}`)}</span>
             <span className="col-span-3">Buyer: {s.buyer_name ?? '—'} · Seller: {s.seller_name ?? '—'}</span>
           </div>
+          {s.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{s.notes}</p>}
+          <AuditFooter created_by_id={s.created_by_id} created_at={s.created_at} updated_by_id={s.updated_by_id} updated_at={s.updated_at} />
         </div>
       ))}
     </div>
@@ -837,7 +873,7 @@ const SalesTab: React.FC<{
 // ===========================================================================
 const emptyOm = {
   title: '', broker_name: '', brokerage: '', list_date: '', asking_price: '', asking_cap_rate: '',
-  guidance: '', source_url: '', source_type: 'om', confidence: 'reported',
+  guidance: '', notes: '', source_url: '', source_type: 'om', confidence: 'reported',
 };
 
 const OmTab: React.FC<{
@@ -853,7 +889,7 @@ const OmTab: React.FC<{
       title: o.title ?? '', broker_name: o.broker_name ?? '', brokerage: o.brokerage ?? '',
       list_date: o.list_date ?? '', asking_price: o.asking_price?.toString() ?? '',
       asking_cap_rate: o.asking_cap_rate?.toString() ?? '', guidance: o.guidance ?? '',
-      source_url: o.source_url ?? '', source_type: o.source_type, confidence: o.confidence,
+      notes: o.notes ?? '', source_url: o.source_url ?? '', source_type: o.source_type, confidence: o.confidence,
     });
     setEditing(o.id);
   };
@@ -862,11 +898,11 @@ const OmTab: React.FC<{
     const payload: any = {
       comp_property_id: compId, title: str(f.title), broker_name: str(f.broker_name),
       brokerage: str(f.brokerage), list_date: f.list_date || null, asking_price: num(f.asking_price),
-      asking_cap_rate: num(f.asking_cap_rate), guidance: str(f.guidance), source_url: str(f.source_url),
-      source_type: f.source_type, confidence: f.confidence,
+      asking_cap_rate: num(f.asking_cap_rate), guidance: str(f.guidance), notes: str(f.notes),
+      source_url: str(f.source_url), source_type: f.source_type, confidence: f.confidence,
     };
     if (editing === 'new') { payload.created_by_id = userId; await supabase.from('operating_memorandum').insert(payload); }
-    else await supabase.from('operating_memorandum').update(payload).eq('id', editing);
+    else { payload.updated_by_id = userId; await supabase.from('operating_memorandum').update(payload).eq('id', editing); }
     setEditing(null);
     reload();
   };
@@ -887,8 +923,11 @@ const OmTab: React.FC<{
           <Field label="Asking Price"><input className={inputCls} value={f.asking_price} onChange={set('asking_price')} /></Field>
           <Field label="Asking Cap %"><input className={inputCls} value={f.asking_cap_rate} onChange={set('asking_cap_rate')} /></Field>
           <Field label="Source URL"><input className={inputCls} value={f.source_url} onChange={set('source_url')} /></Field>
-          <Field label="Guidance / Notes" className="col-span-2">
+          <Field label="Guidance" className="col-span-2">
             <textarea className={inputCls} rows={3} value={f.guidance} onChange={set('guidance') as any} />
+          </Field>
+          <Field label="Notes" className="col-span-2">
+            <textarea className={inputCls} rows={2} value={f.notes} onChange={set('notes') as any} placeholder="Any other notes on this OM…" />
           </Field>
         </div>
         <p className="text-xs text-gray-400">OM PDF files attach via the property's Dropbox folder (Phase 2).</p>
@@ -920,6 +959,8 @@ const OmTab: React.FC<{
             <span>Cap: {dash(o.asking_cap_rate, (n) => `${n.toFixed(2)}%`)}</span>
             {o.source_url && <a href={o.source_url} target="_blank" rel="noreferrer" className="col-span-2 text-[#4A6B94] hover:underline truncate">{o.source_url}</a>}
           </div>
+          {o.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{o.notes}</p>}
+          <AuditFooter created_by_id={o.created_by_id} created_at={o.created_at} updated_by_id={o.updated_by_id} updated_at={o.updated_at} />
         </div>
       ))}
     </div>
