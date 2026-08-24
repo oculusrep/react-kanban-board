@@ -770,15 +770,49 @@ export async function findOrCreateVendor(
     }
   }
 
-  const createResult = await qbApiRequest<{ Vendor: QBVendor }>(
-    connection,
-    'POST',
-    'vendor',
-    newVendor
-  )
+  try {
+    const createResult = await qbApiRequest<{ Vendor: QBVendor }>(
+      connection,
+      'POST',
+      'vendor',
+      newVendor
+    )
 
-  console.log('Created new QBO vendor:', createResult.Vendor.Id, createResult.Vendor.DisplayName)
-  return { Id: createResult.Vendor.Id!, DisplayName: createResult.Vendor.DisplayName }
+    console.log('Created new QBO vendor:', createResult.Vendor.Id, createResult.Vendor.DisplayName)
+    return { Id: createResult.Vendor.Id!, DisplayName: createResult.Vendor.DisplayName }
+  } catch (err: any) {
+    // QBO requires DisplayName to be unique across Customers, Vendors AND Employees.
+    // If the name already exists as another entity (e.g. a Customer of the same name),
+    // creating the vendor fails with code 6240. Retry with a disambiguating suffix.
+    const msg = String(err?.message || err)
+    const isDuplicateName = msg.includes('6240') || msg.toLowerCase().includes('duplicate name')
+    if (!isDuplicateName) throw err
+
+    const suffixedName = `${vendorName} (Vendor)`
+
+    // A previous run may already have created the suffixed vendor — reuse it if so.
+    const retrySearchQuery = `SELECT * FROM Vendor WHERE DisplayName = '${suffixedName.replace(/'/g, "\\'")}'`
+    const retrySearch = await qbApiRequest<{ QueryResponse: { Vendor?: QBVendor[] } }>(
+      connection,
+      'GET',
+      `query?query=${encodeURIComponent(retrySearchQuery)}`
+    )
+    if (retrySearch.QueryResponse.Vendor && retrySearch.QueryResponse.Vendor.length > 0) {
+      const existing = retrySearch.QueryResponse.Vendor[0]
+      console.log('Found existing suffixed QBO vendor:', existing.Id, existing.DisplayName)
+      return { Id: existing.Id!, DisplayName: existing.DisplayName }
+    }
+
+    newVendor.DisplayName = suffixedName
+    const retryCreate = await qbApiRequest<{ Vendor: QBVendor }>(
+      connection,
+      'POST',
+      'vendor',
+      newVendor
+    )
+    console.log('Created suffixed QBO vendor (name collided):', retryCreate.Vendor.Id, retryCreate.Vendor.DisplayName)
+    return { Id: retryCreate.Vendor.Id!, DisplayName: retryCreate.Vendor.DisplayName }
+  }
 }
 
 /**
