@@ -55,7 +55,12 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
   const [qbAccounts, setQbAccounts] = useState<QBAccount[]>([]);
   const [qbExpenseAccounts, setQbExpenseAccounts] = useState<QBAccount[]>([]);
   const [qbAssetAccounts, setQbAssetAccounts] = useState<QBAccount[]>([]);
+  const [qbLiabilityAccounts, setQbLiabilityAccounts] = useState<QBAccount[]>([]);
+  const [qbIncomeAccounts, setQbIncomeAccounts] = useState<QBAccount[]>([]);
   const [qbVendors, setQbVendors] = useState<QBVendor[]>([]);
+  // Broker of Record mode: bill debits a clearing liability + a JE recognizes the BOR fee as income.
+  // UI-only flag — the disbursement edge fn keys BOR behavior off the deal's transaction type.
+  const [isBorMapping, setIsBorMapping] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingQb, setLoadingQb] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -147,6 +152,8 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       setQbAccounts(result.accounts || []);
       setQbExpenseAccounts(result.expenseAccounts || []);
       setQbAssetAccounts(result.assetAccounts || []);
+      setQbLiabilityAccounts(result.liabilityAccounts || []);
+      setQbIncomeAccounts(result.incomeAccounts || []);
       setQbVendors(result.vendors || []);
     } catch (err: any) {
       console.error('Error fetching QBO data:', err);
@@ -162,6 +169,8 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       broker_id: mapping.broker_id,
       client_id: mapping.client_id
     });
+    // A bill mapping that also carries a credit account is a BOR pass-through mapping.
+    setIsBorMapping(mapping.payment_method === 'bill' && !!mapping.qb_credit_account_id);
     setEditingId(mapping.id);
     setShowAddForm(false);
   };
@@ -174,11 +183,13 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       description_template: 'Commission Payment for {payment_name} - {deal_name}'
     });
     setEditingId(null);
+    setIsBorMapping(false);
     setShowAddForm(true);
   };
 
   const handleCancel = () => {
     setFormData({});
+    setIsBorMapping(false);
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -201,9 +212,10 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       if (formData.payment_method === 'journal_entry' && !formData.qb_credit_account_id) {
         throw new Error('Journal entries require a credit account');
       }
-      if (formData.payment_method === 'bill' && !formData.qb_vendor_id) {
-        throw new Error('Bills require a vendor');
+      if (isBorMapping && !formData.qb_credit_account_id) {
+        throw new Error('Broker of Record mappings require a credit account (BOR Referral Income)');
       }
+      // Note: vendor is optional — the disbursement auto-creates a QBO vendor by name if none is set.
 
       const saveData = {
         entity_type: formData.entity_type,
@@ -215,8 +227,8 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
         qb_vendor_name: formData.qb_vendor_name || null,
         qb_debit_account_id: formData.qb_debit_account_id,
         qb_debit_account_name: formData.qb_debit_account_name,
-        qb_credit_account_id: formData.payment_method === 'journal_entry' ? formData.qb_credit_account_id : null,
-        qb_credit_account_name: formData.payment_method === 'journal_entry' ? formData.qb_credit_account_name : null,
+        qb_credit_account_id: (formData.payment_method === 'journal_entry' || isBorMapping) ? formData.qb_credit_account_id : null,
+        qb_credit_account_name: (formData.payment_method === 'journal_entry' || isBorMapping) ? formData.qb_credit_account_name : null,
         description_template: formData.description_template,
         is_active: formData.is_active ?? true
       };
@@ -269,7 +281,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
   };
 
   const handleCreditAccountChange = (accountId: string) => {
-    const account = qbAssetAccounts.find(a => a.id === accountId);
+    const account = qbAccounts.find(a => a.id === accountId);
     setFormData({
       ...formData,
       qb_credit_account_id: accountId,
@@ -406,6 +418,31 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
               )}
             </div>
 
+            {/* Broker of Record toggle - referral partners only */}
+            {formData.entity_type === 'referral_partner' && (
+              <div className="md:col-span-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isBorMapping}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setIsBorMapping(on);
+                      if (on) setFormData(prev => ({ ...prev, payment_method: 'bill' }));
+                    }}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-800">Broker of Record (pass-through)</span>
+                </label>
+                <p className="text-xs text-gray-600 mt-1 ml-6">
+                  The Bill to the referral partner debits the <strong>clearing liability</strong>, and a journal entry
+                  recognizes your <strong>BOR Fee</strong> as income. Set the <strong>Debit Account</strong> to
+                  BOR Pass-Through Clearing and the <strong>Credit Account</strong> to BOR Referral Income below.
+                  Vendor is optional — it's auto-created on first disbursement.
+                </p>
+              </div>
+            )}
+
             {/* Payment Method */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
@@ -422,7 +459,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
             {/* Vendor - for Bills (required) and Journal Entries (optional, for entity tracking) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                QBO Vendor {formData.payment_method === 'bill' ? '(Required)' : '(Optional)'}
+                QBO Vendor (Optional)
               </label>
               <select
                 value={formData.qb_vendor_id || ''}
@@ -442,42 +479,48 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
               )}
             </div>
 
-            {/* Debit Account (Expense) */}
+            {/* Debit Account — Expense normally, Clearing Liability for BOR */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Debit Account (Expense)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {isBorMapping ? 'Debit Account (Clearing Liability)' : 'Debit Account (Expense)'}
+              </label>
               <select
                 value={formData.qb_debit_account_id || ''}
                 onChange={(e) => handleDebitAccountChange(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
                 <option value="">Select an account...</option>
-                {qbExpenseAccounts.map(a => (
-                  <option key={a.id} value={a.id}>{a.fullName}</option>
+                {(isBorMapping ? qbLiabilityAccounts : qbExpenseAccounts).map(a => (
+                  <option key={a.id} value={a.id}>{a.fullName}{isBorMapping ? ` (${a.type})` : ''}</option>
                 ))}
               </select>
-              {qbExpenseAccounts.length === 0 && (
+              {(isBorMapping ? qbLiabilityAccounts : qbExpenseAccounts).length === 0 && (
                 <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load accounts</p>
               )}
             </div>
 
-            {/* Credit Account (for Journal Entries) */}
-            {formData.payment_method === 'journal_entry' && (
+            {/* Credit Account — for Journal Entries (Draw/Asset) or BOR (Income) */}
+            {(formData.payment_method === 'journal_entry' || isBorMapping) && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Credit Account (Draw/Asset)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {isBorMapping ? 'Credit Account (BOR Referral Income)' : 'Credit Account (Draw/Asset)'}
+                </label>
                 <select
                   value={formData.qb_credit_account_id || ''}
                   onChange={(e) => handleCreditAccountChange(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">Select an account...</option>
-                  {qbAssetAccounts.map(a => (
+                  {(isBorMapping ? qbIncomeAccounts : qbAssetAccounts).map(a => (
                     <option key={a.id} value={a.id}>{a.fullName} ({a.type})</option>
                   ))}
                 </select>
-                {qbAssetAccounts.length === 0 ? (
+                {(isBorMapping ? qbIncomeAccounts : qbAssetAccounts).length === 0 ? (
                   <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load accounts</p>
                 ) : (
-                  <p className="text-xs text-gray-500 mt-1">Showing {qbAssetAccounts.length} asset/equity accounts</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Showing {(isBorMapping ? qbIncomeAccounts : qbAssetAccounts).length} {isBorMapping ? 'income' : 'asset/equity'} accounts
+                  </p>
                 )}
               </div>
             )}

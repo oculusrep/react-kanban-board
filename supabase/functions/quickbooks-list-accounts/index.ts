@@ -125,8 +125,30 @@ serve(async (req) => {
       subType: acc.AccountSubType
     }))
 
-    // Combine for full accounts list
-    const accounts = [...expenseAccounts, ...assetAccounts]
+    // Fetch liability accounts (for BOR pass-through clearing - debit side)
+    const liabilityQuery = `SELECT * FROM Account WHERE Active = true AND AccountType IN ('Other Current Liability', 'Long Term Liability', 'Accounts Payable', 'Credit Card') ORDER BY FullyQualifiedName`
+    const liabilityAccountsRaw = await fetchAllWithPagination<QBAccount>(liabilityQuery, 'Account')
+    const liabilityAccounts = liabilityAccountsRaw.map(acc => ({
+      id: acc.Id,
+      name: acc.Name,
+      fullName: acc.FullyQualifiedName,
+      type: acc.AccountType,
+      subType: acc.AccountSubType
+    }))
+
+    // Fetch income accounts (for BOR referral income - credit side)
+    const incomeQuery = `SELECT * FROM Account WHERE Active = true AND AccountType IN ('Income', 'Other Income') ORDER BY FullyQualifiedName`
+    const incomeAccountsRaw = await fetchAllWithPagination<QBAccount>(incomeQuery, 'Account')
+    const incomeAccounts = incomeAccountsRaw.map(acc => ({
+      id: acc.Id,
+      name: acc.Name,
+      fullName: acc.FullyQualifiedName,
+      type: acc.AccountType,
+      subType: acc.AccountSubType
+    }))
+
+    // Combine for full accounts list (used for name lookups on save)
+    const accounts = [...expenseAccounts, ...assetAccounts, ...liabilityAccounts, ...incomeAccounts]
 
     // Fetch all active vendors with pagination
     const vendorQuery = `SELECT * FROM Vendor WHERE Active = true ORDER BY DisplayName`
@@ -148,6 +170,8 @@ serve(async (req) => {
         accounts,
         expenseAccounts,
         assetAccounts,
+        liabilityAccounts,
+        incomeAccounts,
         vendors
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
