@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../utils/format';
+import geocodingService from '../../../services/geocodingService';
 import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
   SOURCE_TYPES, CONFIDENCE_LEVELS, LEASE_TYPES, OCCUPANCY_STATUSES, SALE_CONDITIONS,
@@ -32,12 +33,14 @@ const str = (v: string): string | null => (v.trim() === '' ? null : v.trim());
 const dash = (v: number | null | undefined, fn?: (n: number) => string): string =>
   v == null ? '—' : fn ? fn(v) : String(v);
 
-// ---------------------------------------------------------------------------
-// Small styled input helpers
-// ---------------------------------------------------------------------------
+// Body (light) inputs
 const inputCls =
   'w-full px-2 py-1.5 text-sm border border-[#8FA9C8] rounded focus:outline-none focus:ring-1 focus:ring-[#002147]';
 const labelCls = 'block text-[11px] font-semibold text-[#4A6B94] uppercase tracking-wide mb-0.5';
+// Header (dark) inputs — white fields on the black header for readability
+const hInputCls =
+  'w-full px-2 py-1.5 text-sm rounded bg-white text-gray-900 border border-gray-500 focus:outline-none focus:ring-1 focus:ring-white';
+const hLabelCls = 'block text-[10px] font-semibold text-gray-300 uppercase tracking-wide mb-0.5';
 
 const Field: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({
   label, children, className,
@@ -48,6 +51,64 @@ const Field: React.FC<{ label: string; children: React.ReactNode; className?: st
   </div>
 );
 
+// ---------------------------------------------------------------------------
+// Editable comp_property draft (shared by the header + overview body)
+// ---------------------------------------------------------------------------
+type DraftKey =
+  | 'name' | 'address' | 'city' | 'state' | 'zip'
+  | 'verified_latitude' | 'verified_longitude'
+  | 'property_type_id' | 'building_sqft' | 'land_acres' | 'year_built'
+  | 'anchor_tenant' | 'trade_area' | 'parcel_id'
+  | 'source_type' | 'source_url' | 'source_reference' | 'confidence';
+type Draft = Record<DraftKey, string>;
+
+const emptyDraft: Draft = {
+  name: '', address: '', city: '', state: '', zip: '',
+  verified_latitude: '', verified_longitude: '',
+  property_type_id: '', building_sqft: '', land_acres: '', year_built: '',
+  anchor_tenant: '', trade_area: '', parcel_id: '',
+  source_type: 'manual', source_url: '', source_reference: '', confidence: 'unverified',
+};
+
+function buildDraft(comp: CompProperty | null, createAt?: { lat: number; lng: number } | null): Draft {
+  if (comp) {
+    return {
+      name: comp.name ?? '', address: comp.address ?? '', city: comp.city ?? '',
+      state: comp.state ?? '', zip: comp.zip ?? '',
+      verified_latitude: (comp.verified_latitude ?? comp.latitude)?.toString() ?? '',
+      verified_longitude: (comp.verified_longitude ?? comp.longitude)?.toString() ?? '',
+      property_type_id: comp.property_type_id ?? '',
+      building_sqft: comp.building_sqft?.toString() ?? '',
+      land_acres: comp.land_acres?.toString() ?? '',
+      year_built: comp.year_built?.toString() ?? '',
+      anchor_tenant: comp.anchor_tenant ?? '', trade_area: comp.trade_area ?? '',
+      parcel_id: comp.parcel_id ?? '',
+      source_type: comp.source_type, source_url: comp.source_url ?? '',
+      source_reference: comp.source_reference ?? '', confidence: comp.confidence,
+    };
+  }
+  return {
+    ...emptyDraft,
+    verified_latitude: createAt ? createAt.lat.toString() : '',
+    verified_longitude: createAt ? createAt.lng.toString() : '',
+  };
+}
+
+function draftToPayload(d: Draft): any {
+  return {
+    name: str(d.name), address: str(d.address), city: str(d.city), state: str(d.state), zip: str(d.zip),
+    verified_latitude: num(d.verified_latitude), verified_longitude: num(d.verified_longitude),
+    property_type_id: d.property_type_id || null,
+    building_sqft: num(d.building_sqft), land_acres: num(d.land_acres), year_built: num(d.year_built),
+    anchor_tenant: str(d.anchor_tenant), trade_area: str(d.trade_area), parcel_id: str(d.parcel_id),
+    source_type: d.source_type, source_url: str(d.source_url),
+    source_reference: str(d.source_reference), confidence: d.confidence,
+  };
+}
+
+// ===========================================================================
+// MAIN SLIDEOUT
+// ===========================================================================
 const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
   comp, createAt, onClose, onSaved, topOffset = 0,
 }) => {
@@ -55,20 +116,31 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
   const [tab, setTab] = useState<Tab>('overview');
   const [userId, setUserId] = useState<string | null>(null);
 
-  // The comp currently being edited (null while creating, until first save).
   const [current, setCurrent] = useState<CompProperty | null>(comp);
   const compId = current?.id ?? null;
 
+  const [draft, setDraft] = useState<Draft>(() => buildDraft(comp, createAt));
+  const [headerEditing, setHeaderEditing] = useState<boolean>(!comp); // new comp starts editable
+  const [geocoding, setGeocoding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const geocodedRef = useRef(false);
+
   const [propertyTypes, setPropertyTypes] = useState<LookupOption[]>([]);
   const [brands, setBrands] = useState<LookupOption[]>([]);
-
   const [leases, setLeases] = useState<LeaseComp[]>([]);
   const [sales, setSales] = useState<SaleComp[]>([]);
   const [oms, setOms] = useState<OperatingMemorandum[]>([]);
   const [notes, setNotes] = useState<CompNote[]>([]);
-  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setCurrent(comp); }, [comp]);
+  const setField = useCallback((k: DraftKey, v: string) => setDraft((p) => ({ ...p, [k]: v })), []);
+
+  useEffect(() => {
+    setCurrent(comp);
+    setDraft(buildDraft(comp, createAt));
+    setHeaderEditing(!comp);
+    geocodedRef.current = false;
+  }, [comp, createAt]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -77,6 +149,26 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
     supabase.from('merchant_brand').select('id, name').eq('is_active', true).order('name').limit(2000)
       .then(({ data }) => setBrands(((data as any[]) || []).map((b) => ({ id: b.id, label: b.name }))));
   }, []);
+
+  // Reverse-geocode a freshly dropped comp to autofill the address block (fast entry).
+  useEffect(() => {
+    if (current || !createAt || geocodedRef.current) return;
+    geocodedRef.current = true;
+    setGeocoding(true);
+    geocodingService.reverseGeocode(createAt.lat, createAt.lng)
+      .then((r) => {
+        if ('latitude' in r) {
+          setDraft((p) => ({
+            ...p,
+            address: p.address || r.street_address || '',
+            city: p.city || r.city || '',
+            state: p.state || r.state || '',
+            zip: p.zip || r.zip || '',
+          }));
+        }
+      })
+      .finally(() => setGeocoding(false));
+  }, [current, createAt]);
 
   const loadChildren = useCallback(async (id: string) => {
     const [l, s, o, n] = await Promise.all([
@@ -96,8 +188,35 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
     else { setLeases([]); setSales([]); setOms([]); setNotes([]); }
   }, [compId, loadChildren]);
 
-  const headerTitle = current?.name || current?.address || (createAt ? 'New Comp' : 'Comp');
-  const headerSub = [current?.address, current?.city, current?.state].filter(Boolean).join(', ');
+  // Upsert the whole comp_property draft (used by both the header and the overview body).
+  const saveComp = useCallback(async (): Promise<boolean> => {
+    setSaving(true);
+    setSaveError(null);
+    const payload = draftToPayload(draft);
+    try {
+      let saved: CompProperty;
+      if (current) {
+        const { data, error } = await supabase.from('comp_property')
+          .update(payload).eq('id', current.id).select('*').single();
+        if (error) throw error;
+        saved = data as CompProperty;
+      } else {
+        payload.created_by_id = userId;
+        const { data, error } = await supabase.from('comp_property')
+          .insert(payload).select('*').single();
+        if (error) throw error;
+        saved = data as CompProperty;
+      }
+      setCurrent(saved);
+      onSaved?.(saved.id);
+      return true;
+    } catch (e: any) {
+      setSaveError(e.message || 'Failed to save comp');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, current, userId, onSaved]);
 
   return (
     <div
@@ -105,231 +224,276 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
       className="fixed right-0 bg-white border-l border-gray-200 shadow-xl flex flex-col w-[560px]"
       style={{ zIndex, top: `${67 + topOffset}px`, height: `calc(100vh - ${67 + topOffset}px - 20px)` }}
     >
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#002147]">{headerTitle}</h2>
-          {headerSub && <p className="text-sm text-gray-500 mt-0.5">{headerSub}</p>}
-          {current && (
-            <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#8FA9C8]/20 text-[#4A6B94] uppercase">
-                {current.source_type}
-              </span>
-              <span className={`text-[11px] px-1.5 py-0.5 rounded uppercase ${
-                current.confidence === 'verified' ? 'bg-green-100 text-green-700'
-                : current.confidence === 'reported' ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-gray-100 text-gray-500'
-              }`}>{current.confidence}</span>
-            </div>
-          )}
-        </div>
-        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+      <CompHeader
+        draft={draft}
+        setField={setField}
+        editing={headerEditing}
+        isNew={!compId}
+        geocoding={geocoding}
+        saving={saving}
+        saveError={saveError}
+        current={current}
+        onEdit={() => setHeaderEditing(true)}
+        onCancel={() => { setDraft(buildDraft(current, createAt)); setHeaderEditing(false); setSaveError(null); }}
+        onSave={async () => { const ok = await saveComp(); if (ok) setHeaderEditing(false); }}
+        onClose={onClose}
+      />
 
-      {/* Tabs (hidden until the comp exists — must save the location first) */}
-      {compId && (
-        <div className="flex border-b border-gray-200 px-3">
-          {([
-            ['overview', 'Overview'],
-            ['leases', `Leases (${leases.length})`],
-            ['sales', `Sales (${sales.length})`],
-            ['om', `OM (${oms.length})`],
-            ['notes', `Notes (${notes.length})`],
-          ] as [Tab, string][]).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${
-                tab === key ? 'border-[#002147] text-[#002147]' : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >{label}</button>
-          ))}
+      {!compId && (
+        <div className="flex-1 overflow-y-auto p-5">
+          <p className="text-sm text-[#4A6B94] bg-[#8FA9C8]/10 border border-[#8FA9C8] rounded p-3">
+            Confirm the location above and click <b>Create Comp</b>. Property details, leases, sales,
+            OMs and notes can be added once the comp exists.
+          </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-5">
-        {(!compId || tab === 'overview') && (
-          <OverviewTab
-            current={current}
-            createAt={createAt}
-            propertyTypes={propertyTypes}
-            userId={userId}
-            saving={saving}
-            setSaving={setSaving}
-            onSavedComp={(saved) => {
-              setCurrent(saved);
-              onSaved?.(saved.id);
-            }}
-          />
-        )}
+      {compId && (
+        <>
+          <div className="flex border-b border-gray-200 px-3 flex-shrink-0">
+            {([
+              ['overview', 'Overview'],
+              ['leases', `Leases (${leases.length})`],
+              ['sales', `Sales (${sales.length})`],
+              ['om', `OM (${oms.length})`],
+              ['notes', `Notes (${notes.length})`],
+            ] as [Tab, string][]).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${
+                  tab === key ? 'border-[#002147] text-[#002147]' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >{label}</button>
+            ))}
+          </div>
 
-        {compId && tab === 'leases' && (
-          <LeasesTab
-            compId={compId} leases={leases} brands={brands} userId={userId}
-            reload={() => { loadChildren(compId); onSaved?.(compId); }}
-          />
-        )}
-        {compId && tab === 'sales' && (
-          <SalesTab
-            compId={compId} sales={sales} buildingSqft={current?.building_sqft ?? null} userId={userId}
-            reload={() => { loadChildren(compId); onSaved?.(compId); }}
-          />
-        )}
-        {compId && tab === 'om' && (
-          <OmTab
-            compId={compId} oms={oms} userId={userId}
-            reload={() => { loadChildren(compId); onSaved?.(compId); }}
-          />
-        )}
-        {compId && tab === 'notes' && (
-          <NotesTab
-            compId={compId} notes={notes} userId={userId}
-            reload={() => loadChildren(compId)}
-          />
-        )}
-      </div>
+          <div className="flex-1 overflow-y-auto p-5">
+            {tab === 'overview' && (
+              <OverviewBody
+                draft={draft} setField={setField} propertyTypes={propertyTypes}
+                saving={saving} saveError={saveError} onSave={saveComp}
+              />
+            )}
+            {tab === 'leases' && (
+              <LeasesTab compId={compId} leases={leases} brands={brands} userId={userId}
+                reload={() => { loadChildren(compId); onSaved?.(compId); }} />
+            )}
+            {tab === 'sales' && (
+              <SalesTab compId={compId} sales={sales} buildingSqft={current?.building_sqft ?? null} userId={userId}
+                reload={() => { loadChildren(compId); onSaved?.(compId); }} />
+            )}
+            {tab === 'om' && (
+              <OmTab compId={compId} oms={oms} userId={userId}
+                reload={() => { loadChildren(compId); onSaved?.(compId); }} />
+            )}
+            {tab === 'notes' && (
+              <NotesTab compId={compId} notes={notes} userId={userId}
+                reload={() => loadChildren(compId)} />
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };
 
 // ===========================================================================
-// OVERVIEW TAB — create / edit comp_property
+// HEADER — black, location display + pencil-to-edit (mirrors site submit/deal)
 // ===========================================================================
-const OverviewTab: React.FC<{
-  current: CompProperty | null;
-  createAt?: { lat: number; lng: number } | null;
-  propertyTypes: LookupOption[];
-  userId: string | null;
+const CompHeader: React.FC<{
+  draft: Draft;
+  setField: (k: DraftKey, v: string) => void;
+  editing: boolean;
+  isNew: boolean;
+  geocoding: boolean;
   saving: boolean;
-  setSaving: (v: boolean) => void;
-  onSavedComp: (saved: CompProperty) => void;
-}> = ({ current, createAt, propertyTypes, userId, saving, setSaving, onSavedComp }) => {
-  const [f, setF] = useState({
-    name: '', address: '', city: '', state: '', zip: '', county: '',
-    property_type_id: '', building_sqft: '', land_acres: '', year_built: '',
-    anchor_tenant: '', trade_area: '', parcel_id: '',
-    verified_latitude: '', verified_longitude: '',
-    source_type: 'manual', source_url: '', source_reference: '', confidence: 'unverified',
+  saveError: string | null;
+  current: CompProperty | null;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onClose: () => void;
+}> = ({ draft, setField, editing, isNew, geocoding, saving, saveError, current, onEdit, onCancel, onSave, onClose }) => {
+  const cityLine = [draft.city, draft.state].filter(Boolean).join(', ') + (draft.zip ? ` ${draft.zip}` : '');
+  const coordLine = draft.verified_latitude && draft.verified_longitude
+    ? `${Number(draft.verified_latitude).toFixed(6)}, ${Number(draft.verified_longitude).toFixed(6)}`
+    : null;
+
+  return (
+    <div className="flex-shrink-0 bg-black text-white px-5 py-4 border-b border-gray-800">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          {!editing ? (
+            <>
+              <h2 className="text-xl font-bold text-white truncate">
+                {draft.name || draft.address || 'Comp'}
+              </h2>
+              {draft.address && <p className="text-sm text-gray-300 truncate">{draft.address}</p>}
+              {cityLine.trim() && <p className="text-sm text-gray-300">{cityLine}</p>}
+              {coordLine && <p className="text-xs font-mono text-gray-400 mt-1">{coordLine}</p>}
+            </>
+          ) : (
+            <h2 className="text-lg font-bold text-white">{isNew ? 'New Comp' : 'Edit Location'}</h2>
+          )}
+        </div>
+        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+          {!editing && (
+            <button onClick={onEdit} title="Edit location"
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+          )}
+          <button onClick={onClose} title="Close"
+            className="p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Provenance badges (display mode) */}
+      {!editing && current && (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[11px] px-1.5 py-0.5 rounded bg-white/15 text-gray-100 uppercase">{current.source_type}</span>
+          <span className={`text-[11px] px-1.5 py-0.5 rounded uppercase ${
+            current.confidence === 'verified' ? 'bg-green-500/30 text-green-100'
+            : current.confidence === 'reported' ? 'bg-yellow-500/30 text-yellow-100'
+            : 'bg-white/10 text-gray-300'
+          }`}>{current.confidence}</span>
+        </div>
+      )}
+
+      {/* Edit form */}
+      {editing && (
+        <div className="mt-3 space-y-2">
+          {geocoding && (
+            <div className="flex items-center gap-2 text-xs text-gray-300">
+              <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              Looking up address…
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="col-span-2">
+              <label className={hLabelCls}>Name / Center</label>
+              <input className={hInputCls} value={draft.name} onChange={(e) => setField('name', e.target.value)} placeholder="e.g. Peachtree Crossing" />
+            </div>
+            <div className="col-span-2">
+              <label className={hLabelCls}>Address</label>
+              <input className={hInputCls} value={draft.address} onChange={(e) => setField('address', e.target.value)} />
+            </div>
+            <div>
+              <label className={hLabelCls}>City</label>
+              <input className={hInputCls} value={draft.city} onChange={(e) => setField('city', e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={hLabelCls}>State</label>
+                <input className={hInputCls} value={draft.state} onChange={(e) => setField('state', e.target.value)} />
+              </div>
+              <div>
+                <label className={hLabelCls}>ZIP</label>
+                <input className={hInputCls} value={draft.zip} onChange={(e) => setField('zip', e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className={hLabelCls}>Latitude</label>
+              <input className={hInputCls} value={draft.verified_latitude} onChange={(e) => setField('verified_latitude', e.target.value)} />
+            </div>
+            <div>
+              <label className={hLabelCls}>Longitude</label>
+              <input className={hInputCls} value={draft.verified_longitude} onChange={(e) => setField('verified_longitude', e.target.value)} />
+            </div>
+          </div>
+          {saveError && <p className="text-xs text-red-300">{saveError}</p>}
+          <div className="flex gap-2 pt-1">
+            <button onClick={onSave} disabled={saving}
+              className="flex-1 py-1.5 rounded bg-white text-black text-sm font-semibold hover:bg-gray-200 disabled:opacity-50">
+              {saving ? 'Saving…' : isNew ? 'Create Comp' : 'Save'}
+            </button>
+            {!isNew && (
+              <button onClick={onCancel} className="px-4 py-1.5 rounded border border-gray-500 text-sm text-white hover:bg-white/10">Cancel</button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===========================================================================
+// OVERVIEW BODY — non-location attributes (+ collapsible "More Details")
+// ===========================================================================
+const OverviewBody: React.FC<{
+  draft: Draft;
+  setField: (k: DraftKey, v: string) => void;
+  propertyTypes: LookupOption[];
+  saving: boolean;
+  saveError: string | null;
+  onSave: () => Promise<boolean>;
+}> = ({ draft, setField, propertyTypes, saving, saveError, onSave }) => {
+  const [showMore, setShowMore] = useState(false);
+  const bind = (k: DraftKey) => ({
+    value: draft[k],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setField(k, e.target.value),
   });
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (current) {
-      setF({
-        name: current.name ?? '', address: current.address ?? '', city: current.city ?? '',
-        state: current.state ?? '', zip: current.zip ?? '', county: current.county ?? '',
-        property_type_id: current.property_type_id ?? '',
-        building_sqft: current.building_sqft?.toString() ?? '',
-        land_acres: current.land_acres?.toString() ?? '',
-        year_built: current.year_built?.toString() ?? '',
-        anchor_tenant: current.anchor_tenant ?? '', trade_area: current.trade_area ?? '',
-        parcel_id: current.parcel_id ?? '',
-        verified_latitude: (current.verified_latitude ?? current.latitude)?.toString() ?? '',
-        verified_longitude: (current.verified_longitude ?? current.longitude)?.toString() ?? '',
-        source_type: current.source_type, source_url: current.source_url ?? '',
-        source_reference: current.source_reference ?? '', confidence: current.confidence,
-      });
-    } else if (createAt) {
-      setF((prev) => ({
-        ...prev,
-        verified_latitude: createAt.lat.toString(),
-        verified_longitude: createAt.lng.toString(),
-      }));
-    }
-  }, [current, createAt]);
-
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setF((prev) => ({ ...prev, [k]: e.target.value }));
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    const payload: any = {
-      name: str(f.name), address: str(f.address), city: str(f.city), state: str(f.state),
-      zip: str(f.zip), county: str(f.county),
-      property_type_id: f.property_type_id || null,
-      building_sqft: num(f.building_sqft), land_acres: num(f.land_acres), year_built: num(f.year_built),
-      anchor_tenant: str(f.anchor_tenant), trade_area: str(f.trade_area), parcel_id: str(f.parcel_id),
-      verified_latitude: num(f.verified_latitude), verified_longitude: num(f.verified_longitude),
-      source_type: f.source_type, source_url: str(f.source_url),
-      source_reference: str(f.source_reference), confidence: f.confidence,
-    };
-    try {
-      if (current) {
-        const { data, error } = await supabase.from('comp_property')
-          .update(payload).eq('id', current.id).select('*').single();
-        if (error) throw error;
-        onSavedComp(data as CompProperty);
-      } else {
-        payload.created_by_id = userId;
-        const { data, error } = await supabase.from('comp_property')
-          .insert(payload).select('*').single();
-        if (error) throw error;
-        onSavedComp(data as CompProperty);
-      }
-    } catch (e: any) {
-      setError(e.message || 'Failed to save comp');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <div className="space-y-4">
-      {!current && (
-        <p className="text-sm text-[#4A6B94] bg-[#8FA9C8]/10 border border-[#8FA9C8] rounded p-2">
-          Enter the location details and save to create the comp. Leases, sales and OMs can be added afterward.
-        </p>
-      )}
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Name / Center" className="col-span-2"><input className={inputCls} value={f.name} onChange={set('name')} placeholder="e.g. Peachtree Crossing" /></Field>
-        <Field label="Address" className="col-span-2"><input className={inputCls} value={f.address} onChange={set('address')} /></Field>
-        <Field label="City"><input className={inputCls} value={f.city} onChange={set('city')} /></Field>
-        <Field label="State"><input className={inputCls} value={f.state} onChange={set('state')} /></Field>
-        <Field label="ZIP"><input className={inputCls} value={f.zip} onChange={set('zip')} /></Field>
-        <Field label="County"><input className={inputCls} value={f.county} onChange={set('county')} /></Field>
         <Field label="Property Type">
-          <select className={inputCls} value={f.property_type_id} onChange={set('property_type_id')}>
+          <select className={inputCls} {...bind('property_type_id')}>
             <option value="">—</option>
             {propertyTypes.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
         </Field>
-        <Field label="Year Built"><input className={inputCls} value={f.year_built} onChange={set('year_built')} /></Field>
-        <Field label="Building SF"><input className={inputCls} value={f.building_sqft} onChange={set('building_sqft')} /></Field>
-        <Field label="Land Acres"><input className={inputCls} value={f.land_acres} onChange={set('land_acres')} /></Field>
-        <Field label="Anchor / Co-tenants" className="col-span-2"><input className={inputCls} value={f.anchor_tenant} onChange={set('anchor_tenant')} /></Field>
-        <Field label="Trade Area"><input className={inputCls} value={f.trade_area} onChange={set('trade_area')} /></Field>
-        <Field label="Parcel ID"><input className={inputCls} value={f.parcel_id} onChange={set('parcel_id')} /></Field>
-        <Field label="Latitude"><input className={inputCls} value={f.verified_latitude} onChange={set('verified_latitude')} /></Field>
-        <Field label="Longitude"><input className={inputCls} value={f.verified_longitude} onChange={set('verified_longitude')} /></Field>
-      </div>
-
-      <div className="border-t border-gray-200 pt-3 grid grid-cols-2 gap-3">
+        <Field label="Building SF"><input className={inputCls} {...bind('building_sqft')} /></Field>
+        <Field label="Land Acres"><input className={inputCls} {...bind('land_acres')} /></Field>
         <Field label="Source">
-          <select className={inputCls} value={f.source_type} onChange={set('source_type')}>
+          <select className={inputCls} {...bind('source_type')}>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </Field>
         <Field label="Confidence">
-          <select className={inputCls} value={f.confidence} onChange={set('confidence')}>
+          <select className={inputCls} {...bind('confidence')}>
             {CONFIDENCE_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
-        <Field label="Source URL" className="col-span-2"><input className={inputCls} value={f.source_url} onChange={set('source_url')} /></Field>
-        <Field label="Source Reference" className="col-span-2"><input className={inputCls} value={f.source_reference} onChange={set('source_reference')} placeholder="External listing / record id" /></Field>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {/* Collapsible "More Details" */}
+      <div className="border-t border-gray-200 pt-2">
+        <button
+          onClick={() => setShowMore((v) => !v)}
+          className="flex items-center gap-1.5 text-sm font-semibold text-[#4A6B94] hover:text-[#002147]"
+        >
+          <svg className={`w-4 h-4 transition-transform ${showMore ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          More Details
+        </button>
+        {showMore && (
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <Field label="Year Built"><input className={inputCls} {...bind('year_built')} /></Field>
+            <Field label="Anchor / Co-tenants"><input className={inputCls} {...bind('anchor_tenant')} /></Field>
+            <Field label="Trade Area"><input className={inputCls} {...bind('trade_area')} /></Field>
+            <Field label="Parcel ID"><input className={inputCls} {...bind('parcel_id')} /></Field>
+            <Field label="Source URL" className="col-span-2"><input className={inputCls} {...bind('source_url')} /></Field>
+            <Field label="Source Reference" className="col-span-2"><input className={inputCls} {...bind('source_reference')} placeholder="External listing / record id" /></Field>
+          </div>
+        )}
+      </div>
+
+      {saveError && <p className="text-sm text-red-600">{saveError}</p>}
       <button
-        onClick={save}
+        onClick={onSave}
         disabled={saving}
         className="w-full py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a] disabled:opacity-50"
       >
-        {saving ? 'Saving…' : current ? 'Save Changes' : 'Create Comp'}
+        {saving ? 'Saving…' : 'Save Changes'}
       </button>
     </div>
   );
@@ -514,7 +678,6 @@ const SalesTab: React.FC<{
     setEditing(s.id);
   };
 
-  // Derive cap rate from NOI/price when the user didn't type one.
   const derivedCap = capRateFromNoiPrice(num(f.noi), num(f.sale_price));
   const derivedPpsf = pricePsf(num(f.sale_price), buildingSqft);
 
