@@ -119,6 +119,53 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+// Normalized project name for fuzzy in-sweep matching: lowercase, drop
+// parenthetical case codes (RZ/PRD/PUD numbers), strip punctuation, collapse
+// whitespace. Keeps section/phase words ("Area 7", "Section IIIA") intact so they
+// act as differentiators — that's what keeps distinct phases in separate cards.
+function normalizeProjectName(name: string | null): string {
+  return (name ?? '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')       // "(RZ 24-001)", "(RZ25-02-01)"
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+// The name with phase/section identifiers stripped — digit tokens ("7", "4a") and
+// roman-numeral tokens ("iii", "iiia"). Two names with the SAME core but DIFFERENT
+// originals differ only by a phase number ("Section I" vs "Section II") — almost
+// always distinct phases of one development, not duplicates. We use this to stop
+// near-identical phase names from grouping on name alone (they still group if the
+// unit counts also agree).
+function corePhaseless(norm: string): string {
+  return norm
+    .split(' ')
+    .filter((t) => t && !/^\d+[a-z]?$/.test(t) && !/^[ivxlcdm]+[a-z]?$/.test(t))
+    .join(' ');
+}
+
+// Sørensen–Dice coefficient over character bigrams — cheap fuzzy string similarity
+// in [0,1]. 1.0 = identical; ~0.82+ = near-identical (only a generic suffix like
+// "Subdivision" differs); ~0.6 = same core name with a differing phase/section
+// token. Used with a unit-count tie-breaker for the in-sweep NAME dedupe.
+function diceCoefficient(a: string, b: string): number {
+  if (a === b) return a.length > 0 ? 1 : 0;
+  if (a.length < 2 || b.length < 2) return 0;
+  const bigrams = (s: string) => {
+    const m = new Map<string, number>();
+    for (let i = 0; i < s.length - 1; i++) {
+      const g = s.slice(i, i + 2);
+      m.set(g, (m.get(g) ?? 0) + 1);
+    }
+    return m;
+  };
+  const A = bigrams(a), B = bigrams(b);
+  let overlap = 0, sizeA = 0, sizeB = 0;
+  A.forEach((c) => { sizeA += c; });
+  B.forEach((c) => { sizeB += c; });
+  A.forEach((c, g) => { const bc = B.get(g); if (bc) overlap += Math.min(c, bc); });
+  return (2 * overlap) / (sizeA + sizeB);
+}
+
 // Editable subset — the fields the approval UI lets the user override per row.
 type Edits = Partial<Pick<StagingRow,
   'project_name' | 'address' | 'location_description' | 'parcel_boundary_notes'
@@ -182,6 +229,10 @@ export default function ResearchRunApprovalModal({
   const [showDecided, setShowDecided] = useState(false);
   // Per-cluster chosen keeper (stagingId). Defaults to the first member.
   const [keeperByCluster, setKeeperByCluster] = useState<Record<string, string>>({});
+  // Staging ids the reviewer pulled out of a NAME cluster ("not a duplicate" /
+  // "separate phase"). Excluded from name-clustering so they drop back into the
+  // normal flow. Name matching is fuzzy, so breaking a false group must be easy.
+  const [dismissedNameDup, setDismissedNameDup] = useState<Set<string>>(new Set());
 
   // ---- initial load ----
   useEffect(() => {
@@ -426,6 +477,64 @@ export default function ResearchRunApprovalModal({
     [clusters],
   );
 
+  // ---- in-sweep NAME clusters (Balanced): fuzzy-match pending rows by normalized
+  // name, with unit count as a secondary signal. Runs on rows the geographic check
+  // didn't already pair — INCLUDING approx-location rows — so same-named copies in
+  // different chunks still get grouped. Kept SEPARATE from the geographic clusters
+  // (lower confidence: phases share names) and easy to break apart (dismissedNameDup).
+  const NAME_STRONG = 0.82;      // near-identical name -> group regardless of units
+  const NAME_WITH_UNITS = 0.6;   // moderately similar name + equal unit count -> group
+  const nameClusters = useMemo(() => {
+    const rows = staging.filter(
+      (s) => s.approval_state === 'pending' && !s.matched_existing_id
+        && !clusterMemberIds.has(s.id) && !dismissedNameDup.has(s.id)
+        && normalizeProjectName(s.project_name).length >= 4,
+    );
+    const norm = new Map(rows.map((r) => [r.id, normalizeProjectName(r.project_name)]));
+    const parent: Record<string, string> = {};
+    const find = (x: string): string => {
+      parent[x] ??= x;
+      return parent[x] === x ? x : (parent[x] = find(parent[x]));
+    };
+    const unitAgree = (a: StagingRow, b: StagingRow) =>
+      a.total_housing_units != null && a.total_housing_units === b.total_housing_units;
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const na = norm.get(rows[i].id)!, nb = norm.get(rows[j].id)!;
+        const sim = diceCoefficient(na, nb);
+        // Names that differ ONLY by a phase/section numeral are treated as distinct
+        // phases: they group only if unit counts also agree, never on name alone.
+        const phaseOnly = na !== nb && corePhaseless(na) === corePhaseless(nb);
+        const units = unitAgree(rows[i], rows[j]);
+        const group = (units && sim >= NAME_WITH_UNITS) || (sim >= NAME_STRONG && !phaseOnly);
+        if (group) parent[find(rows[i].id)] = find(rows[j].id);
+      }
+    }
+    const groups = new Map<string, StagingRow[]>();
+    for (const r of rows) {
+      const root = find(r.id);
+      if (!groups.has(root)) groups.set(root, []);
+      groups.get(root)!.push(r);
+    }
+    return [...groups.entries()]
+      .map(([id, members]) => {
+        const sorted = members.slice().sort(
+          (a, b) => (a.sweep_chunk_index ?? 0) - (b.sweep_chunk_index ?? 0)
+            || (a.project_name ?? '').localeCompare(b.project_name ?? ''),
+        );
+        const u0 = sorted[0].total_housing_units;
+        const unitsAgree = u0 != null && sorted.every((m) => m.total_housing_units === u0);
+        return { id, members: sorted, unitsAgree };
+      })
+      .filter((c) => c.members.length >= 2)
+      .sort((a, b) => b.members.length - a.members.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staging, clusterMemberIds, dismissedNameDup]);
+  const nameClusterMemberIds = useMemo(
+    () => new Set(nameClusters.flatMap((c) => c.members.map((m) => m.id))),
+    [nameClusters],
+  );
+
   const pendingCount   = staging.filter((s) => s.approval_state === 'pending').length;
   const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
   const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
@@ -463,7 +572,8 @@ export default function ResearchRunApprovalModal({
     for (const r of staging) {
       if (r.approval_state === 'approved') { approved.push(r); continue; }
       if (r.approval_state === 'rejected') { rejected.push(r); continue; }
-      if (clusterMemberIds.has(r.id)) continue;   // shown in its cluster card
+      // Members of a location or name cluster render in their cluster card.
+      if (clusterMemberIds.has(r.id) || nameClusterMemberIds.has(r.id)) continue;
       (isFlagged(r) ? needsAttention : clean).push(r);
     }
     return {
@@ -473,7 +583,7 @@ export default function ResearchRunApprovalModal({
       rejected: rejected.sort(byName),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staging, clusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo]);
+  }, [staging, clusterMemberIds, nameClusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo]);
 
   // ---- handlers ----
   const setEdit = (id: string, key: keyof Edits, value: string) => {
@@ -849,14 +959,32 @@ export default function ResearchRunApprovalModal({
   };
 
   // A duplicate cluster: pick the keeper, reject the rest in one action.
-  const clusterCard = (c: { id: string; members: StagingRow[] }) => {
+  // Pull one row out of a name cluster (it's a separate phase, not a duplicate).
+  const separateFromNameCluster = (id: string) =>
+    setDismissedNameDup((prev) => new Set(prev).add(id));
+  // Break a whole name cluster apart — none of them are duplicates.
+  const dismissNameCluster = (ids: string[]) =>
+    setDismissedNameDup((prev) => { const n = new Set(prev); ids.forEach((id) => n.add(id)); return n; });
+
+  // A duplicate cluster card: pick the keeper, reject the rest in one action.
+  // `kind: 'name'` renders the lower-confidence name-match variant with break-apart
+  // controls (per-row "separate" + a whole-card "not duplicates").
+  const clusterCard = (
+    c: { id: string; members: StagingRow[] },
+    opts?: { kind?: 'location' | 'name'; title?: string; reason?: string },
+  ) => {
+    const isName = opts?.kind === 'name';
+    const accent = isName ? '#A27B5C' : '#4A6B94';
     const chosen = keeperByCluster[c.id];
     const keeperId = chosen && c.members.some((m) => m.id === chosen) ? chosen : c.members[0].id;
     const others = c.members.filter((m) => m.id !== keeperId);
     return (
-      <div key={c.id} className="border rounded-md" style={{ borderColor: '#4A6B94' }}>
-        <div className="px-3 py-2 border-b text-sm font-semibold" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#4A6B94' }}>
-          ⚠ Same location, staged {c.members.length}× in this sweep — keep one
+      <div key={c.id} className="border rounded-md" style={{ borderColor: accent }}>
+        <div className="px-3 py-2 border-b text-sm font-semibold" style={{ borderColor: '#8FA9C8', backgroundColor: isName ? '#FFF7F0' : '#F8FAFC', color: accent }}>
+          {opts?.title ?? `⚠ Same location, staged ${c.members.length}× in this sweep — keep one`}
+          {opts?.reason && (
+            <div className="text-xs font-normal mt-0.5" style={{ color: '#8FA9C8' }}>{opts.reason}</div>
+          )}
         </div>
         <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
           {c.members.map((m) => {
@@ -876,6 +1004,11 @@ export default function ResearchRunApprovalModal({
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: '#8FA9C8' }}>{rowSummaryLine(m)}</div>
                   </button>
+                  {isName && !isReadOnlyRun && c.members.length > 2 && (
+                    <button type="button" onClick={() => separateFromNameCluster(m.id)}
+                            className="text-xs px-1.5 py-0.5 rounded border self-start" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+                            title="Not part of this group — pull this row out (it's a separate project/phase)">✕ separate</button>
+                  )}
                 </div>
                 {isExpanded && (<div className="pl-6">{comparisonPanels(m)}{fieldEditor(m)}</div>)}
               </div>
@@ -883,11 +1016,18 @@ export default function ResearchRunApprovalModal({
           })}
         </div>
         {!isReadOnlyRun && (
-          <div className="px-3 py-2 border-t flex items-center gap-2" style={{ borderColor: '#8FA9C8' }}>
+          <div className="px-3 py-2 border-t flex flex-wrap items-center gap-2" style={{ borderColor: '#8FA9C8' }}>
             <button type="button" onClick={() => handleKeepOne(keeperId, others.map((m) => m.id))}
                     className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
               Keep selected · reject the other {others.length}
             </button>
+            {isName && (
+              <button type="button" onClick={() => dismissNameCluster(c.members.map((m) => m.id))}
+                      className="text-xs px-3 py-1.5 rounded border font-medium" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+                      title="These aren't duplicates — keep them all as separate records">
+                Not duplicates — keep all
+              </button>
+            )}
             <span className="text-xs" style={{ color: '#8FA9C8' }}>each reject is reversible with Undo</span>
           </div>
         )}
@@ -1039,7 +1179,8 @@ export default function ResearchRunApprovalModal({
               {staging.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ color: '#4A6B94' }}>
                   <span><b style={{ color: '#002147' }}>{pendingCount}</b> to review</span>
-                  {clusters.length > 0 && <span>· <b style={{ color: '#002147' }}>{clusters.length}</b> duplicate cluster{clusters.length === 1 ? '' : 's'}</span>}
+                  {clusters.length > 0 && <span>· <b style={{ color: '#002147' }}>{clusters.length}</b> location dup{clusters.length === 1 ? '' : 's'}</span>}
+                  {nameClusters.length > 0 && <span>· <b style={{ color: '#A27B5C' }}>{nameClusters.length}</b> name dup{nameClusters.length === 1 ? '' : 's'}</span>}
                   {triage.needsAttention.length > 0 && <span>· {triage.needsAttention.length} need a look</span>}
                   {triage.clean.length > 0 && <span>· {triage.clean.length} clean</span>}
                   <span>· <b style={{ color: '#002147' }}>{selected.size}</b> selected to commit</span>
@@ -1060,13 +1201,32 @@ export default function ResearchRunApprovalModal({
                 </div>
               )}
 
-              {/* 1. Duplicates to resolve (in-sweep clusters) */}
+              {/* 1. Duplicates to resolve (in-sweep location clusters) */}
               {clusters.length > 0 && (
                 <div className="space-y-2">
                   <div className="text-sm font-semibold" style={{ color: '#4A6B94' }}>
-                    ⚠ Duplicates to resolve ({clusters.length})
+                    ⚠ Duplicates to resolve — same location ({clusters.length})
                   </div>
-                  {clusters.map((c) => clusterCard(c))}
+                  {clusters.map((c) => clusterCard(c, { kind: 'location' }))}
+                </div>
+              )}
+
+              {/* 1b. Possibly the same — matched by NAME (lower confidence) */}
+              {nameClusters.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold" style={{ color: '#A27B5C' }}>
+                    Possibly the same — matched by name ({nameClusters.length})
+                  </div>
+                  {nameClusters.map((c) => clusterCard(
+                    { id: c.id, members: c.members },
+                    {
+                      kind: 'name',
+                      title: `Similar name, staged ${c.members.length}× — keep one if it's a duplicate`,
+                      reason: c.unitsAgree
+                        ? `grouped by: similar name + matching unit count (${c.members[0].total_housing_units} units)`
+                        : 'grouped by: similar name — confirm these aren’t separate phases before rejecting',
+                    },
+                  ))}
                 </div>
               )}
 

@@ -296,3 +296,53 @@ collapse toggles replace them. A summary bar up top gives the counts
 
 No dedupe *logic* changed here — same signals, same RPCs, same precision guard;
 purely how they're laid out and acted on.
+
+---
+
+# Name(+unit) in-sweep dedupe signal (2026-08-24)
+
+Until now every dedupe signal was geographic (150m proximity) or an exact
+name+address match against committed rows. Nothing caught two staged rows that
+are the same project under near-identical names — and crucially the APPROX.
+LOCATION rows (proximity disabled) got **zero** dedupe. This adds a fourth,
+client-side, in-sweep signal: fuzzy **name** match with **unit count** as a
+tie-breaker. It runs on pending rows the geographic check didn't already pair,
+including approx-location rows.
+
+Client-only (no SQL): `normalizeProjectName`, `diceCoefficient` (Sørensen–Dice
+over char bigrams), `corePhaseless`, and the `nameClusters` useMemo in
+`ResearchRunApprovalModal.tsx`.
+
+### Match rule ("Balanced", precision-tuned)
+
+Two pending rows group if **either**:
+- unit counts are present and equal AND name similarity ≥ 0.60, **or**
+- name similarity ≥ 0.82 AND they don't differ *only* by a phase/section numeral.
+
+That last clause is the key correction. Section/phase names ("Highland Lakes West
+Section I" vs "… Section II") score 0.93–0.98 similarity and would falsely group
+on name alone. `corePhaseless` strips digit + roman-numeral tokens; if two names
+share the same core but differ in the original, they're treated as distinct phases
+and only group when unit counts also agree. Verified on the live Grovetown sweep:
+the naive rule produced 6 clusters (3 false phase pairs — Highland Lakes I/II,
+Tillery III/IIIA, Wrights Farm III/IV); the refined rule produces 3, all
+defensible (Greenpoint North Phase 1 / Section 1 @128u; Marshall Mills ×2;
+Tillery Park Area 7 ×2 @98u).
+
+### UX — separate section, easy to break apart
+
+Name clusters render in their **own** "Possibly the same — matched by name"
+section (terracotta), separate from the confident geographic "same location"
+clusters, each labelled with *why* it grouped ("similar name + matching unit
+count (128 units)" vs "similar name — confirm these aren't separate phases"). They
+reuse the keep-one `clusterCard` but add break-apart controls, because fuzzy
+matching WILL occasionally mis-group:
+- **✕ separate** on a member (clusters of 3+) pulls one row out.
+- **Not duplicates — keep all** dismisses the whole cluster.
+
+Both add the row id(s) to `dismissedNameDup`, which excludes them from
+re-clustering so they fall back into the normal flow (selected for approval).
+Nothing auto-rejects; every reject stays reversible via Undo.
+
+Thresholds (`NAME_STRONG` 0.82, `NAME_WITH_UNITS` 0.60) are consts at the top of
+`nameClusters` — tune there.
