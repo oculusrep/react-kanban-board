@@ -193,3 +193,60 @@ explicitly hidden.
 - The nearby/in-sweep check re-geocodes on every `staging` mutation (pre-existing);
   a keep-one action that rejects several siblings triggers several re-geocode
   passes. Fine at current volumes; revisit if sweeps get large.
+
+---
+
+# Geocode-precision guard for in-sweep dedupe (2026-08-22)
+
+Branch: `feature/market-research-dedup-precision`
+
+## The bug this fixes
+
+Validating the review UX on the real Grovetown Deep Sweep (`ec45f5f1`, ~45 pending
+rows) exposed a false-positive storm in the in-sweep check. Reproducing the modal's
+exact logic against live data produced an **8-cluster** result, including one
+**cluster of 9** that lumped together the Tillery Park sections *and* three clearly
+distinct developments — Arden Glen, Warriors Walk, Kelarie — all at "~0m".
+
+Root cause (verified against the Google Geocoding API, not assumed): those rows have
+**street-only addresses** ("Baker Place Road", "Off Baker Place Road", "William Few
+Parkway"). Google resolves a street-only address to the **road centroid** —
+`location_type = GEOMETRIC_CENTER`, `types = route` — so *every* project fronting
+that road lands on the identical point. The haversine check then sees 0m and flags
+them all as the same project. Address-level rows ("409 Whiskey Road", "408
+Newmantown Road") resolve `ROOFTOP` and dedupe correctly.
+
+So the 150m proximity signal is only meaningful when both points are address-level.
+Clicking "Keep this · reject the others" on that cluster of 9 would have rejected
+several legitimate projects (recoverable now via Undo, but still wrong).
+
+## The fix
+
+`geometry.location_type` is the definitive precision tell; it just wasn't being
+carried out of the geocoder.
+
+1. **`geocodingService.ts`** — `GeocodeResult` gains an optional `location_type`
+   (`ROOFTOP | RANGE_INTERPOLATED | GEOMETRIC_CENTER | APPROXIMATE`), populated from
+   the Google path. Undefined on the OSM fallback (which we treat as usable, so the
+   fallback path is unchanged).
+2. **`ResearchRunApprovalModal.tsx`** — the dedupe effect marks a geocode
+   **low-precision** when `location_type` is `GEOMETRIC_CENTER` or `APPROXIMATE`.
+   Low-precision points are **excluded from both** the in-sweep pairwise math and
+   the `find_nearby_municipal_projects` (possible-duplicate) RPC call. This is
+   conservative on purpose: we only suppress when we have positive evidence of
+   imprecision — `ROOFTOP`, `RANGE_INTERPOLATED`, and undefined (OSM) still dedupe.
+3. **No silent drop** — excluded rows get an `ℹ APPROX. LOCATION · dup-check
+   skipped` badge (tooltip explains why) and count as "needs attention" in
+   `isFlagged`, so **focus mode keeps them visible** — the reviewer is told the
+   check couldn't run and to compare the address by hand, rather than being shown a
+   false "no duplicate" all-clear.
+
+Net effect on Grovetown: the cluster of 9 collapses to the genuine address-level
+dupes (409 Whiskey ×2, 408 Newmantown ×2, 210 E Robinson ×2, adjacent phases), and
+the street-only rows are surfaced as "check by hand" instead of false duplicates.
+
+## Follow-ups still open
+
+- Optionally add name-similarity as a second signal so two street-only rows with the
+  same project name can still be paired (proximity alone can't, by design here).
+- The "view on map" deep-link and the re-geocode-per-mutation cost noted above.
