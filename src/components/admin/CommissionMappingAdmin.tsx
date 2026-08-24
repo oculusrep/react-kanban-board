@@ -298,23 +298,46 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
     });
   };
 
+  // Find an account by (partial, case-insensitive) name match
+  const findAccountByName = (list: QBAccount[], needle: string) =>
+    list.find(a => (a.fullName || a.name || '').toLowerCase().includes(needle.toLowerCase()));
+
+  // Auto-populate the debit/credit accounts for a referral-partner mapping so the
+  // user doesn't have to hunt for the right accounts (default + override pattern).
+  // - Normal referral: debit = the "Referral Fee to Other Broker" expense; no credit.
+  // - BOR pass-through: debit = BOR Pass-Through Clearing (liability), credit = BOR Referral Income.
+  const applyReferralAccountDefaults = (bor: boolean, base: Partial<CommissionMapping>): Partial<CommissionMapping> => {
+    const next: Partial<CommissionMapping> = { ...base };
+    if (bor) {
+      const clearing = findAccountByName(qbLiabilityAccounts, 'BOR Pass-Through Clearing')
+        || findAccountByName(qbLiabilityAccounts, 'clearing');
+      const income = findAccountByName(qbIncomeAccounts, 'BOR Referral Income')
+        || findAccountByName(qbIncomeAccounts, 'referral income');
+      if (clearing) { next.qb_debit_account_id = clearing.id; next.qb_debit_account_name = clearing.fullName || clearing.name; }
+      if (income) { next.qb_credit_account_id = income.id; next.qb_credit_account_name = income.fullName || income.name; }
+    } else {
+      const expense = findAccountByName(qbExpenseAccounts, 'Referral Fee to Other Broker');
+      if (expense) { next.qb_debit_account_id = expense.id; next.qb_debit_account_name = expense.fullName || expense.name; }
+      next.qb_credit_account_id = null;
+      next.qb_credit_account_name = null;
+    }
+    return next;
+  };
+
   const handleEntityTypeChange = (entityType: 'broker' | 'referral_partner') => {
-    const updates: Partial<CommissionMapping> = {
+    let updates: Partial<CommissionMapping> = {
       ...formData,
       entity_type: entityType,
       broker_id: null,
       client_id: null
     };
 
-    // Set default debit account for referral partners
-    if (entityType === 'referral_partner' && qbExpenseAccounts.length > 0) {
-      const referralAccount = qbExpenseAccounts.find(
-        a => a.fullName === 'Commissions Paid Out:Referral Fee to Other Broker'
-      );
-      if (referralAccount) {
-        updates.qb_debit_account_id = referralAccount.id;
-        updates.qb_debit_account_name = referralAccount.fullName;
-      }
+    if (entityType === 'referral_partner') {
+      // Default debit (and credit, if BOR) accounts for referral partners
+      updates = applyReferralAccountDefaults(isBorMapping, updates);
+    } else {
+      // Brokers can't be BOR pass-throughs
+      setIsBorMapping(false);
     }
 
     setFormData(updates);
@@ -428,7 +451,10 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                     onChange={(e) => {
                       const on = e.target.checked;
                       setIsBorMapping(on);
-                      if (on) setFormData(prev => ({ ...prev, payment_method: 'bill' }));
+                      setFormData(prev => applyReferralAccountDefaults(on, {
+                        ...prev,
+                        payment_method: on ? 'bill' : prev.payment_method
+                      }));
                     }}
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded"
                   />
