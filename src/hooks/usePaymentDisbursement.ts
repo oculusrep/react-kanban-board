@@ -101,6 +101,31 @@ const createQBReferralEntry = async (paymentId: string, paidDate: string): Promi
   }
 };
 
+// Void the QBO Bill (+ BOR income JE) created for a referral/BOR disbursement
+const deleteQBReferralEntry = async (paymentId: string): Promise<QBReferralResult> => {
+  try {
+    console.log('🔄 Voiding QBO referral/BOR entries for payment:', paymentId);
+    const { data, error } = await supabase.functions.invoke('quickbooks-delete-referral-entry', {
+      body: { paymentId },
+    });
+
+    if (error) {
+      let errorMessage = error.message;
+      try {
+        const errorBody = await error.context?.json?.();
+        if (errorBody?.error) errorMessage = errorBody.error;
+      } catch { /* ignore parse errors */ }
+      console.error('QBO referral void error:', errorMessage);
+      return { success: false, error: errorMessage };
+    }
+
+    return data as QBReferralResult;
+  } catch (err) {
+    console.error('QBO referral void exception:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+};
+
 export const usePaymentDisbursement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +196,16 @@ export const usePaymentDisbursement = () => {
       if (error) throw error;
 
       console.log('✅ Referral fee paid status updated in database');
+
+      // If un-marking paid, void any QBO Bill (+ BOR income JE) so they aren't orphaned
+      if (!paid) {
+        const voidResult = await deleteQBReferralEntry(paymentId);
+        if (voidResult.success) {
+          console.log(`✅ ${voidResult.message || 'Voided QBO referral entries'}`);
+        } else {
+          alert(`Warning: the QuickBooks entries may not have been voided: ${voidResult.error}\n\nCheck QuickBooks and remove them manually if needed.`);
+        }
+      }
 
       // If marking as paid, create QBO Bill for the referral fee
       if (paid && paidDate) {

@@ -172,18 +172,25 @@ serve(async (req) => {
       )
     }
 
-    // Check if we already have a commission entry for this payment + referral
-    // We use a composite check since referral entries are tied to payments, not payment_splits
-    const { data: existingEntry } = await supabaseClient
+    // Prevent duplicates: a referral records one Bill; a BOR disbursement records
+    // a Bill + a Journal Entry. If any non-voided entry already exists for this
+    // payment, don't create another set (uncheck Paid to void them first).
+    const { data: existingEntries } = await supabaseClient
       .from('qb_commission_entry')
       .select('id, qb_entity_id, qb_entity_type')
-      .eq('payment_split_id', paymentId)  // Using payment_split_id field to store payment_id for referrals
+      .eq('payment_split_id', paymentId)  // payment_split_id stores the payment id for referrals/BOR
       .neq('status', 'voided')
-      .single()
 
-    // Note: This is a workaround. In a production system, you'd want a separate
-    // qb_referral_entry table or add a field to distinguish referral entries.
-    // For now, we'll check for entries linked to this deal's referral payee.
+    if (existingEntries && existingEntries.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          alreadyExists: true,
+          message: 'QuickBooks entries already exist for this payment — not creating duplicates. Uncheck Paid to void them first.'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Get the commission mapping for this referral partner
     const { data: mapping, error: mappingError } = await supabaseClient
@@ -335,6 +342,21 @@ serve(async (req) => {
         'payment_bor_income',
         jeResult.Id
       )
+
+      // Record the JE so it can be voided when "Paid" is unchecked
+      await supabaseClient
+        .from('qb_commission_entry')
+        .insert({
+          payment_split_id: paymentId,  // stores the payment id for referrals/BOR
+          commission_mapping_id: mapping?.id || null,
+          qb_entity_type: 'JournalEntry',
+          qb_entity_id: jeResult.Id,
+          qb_doc_number: jeResult.DocNumber,
+          amount: borFee,
+          transaction_date: transactionDate,
+          status: 'created',
+          created_by_id: user.id
+        })
     }
 
     // Record the entry (using qb_commission_entry table with special handling)
