@@ -178,7 +178,7 @@ serve(async (req) => {
     const { data: existingEntries } = await supabaseClient
       .from('qb_commission_entry')
       .select('id, qb_entity_id, qb_entity_type')
-      .eq('payment_split_id', paymentId)  // payment_split_id stores the payment id for referrals/BOR
+      .eq('payment_id', paymentId)  // referral/BOR entries key off the payment
       .neq('status', 'voided')
 
     if (existingEntries && existingEntries.length > 0) {
@@ -347,7 +347,7 @@ serve(async (req) => {
       await supabaseClient
         .from('qb_commission_entry')
         .insert({
-          payment_split_id: paymentId,  // stores the payment id for referrals/BOR
+          payment_id: paymentId,  // referral/BOR entries key off the payment
           commission_mapping_id: mapping?.id || null,
           qb_entity_type: 'JournalEntry',
           qb_entity_id: jeResult.Id,
@@ -364,7 +364,7 @@ serve(async (req) => {
     const { error: insertError } = await supabaseClient
       .from('qb_commission_entry')
       .insert({
-        payment_split_id: paymentId,  // Re-using this field for payment_id
+        payment_id: paymentId,  // referral/BOR entries key off the payment
         commission_mapping_id: mapping?.id || null,
         qb_entity_type: 'Bill',
         qb_entity_id: result.Id,

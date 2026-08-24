@@ -65,11 +65,11 @@ serve(async (req) => {
 
     console.log('Voiding referral/BOR entries for payment:', paymentId)
 
-    // Referral/BOR entries store the payment id in payment_split_id.
+    // Referral/BOR entries key off the payment (payment_id).
     const { data: entries } = await supabaseClient
       .from('qb_commission_entry')
       .select('id, qb_entity_id, qb_entity_type, qb_doc_number')
-      .eq('payment_split_id', paymentId)
+      .eq('payment_id', paymentId)
       .neq('status', 'voided')
 
     if (!entries || entries.length === 0) {
