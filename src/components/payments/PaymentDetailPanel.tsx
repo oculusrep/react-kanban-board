@@ -505,8 +505,30 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                   />
                 </div>
 
+                <div className="flex items-center justify-between pt-2 border-t border-blue-200">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={payment.referral_fee_paid || false}
+                      onChange={(e) => handleUpdateReferralPaid(payment.id, e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-xs text-gray-700">Paid — creates the QuickBooks Bill + BOR Fee income entry</span>
+                  </label>
+                  {payment.referral_fee_paid && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-600">Paid on:</span>
+                      <DatePickerInput
+                        value={payment.referral_fee_paid_date ? new Date(payment.referral_fee_paid_date).toISOString().split('T')[0] : null}
+                        onChange={(value) => handleUpdateReferralPaidDate(value || '')}
+                        className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <p className="text-xs text-gray-500">
-                  Marking this paid will create the QuickBooks Bill to the referral partner and recognize the BOR Fee as income — QB wiring lands in the next update.
+                  Set the BOR Fee above <strong>before</strong> marking paid. The Bill debits the clearing liability; a journal entry moves the BOR Fee to income.
                 </p>
               </div>
             </div>

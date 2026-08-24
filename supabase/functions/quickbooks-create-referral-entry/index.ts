@@ -5,10 +5,15 @@ import {
   refreshTokenIfNeeded,
   findOrCreateVendor,
   createBill,
+  createJournalEntry,
   logSync,
   QBBill,
-  QBBillLine
+  QBBillLine,
+  QBJournalEntry
 } from '../_shared/quickbooks.ts'
+
+// transaction_type.id for "BOR Referral Fee" (see src/lib/bor.ts + migration)
+const BOR_TRANSACTION_TYPE_ID = '71c1b4eb-d468-44b6-a52a-f5f9b1bbf7da'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -88,15 +93,24 @@ serve(async (req) => {
         id,
         payment_name,
         payment_amount,
+        bor_fee_usd,
         payment_date_estimated,
         sf_payment_date_actual,
         deal:deal_id (
           id,
           deal_name,
+          transaction_type_id,
+          bor_fee_usd,
           referral_fee_percent,
           referral_fee_usd,
           referral_payee_client_id,
           referral_payee:referral_payee_client_id (
+            id,
+            client_name,
+            qb_vendor_id,
+            qb_vendor_name
+          ),
+          client:client_id (
             id,
             client_name,
             qb_vendor_id,
@@ -116,33 +130,43 @@ serve(async (req) => {
     }
 
     const deal = payment.deal as any
-    const referralPayee = deal?.referral_payee as any
+    // Broker of Record deals: the referral partner IS the deal's Client, and the
+    // pass-through is the payment amount minus the flat BOR Fee (not a percentage).
+    const isBor = deal?.transaction_type_id === BOR_TRANSACTION_TYPE_ID
+    const referralPayee = (deal?.referral_payee || (isBor ? deal?.client : null)) as any
 
     if (!referralPayee) {
       return new Response(
         JSON.stringify({
           error: 'No referral payee set on this deal',
-          message: 'This payment does not have a referral fee to pay out'
+          message: isBor
+            ? 'This BOR deal has no Client set to remit the pass-through to'
+            : 'This payment does not have a referral fee to pay out'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
 
-    // Calculate the referral fee for this specific payment
-    // If the deal has multiple payments, the referral fee should be proportional
-    const dealReferralFeeUsd = Number(deal.referral_fee_usd) || 0
     const paymentAmount = Number(payment.payment_amount) || 0
 
-    // For simplicity, we'll calculate the referral fee as a proportion of this payment
-    // based on the deal's referral fee percentage
+    // BOR fee kept by Oculus for this installment (defaults from the deal-level fee)
+    const borFee = isBor ? (Number(payment.bor_fee_usd ?? deal.bor_fee_usd) || 0) : 0
+
+    // Amount remitted to the partner:
+    //  - BOR: full commission installment minus the BOR Fee (pass-through)
+    //  - normal referral: a percentage of this payment
     const referralFeePercent = Number(deal.referral_fee_percent) || 0
-    const referralAmount = paymentAmount * (referralFeePercent / 100)
+    const referralAmount = isBor
+      ? paymentAmount - borFee
+      : paymentAmount * (referralFeePercent / 100)
 
     if (referralAmount <= 0) {
       return new Response(
         JSON.stringify({
-          error: 'Referral fee amount is 0',
-          message: 'No referral fee to pay for this payment'
+          error: isBor ? 'Pass-through amount is 0' : 'Referral fee amount is 0',
+          message: isBor
+            ? 'Payment amount minus the BOR Fee is 0 — check the payment amount and BOR Fee'
+            : 'No referral fee to pay for this payment'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
@@ -197,10 +221,24 @@ serve(async (req) => {
       )
     }
 
+    // BOR requires a credit account (BOR Referral Income) to recognize the kept fee.
+    // Validate before creating the Bill so we never leave a Bill without its income JE.
+    if (isBor && borFee > 0 && !mapping?.qb_credit_account_id) {
+      return new Response(
+        JSON.stringify({
+          error: 'No BOR Referral Income account configured',
+          message: `Set the Credit Account (BOR Referral Income) on the commission mapping for ${referralPayee.client_name}.`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
     const transactionDate = paidDate || payment.sf_payment_date_actual || new Date().toISOString().split('T')[0]
 
     // Build description
-    const description = `Referral fee for ${deal?.deal_name || 'Deal'} - ${payment.payment_name || 'Payment'}`
+    const description = isBor
+      ? `BOR pass-through for ${deal?.deal_name || 'Deal'} - ${payment.payment_name || 'Payment'}`
+      : `Referral fee for ${deal?.deal_name || 'Deal'} - ${payment.payment_name || 'Payment'}`
 
     // Ensure vendor exists in QBO
     if (!vendorId) {
@@ -259,6 +297,46 @@ serve(async (req) => {
       result.Id
     )
 
+    // BOR: recognize the retained BOR Fee as income via a journal entry.
+    //   Dr clearing liability (draw down the held pass-through) / Cr BOR Referral Income
+    let jeResult: { Id: string; DocNumber?: string } | null = null
+    if (isBor && borFee > 0 && mapping?.qb_credit_account_id) {
+      const journalEntry: QBJournalEntry = {
+        TxnDate: transactionDate,
+        PrivateNote: `OVIS BOR Fee income - Payment: ${paymentId}, Deal: ${deal?.id}`,
+        Line: [
+          {
+            Amount: borFee,
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+              PostingType: 'Debit',
+              AccountRef: { value: debitAccountId, name: debitAccountName }
+            },
+            Description: `BOR Fee retained - ${deal?.deal_name || 'Deal'}`
+          },
+          {
+            Amount: borFee,
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+              PostingType: 'Credit',
+              AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name }
+            },
+            Description: `BOR Referral Income - ${deal?.deal_name || 'Deal'}`
+          }
+        ]
+      }
+      jeResult = await createJournalEntry(connection, journalEntry)
+      await logSync(
+        supabaseClient,
+        'journal_entry',
+        'outbound',
+        'success',
+        paymentId,
+        'payment_bor_income',
+        jeResult.Id
+      )
+    }
+
     // Record the entry (using qb_commission_entry table with special handling)
     // Note: In production, you might want a separate table for referral entries
     const { error: insertError } = await supabaseClient
@@ -288,10 +366,14 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Created referral fee Bill for ${referralPayee.client_name}`,
+        message: isBor
+          ? `Created BOR pass-through Bill ($${referralAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}) for ${referralPayee.client_name}${jeResult ? ` and recognized $${borFee.toLocaleString('en-US', { minimumFractionDigits: 2 })} BOR Fee as income` : ''}`
+          : `Created referral fee Bill for ${referralPayee.client_name}`,
         qbEntityId: result.Id,
         qbDocNumber: result.DocNumber,
         amount: referralAmount,
+        borFee: isBor ? borFee : undefined,
+        journalEntryId: jeResult?.Id,
         referralPayee: referralPayee.client_name
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
