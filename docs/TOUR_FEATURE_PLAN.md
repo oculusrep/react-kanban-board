@@ -82,10 +82,22 @@ reusing the existing helper functions `is_internal_user()`, `can_manage_portal()
   `LayerPanel.tsx` *and* the hardcoded popup in `MappingPageNew.tsx` (~`showCustomLayersMenu`).
   See [ADDING_A_SYSTEM_LAYER.md](./ADDING_A_SYSTEM_LAYER.md).
 
-### Phase 4 — AI route optimization
-- Enable Google Route Optimization API in GCP (billing check required).
-- Supabase Edge Function calls it server-side (keeps key off client), returns ordered stops →
-  write back to `tour_stop.position`.
+### Phase 4 — Route optimization
+**Shipped (v1):** per-day **Optimize** button on `TourMapPage` uses Google **Directions**
+`optimizeWaypoints` (client-side, no backend). It reorders a day's stops for the shortest
+drive, honoring any Start/End address as fixed anchors, and writes back `tour_stop.position`.
+
+**Requires the Directions API** on the Maps key (`VITE_GOOGLE_MAPS_API_KEY`, …`DKpxHQ`). If it's
+missing from the key's API-restriction list, Optimize fails with `DIRECTIONS_ROUTE: REQUEST_DENIED`
+and the route/drive-times silently fall back (straight lines, "Drive n/a"). Full setup +
+troubleshooting: [GOOGLE_MAPS_API_SETUP.md](./GOOGLE_MAPS_API_SETUP.md).
+
+**Future upgrade:** the dedicated Google **Route Optimization API** (`routeoptimization.googleapis.com`)
+for hard constraints (day time-windows, service times, >25 stops/day, multi-day balancing).
+That one needs GCP enablement + billing and a Supabase Edge Function (server-side, keeps the key
+off the client) that returns ordered stops → write back to `tour_stop.position`. Also note
+`DirectionsService` is deprecated (Feb 2026) in favor of the Routes API `computeRoutes` — see the
+setup doc's deprecation note.
 
 ### Phase 5 — PDF export
 - No PDF lib exists today. Add `@react-pdf/renderer` (designed doc) or `jspdf`+`html2canvas`
