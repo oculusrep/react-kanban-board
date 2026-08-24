@@ -28,6 +28,12 @@ interface PortalChatTabProps {
 
 export default function PortalChatTab({ siteSubmitId, showInternalComments, propertyId, dealId }: PortalChatTabProps) {
   const { user, userRole } = useAuth();
+
+  // Chat is normally keyed to a site submit. Deals with NO site submit (e.g.
+  // Broker of Record deals) key the same thread off the deal instead. When a
+  // siteSubmitId is present nothing changes.
+  const commentColumn: 'site_submit_id' | 'deal_id' = siteSubmitId ? 'site_submit_id' : 'deal_id';
+  const commentTargetId = siteSubmitId || dealId || '';
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +96,15 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
 
   // Fetch comments and organize into threads
   useEffect(() => {
+    // Neither a site submit nor a deal to key off — nothing to load, and
+    // querying with an empty id 400s. Show an empty thread instead.
+    if (!commentTargetId) {
+      setComments([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     async function fetchComments() {
       setLoading(true);
       setError(null);
@@ -98,7 +113,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
         let query = supabase
           .from('site_submit_comment')
           .select('*')
-          .eq('site_submit_id', siteSubmitId)
+          .eq(commentColumn, commentTargetId)
           .order('created_at', { ascending: true });
 
         if (!showInternalComments) {
@@ -197,14 +212,14 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
     fetchComments();
 
     const subscription = supabase
-      .channel(`comments-${siteSubmitId}`)
+      .channel(`comments-${commentColumn}-${commentTargetId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'site_submit_comment',
-          filter: `site_submit_id=eq.${siteSubmitId}`,
+          filter: `${commentColumn}=eq.${commentTargetId}`,
         },
         () => {
           fetchComments();
@@ -215,7 +230,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
     return () => {
       subscription.unsubscribe();
     };
-  }, [siteSubmitId, showInternalComments]);
+  }, [commentColumn, commentTargetId, showInternalComments]);
 
   useEffect(() => {
     commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -232,11 +247,16 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
     e.preventDefault();
     const content = parentId ? replyContent : newComment;
     if (!content.trim() || !user) return;
+    // Nothing to attach the comment to.
+    if (!commentTargetId) {
+      setError('Chat is unavailable for this record.');
+      return;
+    }
 
     setSubmitting(true);
     try {
       const insertPayload = {
-        site_submit_id: siteSubmitId,
+        [commentColumn]: commentTargetId,
         author_id: user.id,
         content: content.trim(),
         visibility: commentVisibility,
