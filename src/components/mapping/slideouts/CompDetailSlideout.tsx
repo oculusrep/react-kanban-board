@@ -648,7 +648,7 @@ const LeasesTab: React.FC<{
           {/* Common lease terms */}
           <TxtField label="Commencement" type="date" value={f.lease_commencement_date} onChange={setV('lease_commencement_date')} />
           <TxtField label="Expiration" type="date" value={f.lease_expiration_date} onChange={setV('lease_expiration_date')} />
-          <FormattedField label="Lease Term (years)" type="number" decimalPlaces={1} {...money('lease_term_years')} />
+          <FormattedField label="Lease Term (years)" type="number" decimalPlaces={0} {...money('lease_term_years')} />
           <FormattedField label="Rent Escalation %" type="percentage" {...money('escalation_pct')} />
           <SelField label="Rent Bumps" value={f.rent_bump_frequency} onChange={setV('rent_bump_frequency')}>
             <option value="">—</option>
