@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { EXCLUDE_BOR_OR_FILTER } from '../../lib/bor';
 
 // Stage IDs for filtering (same as RobReport)
 const STAGE_IDS = {
@@ -82,7 +83,8 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
         .select('id, gci, booked_date, stage_id')
         .in('stage_id', [STAGE_IDS.booked, STAGE_IDS.executedPayable, STAGE_IDS.closedPaid])
         .gte('booked_date', selectedYearStart)
-        .lte('booked_date', selectedYearEnd);
+        .lte('booked_date', selectedYearEnd)
+        .or(EXCLUDE_BOR_OR_FILTER); // Exclude BOR pass-through from GCI metrics
 
       const yearBookedGci = (yearDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
       const yearDealCount = (yearDeals || []).length;
@@ -98,7 +100,8 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
             STAGE_IDS.underContractContingent,
             STAGE_IDS.negotiatingLOI,
             STAGE_IDS.atLeasePSA,
-          ]);
+          ])
+          .or(EXCLUDE_BOR_OR_FILTER); // Exclude BOR pass-through from pipeline GCI
 
         const pipelineTotal = (pipelineDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
         setPipelineGci(pipelineTotal);
@@ -112,7 +115,8 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
         .select('id, gci, booked_date, stage_id')
         .in('stage_id', [STAGE_IDS.booked, STAGE_IDS.executedPayable, STAGE_IDS.closedPaid])
         .gte('booked_date', priorYearStart)
-        .lte('booked_date', priorYearEnd);
+        .lte('booked_date', priorYearEnd)
+        .or(EXCLUDE_BOR_OR_FILTER); // Exclude BOR pass-through from prior-year GCI
 
       const priorYearBookedGci = (priorYearDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
       const priorYearDealsCount = (priorYearDeals || []).length;

@@ -485,7 +485,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       )}
 
       {/* Payment Management Section */}
-      <Section title="Payment Management" help="Manage payments based on commission splits">
+      <Section title="Payment Management" help={isBorDeal(deal) ? 'Manage payments and the referral-partner pass-through' : 'Manage payments based on commission splits'}>
         <div className="flex justify-end mb-3">
           <button
             onClick={onSwitchToPayments}
@@ -494,8 +494,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             Go to Payments Tab
           </button>
         </div>
-        
-        {commissionSplits.length === 0 && (
+
+        {commissionSplits.length === 0 && !isBorDeal(deal) && (
           <div className="text-center text-gray-500 py-4">
             <p className="text-sm">No commission splits available. Commission splits are needed for payment generation.</p>
           </div>

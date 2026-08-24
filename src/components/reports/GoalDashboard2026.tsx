@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { EXCLUDE_BOR_OR_FILTER } from '../../lib/bor';
 import { useAuth } from '../../contexts/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -196,7 +197,8 @@ export default function GoalDashboard2026() {
       .select('id, gci, booked_date, stage_id')
       .in('stage_id', bookedClosedStages)
       .gte('booked_date', year2025Start)
-      .lte('booked_date', year2025End);
+      .lte('booked_date', year2025End)
+      .or(EXCLUDE_BOR_OR_FILTER); // Exclude BOR pass-through from GCI
 
     // Fetch closed deals in 2025 (by closed_date - using stage = closedPaid)
     const { data: closedDeals } = await supabase
@@ -204,7 +206,8 @@ export default function GoalDashboard2026() {
       .select('id, gci, closed_date, stage_id')
       .eq('stage_id', STAGE_IDS.closedPaid)
       .gte('closed_date', year2025Start)
-      .lte('closed_date', year2025End);
+      .lte('closed_date', year2025End)
+      .or(EXCLUDE_BOR_OR_FILTER); // Exclude BOR pass-through from GCI
 
     // Fetch commission splits for deal breakdown
     const allDealIds = [...(bookedDeals || []).map(d => d.id), ...(closedDeals || []).map(d => d.id)];
@@ -419,7 +422,8 @@ export default function GoalDashboard2026() {
       .select('id, gci, booked_date, stage_id')
       .in('stage_id', bookedClosedStages)
       .gte('booked_date', '2021-01-01')
-      .lte('booked_date', '2025-12-31');
+      .lte('booked_date', '2025-12-31')
+      .or(EXCLUDE_BOR_OR_FILTER); // Exclude BOR pass-through from GCI
 
     // Fetch all commission splits for these deals
     const dealIds = (allDeals || []).map(d => d.id);

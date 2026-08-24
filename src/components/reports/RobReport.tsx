@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { EXCLUDE_BOR_OR_FILTER } from '../../lib/bor';
 import QuickCommissionSplitModal from './QuickCommissionSplitModal';
 import DealDetailsSlideout from '../DealDetailsSlideout';
 
@@ -226,7 +227,8 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           stage:stage_id(label),
           client:client_id(id, client_name)
         `)
-        .neq('stage_id', '0e318cd6-a738-400a-98af-741479585057'); // Exclude Lost
+        .neq('stage_id', '0e318cd6-a738-400a-98af-741479585057') // Exclude Lost
+        .or(EXCLUDE_BOR_OR_FILTER); // Exclude BOR pass-through from commission metrics
 
       if (dealsError) throw dealsError;
 

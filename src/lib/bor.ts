@@ -19,3 +19,12 @@ export const MIKE_DEAL_TEAM_ID = '6574f79d-0127-4c6f-b832-cd2e666cd8b9';
 /** True when a deal record is a Broker of Record deal. */
 export const isBorDeal = (deal: { transaction_type_id?: string | null } | null | undefined): boolean =>
   deal?.transaction_type_id === BOR_TRANSACTION_TYPE_ID;
+
+/**
+ * PostgREST `.or(...)` filter that excludes BOR deals from a Supabase query while
+ * KEEPING deals whose transaction_type_id is null (a plain `.neq` would drop nulls).
+ * Use on deal-level GCI/pipeline aggregations so pass-through commissions don't
+ * inflate earned-commission metrics. Usage: query.or(EXCLUDE_BOR_OR_FILTER)
+ */
+export const EXCLUDE_BOR_OR_FILTER =
+  `transaction_type_id.is.null,transaction_type_id.neq.${BOR_TRANSACTION_TYPE_ID}`;
