@@ -250,3 +250,49 @@ the street-only rows are surfaced as "check by hand" instead of false duplicates
 - Optionally add name-similarity as a second signal so two street-only rows with the
   same project name can still be paired (proximity alone can't, by design here).
 - The "view on map" deep-link and the re-geocode-per-mutation cost noted above.
+
+---
+
+# Triage redesign of the approval modal (2026-08-24)
+
+The badges/filters/panels above made a single row *judgeable*, but a real Deep
+Sweep (~45 rows across 6 chunks) still rendered as one ~20,000px wall: every row
+was a fully-expanded 10-field edit form, and duplicate pairs sat far apart in
+municipality order. "Is this the best we can do? — it's still hard to follow."
+
+`ResearchRunApprovalModal.tsx` is now organized around **decisions, not rows**.
+
+### Compact rows, expand-to-edit
+
+Each row renders as a one-line summary (`▸ project name · badges` + `muni ·
+address · units · chunk`). The full `fieldEditor` only mounts when the reviewer
+clicks a row to expand it (`expandedRows` set). This alone cuts the height ~10×.
+Render is factored into helpers — `rowCard`, `clusterCard`, `fieldEditor`,
+`comparisonPanels`, `rowBadges`, `rowSummaryLine`, `sectionShell` — all plain JSX
+functions (not inline component definitions, to avoid the remount/click-swallow
+trap in [[feedback_mousedown_rerender_swallows_clicks]]).
+
+### Four triage buckets (was: municipality groups)
+
+`clusters` (union-find over the in-sweep sibling graph among pending rows) +
+`triage` (useMemo) split everything into:
+
+1. **Duplicates to resolve** — each in-sweep cluster is ONE `clusterCard`:
+   members stacked, a radio picks the keeper (`keeperByCluster`), and one
+   "Keep selected · reject the other N" button calls `handleKeepOne`. Replaces the
+   old scattered per-row "keep this" panels. Always shown.
+2. **Needs attention** — pending rows flagged matches-existing / possible-dup /
+   approx-location (not in a cluster). Always shown, compact.
+3. **Clean & ready** — unflagged pending rows. Collapsed by default
+   (`sectionShell`), with a "Select all N" affordance; they're already selected by
+   default so the footer's Approve & Commit still just works.
+4. **Decided** — approved + rejected, collapsed by default; rejected rows keep
+   their ↩ Undo.
+
+The old municipality grouping, `displayGroups`, `sortWeight`, and the
+`focusFlagged`/`hideApproved`/`hideRejected` filter chips are gone — the buckets +
+collapse toggles replace them. A summary bar up top gives the counts
+("N to review · K duplicate clusters · … · S selected to commit").
+
+No dedupe *logic* changed here — same signals, same RPCs, same precision guard;
+purely how they're laid out and acted on.

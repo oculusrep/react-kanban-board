@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { geocodingService } from '../../services/geocodingService';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -174,12 +174,14 @@ export default function ResearchRunApprovalModal({
   // Soft dedupe: stagingId -> nearby committed projects, plus an in-flight flag.
   const [possibleDupes, setPossibleDupes] = useState<Record<string, NearbyProject[]>>({});
   const [checkingDupes, setCheckingDupes] = useState(false);
-  // Review filters — cut the scroll on big sweeps. "Focus" hides clean pending
-  // rows (no match / no dupe) so only the ambiguous ones remain; the hide-*
-  // toggles collapse already-decided rows. Flagged rows always sort to the top.
-  const [focusFlagged, setFocusFlagged] = useState(false);
-  const [hideApproved, setHideApproved] = useState(false);
-  const [hideRejected, setHideRejected] = useState(false);
+  // Triage view state. Rows render compact (one summary line) by default; the
+  // reviewer expands the ones they want to edit. Bulk buckets (clean / decided)
+  // collapse so the screen leads with the decisions that actually need judgment.
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [showClean, setShowClean] = useState(false);
+  const [showDecided, setShowDecided] = useState(false);
+  // Per-cluster chosen keeper (stagingId). Defaults to the first member.
+  const [keeperByCluster, setKeeperByCluster] = useState<Record<string, string>>({});
 
   // ---- initial load ----
   useEffect(() => {
@@ -375,35 +377,60 @@ export default function ResearchRunApprovalModal({
     return () => { cancelled = true; };
   }, [staging]);
 
-  // ---- group by municipality for display ----
-  const grouped = useMemo(() => {
-    const m = new Map<string, { name: string; kind: string; rows: StagingRow[] }>();
-    for (const r of staging) {
-      const key = r.boundary_municipality_id ?? '__none__';
-      const display = r.muni_name ?? '(unknown municipality)';
-      if (!m.has(key)) m.set(key, { name: display, kind: r.muni_kind ?? '', rows: [] });
-      m.get(key)!.rows.push(r);
-    }
-    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [staging]);
-
-  const pendingCount   = staging.filter((s) => s.approval_state === 'pending').length;
-  const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
-  const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
-  const matchedExistingCount = staging.filter((s) => s.matched_existing_id && s.approval_state === 'pending').length;
-  const possibleDupCount = staging.filter(
-    (s) => s.approval_state === 'pending' && !s.matched_existing_id && (possibleDupes[s.id]?.length ?? 0) > 0,
-  ).length;
-
-  // Staging rows keyed by id — for resolving in-sweep sibling ids to their row
-  // (so the comparison panel can show the competing record side by side).
+  // Staging rows keyed by id — resolve sibling ids to their row (cluster members,
+  // comparison panels).
   const stagingById = useMemo(() => {
     const m = new Map<string, StagingRow>();
     for (const r of staging) m.set(r.id, r);
     return m;
   }, [staging]);
 
-  // Per-row dedupe flags — drives the "needs attention" sort/filter and which
+  // ---- in-sweep duplicate CLUSTERS: connected components over the sibling graph
+  // among still-pending rows. Two chunk windows can surface the same project 3–4×;
+  // grouping them into one "keep one" card beats scattering badges across the list.
+  const clusters = useMemo(() => {
+    const pendingIds = Object.keys(inSweepDupes).filter(
+      (id) => stagingById.get(id)?.approval_state === 'pending',
+    );
+    const parent: Record<string, string> = {};
+    const find = (x: string): string => {
+      parent[x] ??= x;
+      return parent[x] === x ? x : (parent[x] = find(parent[x]));
+    };
+    for (const id of pendingIds) {
+      for (const sib of inSweepDupes[id] ?? []) {
+        if (stagingById.get(sib)?.approval_state === 'pending') parent[find(id)] = find(sib);
+      }
+    }
+    const groups = new Map<string, StagingRow[]>();
+    for (const id of pendingIds) {
+      const row = stagingById.get(id);
+      if (!row) continue;
+      const root = find(id);
+      if (!groups.has(root)) groups.set(root, []);
+      groups.get(root)!.push(row);
+    }
+    return [...groups.entries()]
+      .map(([id, members]) => ({
+        id,
+        members: members.slice().sort(
+          (a, b) => (a.sweep_chunk_index ?? 0) - (b.sweep_chunk_index ?? 0)
+            || (a.project_name ?? '').localeCompare(b.project_name ?? ''),
+        ),
+      }))
+      .filter((c) => c.members.length >= 2)          // a lone remaining row isn't a cluster
+      .sort((a, b) => b.members.length - a.members.length);
+  }, [inSweepDupes, stagingById]);
+  const clusterMemberIds = useMemo(
+    () => new Set(clusters.flatMap((c) => c.members.map((m) => m.id))),
+    [clusters],
+  );
+
+  const pendingCount   = staging.filter((s) => s.approval_state === 'pending').length;
+  const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
+  const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
+
+  // Per-row dedupe flags — drives which triage bucket a row lands in and which
   // comparison panels render. matched = hard match; possible = near a committed
   // project; inSweep = near a sibling staged row in this same sweep.
   const rowFlags = (r: StagingRow) => {
@@ -417,38 +444,36 @@ export default function ResearchRunApprovalModal({
   const isFlagged = (r: StagingRow) => {
     const f = rowFlags(r);
     // Low-precision rows count as "needs attention": the dup check couldn't run,
-    // so focus mode must keep them visible rather than hide an undetectable dupe.
+    // so they must not be quietly filed under "clean & ready".
     return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id));
   };
-  // Sort weight: ambiguous & unresolved first, decided last.
-  //   0 flagged pending · 1 clean pending · 2 approved · 3 rejected
-  const sortWeight = (r: StagingRow) => {
-    if (r.approval_state === 'approved') return 2;
-    if (r.approval_state === 'rejected') return 3;
-    return isFlagged(r) ? 0 : 1;
-  };
 
-  // Apply the review filters + flagged-first sort on top of the municipality
-  // grouping. Groups emptied by filtering are dropped so the list stays tight.
-  const displayGroups = useMemo(() => {
-    return grouped
-      .map((g) => ({
-        ...g,
-        rows: g.rows
-          .filter((r) => {
-            if (hideApproved && r.approval_state === 'approved') return false;
-            if (hideRejected && r.approval_state === 'rejected') return false;
-            // Focus mode drops only the clean pending rows (decided rows stay
-            // visible so approve/reject history and Undo remain reachable).
-            if (focusFlagged && r.approval_state === 'pending' && !isFlagged(r)) return false;
-            return true;
-          })
-          .slice()
-          .sort((a, b) => sortWeight(a) - sortWeight(b)),
-      }))
-      .filter((g) => g.rows.length > 0);
+  // Triage: split every row into the section it belongs to. In-sweep cluster
+  // members are rendered inside their cluster card (see `clusters`), so they're
+  // excluded here. Everything else: flagged pending -> needs attention; clean
+  // pending -> ready; approved/rejected -> decided.
+  const triage = useMemo(() => {
+    const needsAttention: StagingRow[] = [];
+    const clean: StagingRow[] = [];
+    const approved: StagingRow[] = [];
+    const rejected: StagingRow[] = [];
+    const byName = (a: StagingRow, b: StagingRow) =>
+      (a.muni_name ?? '').localeCompare(b.muni_name ?? '')
+      || (a.project_name ?? '').localeCompare(b.project_name ?? '');
+    for (const r of staging) {
+      if (r.approval_state === 'approved') { approved.push(r); continue; }
+      if (r.approval_state === 'rejected') { rejected.push(r); continue; }
+      if (clusterMemberIds.has(r.id)) continue;   // shown in its cluster card
+      (isFlagged(r) ? needsAttention : clean).push(r);
+    }
+    return {
+      needsAttention: needsAttention.sort(byName),
+      clean: clean.sort(byName),
+      approved: approved.sort(byName),
+      rejected: rejected.sort(byName),
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grouped, focusFlagged, hideApproved, hideRejected, possibleDupes, inSweepDupes, lowPrecisionGeo]);
+  }, [staging, clusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo]);
 
   // ---- handlers ----
   const setEdit = (id: string, key: keyof Edits, value: string) => {
@@ -462,7 +487,6 @@ export default function ResearchRunApprovalModal({
     });
   };
   const selectAllNew    = () => setSelected(new Set(staging.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id).map((s) => s.id)));
-  const selectAllPending = () => setSelected(new Set(staging.filter((s) => s.approval_state === 'pending').map((s) => s.id)));
   const deselectAll     = () => setSelected(new Set());
 
   const handleReject = async (rowId: string) => {
@@ -682,9 +706,207 @@ export default function ResearchRunApprovalModal({
     }
   };
   const isReadOnlyRun = !canApprove || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
-  const inSweepDupCount = staging.filter(
-    (s) => s.approval_state === 'pending' && (inSweepDupes[s.id]?.length ?? 0) > 0,
-  ).length;
+  const cleanSelectable = triage.clean.filter((r) => !r.matched_existing_id).map((r) => r.id);
+
+  // ---- compact-row render helpers ----
+  const toggleExpand = (id: string) =>
+    setExpandedRows((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  // One-line identity for the compact summary.
+  const rowSummaryLine = (r: StagingRow) =>
+    [
+      r.muni_name,
+      (edits[r.id]?.address ?? r.address) || 'no address',
+      r.total_housing_units != null ? `${r.total_housing_units} units` : null,
+      r.sweep_chunk_index != null ? `chunk ${r.sweep_chunk_index}` : null,
+    ].filter(Boolean).join(' · ');
+
+  // Status/flag chips shown inline on the summary line.
+  const rowBadges = (r: StagingRow) => {
+    const f = rowFlags(r);
+    return (
+      <>
+        {f.matched && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>MATCHES EXISTING</span>
+        )}
+        {f.possible && (
+          <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C' }}>
+            ⚠ POSSIBLE DUP · ~{Math.round(possibleDupes[r.id][0].distance_m)}m
+          </span>
+        )}
+        {r.approval_state === 'pending' && !f.matched && lowPrecisionGeo.has(r.id) && (
+          <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
+                style={{ borderColor: '#8FA9C8', color: '#8FA9C8' }} title="Address only geocoded to a street/area centroid — dup-check skipped. Compare by hand.">
+            ℹ APPROX. LOCATION
+          </span>
+        )}
+        {r.approval_state === 'approved' && (
+          <span className="px-1.5 py-0.5 rounded-full text-xs" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>APPROVED</span>
+        )}
+        {r.approval_state === 'rejected' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs" style={{ borderColor: '#8FA9C8', color: '#8FA9C8' }}>REJECTED</span>
+        )}
+      </>
+    );
+  };
+
+  // Comparison context shown when a row is expanded (possible-dup vs committed +
+  // the low-precision explanation). In-sweep siblings live in cluster cards.
+  const comparisonPanels = (r: StagingRow) => (
+    <>
+      {!r.matched_existing_id && (possibleDupes[r.id]?.length ?? 0) > 0 && (
+        <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
+             style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+          <div className="font-medium" style={{ color: '#A27B5C' }}>Already on the map nearby — approving this may duplicate it:</div>
+          <ul className="mt-1 space-y-0.5" style={{ color: '#4A6B94' }}>
+            {possibleDupes[r.id].map((d) => (
+              <li key={d.municipal_project_id}>
+                • <b style={{ color: '#002147' }}>{d.project_name ?? '(unnamed project)'}</b> · ~{Math.round(d.distance_m)}m
+                {d.municipality_name ? ` · ${d.municipality_name}` : ''}{d.address ? ` · ${d.address}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {r.approval_state === 'pending' && !r.matched_existing_id && lowPrecisionGeo.has(r.id) && (
+        <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
+             style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#F8FAFC' }}>
+          This address only geocoded to a street/area centroid, so the duplicate check couldn't run for this row — every project on the same road lands on the same point. Compare the address by hand before approving.
+        </div>
+      )}
+    </>
+  );
+
+  // The full editable field grid — shown only when a row is expanded.
+  const fieldEditor = (r: StagingRow) => {
+    const isPending = r.approval_state === 'pending';
+    const value = (key: keyof Edits): string => {
+      const e = edits[r.id]?.[key];
+      if (e !== undefined) return String(e ?? '');
+      const v = (r as any)[key];
+      return v == null ? '' : String(v);
+    };
+    return (
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        {EDITABLE_FIELDS.map((f) => (
+          <div key={f.key} className={f.full ? 'col-span-2' : ''}>
+            <label className="block text-xs mb-0.5" style={{ color: '#4A6B94' }}>{f.label}</label>
+            <input
+              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+              value={value(f.key)}
+              disabled={!isPending || isReadOnlyRun}
+              onChange={(e) => setEdit(r.id, f.key, e.target.value)}
+              className="w-full px-2 py-1 text-sm border rounded"
+              style={{ borderColor: '#8FA9C8', color: '#002147' }}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // A compact, expand-to-edit row (needs-attention / clean / decided sections).
+  const rowCard = (r: StagingRow) => {
+    const isPending = r.approval_state === 'pending';
+    const isExpanded = expandedRows.has(r.id);
+    return (
+      <div key={r.id} className="px-3 py-1.5"
+           style={{ backgroundColor: r.approval_state === 'rejected' ? '#F8FAFC' : '#FFFFFF' }}>
+        <div className="flex items-center gap-2">
+          {isPending && !isReadOnlyRun && (
+            <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)}
+                   title="Include in Approve & Commit" />
+          )}
+          <button type="button" onClick={() => toggleExpand(r.id)} className="flex-1 text-left min-w-0"
+                  style={{ opacity: r.approval_state !== 'pending' ? 0.7 : 1 }}>
+            <div className="flex items-center flex-wrap gap-1.5">
+              <span className="text-xs" style={{ color: '#8FA9C8' }}>{isExpanded ? '▾' : '▸'}</span>
+              <span className="text-sm font-medium" style={{ color: '#002147' }}>{r.project_name ?? '(unnamed)'}</span>
+              {rowBadges(r)}
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: '#8FA9C8' }}>{rowSummaryLine(r)}</div>
+          </button>
+          {isPending && !isReadOnlyRun && (
+            <button type="button" onClick={() => handleReject(r.id)}
+                    className="text-xs px-2 py-1 rounded border self-start" style={{ borderColor: '#A27B5C', color: '#A27B5C' }}
+                    title="Reject this row (kept for audit; reversible with Undo)">Reject</button>
+          )}
+          {r.approval_state === 'rejected' && canApprove && (
+            <button type="button" onClick={() => handleUnreject(r.id)}
+                    className="text-xs px-2 py-1 rounded border self-start" style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                    title="Undo — restore this row to pending">↩ Undo</button>
+          )}
+        </div>
+        {isExpanded && (<div className="pl-6">{comparisonPanels(r)}{fieldEditor(r)}</div>)}
+      </div>
+    );
+  };
+
+  // A duplicate cluster: pick the keeper, reject the rest in one action.
+  const clusterCard = (c: { id: string; members: StagingRow[] }) => {
+    const chosen = keeperByCluster[c.id];
+    const keeperId = chosen && c.members.some((m) => m.id === chosen) ? chosen : c.members[0].id;
+    const others = c.members.filter((m) => m.id !== keeperId);
+    return (
+      <div key={c.id} className="border rounded-md" style={{ borderColor: '#4A6B94' }}>
+        <div className="px-3 py-2 border-b text-sm font-semibold" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#4A6B94' }}>
+          ⚠ Same location, staged {c.members.length}× in this sweep — keep one
+        </div>
+        <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
+          {c.members.map((m) => {
+            const isExpanded = expandedRows.has(m.id);
+            return (
+              <div key={m.id} className="px-3 py-1.5" style={{ backgroundColor: m.id === keeperId ? '#FFFFFF' : '#F8FAFC' }}>
+                <div className="flex items-center gap-2">
+                  <input type="radio" name={`keeper-${c.id}`} checked={m.id === keeperId} disabled={isReadOnlyRun}
+                         onChange={() => setKeeperByCluster((p) => ({ ...p, [c.id]: m.id }))} title="Keep this copy" />
+                  <button type="button" onClick={() => toggleExpand(m.id)} className="flex-1 text-left min-w-0">
+                    <div className="flex items-center flex-wrap gap-1.5">
+                      <span className="text-xs" style={{ color: '#8FA9C8' }}>{isExpanded ? '▾' : '▸'}</span>
+                      <span className="text-sm font-medium" style={{ color: '#002147' }}>{m.project_name ?? '(unnamed)'}</span>
+                      {m.id === keeperId
+                        ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· keep</span>
+                        : <span className="text-xs" style={{ color: '#A27B5C' }}>· will reject</span>}
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: '#8FA9C8' }}>{rowSummaryLine(m)}</div>
+                  </button>
+                </div>
+                {isExpanded && (<div className="pl-6">{comparisonPanels(m)}{fieldEditor(m)}</div>)}
+              </div>
+            );
+          })}
+        </div>
+        {!isReadOnlyRun && (
+          <div className="px-3 py-2 border-t flex items-center gap-2" style={{ borderColor: '#8FA9C8' }}>
+            <button type="button" onClick={() => handleKeepOne(keeperId, others.map((m) => m.id))}
+                    className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+              Keep selected · reject the other {others.length}
+            </button>
+            <span className="text-xs" style={{ color: '#8FA9C8' }}>each reject is reversible with Undo</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Collapsible section shell for the bulk buckets (clean / decided).
+  const sectionShell = (title: string, open: boolean, onToggle: () => void, right: ReactNode, body: ReactNode) => (
+    <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
+      <div className="px-3 py-2 flex items-center justify-between" style={{ backgroundColor: '#F8FAFC' }}>
+        <button type="button" onClick={onToggle} className="text-sm font-semibold flex items-center gap-2" style={{ color: '#002147' }}>
+          <span style={{ color: '#4A6B94' }}>{open ? '▾' : '▸'}</span>{title}
+        </button>
+        {right}
+      </div>
+      {open && <div className="divide-y border-t" style={{ borderColor: '#8FA9C8' }}>{body}</div>}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 p-4">
@@ -813,242 +1035,80 @@ export default function ResearchRunApprovalModal({
               </div>
               )}
 
-              {/* Bulk controls */}
-              {!isReadOnlyRun && (
-                <div className="flex items-center gap-2 text-xs">
-                  <span style={{ color: '#4A6B94' }}>
-                    Selected: <b>{selected.size}</b> / {pendingCount} pending
-                    {matchedExistingCount > 0 && <span style={{ color: '#A27B5C' }}> · {matchedExistingCount} matches existing</span>}
-                    {checkingDupes && <span style={{ color: '#8FA9C8' }}> · checking for nearby projects…</span>}
-                    {possibleDupCount > 0 && <span style={{ color: '#A27B5C' }}> · {possibleDupCount} possible duplicate{possibleDupCount === 1 ? '' : 's'} nearby</span>}
-                    {inSweepDupCount > 0 && <span style={{ color: '#4A6B94' }}> · {inSweepDupCount} in-sweep duplicate{inSweepDupCount === 1 ? '' : 's'}</span>}
-                  </span>
-                  <span style={{ color: '#8FA9C8' }}>·</span>
-                  <button type="button" onClick={selectAllNew}     className="underline" style={{ color: '#002147' }}>Select all NEW</button>
-                  <button type="button" onClick={selectAllPending} className="underline" style={{ color: '#002147' }}>Select all pending</button>
-                  <button type="button" onClick={deselectAll}      className="underline" style={{ color: '#4A6B94' }}>Deselect all</button>
+              {/* Summary bar */}
+              {staging.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ color: '#4A6B94' }}>
+                  <span><b style={{ color: '#002147' }}>{pendingCount}</b> to review</span>
+                  {clusters.length > 0 && <span>· <b style={{ color: '#002147' }}>{clusters.length}</b> duplicate cluster{clusters.length === 1 ? '' : 's'}</span>}
+                  {triage.needsAttention.length > 0 && <span>· {triage.needsAttention.length} need a look</span>}
+                  {triage.clean.length > 0 && <span>· {triage.clean.length} clean</span>}
+                  <span>· <b style={{ color: '#002147' }}>{selected.size}</b> selected to commit</span>
+                  {checkingDupes && <span style={{ color: '#8FA9C8' }}>· checking for duplicates…</span>}
+                  {!isReadOnlyRun && (
+                    <>
+                      <span style={{ color: '#8FA9C8' }}>·</span>
+                      <button type="button" onClick={selectAllNew} className="underline" style={{ color: '#002147' }}>Select all new</button>
+                      <button type="button" onClick={deselectAll} className="underline" style={{ color: '#4A6B94' }}>Deselect all</button>
+                    </>
+                  )}
                 </div>
               )}
 
-              {/* Review filters — cut the scroll on big sweeps */}
-              {staging.length > 0 && (() => {
-                const flaggedPendingCount = staging.filter((s) => s.approval_state === 'pending' && isFlagged(s)).length;
-                const chip = (active: boolean, onClick: () => void, label: string, title: string) => (
-                  <button
-                    type="button"
-                    onClick={onClick}
-                    title={title}
-                    className="px-2 py-0.5 rounded-full border text-xs"
-                    style={active
-                      ? { backgroundColor: '#002147', color: '#FFFFFF', borderColor: '#002147' }
-                      : { backgroundColor: '#FFFFFF', color: '#4A6B94', borderColor: '#8FA9C8' }}
-                  >
-                    {label}
-                  </button>
-                );
-                return (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs" style={{ color: '#8FA9C8' }}>Filter:</span>
-                    {chip(focusFlagged, () => setFocusFlagged((v) => !v),
-                      `⚠ Needs attention${flaggedPendingCount ? ` (${flaggedPendingCount})` : ''}`,
-                      'Show only pending rows flagged as a match or possible/in-sweep duplicate — hides the clean pending rows.')}
-                    {approvedCount > 0 && chip(hideApproved, () => setHideApproved((v) => !v), hideApproved ? 'Approved hidden' : `Hide approved (${approvedCount})`, 'Collapse rows already approved.')}
-                    {rejectedCount > 0 && chip(hideRejected, () => setHideRejected((v) => !v), hideRejected ? 'Rejected hidden' : `Hide rejected (${rejectedCount})`, 'Collapse rejected rows (Undo still available when shown).')}
-                  </div>
-                );
-              })()}
-
-              {/* Staged records by municipality */}
               {staging.length === 0 && (
                 <div className="text-sm italic" style={{ color: '#8FA9C8' }}>
                   No staged records {isSweep ? 'in this sweep yet.' : 'on this run.'}
                 </div>
               )}
-              {staging.length > 0 && displayGroups.length === 0 && (
-                <div className="text-sm italic" style={{ color: '#8FA9C8' }}>
-                  No records match the current filter.
+
+              {/* 1. Duplicates to resolve (in-sweep clusters) */}
+              {clusters.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold" style={{ color: '#4A6B94' }}>
+                    ⚠ Duplicates to resolve ({clusters.length})
+                  </div>
+                  {clusters.map((c) => clusterCard(c))}
                 </div>
               )}
-              {displayGroups.map((g) => (
-                <div key={g.name} className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
-                  <div className="px-3 py-2 border-b text-sm font-semibold"
-                       style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#002147' }}>
-                    {g.name} <span style={{ color: '#4A6B94', fontWeight: 400 }}>({g.kind}, {g.rows.length} record{g.rows.length === 1 ? '' : 's'})</span>
+
+              {/* 2. Needs attention (matches-existing / possible-dup / approx location) */}
+              {triage.needsAttention.length > 0 && (
+                <div className="border rounded-md" style={{ borderColor: '#A27B5C' }}>
+                  <div className="px-3 py-2 border-b text-sm font-semibold" style={{ borderColor: '#8FA9C8', backgroundColor: '#FFF7F0', color: '#A27B5C' }}>
+                    Needs attention ({triage.needsAttention.length}) — review before committing
                   </div>
                   <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
-                    {g.rows.map((r) => {
-                      const isPending = r.approval_state === 'pending';
-                      const value = (key: keyof Edits): string => {
-                        const e = edits[r.id]?.[key];
-                        if (e !== undefined) return String(e ?? '');
-                        const v = (r as any)[key];
-                        return v == null ? '' : String(v);
-                      };
-                      return (
-                        <div key={r.id} className="px-3 py-2 space-y-2"
-                             style={{ backgroundColor: r.approval_state === 'rejected' ? '#F8FAFC' : '#FFFFFF',
-                                      opacity: r.approval_state !== 'pending' ? 0.7 : 1 }}>
-                          <div className="flex items-start gap-2">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(r.id)}
-                              disabled={!isPending || isReadOnlyRun}
-                              onChange={() => toggleSelect(r.id)}
-                              className="mt-1"
-                            />
-                            <div className="flex-1">
-                              <div className="flex flex-wrap items-center gap-2 text-xs">
-                                {r.matched_existing_id && (
-                                  <span className="px-2 py-0.5 rounded-full border"
-                                        style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
-                                    MATCHES EXISTING
-                                  </span>
-                                )}
-                                {!r.matched_existing_id && (possibleDupes[r.id]?.length ?? 0) > 0 && (
-                                  <span
-                                    className="px-2 py-0.5 rounded-full border border-dashed"
-                                    style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFFFFF' }}
-                                    title={
-                                      'Committed project(s) already on the map nearby — review before approving:\n' +
-                                      possibleDupes[r.id]
-                                        .map((d) => `• ${d.project_name ?? '(unnamed)'} — ~${Math.round(d.distance_m)}m`
-                                          + `${d.municipality_name ? ` (${d.municipality_name})` : ''}`
-                                          + `${d.address ? `, ${d.address}` : ''}`)
-                                        .join('\n')
-                                    }
-                                  >
-                                    ⚠ POSSIBLE DUPLICATE · ~{Math.round(possibleDupes[r.id][0].distance_m)}m
-                                  </span>
-                                )}
-                                {r.approval_state === 'pending' && (inSweepDupes[r.id]?.length ?? 0) > 0 && (
-                                  <span
-                                    className="px-2 py-0.5 rounded-full border border-dashed"
-                                    style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
-                                    title={`Within ~150m of ${inSweepDupes[r.id].length} other staged row(s) in this sweep — likely the same project surfaced in adjacent chunk windows. Approve only one.`}
-                                  >
-                                    ⚠ IN-SWEEP DUPLICATE
-                                  </span>
-                                )}
-                                {r.approval_state === 'pending' && !r.matched_existing_id && lowPrecisionGeo.has(r.id) && (
-                                  <span
-                                    className="px-2 py-0.5 rounded-full border border-dashed"
-                                    style={{ borderColor: '#8FA9C8', color: '#8FA9C8', backgroundColor: '#FFFFFF' }}
-                                    title="This address only geocoded to a street/area centroid, not a specific address, so the duplicate check couldn't run reliably for this row — every project on the same road lands on the same point. Compare the address by hand before approving."
-                                  >
-                                    ℹ APPROX. LOCATION · dup-check skipped
-                                  </span>
-                                )}
-                                {r.approval_state === 'approved' && (
-                                  <span className="px-2 py-0.5 rounded-full"
-                                        style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>APPROVED</span>
-                                )}
-                                {r.approval_state === 'rejected' && (
-                                  <span className="px-2 py-0.5 rounded-full border"
-                                        style={{ borderColor: '#8FA9C8', color: '#8FA9C8' }}>REJECTED</span>
-                                )}
-                              </div>
-                              {/* Comparison panel: show the competing record(s)
-                                  inline so the reviewer can judge which to keep,
-                                  instead of guessing from a badge tooltip. */}
-                              {!r.matched_existing_id && (possibleDupes[r.id]?.length ?? 0) > 0 && (
-                                <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
-                                     style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
-                                  <div className="font-medium" style={{ color: '#A27B5C' }}>
-                                    Already on the map nearby — approving this may duplicate it:
-                                  </div>
-                                  <ul className="mt-1 space-y-0.5" style={{ color: '#4A6B94' }}>
-                                    {possibleDupes[r.id].map((d) => (
-                                      <li key={d.municipal_project_id}>
-                                        • <b style={{ color: '#002147' }}>{d.project_name ?? '(unnamed project)'}</b>
-                                        {' '}· ~{Math.round(d.distance_m)}m
-                                        {d.municipality_name ? ` · ${d.municipality_name}` : ''}
-                                        {d.address ? ` · ${d.address}` : ''}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {r.approval_state === 'pending' && (inSweepDupes[r.id]?.length ?? 0) > 0 && (() => {
-                                const sibs = (inSweepDupes[r.id] ?? [])
-                                  .map((id) => stagingById.get(id))
-                                  .filter((s): s is StagingRow => !!s);
-                                const pendingSibs = sibs.filter((s) => s.approval_state === 'pending');
-                                return (
-                                  <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
-                                       style={{ borderColor: '#4A6B94', backgroundColor: '#F8FAFC' }}>
-                                    <div className="font-medium" style={{ color: '#4A6B94' }}>
-                                      Same location staged {sibs.length === 1 ? 'again' : `${sibs.length}×`} in this sweep — likely the same project. Keep one:
-                                    </div>
-                                    <ul className="mt-1 space-y-0.5" style={{ color: '#4A6B94' }}>
-                                      {sibs.map((s) => (
-                                        <li key={s.id}>
-                                          • <b style={{ color: '#002147' }}>{s.project_name ?? '(unnamed)'}</b>
-                                          {s.address ? ` · ${s.address}` : ''}
-                                          {s.total_housing_units != null ? ` · ${s.total_housing_units} units` : ''}
-                                          {s.sweep_chunk_index != null ? ` · chunk ${s.sweep_chunk_index}` : ''}
-                                          {s.approval_state !== 'pending' ? ` · ${s.approval_state}` : ''}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                    {isPending && !isReadOnlyRun && pendingSibs.length > 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleKeepOne(r.id, pendingSibs.map((s) => s.id))}
-                                        className="mt-1.5 text-xs px-2 py-1 rounded border"
-                                        style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
-                                        title="Keep this record and reject the other staged copies (each reject is reversible with Undo)."
-                                      >
-                                        Keep this · reject the other{pendingSibs.length === 1 ? '' : 's'} ({pendingSibs.length})
-                                      </button>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                              <div className="grid grid-cols-2 gap-2 mt-2">
-                                {EDITABLE_FIELDS.map((f) => (
-                                  <div key={f.key} className={f.full ? 'col-span-2' : ''}>
-                                    <label className="block text-xs mb-0.5" style={{ color: '#4A6B94' }}>{f.label}</label>
-                                    <input
-                                      type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-                                      value={value(f.key)}
-                                      disabled={!isPending || isReadOnlyRun}
-                                      onChange={(e) => setEdit(r.id, f.key, e.target.value)}
-                                      className="w-full px-2 py-1 text-sm border rounded"
-                                      style={{ borderColor: '#8FA9C8', color: '#002147' }}
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            {isPending && !isReadOnlyRun && (
-                              <button
-                                type="button"
-                                onClick={() => handleReject(r.id)}
-                                className="text-xs px-2 py-1 rounded border self-start"
-                                style={{ borderColor: '#A27B5C', color: '#A27B5C' }}
-                                title="Reject this row (kept for audit; reversible with Undo)"
-                              >
-                                Reject
-                              </button>
-                            )}
-                            {r.approval_state === 'rejected' && canApprove && (
-                              <button
-                                type="button"
-                                onClick={() => handleUnreject(r.id)}
-                                className="text-xs px-2 py-1 rounded border self-start"
-                                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
-                                title="Undo — restore this row to pending"
-                              >
-                                ↩ Undo
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {triage.needsAttention.map((r) => rowCard(r))}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* 3. Clean & ready (collapsed by default) */}
+              {triage.clean.length > 0 && sectionShell(
+                `✓ Clean & ready (${triage.clean.length})`,
+                showClean,
+                () => setShowClean((v) => !v),
+                !isReadOnlyRun && cleanSelectable.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelected((prev) => { const n = new Set(prev); cleanSelectable.forEach((id) => n.add(id)); return n; })}
+                    className="text-xs px-2 py-1 rounded border"
+                    style={{ borderColor: '#002147', color: '#002147' }}
+                    title="Select every clean row for Approve & Commit"
+                  >
+                    Select all {cleanSelectable.length}
+                  </button>
+                ) : null,
+                triage.clean.map((r) => rowCard(r)),
+              )}
+
+              {/* 4. Decided (approved + rejected, collapsed by default) */}
+              {(triage.approved.length + triage.rejected.length) > 0 && sectionShell(
+                `Decided — ${triage.approved.length} approved · ${triage.rejected.length} rejected`,
+                showDecided,
+                () => setShowDecided((v) => !v),
+                null,
+                [...triage.approved, ...triage.rejected].map((r) => rowCard(r)),
+              )}
 
               {/* Needs review — single-run only */}
               {run && (
