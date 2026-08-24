@@ -27,21 +27,28 @@ export const LEASE_TYPE_LABEL: Record<LeaseType, string> = {
   multi_tenant: 'Multi-Tenant',
 };
 
-// Fields shown in the Add/Edit Lease card for each lease type. Everything not listed here is always
-// shown (tenant, brand, dates, term, escalation, options, reported sales, source, confidence).
-export type LeaseField =
-  | 'suite' | 'tenant_sqft' | 'annual_base_rent' | 'base_rent_psf' | 'nnn_psf' | 'ti_psf' | 'free_rent_months';
+// Physical/rent fields gated per lease type (from Mike's field matrix). Everything else is always
+// shown: tenant, brand, occupancy, lease term (years), escalation, rent bumps, option periods,
+// commencement/expiration, reported sales, source, confidence.
+export type LeaseField = 'suite' | 'tenant_sqft' | 'annual_base_rent' | 'nnn_psf' | 'ti_annual';
 
 export const LEASE_TYPE_FIELDS: Record<LeaseType, LeaseField[]> = {
-  // Ground lease = land only: a flat annual ground rent, no building SF / NNN / TI / suite.
-  ground_lease: ['annual_base_rent'],
-  // Build-to-suit single tenant (triple net): building SF + rent PSF + NNN + TI + free rent, no suite.
-  bts_nnn: ['tenant_sqft', 'base_rent_psf', 'nnn_psf', 'ti_psf', 'free_rent_months'],
-  // Build-to-suit single tenant (double net): same fields; the NN vs NNN distinction is the type itself.
-  bts_nn: ['tenant_sqft', 'base_rent_psf', 'nnn_psf', 'ti_psf', 'free_rent_months'],
-  // Tenant within a multi-tenant center: adds Suite.
-  multi_tenant: ['suite', 'tenant_sqft', 'base_rent_psf', 'nnn_psf', 'ti_psf', 'free_rent_months'],
+  // Ground lease = land only: annual ground rent + TI. No suite / building SF / NNN.
+  ground_lease: ['annual_base_rent', 'ti_annual'],
+  // Build-to-suit triple net: building SF + annual base rent + TI. (NNN paid directly, not captured.)
+  bts_nnn: ['tenant_sqft', 'annual_base_rent', 'ti_annual'],
+  // Build-to-suit double net: adds NNN reimbursements.
+  bts_nn: ['tenant_sqft', 'annual_base_rent', 'nnn_psf', 'ti_annual'],
+  // Tenant within a multi-tenant center: adds Suite + NNN.
+  multi_tenant: ['suite', 'tenant_sqft', 'annual_base_rent', 'nnn_psf', 'ti_annual'],
 };
+
+export type RentBumpFrequency = 'annual' | 'every_5_years' | 'other';
+export const RENT_BUMP_OPTIONS: { value: RentBumpFrequency; label: string }[] = [
+  { value: 'annual', label: 'Annual' },
+  { value: 'every_5_years', label: 'Every 5 Years' },
+  { value: 'other', label: 'Other' },
+];
 export const OCCUPANCY_STATUSES: OccupancyStatus[] = ['occupied', 'vacant', 'dark'];
 export const SALE_CONDITIONS: SaleCondition[] = ['arms_length', 'distressed', 'portfolio', 'related_party', 'other'];
 
@@ -96,11 +103,14 @@ export interface LeaseComp extends CompProvenance {
   lease_commencement_date: string | null;
   lease_expiration_date: string | null;
   lease_term_months: number | null;
+  lease_term_years: number | null;
   escalation_pct: number | null;
+  rent_bump_frequency: RentBumpFrequency | null;
   rent_steps: unknown | null;
   free_rent_months: number | null;
   ti_psf: number | null;
-  option_periods: unknown | null;
+  ti_annual: number | null;
+  option_periods: string | null;
   reported_tenant_sales: number | null;
   sales_psf: number | null;
   occupancy_status: OccupancyStatus | null;

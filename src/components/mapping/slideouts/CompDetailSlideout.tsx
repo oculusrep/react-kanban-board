@@ -7,7 +7,7 @@ import FormattedField from '../../shared/FormattedField';
 import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
   SOURCE_TYPES, CONFIDENCE_LEVELS, OCCUPANCY_STATUSES, SALE_CONDITIONS,
-  LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS,
+  LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS, RENT_BUMP_OPTIONS,
 } from '../../../lib/compTypes';
 import {
   allInRentPsf, effectiveRentPsf, monthsRemaining,
@@ -532,8 +532,9 @@ const OverviewBody: React.FC<{
 // ===========================================================================
 const emptyLease = {
   tenant_name: '', merchant_brand_id: '', suite: '', tenant_sqft: '', lease_type: '',
-  base_rent_psf: '', annual_base_rent: '', nnn_psf: '', lease_commencement_date: '', lease_expiration_date: '',
-  lease_term_months: '', escalation_pct: '', free_rent_months: '', ti_psf: '',
+  annual_base_rent: '', nnn_psf: '', ti_annual: '',
+  lease_commencement_date: '', lease_expiration_date: '',
+  lease_term_years: '', escalation_pct: '', rent_bump_frequency: '', option_periods: '',
   reported_tenant_sales: '', occupancy_status: '', source_type: 'manual', confidence: 'unverified',
 };
 
@@ -548,11 +549,11 @@ const LeasesTab: React.FC<{
     setF({
       tenant_name: l.tenant_name ?? '', merchant_brand_id: l.merchant_brand_id ?? '', suite: l.suite ?? '',
       tenant_sqft: l.tenant_sqft?.toString() ?? '', lease_type: l.lease_type ?? '',
-      base_rent_psf: l.base_rent_psf?.toString() ?? '', annual_base_rent: l.annual_base_rent?.toString() ?? '',
-      nnn_psf: l.nnn_psf?.toString() ?? '',
+      annual_base_rent: l.annual_base_rent?.toString() ?? '', nnn_psf: l.nnn_psf?.toString() ?? '',
+      ti_annual: l.ti_annual?.toString() ?? '',
       lease_commencement_date: l.lease_commencement_date ?? '', lease_expiration_date: l.lease_expiration_date ?? '',
-      lease_term_months: l.lease_term_months?.toString() ?? '', escalation_pct: l.escalation_pct?.toString() ?? '',
-      free_rent_months: l.free_rent_months?.toString() ?? '', ti_psf: l.ti_psf?.toString() ?? '',
+      lease_term_years: l.lease_term_years?.toString() ?? '', escalation_pct: l.escalation_pct?.toString() ?? '',
+      rent_bump_frequency: l.rent_bump_frequency ?? '', option_periods: l.option_periods ?? '',
       reported_tenant_sales: l.reported_tenant_sales?.toString() ?? '', occupancy_status: l.occupancy_status ?? '',
       source_type: l.source_type, confidence: l.confidence,
     });
@@ -572,26 +573,32 @@ const LeasesTab: React.FC<{
   });
 
   const save = async () => {
-    const base = num(f.base_rent_psf);
-    const nnn = num(f.nnn_psf);
-    const sqft = num(f.tenant_sqft);
-    // Ground lease captures a flat annual ground rent directly; others derive annual = PSF × SF.
-    const annualDirect = num(f.annual_base_rent);
+    const sqft = has('tenant_sqft') ? num(f.tenant_sqft) : null;
+    const annual = num(f.annual_base_rent);                 // Base Rent (Annual $); ground rent for ground lease
+    const nnn = has('nnn_psf') ? num(f.nnn_psf) : null;     // NNN quoted PSF
+    const tiAnnual = has('ti_annual') ? num(f.ti_annual) : null;
+    const years = num(f.lease_term_years);
+    // Derive PSF values so existing PSF-based comparisons/calculators still work.
+    const baseP = annual != null && sqft != null && sqft !== 0 ? annual / sqft : null;
     const payload: any = {
       comp_property_id: compId,
       tenant_name: str(f.tenant_name), merchant_brand_id: f.merchant_brand_id || null,
       suite: has('suite') ? str(f.suite) : null,
-      tenant_sqft: has('tenant_sqft') ? sqft : null,
+      tenant_sqft: sqft,
       lease_type: f.lease_type || null,
-      base_rent_psf: has('base_rent_psf') ? base : null,
-      nnn_psf: has('nnn_psf') ? nnn : null,
-      all_in_rent_psf: has('base_rent_psf') ? allInRentPsf(base, nnn) : null,
-      annual_base_rent: annualDirect != null ? annualDirect : (base != null && sqft != null ? base * sqft : null),
+      annual_base_rent: annual,
+      base_rent_psf: baseP,
+      nnn_psf: nnn,
+      all_in_rent_psf: baseP != null ? allInRentPsf(baseP, nnn) : null,
+      ti_annual: tiAnnual,
+      ti_psf: tiAnnual != null && sqft != null && sqft !== 0 ? tiAnnual / sqft : null,
       lease_commencement_date: f.lease_commencement_date || null,
       lease_expiration_date: f.lease_expiration_date || null,
-      lease_term_months: num(f.lease_term_months), escalation_pct: num(f.escalation_pct),
-      free_rent_months: has('free_rent_months') ? num(f.free_rent_months) : null,
-      ti_psf: has('ti_psf') ? num(f.ti_psf) : null,
+      lease_term_years: years,
+      lease_term_months: years != null ? Math.round(years * 12) : null,
+      escalation_pct: num(f.escalation_pct),
+      rent_bump_frequency: f.rent_bump_frequency || null,
+      option_periods: str(f.option_periods),
       reported_tenant_sales: num(f.reported_tenant_sales),
       sales_psf: salesPsf(num(f.reported_tenant_sales), sqft),
       occupancy_status: f.occupancy_status || null,
@@ -627,20 +634,27 @@ const LeasesTab: React.FC<{
             {OCCUPANCY_STATUSES.map((t) => <option key={t} value={t}>{t}</option>)}
           </SelField>
 
-          {/* Type-specific rent fields */}
+          {/* Type-specific fields (from the field matrix) */}
           {has('suite') && <TxtField label="Suite" value={f.suite} onChange={setV('suite')} />}
           {has('tenant_sqft') && <FormattedField label="Tenant SF" type="number" decimalPlaces={0} {...money('tenant_sqft')} />}
-          {has('annual_base_rent') && <FormattedField label="Annual Ground Rent" type="currency" decimalPlaces={0} {...money('annual_base_rent')} />}
-          {has('base_rent_psf') && <FormattedField label="Base Rent PSF" type="currency" {...money('base_rent_psf')} />}
+          {has('annual_base_rent') && (
+            <FormattedField
+              label={type === 'ground_lease' ? 'Annual Ground Rent' : 'Base Rent (Annual)'}
+              type="currency" decimalPlaces={0} {...money('annual_base_rent')} />
+          )}
           {has('nnn_psf') && <FormattedField label="NNN PSF" type="currency" {...money('nnn_psf')} />}
-          {has('ti_psf') && <FormattedField label="TI PSF" type="currency" {...money('ti_psf')} />}
-          {has('free_rent_months') && <FormattedField label="Free Rent (months)" type="number" decimalPlaces={0} {...money('free_rent_months')} />}
+          {has('ti_annual') && <FormattedField label="TI (Annual)" type="currency" decimalPlaces={0} {...money('ti_annual')} />}
 
-          {/* Common term fields */}
+          {/* Common lease terms */}
           <TxtField label="Commencement" type="date" value={f.lease_commencement_date} onChange={setV('lease_commencement_date')} />
           <TxtField label="Expiration" type="date" value={f.lease_expiration_date} onChange={setV('lease_expiration_date')} />
-          <FormattedField label="Term (months)" type="number" decimalPlaces={0} {...money('lease_term_months')} />
-          <FormattedField label="Escalation %/yr" type="percentage" {...money('escalation_pct')} />
+          <FormattedField label="Lease Term (years)" type="number" decimalPlaces={1} {...money('lease_term_years')} />
+          <FormattedField label="Rent Escalation %" type="percentage" {...money('escalation_pct')} />
+          <SelField label="Rent Bumps" value={f.rent_bump_frequency} onChange={setV('rent_bump_frequency')}>
+            <option value="">—</option>
+            {RENT_BUMP_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </SelField>
+          <TxtField label="Option Periods" value={f.option_periods} onChange={setV('option_periods')} placeholder="e.g. 4 × 5-year" />
           <FormattedField label="Reported Tenant Sales (annual)" type="currency" decimalPlaces={0} {...money('reported_tenant_sales')} />
           <div />
           <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
@@ -653,21 +667,22 @@ const LeasesTab: React.FC<{
 
         {!type && <p className="text-xs text-gray-400">Select a lease type to reveal the relevant rent fields.</p>}
 
-        {/* Live calculators (PSF-based; not shown for ground leases) */}
-        {has('base_rent_psf') && (
-          <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2 space-y-0.5">
-            <div>All-in rent PSF: <b>{dash(allInRentPsf(num(f.base_rent_psf), num(f.nnn_psf)), (n) => `$${n.toFixed(2)}`)}</b></div>
-            <div>Effective rent PSF (net of free rent + escalations): <b>{dash(
-              effectiveRentPsf({ baseRentPsf: num(f.base_rent_psf), termMonths: num(f.lease_term_months), escalationPct: num(f.escalation_pct), freeRentMonths: num(f.free_rent_months) }),
-              (n) => `$${n.toFixed(2)}`)}</b></div>
-            <div>Months remaining: <b>{dash(monthsRemaining(f.lease_expiration_date || null))}</b></div>
-          </div>
-        )}
-        {!has('base_rent_psf') && f.lease_expiration_date && (
-          <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2">
-            Months remaining: <b>{dash(monthsRemaining(f.lease_expiration_date || null))}</b>
-          </div>
-        )}
+        {/* Live calculators — derived PSF + remaining term */}
+        {type && (() => {
+          const sqft = num(f.tenant_sqft);
+          const annual = num(f.annual_base_rent);
+          const baseP = annual != null && sqft ? annual / sqft : null;
+          return (
+            <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2 space-y-0.5">
+              {baseP != null && <div>Base rent PSF (annual ÷ SF): <b>${baseP.toFixed(2)}</b></div>}
+              {baseP != null && <div>All-in rent PSF: <b>{dash(allInRentPsf(baseP, num(f.nnn_psf)), (n) => `$${n.toFixed(2)}`)}</b></div>}
+              {baseP != null && <div>Effective rent PSF (escalated over term): <b>{dash(
+                effectiveRentPsf({ baseRentPsf: baseP, termMonths: num(f.lease_term_years) != null ? num(f.lease_term_years)! * 12 : null, escalationPct: num(f.escalation_pct) }),
+                (n) => `$${n.toFixed(2)}`)}</b></div>}
+              <div>Months remaining: <b>{dash(monthsRemaining(f.lease_expiration_date || null))}</b></div>
+            </div>
+          );
+        })()}
         <div className="flex gap-2">
           <button onClick={save} className="flex-1 py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a]">Save Lease</button>
           <button onClick={() => setEditing(null)} className="px-4 py-2 rounded border border-gray-300 text-sm">Cancel</button>
@@ -690,11 +705,10 @@ const LeasesTab: React.FC<{
             </div>
           </div>
           <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-600">
-            <span>SF: {dash(l.tenant_sqft)}</span>
-            <span>Base: {dash(l.base_rent_psf, (n) => `$${n.toFixed(2)}`)}</span>
-            <span>NNN: {dash(l.nnn_psf, (n) => `$${n.toFixed(2)}`)}</span>
-            <span>All-in: {dash(l.all_in_rent_psf, (n) => `$${n.toFixed(2)}`)}</span>
             <span>Type: {l.lease_type ? LEASE_TYPE_LABEL[l.lease_type] : '—'}</span>
+            <span>SF: {dash(l.tenant_sqft)}</span>
+            <span>Rent/yr: {dash(l.annual_base_rent, (n) => formatCurrency(n))}</span>
+            <span>NNN PSF: {dash(l.nnn_psf, (n) => `$${n.toFixed(2)}`)}</span>
             <span>Exp: {l.lease_expiration_date ?? '—'}</span>
             <span>Remaining: {dash(monthsRemaining(l.lease_expiration_date))} mo</span>
           </div>
