@@ -466,11 +466,15 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                 onChange={(e) => handleVendorChange(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
-                <option value="">Select a vendor...</option>
+                <option value="">Leave blank to auto-create by name…</option>
                 {qbVendors.map(v => (
                   <option key={v.id} value={v.id}>{v.displayName}</option>
                 ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Optional. Leave blank and a QBO vendor matching the partner's name is created automatically on first
+                disbursement. Only set this to link an <strong>existing</strong> vendor whose name differs (avoids a duplicate).
+              </p>
               {qbVendors.length === 0 && (
                 <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load vendors</p>
               )}
