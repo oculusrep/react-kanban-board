@@ -1232,7 +1232,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
             value={form.target_close_date}
             onChange={(v) => updateField("target_close_date", v)}
           />
-          {/* BOR deals have no LOI/contract milestones — hidden */}
+          {/* BOR deals have no LOI milestones — hidden */}
           {!isBor && (
             <>
               <DateInput
@@ -1246,13 +1246,14 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
                 value={form.loi_signed_date}
                 onChange={(v) => updateField("loi_signed_date", v)}
               />
-              <DateInput
-                label="Contract X Date"
-                value={form.contract_signed_date}
-                onChange={(v) => updateField("contract_signed_date", v)}
-              />
             </>
           )}
+          {/* Contract X Date stays visible for BOR — required to create a QuickBooks invoice */}
+          <DateInput
+            label="Contract X Date"
+            value={form.contract_signed_date}
+            onChange={(v) => updateField("contract_signed_date", v)}
+          />
           <DateInput
             label="Booked Date"
             value={form.booked_date}
