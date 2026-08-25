@@ -265,6 +265,37 @@ backfilled**; staleness is a queryable **work list** (`loi_stale_selector_varian
 **hard error at BOTH assembly and the LRM freeze** (a frozen audit artifact on a stale partition is
 worse than a stale draft). Pre-seed the domain is free to correct as v1 (nothing pins it yet).
 
+## FALLBACK/IF/CHOOSE/OPTION sweep decisions (migration _body_parameters)
+
+A full sweep of the national drop's conditional markers found the schema needed more than one
+selector and one new pattern:
+
+- **Multiple selectors, not one.** `rent_structure` (R0/R1) and `landlord_work_structure`
+  (LCW0/LCW1/LCW2) are `conditional_alternative` partitions — **re-keyed off rank** (they're
+  structure switches, not concession ladders; LCW2 is labelled "ALTERNATIVE", not "FALLBACK").
+- **`building_type` is PROVISIONAL/UNRESOLVED.** As drafted it cannot partition (CAM1 = single-tenant
+  building; NNN = single-tenant building *or* parcel → overlap the exclusivity index correctly
+  rejects). The real axis reads as **net vs triple-net lease structure**, not building shape. Domain
+  removed from migrations (now seed-managed, empty pending the Director). CAM is not seeded until
+  answered. Director Q: *is CAM1-vs-NNN driven by building type or net-vs-triple-net, and can a
+  single-tenant building take NNN?*
+- **`premises_type` is a SEPARATE selector.** The Premises `[CHOOSE: in-line / end-cap / multi-tenant
+  pad / single-tenant pad]` values are physical configuration — never merged with the CAM structure
+  axis. Director Q: *reconcile into one selector or keep two?*
+- **`landlord_posture` is NOT a selector.** L1 / SIGN1 / TI2 aren't mutually exclusive and span
+  different clauses → independent **`applies_when` `deal_field` predicates**, not a partition.
+- **Selector domains are SEED-MANAGED data** (loader upserts `loi_selector` + `loi_selector_domain`),
+  versioned and confirmed during extraction — not hardcoded in migrations.
+- **Inline fallback parameters → `loi_body_parameter`.** A preferred + fallback value inside one body
+  (Rent Commencement "120 [Fallback: 90]") is a parameter, not a position: a `{{param:key}}` token in
+  `body_text` + a `loi_body_parameter` row (preferred_value / fallback_value / unit). Audit compares
+  the chosen value to preferred → "120, unchanged" vs "conceded 120→90".
+- **A modifier's valid target positions = OR-grouped `position_selection` `applies_when` rows** (sign
+  program ridable on SIGN0 **or** SIGN1). No new field. If the modifier's *text* differs by target,
+  split into separate modifiers. 
+- **L1 no-brace anomaly:** `brace_code='L1'`, `code_status='provisional'`, anomaly in
+  `provisional_note`. Director Q: *template defect or intentional out-of-convention code?*
+
 ## Assembler & document skeleton (LOCKED requirements — build later, per §9 step 2/3)
 
 **Assembler = in-place surgery on the real template .docx, never generate-from-scratch.** Output must
@@ -294,14 +325,17 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 22 assertions PASS** across three migrations:
-- Original 9 (still pass after v2/v3): collision guard, immutability, modifier/alternative
+**All 27 assertions PASS** across four migrations:
+- Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
   exclusivity, conds-without-selector, conditional shape ×2, position_selection FK-shape,
   selector-needs-version.
 - v2 positives (P1–P4): multi-segment bodies, exact 3/3 partition, EU2→EU1 dependency,
   one position carrying two body segments.
+- v3 (body parameters + multi-target modifier): valid preferred/fallback param, duplicate
+  param_key rejected, preferred_value required, OR-grouped position_selection targets,
+  building_type domain confirmed seed-managed (removed).
 
 **RLS is NOT validated** — `is_internal_user()` was stubbed to `true` for the runs;
 row-level access behavior is unverified until tested against the real helper.
