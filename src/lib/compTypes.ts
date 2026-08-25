@@ -83,11 +83,46 @@ export interface CompProperty extends CompProvenance {
   anchor_tenant: string | null;
   trade_area: string | null;
   parcel_id: string | null;
+  // Availability / marketing
+  is_available: boolean;
+  availability_type: AvailabilityType | null;
+  asking_type: AskingType | null;
+  asking_purchase_price: number | null;
+  asking_ground_lease_price: number | null;
+  asking_rent_psf: number | null;
+  asking_nnn_psf: number | null;
+  asking_annual_rent: number | null;
+  availability_notes: string | null;
   created_by_id: string | null;
   updated_by_id: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type AvailabilityType = 'for_lease' | 'for_purchase' | 'for_lease_or_purchase';
+export type AskingType = 'land' | 'shopping_center' | 'lease_conversion';
+
+export const AVAILABILITY_TYPE_OPTIONS: { value: AvailabilityType; label: string }[] = [
+  { value: 'for_lease', label: 'For Lease' },
+  { value: 'for_purchase', label: 'For Purchase' },
+  { value: 'for_lease_or_purchase', label: 'For Lease or Purchase' },
+];
+
+export const ASKING_TYPE_OPTIONS: { value: AskingType; label: string }[] = [
+  { value: 'land', label: 'Land' },
+  { value: 'shopping_center', label: 'Shopping Center' },
+  { value: 'lease_conversion', label: 'Lease Conversion (building for sale/lease)' },
+];
+
+// Which asking fields show per asking type.
+export type AskingField =
+  | 'asking_purchase_price' | 'asking_ground_lease_price' | 'asking_rent_psf' | 'asking_nnn_psf' | 'asking_annual_rent';
+
+export const ASKING_TYPE_FIELDS: Record<AskingType, AskingField[]> = {
+  land: ['asking_purchase_price', 'asking_ground_lease_price'],
+  shopping_center: ['asking_rent_psf', 'asking_nnn_psf'],
+  lease_conversion: ['asking_purchase_price', 'asking_annual_rent', 'asking_rent_psf'],
+};
 
 export interface LeaseComp extends CompProvenance {
   id: string;

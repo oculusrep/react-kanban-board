@@ -8,6 +8,7 @@ import { CompPropertyWithCounts, compCoords } from '../../../lib/compTypes';
 const COLOR_SALE = '#4A6B94';   // steel blue  — has a sale comp
 const COLOR_LEASE = '#002147';  // midnight    — has lease comp(s), no sale
 const COLOR_EMPTY = '#8FA9C8';  // light slate — location only, no comps yet
+const COLOR_AVAILABLE = '#F59E0B'; // amber    — available / being marketed
 const COLOR_OM_RING = '#A27B5C'; // terracotta — has an Operating Memorandum
 
 export interface CompDatabaseLayerProps {
@@ -21,6 +22,7 @@ export interface CompDatabaseLayerProps {
 }
 
 function pinColor(c: CompPropertyWithCounts): string {
+  if (c.is_available) return COLOR_AVAILABLE; // marketed listings stand out
   if (c.sale_count > 0) return COLOR_SALE;
   if (c.lease_count > 0) return COLOR_LEASE;
   return COLOR_EMPTY;

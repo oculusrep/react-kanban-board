@@ -10,6 +10,7 @@ import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
   SOURCE_TYPES, CONFIDENCE_LEVELS, SALE_CONDITIONS,
   LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS, RENT_BUMP_OPTIONS,
+  AskingType, AskingField, AVAILABILITY_TYPE_OPTIONS, ASKING_TYPE_OPTIONS, ASKING_TYPE_FIELDS,
 } from '../../../lib/compTypes';
 import {
   allInRentPsf, effectiveRentPsf, monthsRemaining,
@@ -201,6 +202,9 @@ type DraftKey =
   | 'verified_latitude' | 'verified_longitude'
   | 'property_type_id' | 'building_sqft' | 'land_acres' | 'year_built'
   | 'anchor_tenant' | 'trade_area' | 'parcel_id'
+  | 'is_available' | 'availability_type' | 'asking_type'
+  | 'asking_purchase_price' | 'asking_ground_lease_price' | 'asking_rent_psf'
+  | 'asking_nnn_psf' | 'asking_annual_rent' | 'availability_notes'
   | 'source_type' | 'source_url' | 'source_reference' | 'confidence';
 type Draft = Record<DraftKey, string>;
 
@@ -209,6 +213,9 @@ const emptyDraft: Draft = {
   verified_latitude: '', verified_longitude: '',
   property_type_id: '', building_sqft: '', land_acres: '', year_built: '',
   anchor_tenant: '', trade_area: '', parcel_id: '',
+  is_available: '', availability_type: '', asking_type: '',
+  asking_purchase_price: '', asking_ground_lease_price: '', asking_rent_psf: '',
+  asking_nnn_psf: '', asking_annual_rent: '', availability_notes: '',
   source_type: 'manual', source_url: '', source_reference: '', confidence: 'unverified',
 };
 
@@ -225,6 +232,14 @@ function buildDraft(comp: CompProperty | null, createAt?: { lat: number; lng: nu
       year_built: comp.year_built?.toString() ?? '',
       anchor_tenant: comp.anchor_tenant ?? '', trade_area: comp.trade_area ?? '',
       parcel_id: comp.parcel_id ?? '',
+      is_available: comp.is_available ? 'true' : '',
+      availability_type: comp.availability_type ?? '', asking_type: comp.asking_type ?? '',
+      asking_purchase_price: comp.asking_purchase_price?.toString() ?? '',
+      asking_ground_lease_price: comp.asking_ground_lease_price?.toString() ?? '',
+      asking_rent_psf: comp.asking_rent_psf?.toString() ?? '',
+      asking_nnn_psf: comp.asking_nnn_psf?.toString() ?? '',
+      asking_annual_rent: comp.asking_annual_rent?.toString() ?? '',
+      availability_notes: comp.availability_notes ?? '',
       source_type: comp.source_type, source_url: comp.source_url ?? '',
       source_reference: comp.source_reference ?? '', confidence: comp.confidence,
     };
@@ -243,6 +258,15 @@ function draftToPayload(d: Draft): any {
     property_type_id: d.property_type_id || null,
     building_sqft: num(d.building_sqft), land_acres: num(d.land_acres), year_built: num(d.year_built),
     anchor_tenant: str(d.anchor_tenant), trade_area: str(d.trade_area), parcel_id: str(d.parcel_id),
+    is_available: d.is_available === 'true',
+    availability_type: d.availability_type || null,
+    asking_type: d.asking_type || null,
+    asking_purchase_price: num(d.asking_purchase_price),
+    asking_ground_lease_price: num(d.asking_ground_lease_price),
+    asking_rent_psf: num(d.asking_rent_psf),
+    asking_nnn_psf: num(d.asking_nnn_psf),
+    asking_annual_rent: num(d.asking_annual_rent),
+    availability_notes: str(d.availability_notes),
     source_type: d.source_type, source_url: str(d.source_url),
     source_reference: str(d.source_reference), confidence: d.confidence,
   };
@@ -615,6 +639,12 @@ const OverviewBody: React.FC<{
     value: draft[k],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setField(k, e.target.value),
   });
+  const setV = (k: DraftKey) => (v: string) => setField(k, v);
+
+  const askingType = (draft.asking_type || '') as AskingType | '';
+  const askingFields: AskingField[] = askingType && ASKING_TYPE_FIELDS[askingType] ? ASKING_TYPE_FIELDS[askingType] : [];
+  const showAsk = (k: AskingField) => askingFields.includes(k);
+  const available = draft.is_available === 'true';
 
   return (
     <div className="space-y-4">
@@ -637,6 +667,36 @@ const OverviewBody: React.FC<{
             {CONFIDENCE_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
+      </div>
+
+      {/* Availability / Marketing */}
+      <div className={`rounded-xl border p-3.5 space-y-3 transition-colors ${available ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200'}`}>
+        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <input type="checkbox" checked={available}
+            onChange={(e) => setField('is_available', e.target.checked ? 'true' : '')}
+            className="w-4 h-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
+          <span className="text-sm font-semibold text-[#002147]">Available / Being marketed</span>
+          {available && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-400/30 text-amber-700">amber pin</span>}
+        </label>
+        {available && (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            <SelField label="Availability" value={draft.availability_type} onChange={setV('availability_type')}>
+              <option value="">—</option>
+              {AVAILABILITY_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </SelField>
+            <SelField label="Asking Type" value={draft.asking_type} onChange={setV('asking_type')}>
+              <option value="">Select…</option>
+              {ASKING_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </SelField>
+            {showAsk('asking_purchase_price') && <NumField label="Asking Purchase Price" kind="currency" value={draft.asking_purchase_price} onChange={setV('asking_purchase_price')} />}
+            {showAsk('asking_ground_lease_price') && <NumField label="Asking Ground Lease Price" kind="currency" value={draft.asking_ground_lease_price} onChange={setV('asking_ground_lease_price')} />}
+            {showAsk('asking_annual_rent') && <NumField label="Asking Annual Rent" kind="currency" value={draft.asking_annual_rent} onChange={setV('asking_annual_rent')} />}
+            {showAsk('asking_rent_psf') && <NumField label="Asking Rent PSF" kind="currency" decimals={2} value={draft.asking_rent_psf} onChange={setV('asking_rent_psf')} />}
+            {showAsk('asking_nnn_psf') && <NumField label="Asking NNN PSF" kind="currency" decimals={2} value={draft.asking_nnn_psf} onChange={setV('asking_nnn_psf')} />}
+            {!askingType && <p className="col-span-2 text-xs text-gray-500">Pick an asking type to enter asking prices.</p>}
+            <TxtAreaField label="Availability Notes" className="col-span-2" value={draft.availability_notes} onChange={setV('availability_notes')} rows={2} placeholder="Marketing details, broker, timing…" />
+          </div>
+        )}
       </div>
 
       {/* Collapsible "More Details" */}
