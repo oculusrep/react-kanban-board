@@ -1,0 +1,170 @@
+{
+  "_README": [
+    "SAMPLE LOI clause seed — DUMMY CONTENT ONLY. Body text here is placeholder,",
+    "not real Starbucks/Oculus language. Mike extracts the real 39 records against",
+    "THIS SHAPE. JSON (not CSV) because body_text carries brace codes, brackets and",
+    "internal line structure, records nest, and applies_when is structured.",
+    "",
+    "Shape mirrors migration 20260825170000_loi_tool_clause_library.sql:",
+    "  clause -> variant -> position -> applies_when ; canonical_body shared + keyed.",
+    "Keys under `_comment` are documentation and are stripped by the loader.",
+    "`canonical_bodies` are declared once (keyed by code+source+version) and referenced",
+    "from positions by `canonical_body_ref` so the same baseline text is never duplicated."
+  ],
+
+  "canonical_bodies": [
+    {
+      "ref": "CAM0__national-template-drop__v1",
+      "brace_code": "CAM0",
+      "source": "national-template-drop",
+      "version": "v1",
+      "body_text": "[DUMMY] Tenant shall pay its proportionate share of Common Area Maintenance costs, {CAM0} capped at three percent (3%) annual increase over the prior calendar year, excluding taxes and insurance."
+    },
+    {
+      "ref": "CAM1__southeast-doc__v1",
+      "brace_code": "CAM1",
+      "source": "southeast-doc",
+      "version": "v1",
+      "body_text": "[DUMMY] Tenant shall pay its proportionate share of Common Area Maintenance costs, {CAM1} with no cap, subject to the exclusions in Exhibit C."
+    },
+    {
+      "ref": "NNN__national-template-drop__v1",
+      "brace_code": "NNN",
+      "source": "national-template-drop",
+      "version": "v1",
+      "body_text": "[DUMMY] In addition, Tenant shall pay all Net-Net-Net charges {NNN} including real estate taxes, insurance, and utilities directly attributable to the Premises."
+    }
+  ],
+
+  "clauses": [
+    {
+      "clause_key": "cam",
+      "title": "Common Area Maintenance",
+      "bucket": "coded-position",
+      "_comment_bucket": "coded-position => wizard PROMPTS on selection. (custom-owned => preload no prompt; standing-default => use default no prompt.)",
+      "description": "Landlord CAM recovery and cap position.",
+      "guidance_note": "[DUMMY prose] Southeast prefers holding the 3% cap; concede the no-cap CAM1 only against a rent reduction. NEVER emitted into the document.",
+
+      "variants": [
+        {
+          "variant_key": "endcap_dt",
+          "deal_type_scope": ["end-cap-drive-thru"],
+          "description": "CAM ladder for end-cap drive-thru deals.",
+
+          "positions": [
+            {
+              "_comment": "ALTERNATIVE, rank 0, the Starbucks-preferred rung AND the Oculus standing default.",
+              "position_kind": "alternative",
+              "brace_code": "CAM0",
+              "rank": 0,
+              "emit_order": null,
+              "modifies_clause_id": null,
+              "is_default": true,
+              "canonical_body_ref": "CAM0__national-template-drop__v1",
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "approval_authority": null,
+              "firing_mode": "per-deal",
+              "director_question_key": null,
+              "internal_note": null,
+              "deviation_rationale": null,
+              "landlord_fill_prompt": null,
+              "provisional_note": null,
+              "applies_when": []
+            },
+            {
+              "_comment": "ALTERNATIVE, rank 1 fallback. Softer than national => deviation that trips approval; rule still pending Director, so rule_status is provisional and it links a director_question.",
+              "position_kind": "alternative",
+              "brace_code": "CAM1",
+              "rank": 1,
+              "emit_order": null,
+              "modifies_clause_id": null,
+              "is_default": false,
+              "canonical_body_ref": "CAM1__southeast-doc__v1",
+              "code_status": "confirmed",
+              "rule_status": "provisional-pending-director",
+              "authority": "southeast-regional",
+              "approval_required": true,
+              "approval_authority": "southeast-regional",
+              "firing_mode": "per-deal",
+              "director_question_key": "cam_nocap_approval",
+              "internal_note": "[DUMMY] Only take CAM1 with an offsetting concession elsewhere.",
+              "deviation_rationale": "[DUMMY] No-cap CAM deviates from the national 3%-cap position; conceded in exchange for X.",
+              "landlord_fill_prompt": "[DUMMY] Confirm the CAM exclusions list referenced in Exhibit C.",
+              "provisional_note": null,
+              "applies_when": []
+            },
+            {
+              "_comment": "MODIFIER — NNN rides CAM (not a ladder rung). rank NULL, emit_order set, modifies_clause_id -> this clause. applies_when shows BOTH a deal_field condition AND a cross-clause clause_selection reference.",
+              "position_kind": "modifier",
+              "brace_code": "NNN",
+              "rank": null,
+              "emit_order": 10,
+              "modifies_clause_id": "cam",
+              "_comment_modifies": "modifies_clause_id is given here as a clause_key; the loader resolves it to loi_clause.id.",
+              "is_default": false,
+              "canonical_body_ref": "NNN__national-template-drop__v1",
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "approval_authority": null,
+              "firing_mode": "per-deal",
+              "director_question_key": null,
+              "internal_note": "[DUMMY] NNN attaches only on true triple-net structures.",
+              "deviation_rationale": null,
+              "landlord_fill_prompt": null,
+              "provisional_note": null,
+              "applies_when": [
+                {
+                  "_comment": "condition_group 0, row A — DEAL FIELD reference (per-deal attribute).",
+                  "condition_group": 0,
+                  "ref_kind": "deal_field",
+                  "ref_clause_key": null,
+                  "ref_field": "lease_structure",
+                  "operator": "eq",
+                  "compare_value": "nnn",
+                  "compare_unit": null,
+                  "note": "NNN modifier applies only when the deal's lease structure is triple-net."
+                },
+                {
+                  "_comment": "condition_group 0, row B — CROSS-CLAUSE reference: this modifier depends on the CO clause's selected rung. ref_clause_key FKs to loi_clause.clause_key.",
+                  "condition_group": 0,
+                  "ref_kind": "clause_selection",
+                  "ref_clause_key": "continuous_operation",
+                  "ref_field": null,
+                  "operator": "is_selected",
+                  "compare_value": "CO0",
+                  "compare_unit": null,
+                  "note": "Dummy cross-clause dependency example (rows A and B AND together within group 0)."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "director_questions": [
+    {
+      "_comment": "Referenced by positions via director_question_key. One question can block many positions across clauses.",
+      "question_key": "cam_nocap_approval",
+      "question_text": "[DUMMY] Is conceding the no-cap CAM1 sanctioned regionally, or does it require corporate approval?",
+      "status": "open",
+      "date_asked": null,
+      "date_answered": null,
+      "answer_text": null,
+      "authority": "southeast-regional"
+    }
+  ],
+
+  "_notes_on_shared_tables": [
+    "loi_approval_label and loi_config are seeded by the migration, not per-clause.",
+    "canonical_bodies with the same (brace_code, source, version) must be byte-identical",
+    "across the whole seed set — the DB unique constraint rejects a divergent duplicate,",
+    "which is exactly the national-vs-Southeast CO1 collision guard."
+  ]
+}

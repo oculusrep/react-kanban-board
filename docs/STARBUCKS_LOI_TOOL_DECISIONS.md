@@ -204,9 +204,31 @@ migration risk).
 
 ## Standing action items
 
-- **Collision sweep** across all brace codes for one-code/two-canonical-texts splits (C).
 - **Reproduce Powder Springs Rd v1 LOI** (incl. Word comments + Workletter scope matrix)
   from a wizard run — the acceptance test.
+
+## Pass-one build contract
+
+- **Migrations:** SQL files matching the existing `supabase/migrations` convention,
+  targeting a **sandbox/branch DB**. Nothing near prod until the Powder Springs
+  acceptance test passes.
+- **Pass-one tables only:** `clause`, `variant`, `position`, `canonical_body`,
+  `director_question`, `approval_label`, `config`. Phase-2 event tables and the
+  OVIS↔service payload contract are held for pass two.
+- **Collision sweep is a DB-ENFORCED CONSTRAINT, not a to-do.** Canonical body keys on
+  `(code + source + version)`; assert **uniqueness on that tuple** so a second distinct
+  CO1 body under the same source+version FAILS at load time rather than silently
+  overwriting. This catches the national-vs-Southeast CO1 class of problem at load, not audit.
+- **Clause library handoff = JSON seed files.** Not CSV — canonical body text carries
+  brace codes, square brackets, and internal line structure CSV quoting mangles;
+  byte-fidelity is the entire basis of word-for-word-vs-modified; records nest
+  (positions under variants, modifiers carrying `applies_when`); `applies_when` is
+  structured, not scalar. Mike extracts the real 39 records against the schema; Claude
+  does not populate directly and does not invent bodies.
+- **Deliverable owed once schema exists:** a **sample seed file for one clause**, fully
+  populated with dummy content, showing every field, every enum value, every nesting
+  level, and an `applies_when` example with a cross-clause reference. Mike extracts the
+  real records against that shape.
 
 ---
 
