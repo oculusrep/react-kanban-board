@@ -47,6 +47,20 @@ function createCompIcon(c: CompPropertyWithCounts, selected: boolean): google.ma
   };
 }
 
+type CompRow = CompPropertyWithCounts & { askTooltip?: string };
+
+// Compact asking headline for a marker hover tooltip (from the latest availability record).
+function availTooltip(a: any): string {
+  if (!a) return '';
+  const parts: string[] = [];
+  if (a.asking_purchase_price != null) parts.push(`$${Math.round(a.asking_purchase_price).toLocaleString()} purchase`);
+  if (a.asking_ground_lease_price != null) parts.push(`$${Math.round(a.asking_ground_lease_price).toLocaleString()}/yr ground`);
+  if (a.asking_annual_rent != null) parts.push(`$${Math.round(a.asking_annual_rent).toLocaleString()}/yr`);
+  if (a.asking_rent_psf != null) parts.push(`$${Number(a.asking_rent_psf).toFixed(2)} PSF`);
+  if (a.asking_nnn_psf != null) parts.push(`$${Number(a.asking_nnn_psf).toFixed(2)} NNN`);
+  return parts.join(' · ');
+}
+
 const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
   map,
   isVisible,
@@ -56,7 +70,7 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
   selectedCompId = null,
   verifyingCompId = null,
 }) => {
-  const [comps, setComps] = useState<CompPropertyWithCounts[]>([]);
+  const [comps, setComps] = useState<CompRow[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const clustererRef = useRef<MarkerClusterer | null>(null);
   const isFetchingRef = useRef(false);
@@ -71,19 +85,25 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
       const PAGE_SIZE = 1000;
       let offset = 0;
       let hasMore = true;
-      const all: CompPropertyWithCounts[] = [];
+      const all: CompRow[] = [];
       while (hasMore) {
         const { data, error } = await supabase
           .from('comp_property')
-          .select('*, lease_comp(count), sale_comp(count), operating_memorandum(count)')
+          .select('*, lease_comp(count), sale_comp(count), operating_memorandum(count), comp_availability(as_of_date, asking_purchase_price, asking_ground_lease_price, asking_rent_psf, asking_nnn_psf, asking_annual_rent)')
           .range(offset, offset + PAGE_SIZE - 1);
         if (error) throw error;
-        const rows = (data || []).map((r: any) => ({
-          ...r,
-          lease_count: r.lease_comp?.[0]?.count ?? 0,
-          sale_count: r.sale_comp?.[0]?.count ?? 0,
-          om_count: r.operating_memorandum?.[0]?.count ?? 0,
-        })) as CompPropertyWithCounts[];
+        const rows = (data || []).map((r: any) => {
+          // Latest availability record (max as_of_date, nulls last) -> tooltip headline.
+          const latest = (r.comp_availability || []).slice().sort((x: any, y: any) =>
+            (y.as_of_date || '').localeCompare(x.as_of_date || ''))[0];
+          return {
+            ...r,
+            lease_count: r.lease_comp?.[0]?.count ?? 0,
+            sale_count: r.sale_comp?.[0]?.count ?? 0,
+            om_count: r.operating_memorandum?.[0]?.count ?? 0,
+            askTooltip: availTooltip(latest),
+          };
+        }) as CompRow[];
         all.push(...rows);
         hasMore = rows.length === PAGE_SIZE;
         offset += PAGE_SIZE;
@@ -126,9 +146,10 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
       if (!coords) return;
       const selected = selectedCompId === comp.id;
       const isVerifying = verifyingCompId === comp.id;
+      const baseTitle = comp.name || comp.address || 'Comp';
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
-        title: comp.name || comp.address || 'Comp',
+        title: comp.askTooltip ? `${baseTitle}\nAsking: ${comp.askTooltip}` : baseTitle,
         icon: createCompIcon(comp, selected || isVerifying),
         zIndex: selected || isVerifying ? 3000 : 100,
         draggable: isVerifying,
