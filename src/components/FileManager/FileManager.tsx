@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 interface FileManagerProps {
-  entityType: 'client' | 'property' | 'deal' | 'contact';
+  entityType: 'client' | 'property' | 'deal' | 'contact' | 'comp_property';
   entityId: string;
 }
 

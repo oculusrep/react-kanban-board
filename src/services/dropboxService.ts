@@ -554,7 +554,7 @@ class DropboxService {
    * @returns Clean folder path in proper subfolder
    */
   buildEntityFolderPath(
-    entityType: 'property' | 'client' | 'deal' | 'contact',
+    entityType: 'property' | 'client' | 'deal' | 'contact' | 'comp_property',
     entityName: string
   ): string {
     // Map entity types to their subfolder names
@@ -562,7 +562,8 @@ class DropboxService {
       property: 'Properties',
       client: 'Accounts',  // Clients go in Accounts folder
       deal: 'Opportunities',  // Deals go in Opportunities folder
-      contact: 'Contacts'
+      contact: 'Contacts',
+      comp_property: 'Comps'  // Comparable database records
     };
 
     const subfolder = subfolderMap[entityType];
@@ -584,7 +585,7 @@ class DropboxService {
    * @returns Created or existing folder info
    */
   async createFolderForEntity(
-    entityType: 'property' | 'client' | 'deal' | 'contact',
+    entityType: 'property' | 'client' | 'deal' | 'contact' | 'comp_property',
     entityName: string
   ): Promise<DropboxFile> {
     const folderPath = this.buildEntityFolderPath(entityType, entityName);

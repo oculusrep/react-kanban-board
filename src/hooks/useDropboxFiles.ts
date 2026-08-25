@@ -33,7 +33,7 @@ interface UseDropboxFilesReturn {
  * @returns Object containing files, loading states, and file management functions
  */
 export function useDropboxFiles(
-  entityType: 'client' | 'property' | 'deal' | 'contact' | 'property_unit',
+  entityType: 'client' | 'property' | 'deal' | 'contact' | 'property_unit' | 'comp_property',
   entityId: string | null
 ): UseDropboxFilesReturn {
   const [files, setFiles] = useState<DropboxFile[]>([]);
@@ -243,6 +243,10 @@ export function useDropboxFiles(
           tableName = 'property_unit';
           nameField = 'property_unit_name';
           break;
+        case 'comp_property':
+          tableName = 'comp_property';
+          nameField = 'name,address';
+          break;
         default:
           return null;
       }
@@ -264,6 +268,9 @@ export function useDropboxFiles(
         const firstName = data.first_name || '';
         const lastName = data.last_name || '';
         return `${firstName} ${lastName}`.trim() || 'Unnamed Contact';
+      } else if (entityType === 'comp_property') {
+        // Comps often have only an address (no name); fall back so the folder is identifiable.
+        return data.name || data.address || `Comp ${entityId.slice(0, 8)}`;
       } else {
         return data[nameField] || `Unnamed ${entityType}`;
       }
