@@ -55,6 +55,9 @@ backups/
 # Exclude all SQL files except migrations
 *.sql
 !supabase/migrations/*.sql
+# LOI tool dev-only test harnesses — executable record of locked schema decisions.
+# NOT migrations (folder name kept unmistakably "dev-only"); never applied by db push.
+!supabase/dev-only/*.sql
 !supabase/CLEAN_SLATE_PAYMENT_TRIGGERS.sql
 !supabase/RESTORE_ALL_PAYMENT_TRIGGERS.sql
 !supabase/TEST_REFERRAL_FEE_CALCULATION.sql

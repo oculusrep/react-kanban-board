@@ -232,6 +232,61 @@ migration risk).
 
 ---
 
+## Proof-of-shape revisions (migrations _v2 + _selector_domain_versioning)
+
+A proof-of-shape pass on Exclusive Use + CAM against the national drop (LOI_US__2_.docx)
+and Powder Springs surfaced four things the first schema couldn't hold:
+
+1. **One brace code emits at multiple insertion points with different bodies (intra-source).**
+   `{NNN}` appears twice in the national drop (CAM-section body vs Premises-area parcel add-on),
+   both legitimate. Fix: `loi_canonical_body` gains **`segment_key`** as a 4th key component
+   (`UNIQUE(brace_code, source, version, segment_key)` — collision guard now per-segment); a
+   position carries **one-to-many bodies** via the new **`loi_position_body`** join (replaces the
+   single `position.canonical_body_id`). Audit reports "NNN word-for-word" iff all segments match.
+2. **Chained modifiers (EU2 requires EU1).** applies_when gains **`position_selection`** ref_kind
+   + `ref_brace_code`; EU2's condition = position_selection on (exclusive_use, EU1). OVIS enforces
+   "can't select EU2 without EU1" at selection time.
+3. **EU definitions defect** (gourmet/brand-identified used by EU1, defined in the EU2 bracket) —
+   handled by #1: EU1 carries the definitions as a second body segment. Flagged in `internal_note`
+   for the Director.
+4. **CAM0/CAM1/NNN are building-type-selected, not a rank ladder.** New
+   **`position_kind = 'conditional_alternative'`**: rank NULL, mutually exclusive, selected by a
+   **typed enumerated selector** (`loi_variant.selector_field` + `loi_position.selector_value` +
+   `loi_selector_domain`). Exclusivity = partial unique index; **exhaustiveness = deferred
+   constraint trigger** (exact partition of the domain, enforced at LOAD, not assembly). Resolver
+   **hard-errors on zero match** (never silent no-emit — CAM always renders something). Plus
+   `loi_variant.replaces_base` for the Southeast "replace in entirety" instruction.
+
+**Selector-domain versioning + staleness.** Domain changes are **versioned, never in-place edits**
+(`loi_selector.current_version` + `loi_selector_domain.version`; PK `(selector_field, version, value)`).
+Each variant **pins** the version it partitioned against (`loi_variant.selector_version`); write-time
+validates against the pinned version. A domain bump leaves existing variants **stale, never silently
+backfilled**; staleness is a queryable **work list** (`loi_stale_selector_variant` view) and is a
+**hard error at BOTH assembly and the LRM freeze** (a frozen audit artifact on a stale partition is
+worse than a stale draft). Pre-seed the domain is free to correct as v1 (nothing pins it yet).
+
+## Assembler & document skeleton (LOCKED requirements — build later, per §9 step 2/3)
+
+**Assembler = in-place surgery on the real template .docx, never generate-from-scratch.** Output must
+be visually indistinguishable from the Starbucks template — it *is* the template with clause text
+substituted. Verified structure of LOI_US__2_.docx: zero tables, zero list numbering, six named
+styles (BodyText, BodyText2, BodyTextIndent, Heading3, Normal11pt, Title), 166 tabs carrying a
+label-then-body layout. Requirements:
+- Preserve each paragraph's **style, run properties, and tab structure** when substituting — the
+  `PREMISES:` label run and its tab survive intact; only the body run content changes.
+- Leave **header, footer, footnotes, theme, fontTable** untouched.
+- **No markdown intermediate, no docx-generation library** rebuilding the document. Real Word comments.
+- **Formatting acceptance test:** assemble Powder Springs, then diff the emitted docx against the
+  source template — the *only* differences may be substituted clause text and per-deal fills. Any
+  style/spacing/tab-stop difference is a bug.
+
+**Document skeleton is stored in the tool, versioned, not uploaded per deal.** Normal LOI flow = Mike
+picks a deal type; the wizard resolves against the **current skeleton version** for that type — no file
+handling. **Template ingestion is a separate admin path**, used only on a new Starbucks drop: load the
+.docx, store as a new skeleton version, reconcile against the clause library, and flag any brace code
+that appears / disappears / changes body text vs the prior version. **Old skeleton versions stay
+immutable** so in-flight deals keep assembling reproducibly (ties to the triple version-pin in B).
+
 ## Validation status (pass one)
 
 Schema applied to the throwaway `loi-tool-dev` Supabase project via `psql` (no Docker
@@ -239,10 +294,14 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-All nine decision-encoding negative tests **PASS** (each operation correctly rejected):
-collision guard (unique), canonical-body immutability (trigger), modifier/alternative
-shape ×3 (CHECK), no-coded-gaps ×2 (trigger), duplicate rank (partial unique index),
-`applies_when` cross-clause FK.
+**All 22 assertions PASS** across three migrations:
+- Original 9 (still pass after v2/v3): collision guard, immutability, modifier/alternative
+  shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
+- v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
+  exclusivity, conds-without-selector, conditional shape ×2, position_selection FK-shape,
+  selector-needs-version.
+- v2 positives (P1–P4): multi-segment bodies, exact 3/3 partition, EU2→EU1 dependency,
+  one position carrying two body segments.
 
 **RLS is NOT validated** — `is_internal_user()` was stubbed to `true` for the runs;
 row-level access behavior is unverified until tested against the real helper.
