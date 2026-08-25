@@ -245,7 +245,7 @@ export function useDropboxFiles(
           break;
         case 'comp_property':
           tableName = 'comp_property';
-          nameField = 'name,address';
+          nameField = 'name,address,city,state';
           break;
         default:
           return null;
@@ -269,8 +269,10 @@ export function useDropboxFiles(
         const lastName = data.last_name || '';
         return `${firstName} ${lastName}`.trim() || 'Unnamed Contact';
       } else if (entityType === 'comp_property') {
-        // Comps often have only an address (no name); fall back so the folder is identifiable.
-        return data.name || data.address || `Comp ${entityId.slice(0, 8)}`;
+        // Folder name: "<comp name or address> - City, ST" so comps are easy to tell apart in Dropbox.
+        const base = data.name || data.address || `Comp ${entityId.slice(0, 8)}`;
+        const loc = [data.city, data.state].filter(Boolean).join(', ');
+        return loc ? `${base} - ${loc}` : base;
       } else {
         return data[nameField] || `Unnamed ${entityType}`;
       }
