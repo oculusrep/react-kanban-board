@@ -76,6 +76,19 @@ Open item §12 asks Mike whether he'd rather the board *drive* `current_handoff_
 
 `ball_in_court = 'none'` means the deal is genuinely parked with nobody owing anything. It should be rare and it should look suspicious — treat it as "us" for heat purposes. A deal where nobody owes anything is a deal nobody is working.
 
+### 3.2.1 Pre-Submittal blocker (`blocked_on`)
+
+Pre-Submittal is the fattest column (22 of 37 live deals sit there — see §4). Ball-in-court alone doesn't discriminate within it; what matters at this stage is *what each deal is waiting on*. So the board carries a second board-owned enum, set **only for Pre-Submittal deals**:
+
+| Field | Type | Notes |
+|---|---|---|
+| `blocked_on` | enum, nullable | `pricing` \| `site_plan` \| `under_contract` \| `info` \| `ready`. Non-null only while the deal is in Pre-Submittal; null (and ignored) in every other stage. |
+
+- Board-owned and human-set (via the slide-over, alongside "Change court") — not derived and not AI-generated. Same rationale as the ball-in-court fields.
+- Drives **subhead grouping inside the Pre-Submittal column** (§4) and a special heat rule for `ready` (§5.3).
+- If we adopt a `deal_board_state` satellite table, `blocked_on` lives there with the ball-in-court fields.
+- Leaving Pre-Submittal (stage change to Submitted-Reviewing) should clear `blocked_on` to null. Flag as a small trigger/UI concern during build.
+
 ### 3.3 The reset event
 
 Three actions cool a tile. All three set `ball_in_court_since = now()`:
@@ -131,27 +144,41 @@ There is no `is_active` boolean today. Two options for Mike (§12): (a) derive o
 
 ## 4. Stage columns
 
-OVIS already has the Starbucks stages in `deal_stage`. Observed labels and order (from `deal_submit_stage_map` seeding):
+**Four columns, fixed.** Confirmed against live data (§3.5 recon — 37 active Starbucks deals). All Starbucks deals today fall in these four stages; the paid/terminal stages hold zero Starbucks deals and are omitted.
 
-| sort_order | label | On board? |
+| # | `deal_stage.label` | Live deals |
 |---|---|---|
-| 0 | Pre-Submittal | yes (Starbucks-only; hidden from master kanban) |
-| — | Submitted-Reviewing | yes (Starbucks-only) |
-| 1 | Negotiating LOI | yes |
-| 2 | At Lease/PSA | yes |
-| 3 | Under Contract / Contingent | yes |
-| 4 | Booked | yes / maybe (§12) |
-| 5 | Executed Payable | maybe |
-| 6 | Closed Paid | no (terminal, paid) |
-| — | Lost | no (terminal, dead) |
+| 1 | Pre-Submittal | 22 |
+| 2 | Submitted-Reviewing | 3 |
+| 3 | Negotiating LOI | 10 |
+| 4 | At Lease/PSA | 2 |
 
-That is more than eight live columns, so **Mike must pick the six-to-eight that belong on the board (§12).** The board reads columns from `deal_stage` (filtered + ordered by `sort_order`), so the choice is data, not code.
+**Lost is off-board.** So are Under Contract / Booked / Executed Payable / Closed Paid — not because they're excluded by rule, but because no Starbucks deal is in them. (If a deal ever lands in one, it simply won't render; revisit only if that happens.)
 
 Rules:
-- Six to eight columns maximum. Beyond eight, tiles get too narrow to read at distance.
-- Column order is fixed left-to-right, from `deal_stage.sort_order`. It does not change.
+- Exactly these four columns, left-to-right in this order.
 - Empty columns still render, at reduced opacity. Seeing that a stage is empty is information.
 - Column header shows stage name and a count.
+
+### 4.1 Pre-Submittal is one column, grouped by blocker
+
+Pre-Submittal holds well over half the board (22 of 37). It stays **one column** — do not split it into two. Instead, tiles within it group under **subheads by `blocked_on`** (§3.2.1), in this fixed order:
+
+```
+PRE-SUBMITTAL                    22
+──────────────────────────────────
+▸ Ready                           3   ← always hot (§5.3), sorts to top
+▸ Pricing                         6
+▸ Site plan                       5
+▸ Under contract                  4
+▸ Info                            3
+▸ (unset)                         1   ← no blocker chosen yet — looks suspicious, like ball=none
+```
+
+- Subhead order is fixed: **Ready → Pricing → Site plan → Under contract → Info → (unset)**. `ready` first because a ready-to-submit deal that hasn't been submitted is the most urgent thing on the board.
+- Each subhead shows a count. A subhead with zero deals renders dim (or collapses — tune on the TV).
+- Within a subhead, tiles order by the normal heat rule (§5.3).
+- The other three columns have no subheads — they're plain tile stacks.
 
 ---
 
@@ -182,6 +209,10 @@ This is the single most important detail in the spec. Red on its own tells Mike 
 ### 5.3 Ordering within a column
 
 Hottest first, then by days descending. A red tile is always above an amber tile which is always above a cool tile. No manual ordering.
+
+**`blocked_on = 'ready'` always renders hot,** regardless of its clock. A Starbucks deal that's ready to submit but hasn't been is a self-inflicted stall — the point is to make it impossible to ignore. Its chip reads **"Submit it"** (a third instruction alongside §5.2's two). In the Pre-Submittal column the Ready subhead sorts to the top and its tiles are hot; everything below it follows the normal clock-based heat.
+
+Within a Pre-Submittal subhead, the same hottest-first rule applies. Across subheads, subhead order (§4.1) wins first, then heat within each.
 
 ---
 
@@ -268,7 +299,7 @@ The three buttons are the whole point. Cooling a tile must take under ten second
 
 - **Log a note** → inserts a `note` + a `note_object_link` (`object_type='deal'`, `deal_id`). Trigger cools the tile.
 - **Set next action** → inserts/updates a `task` (`deal_id`, `subject`, `due_at`). Trigger cools the tile.
-- **Change court** → sets `ball_in_court` and `ball_in_court_party` and resets the clock (`ball_in_court_since = now()`).
+- **Change court** → sets `ball_in_court` and `ball_in_court_party` and resets the clock (`ball_in_court_since = now()`). **For Pre-Submittal deals, this control also sets `blocked_on`** (§3.2.1) — the two live together since both answer "why isn't this moving." Setting `blocked_on = 'ready'` should be a single obvious action, because it flips the tile hot on purpose.
 
 Reuse the existing `NoteFormModal` / task creation paths where practical rather than reimplementing writes.
 
@@ -300,7 +331,7 @@ Below it in dim text: `4 yours · 5 theirs`. The split matters, because five dea
 
 ## 10. Build order
 
-1. **Schema:** add the three board fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`) to `deal` (or a `deal_board_state` satellite); write the three reset triggers on `note_object_link` and `task`. Confirm `task` covers next-actions (it does).
+1. **Schema:** add the four board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`) — recommend a 1:1 `deal_board_state` satellite (§12.8); write the three reset triggers on `note_object_link` and `task`, plus a clear-`blocked_on`-on-leaving-Pre-Submittal trigger/UI concern. Confirm `task` covers next-actions (it does).
 2. **Backfill** `ball_in_court_since` — seed from each deal's most recent note (`note_object_link → note.created_at`) or `now()` if none. Expect the board to look wrong for the first few days until real data accumulates.
 3. **Static board rendering** with fake heat, to tune visual density on the actual TV.
 4. **Real heat calculation** (client-side from `ball_in_court_since`).
@@ -320,13 +351,15 @@ New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OV
 
 ## 12. Open items for Mike
 
-1. **Board columns.** OVIS has more than eight Starbucks stages (§4). Which six-to-eight are the board columns, and where does the board cut off on the paid/terminal end (does `Booked` / `Executed Payable` stay on the board)?
-2. **Ball-in-court source of truth.** Recommended: the board keeps its own three trigger-owned fields, separate from the AI `deal_synopsis` and from `deal.current_handoff_holder` (§3.2). Confirm — or do you want the board to *drive* one of those existing signals instead (more integration, single source of truth)?
-3. **Does a deal ever legitimately sit at `ball_in_court = none`,** or should the board force a choice at "Change court"?
-4. **Archived / dead deals.** Derive on/off-board purely from stage (no migration), or add an explicit `is_active` flag (§3.5)? And should dead deals be reachable from the board at all, or only from the master pipeline?
-5. **Does "log a call" (the `activity` table via `LogCallModal`) also cool a tile,** or only notes + tasks? v1 assumes notes + tasks (§3.3). Adding `activity` is one more trigger.
-6. **Deal fields vs satellite table:** three new columns on `deal`, or a 1:1 `deal_board_state` table? (Recommendation: columns on `deal` unless we want to keep `deal` narrow.)
+1. ~~**Board columns.**~~ **Resolved:** four fixed columns — Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA; Lost and all paid/terminal stages off-board (§4).
+2. **Starbucks filter.** The `starbucks_layer_enabled` flag is currently `false` on both Starbucks clients, so the spec's assumed filter returns zero rows (recon). Set the flag `true` on both clients (cleaner, recommended) or filter by their `client_id`s?
+3. **`blocked_on` domain.** Confirm the five values (`pricing` / `site_plan` / `under_contract` / `info` / `ready`) and the fixed subhead order (§4.1). Any Pre-Submittal blocker missing?
+4. **Ball-in-court source of truth.** Recommended: the board keeps its own trigger-owned fields, separate from the (currently non-functional — see recon) AI `deal_synopsis` and from `deal.current_handoff_holder` (§3.2). Confirm — or drive one of those existing signals instead?
+5. **Does a deal ever legitimately sit at `ball_in_court = none`,** or should the board force a choice at "Change court"?
+6. **Archived / dead deals.** Derive on/off-board purely from stage (no migration), or add an explicit `is_active` flag (§3.5)? Reachable from the board at all, or only from the master pipeline?
+7. **Does "log a call" (the `activity` table via `LogCallModal`) also cool a tile,** or only notes + tasks? v1 assumes notes + tasks (§3.3). Adding `activity` is one more trigger.
+8. **Deal fields vs satellite table:** the board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`) as columns on `deal`, or a 1:1 `deal_board_state` table? (Recommendation: satellite table now that there are four board-owned fields — keeps `deal` from accreting board-specific state.)
 
 ---
 
-*Grounded against schema reconnaissance on 2026-08-25: `deal`, `deal_stage`, `client.starbucks_layer_enabled`, `deal_synopsis`, `note`/`note_object_link`, `task`. See `database-schema.ts` and `src/hooks/useKanbanData.ts`.*
+*Grounded against schema + live-data reconnaissance on 2026-08-25: 37 active Starbucks deals across four stages; `starbucks_layer_enabled` currently `false` on both Starbucks clients; `deal_synopsis` empty and its writer non-functional against the current schema (selects `deal.name`/text `stage` — neither exists). Tables referenced: `deal`, `deal_stage`, `client`, `deal_synopsis`, `note`/`note_object_link`, `task`. See `database-schema.ts` and `src/hooks/useKanbanData.ts`.*
