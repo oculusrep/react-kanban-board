@@ -148,15 +148,18 @@ export interface RentPeriod {
   periodEnd: string;     // YYYY-MM-DD (day before the next step / lease end)
   annualRent: number;
   monthlyRent: number;
-  increasePct: number | null; // null for the first period, else the % bump applied
+  increasePct: number | null; // null when rent didn't step up entering this period
   isCurrent: boolean;    // covers `asOf` (today by default)
+  segment: string;       // 'Base' | 'Option 1' | 'Option 2' | …
+  isOption: boolean;     // period falls in an option term (projected past base expiration)
 }
 
 /**
  * Project a lease's rent schedule from its commencement date, starting annual rent, escalation and
- * bump cadence. Increases are only projected when there's a positive escalation AND a known cadence
- * (annual or every 5 years) — otherwise a single flat period is returned. Horizon = lease term
- * (falls back to 20y / 25y when the term is unknown). Uses local dates (Eastern per OVIS convention).
+ * bump cadence — extended through any option periods (Number of Options × Option Term), which
+ * continue the same escalation. Increases are only projected when there's a positive escalation AND
+ * a known cadence (annual or every 5 years); otherwise each segment is a single flat period.
+ * Horizon = base term (falls back to 20y/25y when unknown) + option terms. Local dates (Eastern).
  */
 export function buildRentSchedule(input: {
   commencementDate: string | null | undefined;
@@ -164,6 +167,8 @@ export function buildRentSchedule(input: {
   escalationPct?: Num;
   bumpFrequency?: 'annual' | 'every_5_years' | 'other' | null;
   termYears?: Num;
+  optionCount?: Num;
+  optionTermYears?: Num;
   asOf?: Date;
 }): RentPeriod[] | null {
   const { commencementDate } = input;
@@ -174,34 +179,52 @@ export function buildRentSchedule(input: {
   const esc = isNum(input.escalationPct) ? input.escalationPct : 0;
   const bumpEvery = esc > 0 && input.bumpFrequency === 'annual' ? 1
     : esc > 0 && input.bumpFrequency === 'every_5_years' ? 5
-    : null; // no defined increase cadence -> one flat period
-  const term = isPos(input.termYears) ? input.termYears : (bumpEvery === 5 ? 25 : 20);
+    : null; // no defined increase cadence -> flat within each segment
+  const baseTerm = isPos(input.termYears) ? input.termYears : (bumpEvery === 5 ? 25 : 20);
+  const optCount = isPos(input.optionCount) ? Math.floor(input.optionCount!) : 0;
+  const optTerm = isPos(input.optionTermYears) ? input.optionTermYears! : 0;
+  const hasOptions = optCount > 0 && optTerm > 0;
+  const totalYears = baseTerm + (hasOptions ? optCount * optTerm : 0);
   const asOf = input.asOf ?? new Date();
+  const EPS = 1e-9;
 
-  const addYears = (d: Date, y: number) => { const n = new Date(d); n.setFullYear(n.getFullYear() + y); return n; };
+  const addMonths = (d: Date, m: number) => { const n = new Date(d); n.setMonth(n.getMonth() + m); return n; };
   const addDays = (d: Date, days: number) => { const n = new Date(d); n.setDate(n.getDate() + days); return n; };
+  const dateAt = (yearsOffset: number) => addMonths(start, Math.round(yearsOffset * 12));
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  const stepYears = bumpEvery ?? term; // flat lease -> single full-term period
+  // Segment starts (year offsets) + labels.
+  const segStarts: { start: number; label: string }[] = [{ start: 0, label: 'Base' }];
+  let acc = baseTerm;
+  for (let i = 1; hasOptions && i <= optCount; i++) { segStarts.push({ start: acc, label: `Option ${i}` }); acc += optTerm; }
+  const segLabelAt = (o: number) => { let lbl = 'Base'; for (const s of segStarts) if (o + EPS >= s.start) lbl = s.label; return lbl; };
+
+  // Period boundaries = union of segment starts + bump anniversaries.
+  const bset = new Set<number>([0]);
+  for (const s of segStarts) bset.add(s.start);
+  if (bumpEvery) for (let b = bumpEvery; b < totalYears - EPS; b += bumpEvery) bset.add(b);
+  const bounds = [...bset].filter((x) => x < totalYears - EPS).sort((a, b) => a - b);
+  bounds.push(totalYears);
+
+  const rentAt = (o: number) => input.annualBaseRent! * (bumpEvery ? Math.pow(1 + esc / 100, Math.floor((o + EPS) / bumpEvery)) : 1);
+
   const periods: RentPeriod[] = [];
-  let offset = 0;
-  let rent = input.annualBaseRent!;
-  let idx = 0;
-  while (offset < term && periods.length < 60) {
-    const pStart = addYears(start, offset);
-    const stepLen = Math.min(stepYears, term - offset);
-    const pEndExclusive = addYears(start, offset + stepLen);
+  for (let i = 0; i < bounds.length - 1 && periods.length < 120; i++) {
+    const s = bounds[i], e = bounds[i + 1];
+    if (e - s <= EPS) continue;
+    const pStart = dateAt(s), pEndExclusive = dateAt(e);
+    const rent = rentAt(s);
+    const prevRent = i > 0 ? rentAt(bounds[i - 1]) : null;
     periods.push({
       periodStart: iso(pStart),
       periodEnd: iso(addDays(pEndExclusive, -1)),
       annualRent: Math.round(rent),
       monthlyRent: Math.round(rent / 12),
-      increasePct: idx === 0 ? null : esc,
+      increasePct: prevRent != null && Math.round(rent) > Math.round(prevRent) ? esc : null,
       isCurrent: asOf >= pStart && asOf < pEndExclusive,
+      segment: segLabelAt(s),
+      isOption: hasOptions && s + EPS >= baseTerm,
     });
-    offset += stepYears;
-    if (bumpEvery) rent = rent * (1 + esc / 100);
-    idx++;
   }
   return periods;
 }

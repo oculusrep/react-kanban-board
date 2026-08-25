@@ -116,6 +116,8 @@ const RentScheduleCard: React.FC<{
   escalationPct: number | null;
   bumpFrequency: string | null;
   termYears: number | null;
+  optionCount?: number | null;
+  optionTermYears?: number | null;
 }> = (p) => {
   const schedule = buildRentSchedule({
     commencementDate: p.commencementDate,
@@ -123,6 +125,8 @@ const RentScheduleCard: React.FC<{
     escalationPct: p.escalationPct,
     bumpFrequency: (p.bumpFrequency as any) || null,
     termYears: p.termYears,
+    optionCount: p.optionCount ?? null,
+    optionTermYears: p.optionTermYears ?? null,
   });
   if (!schedule || schedule.length === 0) return null;
   const current = schedule.find((s) => s.isCurrent);
@@ -145,8 +149,11 @@ const RentScheduleCard: React.FC<{
         </thead>
         <tbody>
           {schedule.map((s, i) => (
-            <tr key={i} className={`border-t border-gray-100 ${s.isCurrent ? 'bg-yellow-50 font-semibold text-[#002147]' : 'text-gray-700'}`}>
+            <tr key={i} className={`border-t border-gray-100 ${
+              s.isCurrent ? 'bg-yellow-50 font-semibold text-[#002147]'
+              : s.isOption ? 'bg-[#8FA9C8]/10 text-gray-600' : 'text-gray-700'}`}>
               <td className="px-3 py-1.5">
+                {s.isOption && <span className="text-[10px] text-[#4A6B94] font-semibold mr-1">{s.segment}</span>}
                 {fmtSchedDate(s.periodStart)} – {fmtSchedDate(s.periodEnd)}
                 {s.isCurrent && <span className="ml-1 text-[10px] text-yellow-700">(now)</span>}
               </td>
@@ -814,6 +821,8 @@ const LeasesTab: React.FC<{
           escalationPct={num(f.escalation_pct)}
           bumpFrequency={f.rent_bump_frequency || null}
           termYears={num(f.lease_term_years)}
+          optionCount={num(f.option_count)}
+          optionTermYears={num(f.option_term_years)}
         />
 
         <div className="flex gap-2">
@@ -852,6 +861,8 @@ const LeasesTab: React.FC<{
             escalationPct={l.escalation_pct}
             bumpFrequency={l.rent_bump_frequency}
             termYears={l.lease_term_years}
+            optionCount={l.option_count}
+            optionTermYears={l.option_term_years}
           />
           <AuditFooter created_by_id={l.created_by_id} created_at={l.created_at} updated_by_id={l.updated_by_id} updated_at={l.updated_at} />
         </div>
