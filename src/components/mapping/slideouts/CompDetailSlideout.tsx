@@ -7,7 +7,7 @@ import UserByIdDisplay from '../../shared/UserByIdDisplay';
 import FileManager from '../../FileManager/FileManager';
 import PortalChatTab from '../../portal/PortalChatTab';
 import {
-  CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
+  CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote, CompAvailability,
   SOURCE_TYPES, CONFIDENCE_LEVELS, SALE_CONDITIONS,
   LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS, RENT_BUMP_OPTIONS,
   AskingType, AskingField, AVAILABILITY_TYPE_OPTIONS, ASKING_TYPE_OPTIONS, ASKING_TYPE_FIELDS,
@@ -17,7 +17,7 @@ import {
   capRateFromNoiPrice, pricePsf, salesPsf, buildRentSchedule, leaseExpiration,
 } from '../../../lib/compCalculators';
 
-type Tab = 'overview' | 'leases' | 'sales' | 'om' | 'files' | 'notes';
+type Tab = 'overview' | 'leases' | 'sales' | 'om' | 'availability' | 'files' | 'notes';
 
 interface CompDetailSlideoutProps {
   comp: CompProperty | null;                      // existing comp being viewed/edited
@@ -201,10 +201,7 @@ type DraftKey =
   | 'name' | 'address' | 'city' | 'state' | 'zip'
   | 'verified_latitude' | 'verified_longitude'
   | 'property_type_id' | 'building_sqft' | 'land_acres' | 'year_built'
-  | 'anchor_tenant' | 'trade_area' | 'parcel_id'
-  | 'is_available' | 'availability_type' | 'asking_type'
-  | 'asking_purchase_price' | 'asking_ground_lease_price' | 'asking_rent_psf'
-  | 'asking_nnn_psf' | 'asking_annual_rent' | 'availability_notes'
+  | 'anchor_tenant' | 'trade_area' | 'parcel_id' | 'is_available'
   | 'source_type' | 'source_url' | 'source_reference' | 'confidence';
 type Draft = Record<DraftKey, string>;
 
@@ -212,10 +209,7 @@ const emptyDraft: Draft = {
   name: '', address: '', city: '', state: '', zip: '',
   verified_latitude: '', verified_longitude: '',
   property_type_id: '', building_sqft: '', land_acres: '', year_built: '',
-  anchor_tenant: '', trade_area: '', parcel_id: '',
-  is_available: '', availability_type: '', asking_type: '',
-  asking_purchase_price: '', asking_ground_lease_price: '', asking_rent_psf: '',
-  asking_nnn_psf: '', asking_annual_rent: '', availability_notes: '',
+  anchor_tenant: '', trade_area: '', parcel_id: '', is_available: '',
   source_type: 'manual', source_url: '', source_reference: '', confidence: 'unverified',
 };
 
@@ -233,13 +227,6 @@ function buildDraft(comp: CompProperty | null, createAt?: { lat: number; lng: nu
       anchor_tenant: comp.anchor_tenant ?? '', trade_area: comp.trade_area ?? '',
       parcel_id: comp.parcel_id ?? '',
       is_available: comp.is_available ? 'true' : '',
-      availability_type: comp.availability_type ?? '', asking_type: comp.asking_type ?? '',
-      asking_purchase_price: comp.asking_purchase_price?.toString() ?? '',
-      asking_ground_lease_price: comp.asking_ground_lease_price?.toString() ?? '',
-      asking_rent_psf: comp.asking_rent_psf?.toString() ?? '',
-      asking_nnn_psf: comp.asking_nnn_psf?.toString() ?? '',
-      asking_annual_rent: comp.asking_annual_rent?.toString() ?? '',
-      availability_notes: comp.availability_notes ?? '',
       source_type: comp.source_type, source_url: comp.source_url ?? '',
       source_reference: comp.source_reference ?? '', confidence: comp.confidence,
     };
@@ -259,14 +246,6 @@ function draftToPayload(d: Draft): any {
     building_sqft: num(d.building_sqft), land_acres: num(d.land_acres), year_built: num(d.year_built),
     anchor_tenant: str(d.anchor_tenant), trade_area: str(d.trade_area), parcel_id: str(d.parcel_id),
     is_available: d.is_available === 'true',
-    availability_type: d.availability_type || null,
-    asking_type: d.asking_type || null,
-    asking_purchase_price: num(d.asking_purchase_price),
-    asking_ground_lease_price: num(d.asking_ground_lease_price),
-    asking_rent_psf: num(d.asking_rent_psf),
-    asking_nnn_psf: num(d.asking_nnn_psf),
-    asking_annual_rent: num(d.asking_annual_rent),
-    availability_notes: str(d.availability_notes),
     source_type: d.source_type, source_url: str(d.source_url),
     source_reference: str(d.source_reference), confidence: d.confidence,
   };
@@ -298,6 +277,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
   const [sales, setSales] = useState<SaleComp[]>([]);
   const [oms, setOms] = useState<OperatingMemorandum[]>([]);
   const [notes, setNotes] = useState<CompNote[]>([]);
+  const [avails, setAvails] = useState<CompAvailability[]>([]);
 
   const setField = useCallback((k: DraftKey, v: string) => setDraft((p) => ({ ...p, [k]: v })), []);
 
@@ -337,21 +317,23 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
   }, [current, createAt]);
 
   const loadChildren = useCallback(async (id: string) => {
-    const [l, s, o, n] = await Promise.all([
+    const [l, s, o, n, a] = await Promise.all([
       supabase.from('lease_comp').select('*').eq('comp_property_id', id).order('created_at', { ascending: false }),
       supabase.from('sale_comp').select('*').eq('comp_property_id', id).order('sale_date', { ascending: false }),
       supabase.from('operating_memorandum').select('*').eq('comp_property_id', id).order('list_date', { ascending: false }),
       supabase.from('comp_note').select('*').eq('comp_property_id', id).order('created_at', { ascending: false }),
+      supabase.from('comp_availability').select('*').eq('comp_property_id', id).order('as_of_date', { ascending: false, nullsFirst: false }),
     ]);
     setLeases((l.data as LeaseComp[]) || []);
     setSales((s.data as SaleComp[]) || []);
     setOms((o.data as OperatingMemorandum[]) || []);
     setNotes((n.data as CompNote[]) || []);
+    setAvails((a.data as CompAvailability[]) || []);
   }, []);
 
   useEffect(() => {
     if (compId) loadChildren(compId);
-    else { setLeases([]); setSales([]); setOms([]); setNotes([]); }
+    else { setLeases([]); setSales([]); setOms([]); setNotes([]); setAvails([]); }
   }, [compId, loadChildren]);
 
   // Upsert the whole comp_property draft (used by both the header and the overview body).
@@ -433,6 +415,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
               ['leases', `Leases (${leases.length})`],
               ['sales', `Sales (${sales.length})`],
               ['om', `OM (${oms.length})`],
+              ['availability', `Availability (${avails.length})`],
               ['files', 'Files'],
               ['notes', 'Chat'],
             ] as [Tab, string][]).map(([key, label]) => (
@@ -463,6 +446,10 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
             )}
             {tab === 'om' && (
               <OmTab compId={compId} oms={oms} userId={userId}
+                reload={() => { loadChildren(compId); onSaved?.(compId); }} />
+            )}
+            {tab === 'availability' && (
+              <AvailabilityTab compId={compId} avails={avails} userId={userId}
                 reload={() => { loadChildren(compId); onSaved?.(compId); }} />
             )}
             {tab === 'files' && (
@@ -639,11 +626,6 @@ const OverviewBody: React.FC<{
     value: draft[k],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setField(k, e.target.value),
   });
-  const setV = (k: DraftKey) => (v: string) => setField(k, v);
-
-  const askingType = (draft.asking_type || '') as AskingType | '';
-  const askingFields: AskingField[] = askingType && ASKING_TYPE_FIELDS[askingType] ? ASKING_TYPE_FIELDS[askingType] : [];
-  const showAsk = (k: AskingField) => askingFields.includes(k);
   const available = draft.is_available === 'true';
 
   return (
@@ -669,34 +651,16 @@ const OverviewBody: React.FC<{
         </Field>
       </div>
 
-      {/* Availability / Marketing */}
-      <div className={`rounded-xl border p-3.5 space-y-3 transition-colors ${available ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200'}`}>
+      {/* On-market flag (asking terms live in the Availability tab) */}
+      <div className={`rounded-xl border p-3.5 transition-colors ${available ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200'}`}>
         <label className="flex items-center gap-2.5 cursor-pointer select-none">
           <input type="checkbox" checked={available}
             onChange={(e) => setField('is_available', e.target.checked ? 'true' : '')}
             className="w-4 h-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
-          <span className="text-sm font-semibold text-[#002147]">Available / Being marketed</span>
+          <span className="text-sm font-semibold text-[#002147]">On market / Being marketed</span>
           {available && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-400/30 text-amber-700">amber pin</span>}
         </label>
-        {available && (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-            <SelField label="Availability" value={draft.availability_type} onChange={setV('availability_type')}>
-              <option value="">—</option>
-              {AVAILABILITY_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </SelField>
-            <SelField label="Asking Type" value={draft.asking_type} onChange={setV('asking_type')}>
-              <option value="">Select…</option>
-              {ASKING_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </SelField>
-            {showAsk('asking_purchase_price') && <NumField label="Asking Purchase Price" kind="currency" value={draft.asking_purchase_price} onChange={setV('asking_purchase_price')} />}
-            {showAsk('asking_ground_lease_price') && <NumField label="Asking Ground Lease Price" kind="currency" value={draft.asking_ground_lease_price} onChange={setV('asking_ground_lease_price')} />}
-            {showAsk('asking_annual_rent') && <NumField label="Asking Annual Rent" kind="currency" value={draft.asking_annual_rent} onChange={setV('asking_annual_rent')} />}
-            {showAsk('asking_rent_psf') && <NumField label="Asking Rent PSF" kind="currency" decimals={2} value={draft.asking_rent_psf} onChange={setV('asking_rent_psf')} />}
-            {showAsk('asking_nnn_psf') && <NumField label="Asking NNN PSF" kind="currency" decimals={2} value={draft.asking_nnn_psf} onChange={setV('asking_nnn_psf')} />}
-            {!askingType && <p className="col-span-2 text-xs text-gray-500">Pick an asking type to enter asking prices.</p>}
-            <TxtAreaField label="Availability Notes" className="col-span-2" value={draft.availability_notes} onChange={setV('availability_notes')} rows={2} placeholder="Marketing details, broker, timing…" />
-          </div>
-        )}
+        {available && <p className="text-xs text-gray-500 mt-1.5 pl-6">Add asking prices &amp; scenarios in the <b>Availability</b> tab.</p>}
       </div>
 
       {/* Collapsible "More Details" */}
@@ -1087,6 +1051,142 @@ const SalesTab: React.FC<{
           </div>
           {s.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{s.notes}</p>}
           <AuditFooter created_by_id={s.created_by_id} created_at={s.created_at} updated_by_id={s.updated_by_id} updated_at={s.updated_at} />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ===========================================================================
+// AVAILABILITY TAB — dated asking scenarios (historical)
+// ===========================================================================
+const emptyAvail = {
+  as_of_date: '', availability_type: '', asking_type: '',
+  asking_purchase_price: '', asking_ground_lease_price: '', asking_rent_psf: '',
+  asking_nnn_psf: '', asking_annual_rent: '', notes: '',
+  source_type: 'manual', confidence: 'unverified',
+};
+
+const AVAILABILITY_LABEL: Record<string, string> = Object.fromEntries(
+  AVAILABILITY_TYPE_OPTIONS.map((o) => [o.value, o.label])
+);
+
+const AvailabilityTab: React.FC<{
+  compId: string; avails: CompAvailability[]; userId: string | null; reload: () => void;
+}> = ({ compId, avails, userId, reload }) => {
+  const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [f, setF] = useState({ ...emptyAvail });
+  const setV = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  const startNew = () => {
+    const n = new Date();
+    const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+    setF({ ...emptyAvail, as_of_date: today });
+    setEditing('new');
+  };
+  const startEdit = (a: CompAvailability) => {
+    setF({
+      as_of_date: a.as_of_date ?? '', availability_type: a.availability_type ?? '', asking_type: a.asking_type ?? '',
+      asking_purchase_price: a.asking_purchase_price?.toString() ?? '',
+      asking_ground_lease_price: a.asking_ground_lease_price?.toString() ?? '',
+      asking_rent_psf: a.asking_rent_psf?.toString() ?? '',
+      asking_nnn_psf: a.asking_nnn_psf?.toString() ?? '',
+      asking_annual_rent: a.asking_annual_rent?.toString() ?? '',
+      notes: a.notes ?? '', source_type: a.source_type, confidence: a.confidence,
+    });
+    setEditing(a.id);
+  };
+
+  const askingType = (f.asking_type || '') as AskingType | '';
+  const askingFields: AskingField[] = askingType && ASKING_TYPE_FIELDS[askingType] ? ASKING_TYPE_FIELDS[askingType] : [];
+  const showAsk = (k: AskingField) => askingFields.includes(k);
+
+  const save = async () => {
+    const payload: any = {
+      comp_property_id: compId,
+      as_of_date: f.as_of_date || null,
+      availability_type: f.availability_type || null,
+      asking_type: f.asking_type || null,
+      asking_purchase_price: showAsk('asking_purchase_price') ? num(f.asking_purchase_price) : null,
+      asking_ground_lease_price: showAsk('asking_ground_lease_price') ? num(f.asking_ground_lease_price) : null,
+      asking_rent_psf: showAsk('asking_rent_psf') ? num(f.asking_rent_psf) : null,
+      asking_nnn_psf: showAsk('asking_nnn_psf') ? num(f.asking_nnn_psf) : null,
+      asking_annual_rent: showAsk('asking_annual_rent') ? num(f.asking_annual_rent) : null,
+      notes: str(f.notes), source_type: f.source_type, confidence: f.confidence,
+    };
+    if (editing === 'new') { payload.created_by_id = userId; await supabase.from('comp_availability').insert(payload); }
+    else { payload.updated_by_id = userId; await supabase.from('comp_availability').update(payload).eq('id', editing); }
+    setEditing(null);
+    reload();
+  };
+  const del = async (id: string) => {
+    if (!confirm('Delete this asking record?')) return;
+    await supabase.from('comp_availability').delete().eq('id', id);
+    reload();
+  };
+
+  if (editing) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+          <TxtField label="As-of Date" type="date" value={f.as_of_date} onChange={setV('as_of_date')} />
+          <SelField label="Availability" value={f.availability_type} onChange={setV('availability_type')}>
+            <option value="">—</option>
+            {AVAILABILITY_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </SelField>
+          <SelField label="Asking Type" value={f.asking_type} onChange={setV('asking_type')}>
+            <option value="">Select…</option>
+            {ASKING_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </SelField>
+          <div />
+          {showAsk('asking_purchase_price') && <NumField label="Asking Purchase Price" kind="currency" value={f.asking_purchase_price} onChange={setV('asking_purchase_price')} />}
+          {showAsk('asking_ground_lease_price') && <NumField label="Asking Ground Lease Price" kind="currency" value={f.asking_ground_lease_price} onChange={setV('asking_ground_lease_price')} />}
+          {showAsk('asking_annual_rent') && <NumField label="Asking Annual Rent" kind="currency" value={f.asking_annual_rent} onChange={setV('asking_annual_rent')} />}
+          {showAsk('asking_rent_psf') && <NumField label="Asking Rent PSF" kind="currency" decimals={2} value={f.asking_rent_psf} onChange={setV('asking_rent_psf')} />}
+          {showAsk('asking_nnn_psf') && <NumField label="Asking NNN PSF" kind="currency" decimals={2} value={f.asking_nnn_psf} onChange={setV('asking_nnn_psf')} />}
+          {!askingType && <p className="col-span-2 text-xs text-gray-500">Pick an asking type to enter asking prices.</p>}
+          <TxtAreaField label="Notes" className="col-span-2" value={f.notes} onChange={setV('notes')} rows={2} placeholder="Marketing details, broker, timing…" />
+          <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
+            {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </SelField>
+          <SelField label="Confidence" value={f.confidence} onChange={setV('confidence')}>
+            {CONFIDENCE_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </SelField>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={save} className="flex-1 py-2.5 rounded-lg bg-[#002147] text-white text-sm font-semibold shadow-sm hover:bg-[#00306a]">Save Asking</button>
+          <button onClick={() => setEditing(null)} className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <button onClick={startNew} className="w-full py-2.5 rounded-lg border border-dashed border-[#8FA9C8] text-[#4A6B94] text-sm font-medium hover:bg-[#8FA9C8]/10 hover:border-[#4A6B94] transition-colors">+ Add Asking / Scenario</button>
+      {avails.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No asking records yet.</p>}
+      {avails.map((a, i) => (
+        <div key={a.id} className="border border-gray-200 rounded-xl p-3.5 text-sm hover:border-[#8FA9C8] transition-colors">
+          <div className="flex justify-between items-start">
+            <div className="font-semibold text-[#002147]">
+              {a.as_of_date ?? 'Undated'}
+              {i === 0 && <span className="ml-2 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-100 text-green-700">current</span>}
+            </div>
+            <div className="flex gap-2 text-xs">
+              <button onClick={() => startEdit(a)} className="text-[#4A6B94] hover:underline">Edit</button>
+              <button onClick={() => del(a.id)} className="text-red-500 hover:underline">Delete</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-600">
+            <span className="col-span-2">{a.availability_type ? AVAILABILITY_LABEL[a.availability_type] : '—'}</span>
+            {a.asking_purchase_price != null && <span>Purchase: {formatCurrency(a.asking_purchase_price)}</span>}
+            {a.asking_ground_lease_price != null && <span>Ground Lease: {formatCurrency(a.asking_ground_lease_price)}</span>}
+            {a.asking_annual_rent != null && <span>Annual Rent: {formatCurrency(a.asking_annual_rent)}</span>}
+            {a.asking_rent_psf != null && <span>Rent PSF: ${a.asking_rent_psf.toFixed(2)}</span>}
+            {a.asking_nnn_psf != null && <span>NNN PSF: ${a.asking_nnn_psf.toFixed(2)}</span>}
+          </div>
+          {a.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{a.notes}</p>}
+          <AuditFooter created_by_id={a.created_by_id} created_at={a.created_at} updated_by_id={a.updated_by_id} updated_at={a.updated_at} />
         </div>
       ))}
     </div>

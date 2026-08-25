@@ -83,16 +83,7 @@ export interface CompProperty extends CompProvenance {
   anchor_tenant: string | null;
   trade_area: string | null;
   parcel_id: string | null;
-  // Availability / marketing
-  is_available: boolean;
-  availability_type: AvailabilityType | null;
-  asking_type: AskingType | null;
-  asking_purchase_price: number | null;
-  asking_ground_lease_price: number | null;
-  asking_rent_psf: number | null;
-  asking_nnn_psf: number | null;
-  asking_annual_rent: number | null;
-  availability_notes: string | null;
+  is_available: boolean;  // manual "on market" flag — drives the amber pin
   created_by_id: string | null;
   updated_by_id: string | null;
   created_at: string;
@@ -123,6 +114,25 @@ export const ASKING_TYPE_FIELDS: Record<AskingType, AskingField[]> = {
   shopping_center: ['asking_rent_psf', 'asking_nnn_psf'],
   lease_conversion: ['asking_purchase_price', 'asking_annual_rent', 'asking_rent_psf'],
 };
+
+// A dated asking scenario for a comp (historical). Latest as_of_date = current ask.
+export interface CompAvailability extends CompProvenance {
+  id: string;
+  comp_property_id: string;
+  as_of_date: string | null;
+  availability_type: AvailabilityType | null;
+  asking_type: AskingType | null;
+  asking_purchase_price: number | null;
+  asking_ground_lease_price: number | null;
+  asking_rent_psf: number | null;
+  asking_nnn_psf: number | null;
+  asking_annual_rent: number | null;
+  notes: string | null;
+  created_by_id: string | null;
+  updated_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface LeaseComp extends CompProvenance {
   id: string;
