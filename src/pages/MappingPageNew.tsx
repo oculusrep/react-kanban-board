@@ -39,6 +39,7 @@ import DemographicsAnalysisSlideout, {
 import CachedDemographicsLayer from '../components/mapping/layers/CachedDemographicsLayer';
 import CompDatabaseLayer from '../components/mapping/layers/CompDatabaseLayer';
 import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
+import CompContextMenu from '../components/mapping/CompContextMenu';
 import { CompProperty } from '../lib/compTypes';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
@@ -158,6 +159,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Comp Database slideout — independent of the shared pin-details state.
   const [selectedComp, setSelectedComp] = useState<CompProperty | null>(null);
   const [compCreateAt, setCompCreateAt] = useState<{ lat: number; lng: number } | null>(null);
+  const [verifyingCompId, setVerifyingCompId] = useState<string | null>(null);
+  const [compContextMenu, setCompContextMenu] = useState<{
+    isVisible: boolean; x: number; y: number; comp: CompProperty | null;
+  }>({ isVisible: false, x: 0, y: 0, comp: null });
 
   // Starbucks Licensed Store layer — verify mode + right-click menu
   const [verifyingLicensedStoreNumber, setVerifyingLicensedStoreNumber] = useState<string | null>(null);
@@ -3591,7 +3596,28 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               map={mapInstance}
               isVisible={layerState.comp_database?.isVisible || false}
               selectedCompId={selectedComp?.id ?? null}
+              verifyingCompId={verifyingCompId}
               onPinClick={(comp) => { setCompCreateAt(null); setSelectedComp(comp); }}
+              onPinRightClick={(comp, x, y) => setCompContextMenu({ isVisible: true, x, y, comp })}
+              onLocationVerified={async (compId, lat, lng) => {
+                try {
+                  const { error } = await supabase
+                    .from('comp_property')
+                    .update({ verified_latitude: lat, verified_longitude: lng })
+                    .eq('id', compId);
+                  if (error) throw error;
+                  setVerifyingCompId(null);
+                  setSelectedComp((prev) =>
+                    prev && prev.id === compId
+                      ? { ...prev, verified_latitude: lat, verified_longitude: lng }
+                      : prev
+                  );
+                  refreshLayer('comp_database');
+                } catch (e) {
+                  console.error('Failed to save verified comp location:', e);
+                  setVerifyingCompId(null);
+                }
+              }}
             />
 
             {/* Starbucks Licensed Stores — confidential, permission-gated */}
@@ -4219,6 +4245,40 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           }
         }}
       />
+
+      {/* Comp Database right-click menu */}
+      <CompContextMenu
+        isVisible={compContextMenu.isVisible}
+        x={compContextMenu.x}
+        y={compContextMenu.y}
+        compName={compContextMenu.comp ? (compContextMenu.comp.name || compContextMenu.comp.address || 'Comp') : ''}
+        onClose={() => setCompContextMenu((prev) => ({ ...prev, isVisible: false }))}
+        onOpenDetails={() => {
+          if (compContextMenu.comp) { setCompCreateAt(null); setSelectedComp(compContextMenu.comp); }
+        }}
+        onVerifyLocation={() => {
+          if (compContextMenu.comp) setVerifyingCompId(compContextMenu.comp.id);
+        }}
+      />
+
+      {/* Comp verify-location banner */}
+      {verifyingCompId && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2.5 rounded-lg shadow-xl"
+          style={{ backgroundColor: '#FFFFFF', border: '2px solid #002147' }}
+        >
+          <span className="text-sm font-semibold" style={{ color: '#002147' }}>Verifying comp location</span>
+          <span className="text-xs" style={{ color: '#4A6B94' }}>Drag the pin to its correct spot — release to save</span>
+          <button
+            type="button"
+            onClick={() => setVerifyingCompId(null)}
+            className="px-2 py-1 text-xs rounded border"
+            style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* New Municipal Project modal */}
       <NewMunicipalProjectModal

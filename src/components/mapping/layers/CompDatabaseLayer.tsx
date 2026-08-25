@@ -14,7 +14,10 @@ export interface CompDatabaseLayerProps {
   map: google.maps.Map | null;
   isVisible: boolean;
   onPinClick?: (comp: CompPropertyWithCounts) => void;
+  onPinRightClick?: (comp: CompPropertyWithCounts, screenX: number, screenY: number) => void;
+  onLocationVerified?: (compId: string, lat: number, lng: number) => void;
   selectedCompId?: string | null;
+  verifyingCompId?: string | null;
 }
 
 function pinColor(c: CompPropertyWithCounts): string {
@@ -46,7 +49,10 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
   map,
   isVisible,
   onPinClick,
+  onPinRightClick,
+  onLocationVerified,
   selectedCompId = null,
+  verifyingCompId = null,
 }) => {
   const [comps, setComps] = useState<CompPropertyWithCounts[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
@@ -117,15 +123,25 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
       const coords = compCoords(comp);
       if (!coords) return;
       const selected = selectedCompId === comp.id;
+      const isVerifying = verifyingCompId === comp.id;
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         title: comp.name || comp.address || 'Comp',
-        icon: createCompIcon(comp, selected),
-        zIndex: selected ? 3000 : 100,
+        icon: createCompIcon(comp, selected || isVerifying),
+        zIndex: selected || isVerifying ? 3000 : 100,
+        draggable: isVerifying,
       });
       marker.addListener('click', (event: google.maps.MapMouseEvent) => {
         event.domEvent?.stopPropagation?.();
         onPinClick?.(comp);
+      });
+      marker.addListener('rightclick', (event: any) => {
+        const dom = event?.domEvent as MouseEvent | undefined;
+        dom?.preventDefault?.();
+        if (dom) onPinRightClick?.(comp, dom.clientX, dom.clientY);
+      });
+      marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
+        if (event.latLng) onLocationVerified?.(comp.id, event.latLng.lat(), event.latLng.lng());
       });
       newMarkers.push(marker);
     });
@@ -140,7 +156,7 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comps, selectedCompId, map]);
+  }, [comps, selectedCompId, verifyingCompId, map]);
 
   // Visibility toggle without refetch.
   useEffect(() => {
