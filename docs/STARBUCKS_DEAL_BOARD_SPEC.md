@@ -59,7 +59,7 @@ Reconnaissance of the current schema (migrations, `database-schema.ts`, `src/hoo
 
 The board's heat logic (§5) needs a **hard, trigger-maintained timestamp** — `ball_in_court_since` — that rolls cool→warm→hot deterministically at midnight. The existing `deal_synopsis` fields are AI-derived and refresh on the edge function's cadence, so they cannot be the clock. They also carry no reliable "since" timestamp the board can compute against.
 
-**Recommendation:** add the board's own explicit fields to the `deal` record (or a small `deal_board_state` satellite table keyed 1:1 on `deal_id` if we'd rather not widen `deal`):
+**Recommendation:** add the board's own explicit fields to the `deal` record (or a small `deal_activity_state` satellite table keyed 1:1 on `deal_id` if we'd rather not widen `deal`):
 
 | Field | Type | Notes |
 |---|---|---|
@@ -86,8 +86,22 @@ Pre-Submittal is the fattest column (22 of 37 live deals sit there — see §4).
 
 - Board-owned and human-set (via the slide-over, alongside "Change court") — not derived and not AI-generated. Same rationale as the ball-in-court fields.
 - Drives **subhead grouping inside the Pre-Submittal column** (§4) and a special heat rule for `ready` (§5.3).
-- If we adopt a `deal_board_state` satellite table, `blocked_on` lives there with the ball-in-court fields.
+- If we adopt a `deal_activity_state` satellite table, `blocked_on` lives there with the ball-in-court fields.
 - Leaving Pre-Submittal (stage change to Submitted-Reviewing) should clear `blocked_on` to null. Flag as a small trigger/UI concern during build.
+- `ready` is a **persistent** enum value, not a transient "cleared to go" flag. A deal sitting in `ready` for two weeks — ready to submit, still not submitted — is exactly the neglect the board exists to expose. Its day count keeps ticking and stays visible on the tile even though heat is pinned hot (§5.3).
+
+### 3.2.2 Agenda flag (`on_agenda`)
+
+A board-wide boolean for assembling the weekly Starbucks call agenda incrementally through the week — star a deal whenever it comes to mind, review the set before the call.
+
+| Field | Type | Notes |
+|---|---|---|
+| `on_agenda` | boolean, not null, default `false` | Board-owned. Toggled by a star control on the tile (§6.4). Lives in `deal_activity_state` with the other board-owned fields. |
+
+- A **"Agenda (n)"** button at the top of the board (near the daily number, §9) filters the board to only starred deals; `n` is the live count. Toggling it back shows the full board.
+- In agenda view, clicking a tile opens the **same slide-over** (§7) — no separate UI.
+- v1 is deliberately minimal: **no ordering, no per-item agenda notes, no "clear agenda" bulk action.** Just a flag, a filter, and a count. Ordering/notes are a phase-2 ask if the weekly-agenda habit sticks.
+- Not stage-scoped — any deal on the board can be starred, in any column.
 
 ### 3.3 The reset event
 
@@ -115,7 +129,7 @@ UPDATE deal SET ball_in_court_since = now() WHERE id = NEW.deal_id;
 UPDATE deal SET ball_in_court_since = now() WHERE id = NEW.deal_id;
 ```
 
-(If we adopt a `deal_board_state` satellite table instead of columns on `deal`, the trigger upserts that row instead. Same logic.)
+(If we adopt a `deal_activity_state` satellite table instead of columns on `deal`, the trigger upserts that row instead. Same logic.)
 
 Note: the legacy `activity` table also carries `deal_id` and is what `LogCallModal` writes. If "log a call" should also cool a tile, add a fourth trigger on `activity`. Flagged in §12 — v1 assumes notes + tasks only, since the slide-over's "Log a note" button (§7) writes a `note`.
 
@@ -256,11 +270,11 @@ One family, three weights. Resist adding a second.
 
 ### 6.4 Tile anatomy
 
-Four elements. Nothing else.
+Four elements plus one control. Nothing else.
 
 ```
 ┌──────────────────────────────┐
-│▌ RIVERDALE — GA 85           │  ← site name, 600
+│▌ RIVERDALE — GA 85         ☆ │  ← site name, 600 · agenda star (top-right)
 │▌ Clayton County              │  ← city, dim
 │▌                             │
 │▌ [ Landlord · 24d ]  Chase → │  ← court chip + day count + instruction
@@ -269,6 +283,8 @@ Four elements. Nothing else.
 ```
 
 Target ~200×90px. At 40 deals across 7 columns that's ~6 per column, which fits a 1080p or 4K screen comfortably with room to breathe.
+
+The **agenda star** (top-right) toggles `on_agenda` (§3.2.2). Filled when starred, hollow otherwise; dim until hovered/focused so it doesn't compete with the heat state. It is the one interactive affordance on the tile itself — everything else is click-to-open-slide-over. A day count still shows on `ready` tiles even though they're pinned hot (§3.2.1), so dwell time stays legible.
 
 Site name source: prefer the deal's linked `property`/`site_submit` site name; fall back to `deal.deal_name`. City comes from the linked property. (Confirm exact field during build.)
 
@@ -327,11 +343,15 @@ Count of tiles that are warm or hot. This is the game — the target is zero, an
 
 Below it in dim text: `4 yours · 5 theirs`. The split matters, because five deals waiting on landlords is a very different day from five deals waiting on Mike.
 
+### 9.1 Agenda control
+
+Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live count of starred (`on_agenda = true`) deals. Clicking it filters the board to only those deals — same columns, same tiles, same slide-over on click — and toggles back to the full board. It's a filter over the existing board, not a separate screen. This is how the weekly call agenda gets built up through the week.
+
 ---
 
 ## 10. Build order
 
-1. **Schema:** add the four board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`) — recommend a 1:1 `deal_board_state` satellite (§12.8); write the three reset triggers on `note_object_link` and `task`, plus a clear-`blocked_on`-on-leaving-Pre-Submittal trigger/UI concern. Confirm `task` covers next-actions (it does).
+1. **Schema:** create the 1:1 `deal_activity_state` satellite (§12.8) with the five board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`, `on_agenda`); write the three reset triggers on `note_object_link` and `task`, plus a clear-`blocked_on`-on-leaving-Pre-Submittal trigger. Confirm `task` covers next-actions (it does).
 2. **Backfill** `ball_in_court_since` — seed from each deal's most recent note (`note_object_link → note.created_at`) or `now()` if none. Expect the board to look wrong for the first few days until real data accumulates.
 3. **Static board rendering** with fake heat, to tune visual density on the actual TV.
 4. **Real heat calculation** (client-side from `ball_in_court_since`).
@@ -358,7 +378,7 @@ New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OV
 5. **Does a deal ever legitimately sit at `ball_in_court = none`,** or should the board force a choice at "Change court"?
 6. **Archived / dead deals.** Derive on/off-board purely from stage (no migration), or add an explicit `is_active` flag (§3.5)? Reachable from the board at all, or only from the master pipeline?
 7. **Does "log a call" (the `activity` table via `LogCallModal`) also cool a tile,** or only notes + tasks? v1 assumes notes + tasks (§3.3). Adding `activity` is one more trigger.
-8. **Deal fields vs satellite table:** the board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`) as columns on `deal`, or a 1:1 `deal_board_state` table? (Recommendation: satellite table now that there are four board-owned fields — keeps `deal` from accreting board-specific state.)
+8. **Deal fields vs satellite table:** ~~open~~ **Decided:** a 1:1 `deal_activity_state` satellite table (named to generalize to the full pipeline in phase 3, not just this board view) holding all five board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`, `on_agenda`). Keeps `deal` from accreting view-specific state.
 
 ---
 
