@@ -84,6 +84,7 @@ export interface CompProperty extends CompProvenance {
   trade_area: string | null;
   parcel_id: string | null;
   created_by_id: string | null;
+  updated_by_id: string | null;
   created_at: string;
   updated_at: string;
 }

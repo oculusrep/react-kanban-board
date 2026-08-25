@@ -24,16 +24,17 @@ interface PortalChatTabProps {
   showInternalComments: boolean;
   propertyId?: string | null;
   dealId?: string | null;
+  compPropertyId?: string | null;
 }
 
-export default function PortalChatTab({ siteSubmitId, showInternalComments, propertyId, dealId }: PortalChatTabProps) {
+export default function PortalChatTab({ siteSubmitId, showInternalComments, propertyId, dealId, compPropertyId }: PortalChatTabProps) {
   const { user, userRole } = useAuth();
 
-  // Chat is normally keyed to a site submit. Deals with NO site submit (e.g.
-  // Broker of Record deals) key the same thread off the deal instead. When a
-  // siteSubmitId is present nothing changes.
-  const commentColumn: 'site_submit_id' | 'deal_id' = siteSubmitId ? 'site_submit_id' : 'deal_id';
-  const commentTargetId = siteSubmitId || dealId || '';
+  // Chat is normally keyed to a site submit. Deals with NO site submit (e.g. Broker of Record deals)
+  // key the same thread off the deal; comp database records key off comp_property. Same table/UI.
+  const commentColumn: 'site_submit_id' | 'deal_id' | 'comp_property_id' =
+    siteSubmitId ? 'site_submit_id' : dealId ? 'deal_id' : 'comp_property_id';
+  const commentTargetId = siteSubmitId || dealId || compPropertyId || '';
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
