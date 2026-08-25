@@ -2,6 +2,59 @@
 
 Branch: `feature/research-dedupe-safety-net`
 
+> **This doc is append-only history.** Each dated `#` section below records one
+> change in sequence. For "how it works *now*," read the **Current behavior**
+> summary immediately below; drop into the historical sections only for the why.
+
+---
+
+## Current behavior (as of 2026-08-25)
+
+All dedupe lives in the review step (`ResearchRunApprovalModal.tsx`); nothing is
+auto-rejected — every signal is surfaced for a human decision, and every reject is
+reversible (Undo). Committing a staged row is what creates a `municipal_project`.
+
+**Duplicate signals in play**
+
+1. **Hard match** (`matched_existing_id`, computed at submit time) — same
+   `permit_url` (municipality-agnostic), or exact-normalized name **and** address
+   within the municipality. Shown as **MATCHES EXISTING**; deselected by default.
+2. **Possible duplicate vs committed** — staged row geocodes within ~150m of a
+   committed `municipal_project` (`find_nearby_municipal_projects` RPC).
+3. **In-sweep location cluster** — staged rows within ~150m of *each other*
+   (haversine, client-side), grouped into one "keep one" card.
+4. **In-sweep name cluster** — staged rows with a fuzzy **name** match
+   (Sørensen–Dice) + a unit-count tie-breaker, for rows proximity didn't pair.
+5. **Approx-location → name vs committed** — rows whose address is too vague to
+   geocode precisely (street-only) get no proximity check; instead they name+unit
+   match against the whole committed pool (~242 rows, client-side).
+
+**Geocode-precision guard** — street-only addresses (`GEOMETRIC_CENTER` /
+`APPROXIMATE`) collapse every project on a road to one point, so they're excluded
+from the proximity checks (2, 3) and flagged **APPROX. LOCATION** instead of
+producing false duplicates. That's what routes them to signal 5.
+
+**Matching knobs** (consts in the component): `NAME_STRONG` 0.82 (name-only
+group), `NAME_WITH_UNITS` 0.60 (name+unit group), `UNIT_TOLERANCE` 10 (committed
+match treats counts within ±10 as equal — they drift between submissions).
+`corePhaseless` stops phase-numeral-only names ("Section I" vs "Section II") from
+grouping on name alone. Name/committed matching is **unscoped by municipality** on
+purpose — the dupes we want cross city/county lines (annexation, city-in-county).
+
+**Review UI (triage)** — rows render compact (one summary line, expand to edit),
+sorted into sections:
+- **Duplicates to resolve — same location** — in-sweep location clusters; pick the
+  keeper, one click rejects the rest.
+- **Possibly the same — matched by name** — name clusters; same keep-one control
+  plus break-apart (**✕ separate** a row, or **Not duplicates — keep all**).
+- **Needs attention** — hard-match / possible-dup / approx-location rows, each
+  showing the **conflicting committed record inline** (name, muni, units, permit
+  link, distance/Δunits) so the call is made in place.
+- **Clean & ready** (collapsed, bulk-select) and **Decided** (collapsed; rejected
+  keep Undo).
+
+---
+
 ## Problem
 
 Even with a windowed lookback, P&Z records and news bleed across date and
