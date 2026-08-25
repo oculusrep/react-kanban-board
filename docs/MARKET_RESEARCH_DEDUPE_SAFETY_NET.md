@@ -379,3 +379,39 @@ Not done: for approx-location rows there's still no *automated* candidate confli
 (proximity is disabled and the name signal only runs staged-vs-staged, not against
 committed) — the panel shows placement hints, not a matched committed record. A
 name-vs-committed search for those rows is a possible follow-up.
+
+---
+
+# Approx-location: name(+close-unit) match vs committed projects (2026-08-25)
+
+Closes the gap above. A street-only address can't be location-matched, so these
+rows now fall back to matching against the **committed** projects by name with a
+**close** unit count.
+
+Key decision (from the domain): the match is **unscoped by municipality**. The
+same project legitimately appears under different municipalities — a city inside a
+county (Grovetown vs Columbia County vs the "Evans" CDP), annexation over time,
+boundary-straddling. Scoping to "same municipality" would filter out exactly the
+cross-boundary dupes we want (and dodges the `boundary_municipality` vs
+`municipality` two-table mismatch). Precision comes from match strength instead.
+
+No RPC/migration: `municipal_project` is small (~242 rows, pg_trgm not enabled), so
+`committedPool` is fetched whole (only when `lowPrecisionGeo` is non-empty) and
+matched client-side in `committedNameMatches`, reusing `normalizeProjectName` /
+`diceCoefficient` / `corePhaseless`.
+
+Match rule (`UNIT_TOLERANCE = 10`): a committed row is a candidate when it isn't a
+phase-numeral-only difference AND either
+- both unit counts are present and **within ±10** AND name sim ≥ 0.60, or
+- a unit count is missing AND name sim ≥ 0.82.
+
+The ±10 tolerance is deliberate — counts drift between P&Z submissions, so exact
+equality is too strict. Verified on live data: "Chamblin Road Gateway
+Development" [57] correctly matches committed [57]; "Hamilton Grove" staged [36]
+is correctly **held back** from committed "Hamilton Grove" [131] (Δ95 > 10) — same
+name, but the counts are too far apart to call it the same project. Zero spurious
+matches across the staged set.
+
+UX: when hits exist, the approx-location panel turns terracotta and lists the
+matched committed record(s) with `ΔN units` / "exact unit match", above the
+placement hints. When there are none, it's the prior grey "verify by hand" note.

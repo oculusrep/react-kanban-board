@@ -237,6 +237,9 @@ export default function ResearchRunApprovalModal({
   // (matched_existing_id or a nearby project) — so the conflicting record shows
   // inline next to the staged row, not behind a lookup elsewhere.
   const [committedById, setCommittedById] = useState<Map<string, CommittedProject>>(new Map());
+  // The whole committed set (small table, ~242 rows) — loaded only when there are
+  // approx-location rows, to name+unit match them against the map (proximity can't).
+  const [committedPool, setCommittedPool] = useState<CommittedProject[]>([]);
   // Triage view state. Rows render compact (one summary line) by default; the
   // reviewer expands the ones they want to edit. Bulk buckets (clean / decided)
   // collapse so the screen leads with the decisions that actually need judgment.
@@ -478,6 +481,33 @@ export default function ResearchRunApprovalModal({
     return () => { cancelled = true; };
   }, [staging, possibleDupes]);
 
+  // ---- load the committed pool for approx-location name matching ----
+  // Only fetched when a row's location was too vague to scan. The table is small
+  // (~242 rows, well under the 1000-row cap) so we pull it whole and match client
+  // side, reusing the same name/unit logic as the in-sweep signal.
+  useEffect(() => {
+    if (lowPrecisionGeo.size === 0 || committedPool.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('municipal_project')
+        .select('id, project_name, address, total_housing_units, builder_developer, permit_url, permit_application_date, municipality(name)');
+      if (error) { console.warn('Committed-pool fetch failed (non-blocking):', error.message); return; }
+      if (cancelled) return;
+      setCommittedPool(((data ?? []) as any[]).map((r) => ({
+        id: r.id,
+        project_name: r.project_name,
+        address: r.address,
+        total_housing_units: r.total_housing_units,
+        builder_developer: r.builder_developer,
+        permit_url: r.permit_url,
+        permit_application_date: r.permit_application_date,
+        municipality_name: r.municipality?.name ?? null,
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [lowPrecisionGeo, committedPool.length]);
+
   // Staging rows keyed by id — resolve sibling ids to their row (cluster members,
   // comparison panels).
   const stagingById = useMemo(() => {
@@ -584,6 +614,36 @@ export default function ResearchRunApprovalModal({
     () => new Set(nameClusters.flatMap((c) => c.members.map((m) => m.id))),
     [nameClusters],
   );
+
+  // ---- approx-location fallback: name + close-unit match vs COMMITTED projects ----
+  // A vague address can't be location-matched, so match these rows against the map
+  // by name with a CLOSE unit count (counts drift between submissions, so ±10 is a
+  // match, not exact). Unscoped by municipality on purpose: the dupes we're after
+  // cross city/county lines (annexation, a city inside a county). Same phase guard
+  // as the in-sweep signal so "Section I" ≠ "Section II".
+  const UNIT_TOLERANCE = 10;
+  const committedNameMatches = useMemo(() => {
+    const out: Record<string, CommittedProject[]> = {};
+    if (committedPool.length === 0) return out;
+    const pool = committedPool.map((cp) => ({ cp, norm: normalizeProjectName(cp.project_name) }));
+    for (const s of staging) {
+      if (!(s.approval_state === 'pending' && !s.matched_existing_id && lowPrecisionGeo.has(s.id))) continue;
+      const sn = normalizeProjectName(s.project_name);
+      if (sn.length < 4) continue;
+      const hits: { cp: CommittedProject; sim: number }[] = [];
+      for (const { cp, norm } of pool) {
+        if (norm.length < 4) continue;
+        const sim = diceCoefficient(sn, norm);
+        if (sn !== norm && corePhaseless(sn) === corePhaseless(norm)) continue;   // phase guard
+        const bothUnits = s.total_housing_units != null && cp.total_housing_units != null;
+        const unitsClose = bothUnits && Math.abs((s.total_housing_units as number) - (cp.total_housing_units as number)) <= UNIT_TOLERANCE;
+        if ((unitsClose && sim >= NAME_WITH_UNITS) || (!bothUnits && sim >= NAME_STRONG)) hits.push({ cp, sim });
+      }
+      if (hits.length) out[s.id] = hits.sort((a, b) => b.sim - a.sim).map((h) => h.cp);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staging, lowPrecisionGeo, committedPool]);
 
   const pendingCount   = staging.filter((s) => s.approval_state === 'pending').length;
   const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
@@ -973,16 +1033,39 @@ export default function ResearchRunApprovalModal({
             </ul>
           </div>
         )}
-        {approx && (
-          <div className="rounded border border-dashed px-2 py-1.5" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#4A6B94' }}>
-            <div className="font-medium">Location couldn’t be auto-checked (street-only address), so no duplicate scan ran — verify by hand:</div>
-            <div className="mt-1">
-              {(r.location_description || r.parcel_boundary_notes)
-                ? [r.location_description, r.parcel_boundary_notes].filter(Boolean).join(' — ')
-                : <span style={{ color: '#8FA9C8' }}>No location hints on this record; compare its address against the map before approving.</span>}
+        {approx && (() => {
+          const nameHits = committedNameMatches[r.id] ?? [];
+          const hints = [r.location_description, r.parcel_boundary_notes].filter(Boolean).join(' — ');
+          return (
+            <div className="rounded border border-dashed px-2 py-1.5" style={{ borderColor: nameHits.length ? '#A27B5C' : '#8FA9C8', backgroundColor: nameHits.length ? '#FFF7F0' : '#F8FAFC', color: '#4A6B94' }}>
+              {nameHits.length > 0 ? (
+                <>
+                  <div className="font-medium" style={{ color: '#A27B5C' }}>
+                    Location too vague to scan by map — but the name + unit count match {nameHits.length} committed project{nameHits.length === 1 ? '' : 's'} (may be the same):
+                  </div>
+                  <ul className="mt-1 space-y-1">
+                    {nameHits.map((cp) => {
+                      const delta = (r.total_housing_units != null && cp.total_housing_units != null)
+                        ? Math.abs(r.total_housing_units - cp.total_housing_units) : null;
+                      return (
+                        <li key={cp.id} className="flex gap-1">
+                          <span>•</span>
+                          {committedDetail(cp, delta == null ? 'units unknown' : delta === 0 ? 'exact unit match' : `Δ${delta} units`)}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="mt-1" style={{ color: '#8FA9C8' }}>{hints ? `Placement hints: ${hints}` : 'No further placement hints on this record.'}</div>
+                </>
+              ) : (
+                <>
+                  <div className="font-medium">Location couldn’t be auto-checked (street-only address), so no location scan ran — verify by hand:</div>
+                  <div className="mt-1">{hints || <span style={{ color: '#8FA9C8' }}>No location hints on this record; compare its address against the map before approving.</span>}</div>
+                </>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     );
   };
