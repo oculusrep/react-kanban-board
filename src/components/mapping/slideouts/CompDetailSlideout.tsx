@@ -5,6 +5,7 @@ import { formatCurrency } from '../../../utils/format';
 import geocodingService from '../../../services/geocodingService';
 import FormattedField from '../../shared/FormattedField';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
+import FileManager from '../../FileManager/FileManager';
 import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
   SOURCE_TYPES, CONFIDENCE_LEVELS, OCCUPANCY_STATUSES, SALE_CONDITIONS,
@@ -12,10 +13,10 @@ import {
 } from '../../../lib/compTypes';
 import {
   allInRentPsf, effectiveRentPsf, monthsRemaining,
-  capRateFromNoiPrice, pricePsf, salesPsf,
+  capRateFromNoiPrice, pricePsf, salesPsf, buildRentSchedule, leaseExpiration,
 } from '../../../lib/compCalculators';
 
-type Tab = 'overview' | 'leases' | 'sales' | 'om' | 'notes';
+type Tab = 'overview' | 'leases' | 'sales' | 'om' | 'files' | 'notes';
 
 interface CompDetailSlideoutProps {
   comp: CompProperty | null;                      // existing comp being viewed/edited
@@ -104,6 +105,61 @@ const AuditFooter: React.FC<{
     )}
   </div>
 );
+
+const fmtSchedDate = (s: string) =>
+  new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+// Auto-calculated rent schedule for a lease (from commencement + rent + escalation + bump cadence).
+const RentScheduleCard: React.FC<{
+  commencementDate: string | null;
+  annualBaseRent: number | null;
+  escalationPct: number | null;
+  bumpFrequency: string | null;
+  termYears: number | null;
+}> = (p) => {
+  const schedule = buildRentSchedule({
+    commencementDate: p.commencementDate,
+    annualBaseRent: p.annualBaseRent,
+    escalationPct: p.escalationPct,
+    bumpFrequency: (p.bumpFrequency as any) || null,
+    termYears: p.termYears,
+  });
+  if (!schedule || schedule.length === 0) return null;
+  const current = schedule.find((s) => s.isCurrent);
+  return (
+    <div className="mt-3 border border-[#8FA9C8] rounded-lg overflow-hidden">
+      <div className="bg-[#002147] text-white px-3 py-2 text-sm font-semibold flex items-center justify-between gap-2">
+        <span>Rent Schedule</span>
+        {current
+          ? <span className="text-xs font-normal">Current: {formatCurrency(current.annualRent)}/yr · {formatCurrency(current.monthlyRent)}/mo</span>
+          : <span className="text-xs font-normal text-gray-300">Not yet commenced</span>}
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-[#4A6B94] bg-[#8FA9C8]/10">
+            <th className="text-left px-3 py-1.5 font-semibold">Period</th>
+            <th className="text-right px-3 py-1.5 font-semibold">Annual</th>
+            <th className="text-right px-3 py-1.5 font-semibold">Monthly</th>
+            <th className="text-right px-3 py-1.5 font-semibold">Increase</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schedule.map((s, i) => (
+            <tr key={i} className={`border-t border-gray-100 ${s.isCurrent ? 'bg-yellow-50 font-semibold text-[#002147]' : 'text-gray-700'}`}>
+              <td className="px-3 py-1.5">
+                {fmtSchedDate(s.periodStart)} – {fmtSchedDate(s.periodEnd)}
+                {s.isCurrent && <span className="ml-1 text-[10px] text-yellow-700">(now)</span>}
+              </td>
+              <td className="px-3 py-1.5 text-right">{formatCurrency(s.annualRent)}</td>
+              <td className="px-3 py-1.5 text-right">{formatCurrency(s.monthlyRent)}</td>
+              <td className="px-3 py-1.5 text-right">{s.increasePct != null ? `+${s.increasePct}%` : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Editable comp_property draft (shared by the header + overview body)
@@ -320,6 +376,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
               ['leases', `Leases (${leases.length})`],
               ['sales', `Sales (${sales.length})`],
               ['om', `OM (${oms.length})`],
+              ['files', 'Files'],
               ['notes', `Notes (${notes.length})`],
             ] as [Tab, string][]).map(([key, label]) => (
               <button
@@ -350,6 +407,9 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
             {tab === 'om' && (
               <OmTab compId={compId} oms={oms} userId={userId}
                 reload={() => { loadChildren(compId); onSaved?.(compId); }} />
+            )}
+            {tab === 'files' && (
+              <FileManager entityType="comp_property" entityId={compId} />
             )}
             {tab === 'notes' && (
               <NotesTab compId={compId} notes={notes} userId={userId}
@@ -617,6 +677,9 @@ const LeasesTab: React.FC<{
     onChange: (v: number | null) => setF((p) => ({ ...p, [k]: v == null ? '' : String(v) })),
   });
 
+  // Expiration auto-derives from commencement + term when both are present.
+  const derivedExp = leaseExpiration(f.lease_commencement_date || null, num(f.lease_term_years));
+
   const save = async () => {
     const sqft = has('tenant_sqft') ? num(f.tenant_sqft) : null;
     const annual = num(f.annual_base_rent);                 // Base Rent (Annual $); ground rent for ground lease
@@ -638,7 +701,7 @@ const LeasesTab: React.FC<{
       ti_annual: tiAnnual,
       ti_psf: tiAnnual != null && sqft != null && sqft !== 0 ? tiAnnual / sqft : null,
       lease_commencement_date: f.lease_commencement_date || null,
-      lease_expiration_date: f.lease_expiration_date || null,
+      lease_expiration_date: leaseExpiration(f.lease_commencement_date || null, years) ?? (f.lease_expiration_date || null),
       lease_term_years: years,
       lease_term_months: years != null ? Math.round(years * 12) : null,
       escalation_pct: num(f.escalation_pct),
@@ -693,8 +756,15 @@ const LeasesTab: React.FC<{
 
           {/* Common lease terms */}
           <TxtField label="Commencement" type="date" value={f.lease_commencement_date} onChange={setV('lease_commencement_date')} />
-          <TxtField label="Expiration" type="date" value={f.lease_expiration_date} onChange={setV('lease_expiration_date')} />
           <FormattedField label="Lease Term (years)" type="number" decimalPlaces={0} {...money('lease_term_years')} />
+          {derivedExp ? (
+            <div>
+              <label className={ffLabelCls}>Expiration (auto)</label>
+              <div className={`${ffInputCls} bg-gray-50 text-gray-700 flex items-center`}>{fmtSchedDate(derivedExp)}</div>
+            </div>
+          ) : (
+            <TxtField label="Expiration" type="date" value={f.lease_expiration_date} onChange={setV('lease_expiration_date')} />
+          )}
           <FormattedField label="Rent Escalation %" type="percentage" {...money('escalation_pct')} />
           <SelField label="Rent Bumps" value={f.rent_bump_frequency} onChange={setV('rent_bump_frequency')}>
             <option value="">—</option>
@@ -731,6 +801,14 @@ const LeasesTab: React.FC<{
             </div>
           );
         })()}
+        <RentScheduleCard
+          commencementDate={f.lease_commencement_date || null}
+          annualBaseRent={num(f.annual_base_rent)}
+          escalationPct={num(f.escalation_pct)}
+          bumpFrequency={f.rent_bump_frequency || null}
+          termYears={num(f.lease_term_years)}
+        />
+
         <div className="flex gap-2">
           <button onClick={save} className="flex-1 py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a]">Save Lease</button>
           <button onClick={() => setEditing(null)} className="px-4 py-2 rounded border border-gray-300 text-sm">Cancel</button>
@@ -761,6 +839,13 @@ const LeasesTab: React.FC<{
             <span>Remaining: {dash(monthsRemaining(l.lease_expiration_date))} mo</span>
           </div>
           {l.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{l.notes}</p>}
+          <RentScheduleCard
+            commencementDate={l.lease_commencement_date}
+            annualBaseRent={l.annual_base_rent}
+            escalationPct={l.escalation_pct}
+            bumpFrequency={l.rent_bump_frequency}
+            termYears={l.lease_term_years}
+          />
           <AuditFooter created_by_id={l.created_by_id} created_at={l.created_at} updated_by_id={l.updated_by_id} updated_at={l.updated_at} />
         </div>
       ))}
