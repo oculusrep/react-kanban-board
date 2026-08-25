@@ -346,3 +346,36 @@ Nothing auto-rejects; every reject stays reversible via Undo.
 
 Thresholds (`NAME_STRONG` 0.82, `NAME_WITH_UNITS` 0.60) are consts at the top of
 `nameClusters` — tune there.
+
+---
+
+# Needs-attention: show the conflicting record inline (2026-08-24)
+
+Feedback: the "Needs attention" bucket showed only a badge, so the reviewer still
+had to go find the thing being conflicted with — "if it matches an existing, I
+want to see the existing details with it … don't want to search elsewhere."
+
+Now every needs-attention row renders its conflict evidence **inline and
+always-visible** (not behind expand), via `conflictPanels(r)`:
+
+- **Hard match** — a new effect fetches the referenced committed
+  `municipal_project` rows (`committedById`, keyed off `matched_existing_id` and
+  the nearby-project ids; RLS `municipal_project_read` = `authenticated/true`,
+  embed via the `municipality_id` FK). The panel shows the existing record's name,
+  municipality, address, units, builder, and a `permit ↗` link, framed "Duplicate
+  of a record already on the map — this row is deselected by default."
+- **Possible duplicate** — the nearby committed project(s) now render with full
+  detail (units/builder/permit), enriched from `committedById`, with distance.
+- **Approx location** — since no scan could run, the panel surfaces the row's own
+  `location_description` / `parcel_boundary_notes` placement hints (or says there
+  are none) so the reviewer can verify against the map.
+
+`conflictPanels` renders always in `rowCard` (the field editor stays behind
+expand); it returns null for unflagged rows, so Clean/Decided are unaffected. The
+section header now reads "a conflicting record was found, or the location couldn't
+be checked (details on each row)" instead of an opaque count.
+
+Not done: for approx-location rows there's still no *automated* candidate conflict
+(proximity is disabled and the name signal only runs staged-vs-staged, not against
+committed) — the panel shows placement hints, not a matched committed record. A
+name-vs-committed search for those rows is a possible follow-up.

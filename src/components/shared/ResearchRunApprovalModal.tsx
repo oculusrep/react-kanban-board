@@ -85,6 +85,18 @@ interface NearbyProject {
   address: string | null;
   distance_m: number;
 }
+// Full detail of a committed municipal_project referenced by a conflict (hard match
+// or nearby), fetched so the reviewer can compare inline without leaving the modal.
+interface CommittedProject {
+  id: string;
+  project_name: string | null;
+  address: string | null;
+  total_housing_units: number | null;
+  builder_developer: string | null;
+  permit_url: string | null;
+  permit_application_date: string | null;
+  municipality_name: string | null;
+}
 
 // Supabase RPC errors are PostgrestError objects (not Error instances). Rendering
 // them via `String(e)` yields "[object Object]" and hides the real reason —
@@ -221,6 +233,10 @@ export default function ResearchRunApprovalModal({
   // Soft dedupe: stagingId -> nearby committed projects, plus an in-flight flag.
   const [possibleDupes, setPossibleDupes] = useState<Record<string, NearbyProject[]>>({});
   const [checkingDupes, setCheckingDupes] = useState(false);
+  // Committed municipal_project details for every record referenced by a conflict
+  // (matched_existing_id or a nearby project) — so the conflicting record shows
+  // inline next to the staged row, not behind a lookup elsewhere.
+  const [committedById, setCommittedById] = useState<Map<string, CommittedProject>>(new Map());
   // Triage view state. Rows render compact (one summary line) by default; the
   // reviewer expands the ones they want to edit. Bulk buckets (clean / decided)
   // collapse so the screen leads with the decisions that actually need judgment.
@@ -427,6 +443,40 @@ export default function ResearchRunApprovalModal({
     checkNearby();
     return () => { cancelled = true; };
   }, [staging]);
+
+  // ---- fetch the conflicting committed records so they render inline ----
+  // Every municipal_project referenced by a hard match (matched_existing_id) or a
+  // nearby "possible duplicate" is loaded with full detail. Non-blocking.
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const s of staging) if (s.matched_existing_id) ids.add(s.matched_existing_id);
+    for (const list of Object.values(possibleDupes)) for (const d of list) ids.add(d.municipal_project_id);
+    if (ids.size === 0) { setCommittedById(new Map()); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('municipal_project')
+        .select('id, project_name, address, total_housing_units, builder_developer, permit_url, permit_application_date, municipality(name)')
+        .in('id', [...ids]);
+      if (error) { console.warn('Committed-record detail fetch failed (non-blocking):', error.message); return; }
+      if (cancelled) return;
+      const m = new Map<string, CommittedProject>();
+      for (const r of (data ?? []) as any[]) {
+        m.set(r.id, {
+          id: r.id,
+          project_name: r.project_name,
+          address: r.address,
+          total_housing_units: r.total_housing_units,
+          builder_developer: r.builder_developer,
+          permit_url: r.permit_url,
+          permit_application_date: r.permit_application_date,
+          municipality_name: r.municipality?.name ?? null,
+        });
+      }
+      setCommittedById(m);
+    })();
+    return () => { cancelled = true; };
+  }, [staging, possibleDupes]);
 
   // Staging rows keyed by id — resolve sibling ids to their row (cluster members,
   // comparison panels).
@@ -866,32 +916,76 @@ export default function ResearchRunApprovalModal({
     );
   };
 
-  // Comparison context shown when a row is expanded (possible-dup vs committed +
-  // the low-precision explanation). In-sweep siblings live in cluster cards.
-  const comparisonPanels = (r: StagingRow) => (
-    <>
-      {!r.matched_existing_id && (possibleDupes[r.id]?.length ?? 0) > 0 && (
-        <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
-             style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
-          <div className="font-medium" style={{ color: '#A27B5C' }}>Already on the map nearby — approving this may duplicate it:</div>
-          <ul className="mt-1 space-y-0.5" style={{ color: '#4A6B94' }}>
-            {possibleDupes[r.id].map((d) => (
-              <li key={d.municipal_project_id}>
-                • <b style={{ color: '#002147' }}>{d.project_name ?? '(unnamed project)'}</b> · ~{Math.round(d.distance_m)}m
-                {d.municipality_name ? ` · ${d.municipality_name}` : ''}{d.address ? ` · ${d.address}` : ''}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {r.approval_state === 'pending' && !r.matched_existing_id && lowPrecisionGeo.has(r.id) && (
-        <div className="mt-2 rounded border border-dashed px-2 py-1.5 text-xs"
-             style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#F8FAFC' }}>
-          This address only geocoded to a street/area centroid, so the duplicate check couldn't run for this row — every project on the same road lands on the same point. Compare the address by hand before approving.
-        </div>
-      )}
-    </>
+  // One committed record's detail line — name + muni/address/units/builder, plus a
+  // permit link when present. Shown inline so the reviewer can compare in place.
+  const committedDetail = (cp: CommittedProject, extra?: string) => (
+    <div>
+      <b style={{ color: '#002147' }}>{cp.project_name ?? '(unnamed project)'}</b>
+      <div style={{ color: '#4A6B94' }}>
+        {[
+          cp.municipality_name,
+          cp.address,
+          cp.total_housing_units != null ? `${cp.total_housing_units} units` : null,
+          cp.builder_developer,
+          extra,
+        ].filter(Boolean).join(' · ') || '—'}
+        {cp.permit_url && (
+          <>{' · '}<a href={cp.permit_url} target="_blank" rel="noreferrer" className="underline" style={{ color: '#4A6B94' }} onClick={(e) => e.stopPropagation()}>permit ↗</a></>
+        )}
+      </div>
+    </div>
   );
+
+  // The conflicting record(s) for a flagged row, rendered inline so a decision can
+  // be made in place: the exact committed record it matches, the nearby committed
+  // project(s) it might duplicate, and/or the "couldn't auto-check location" note
+  // with this row's own placement hints. Returns null when there's nothing to show.
+  const conflictPanels = (r: StagingRow) => {
+    const matched = r.matched_existing_id ? committedById.get(r.matched_existing_id) : undefined;
+    const nearby = !r.matched_existing_id ? (possibleDupes[r.id] ?? []) : [];
+    const approx = r.approval_state === 'pending' && !r.matched_existing_id && lowPrecisionGeo.has(r.id);
+    if (!r.matched_existing_id && nearby.length === 0 && !approx) return null;
+    return (
+      <div className="mt-1 space-y-1.5 text-xs">
+        {r.matched_existing_id && (
+          <div className="rounded border px-2 py-1.5" style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+            <div className="font-medium" style={{ color: '#A27B5C' }}>Duplicate of a record already on the map — this row is deselected by default:</div>
+            <div className="mt-1">{matched ? committedDetail(matched) : <span style={{ color: '#8FA9C8' }}>loading the existing record…</span>}</div>
+          </div>
+        )}
+        {nearby.length > 0 && (
+          <div className="rounded border border-dashed px-2 py-1.5" style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+            <div className="font-medium" style={{ color: '#A27B5C' }}>
+              Already on the map within ~{Math.round(nearby[0].distance_m)}m — approving this may duplicate {nearby.length === 1 ? 'it' : 'one of these'}:
+            </div>
+            <ul className="mt-1 space-y-1">
+              {nearby.map((d) => {
+                const cp = committedById.get(d.municipal_project_id);
+                return (
+                  <li key={d.municipal_project_id} className="flex gap-1">
+                    <span>•</span>
+                    {cp
+                      ? committedDetail(cp, `~${Math.round(d.distance_m)}m away`)
+                      : <span style={{ color: '#4A6B94' }}><b style={{ color: '#002147' }}>{d.project_name ?? '(unnamed)'}</b> · ~{Math.round(d.distance_m)}m{d.address ? ` · ${d.address}` : ''}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {approx && (
+          <div className="rounded border border-dashed px-2 py-1.5" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#4A6B94' }}>
+            <div className="font-medium">Location couldn’t be auto-checked (street-only address), so no duplicate scan ran — verify by hand:</div>
+            <div className="mt-1">
+              {(r.location_description || r.parcel_boundary_notes)
+                ? [r.location_description, r.parcel_boundary_notes].filter(Boolean).join(' — ')
+                : <span style={{ color: '#8FA9C8' }}>No location hints on this record; compare its address against the map before approving.</span>}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // The full editable field grid — shown only when a row is expanded.
   const fieldEditor = (r: StagingRow) => {
@@ -953,7 +1047,9 @@ export default function ResearchRunApprovalModal({
                     title="Undo — restore this row to pending">↩ Undo</button>
           )}
         </div>
-        {isExpanded && (<div className="pl-6">{comparisonPanels(r)}{fieldEditor(r)}</div>)}
+        {/* Conflicting record(s) always visible — that's the point of the row. */}
+        <div className="pl-6">{conflictPanels(r)}</div>
+        {isExpanded && (<div className="pl-6">{fieldEditor(r)}</div>)}
       </div>
     );
   };
@@ -1010,7 +1106,7 @@ export default function ResearchRunApprovalModal({
                             title="Not part of this group — pull this row out (it's a separate project/phase)">✕ separate</button>
                   )}
                 </div>
-                {isExpanded && (<div className="pl-6">{comparisonPanels(m)}{fieldEditor(m)}</div>)}
+                {isExpanded && (<div className="pl-6">{conflictPanels(m)}{fieldEditor(m)}</div>)}
               </div>
             );
           })}
@@ -1234,7 +1330,8 @@ export default function ResearchRunApprovalModal({
               {triage.needsAttention.length > 0 && (
                 <div className="border rounded-md" style={{ borderColor: '#A27B5C' }}>
                   <div className="px-3 py-2 border-b text-sm font-semibold" style={{ borderColor: '#8FA9C8', backgroundColor: '#FFF7F0', color: '#A27B5C' }}>
-                    Needs attention ({triage.needsAttention.length}) — review before committing
+                    Needs attention ({triage.needsAttention.length})
+                    <span className="font-normal" style={{ color: '#8FA9C8' }}> — a conflicting record was found, or the location couldn’t be checked (details on each row)</span>
                   </div>
                   <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
                     {triage.needsAttention.map((r) => rowCard(r))}
