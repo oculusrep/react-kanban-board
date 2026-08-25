@@ -3,9 +3,9 @@ import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../utils/format';
 import geocodingService from '../../../services/geocodingService';
-import FormattedField from '../../shared/FormattedField';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
 import FileManager from '../../FileManager/FileManager';
+import PortalChatTab from '../../portal/PortalChatTab';
 import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
   SOURCE_TYPES, CONFIDENCE_LEVELS, SALE_CONDITIONS,
@@ -37,14 +37,14 @@ const str = (v: string): string | null => (v.trim() === '' ? null : v.trim());
 const dash = (v: number | null | undefined, fn?: (n: number) => string): string =>
   v == null ? '—' : fn ? fn(v) : String(v);
 
-// Body (light) inputs
+// Unified modern field styling (one look across the whole slideout).
 const inputCls =
-  'w-full px-2 py-1.5 text-sm border border-[#8FA9C8] rounded focus:outline-none focus:ring-1 focus:ring-[#002147]';
-const labelCls = 'block text-[11px] font-semibold text-[#4A6B94] uppercase tracking-wide mb-0.5';
-// Header (dark) inputs — white fields on the black header for readability
+  'w-full px-3 py-2.5 text-sm bg-white border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#002147]/15 focus:border-[#002147] transition-colors';
+const labelCls = 'block text-xs font-medium text-gray-500 mb-1';
+// Header (dark) inputs — white fields on the black header for readability.
 const hInputCls =
-  'w-full px-2 py-1.5 text-sm rounded bg-white text-gray-900 border border-gray-500 focus:outline-none focus:ring-1 focus:ring-white';
-const hLabelCls = 'block text-[10px] font-semibold text-gray-300 uppercase tracking-wide mb-0.5';
+  'w-full px-3 py-2.5 text-sm rounded-lg bg-white text-gray-900 border border-transparent placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white/40 transition-colors';
+const hLabelCls = 'block text-xs font-medium text-gray-300 mb-1';
 
 const Field: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({
   label, children, className,
@@ -55,11 +55,9 @@ const Field: React.FC<{ label: string; children: React.ReactNode; className?: st
   </div>
 );
 
-// Property/site-submit-style form controls (match FormattedField's label + input styling), used in
-// the lease/sale entry cards so currency, text, date and selects all read like the property sidebar.
-const ffLabelCls = 'block text-form-label font-medium text-gray-700 mb-form-label-gap';
-const ffInputCls =
-  'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-form-input-lg min-h-input';
+// Lease/sale form controls share the same modern styling as the rest of the slideout.
+const ffLabelCls = labelCls;
+const ffInputCls = inputCls;
 
 const TxtField: React.FC<{
   label: string; value: string; onChange: (v: string) => void;
@@ -90,6 +88,33 @@ const TxtAreaField: React.FC<{
       onChange={(e) => onChange(e.target.value)} />
   </div>
 );
+
+// Modern always-editable numeric input with an inline $ / % adornment and comma formatting on blur.
+const NumField: React.FC<{
+  label: string; value: string; onChange: (v: string) => void;
+  kind?: 'plain' | 'currency' | 'percent'; decimals?: number; className?: string; placeholder?: string;
+}> = ({ label, value, onChange, kind = 'plain', decimals = 0, className, placeholder }) => {
+  const [focused, setFocused] = useState(false);
+  const n = value.trim() === '' ? null : Number(value.replace(/[^0-9.\-]/g, ''));
+  const display = focused || value.trim() === '' || n == null || !isFinite(n)
+    ? value
+    : n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+  return (
+    <div className={className}>
+      <label className={labelCls}>{label}</label>
+      <div className="relative">
+        {kind === 'currency' && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>}
+        <input inputMode="decimal" placeholder={placeholder}
+          className={`${inputCls} ${kind === 'currency' ? 'pl-7' : ''} ${kind === 'percent' ? 'pr-8' : ''}`}
+          value={display}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9.\-]/g, ''))} />
+        {kind === 'percent' && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>}
+      </div>
+    </div>
+  );
+};
 
 const fmtDateTime = (s: string | null): string =>
   s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
@@ -313,6 +338,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
     try {
       let saved: CompProperty;
       if (current) {
+        payload.updated_by_id = userId;
         const { data, error } = await supabase.from('comp_property')
           .update(payload).eq('id', current.id).select('*').single();
         if (error) throw error;
@@ -384,7 +410,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
               ['sales', `Sales (${sales.length})`],
               ['om', `OM (${oms.length})`],
               ['files', 'Files'],
-              ['notes', `Notes (${notes.length})`],
+              ['notes', 'Notes'],
             ] as [Tab, string][]).map(([key, label]) => (
               <button
                 key={key}
@@ -419,8 +445,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
               <FileManager entityType="comp_property" entityId={compId} />
             )}
             {tab === 'notes' && (
-              <NotesTab compId={compId} notes={notes} userId={userId}
-                reload={() => loadChildren(compId)} />
+              <PortalChatTab siteSubmitId="" showInternalComments={true} compPropertyId={compId} />
             )}
           </div>
         </>
@@ -507,6 +532,16 @@ const CompHeader: React.FC<{
         </div>
       )}
 
+      {/* Created / last-modified audit */}
+      {!editing && current && (
+        <div className="text-[11px] text-gray-500 mt-1.5">
+          Created{current.created_by_id && <UserByIdDisplay userId={current.created_by_id} />} · {fmtDateTime(current.created_at)}
+          {current.updated_by_id && (
+            <> · Modified<UserByIdDisplay userId={current.updated_by_id} /> · {fmtDateTime(current.updated_at)}</>
+          )}
+        </div>
+      )}
+
       {/* Edit form */}
       {editing && (
         <div className="mt-3 space-y-2">
@@ -583,7 +618,7 @@ const OverviewBody: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-4">
         <Field label="Property Type">
           <select className={inputCls} {...bind('property_type_id')}>
             <option value="">—</option>
@@ -616,7 +651,7 @@ const OverviewBody: React.FC<{
           More Details
         </button>
         {showMore && (
-          <div className="grid grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 mt-3">
             <Field label="Year Built"><input className={inputCls} {...bind('year_built')} /></Field>
             <Field label="Anchor / Co-tenants"><input className={inputCls} {...bind('anchor_tenant')} /></Field>
             <Field label="Trade Area"><input className={inputCls} {...bind('trade_area')} /></Field>
@@ -631,7 +666,7 @@ const OverviewBody: React.FC<{
       <button
         onClick={onSave}
         disabled={saving}
-        className="w-full py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a] disabled:opacity-50"
+        className="w-full py-2.5 rounded-lg bg-[#002147] text-white text-sm font-semibold shadow-sm hover:bg-[#00306a] disabled:opacity-50"
       >
         {saving ? 'Saving…' : 'Save Changes'}
       </button>
@@ -681,10 +716,6 @@ const LeasesTab: React.FC<{
 
   // string / number binders for the property-styled controls
   const setV = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
-  const money = (k: keyof typeof f) => ({
-    value: num(f[k]),
-    onChange: (v: number | null) => setF((p) => ({ ...p, [k]: v == null ? '' : String(v) })),
-  });
 
   // Expiration auto-derives from commencement + term when both are present.
   const derivedExp = leaseExpiration(f.lease_commencement_date || null, num(f.lease_term_years));
@@ -739,7 +770,7 @@ const LeasesTab: React.FC<{
   if (editing) {
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
           <TxtField label="Tenant Name" value={f.tenant_name} onChange={setV('tenant_name')} />
           <SelField label="Brand (known chain)" value={f.merchant_brand_id} onChange={setV('merchant_brand_id')}>
             <option value="">—</option>
@@ -752,41 +783,40 @@ const LeasesTab: React.FC<{
 
           {/* Type-specific fields (from the field matrix) */}
           {has('suite') && <TxtField label="Suite" value={f.suite} onChange={setV('suite')} />}
-          {has('tenant_sqft') && <FormattedField label="Tenant SF" type="number" decimalPlaces={0} {...money('tenant_sqft')} />}
+          {has('tenant_sqft') && <NumField label="Tenant SF" value={f.tenant_sqft} onChange={setV('tenant_sqft')} />}
           {has('annual_base_rent') && (
-            <FormattedField
+            <NumField
               label={type === 'ground_lease' ? 'Annual Ground Rent' : 'Base Rent (Annual)'}
-              type="currency" decimalPlaces={0} {...money('annual_base_rent')} />
+              kind="currency" value={f.annual_base_rent} onChange={setV('annual_base_rent')} />
           )}
-          {has('nnn_psf') && <FormattedField label="NNN PSF" type="currency" {...money('nnn_psf')} />}
-          {has('ti_annual') && <FormattedField label="TI (Annual)" type="currency" decimalPlaces={0} {...money('ti_annual')} />}
+          {has('nnn_psf') && <NumField label="NNN PSF" kind="currency" decimals={2} value={f.nnn_psf} onChange={setV('nnn_psf')} />}
+          {has('ti_annual') && <NumField label="TI (Annual)" kind="currency" value={f.ti_annual} onChange={setV('ti_annual')} />}
 
           {/* Common lease terms */}
           <TxtField label="Commencement" type="date" value={f.lease_commencement_date} onChange={setV('lease_commencement_date')} />
-          <FormattedField label="Lease Term (years)" type="number" decimalPlaces={0} {...money('lease_term_years')} />
+          <NumField label="Lease Term (years)" value={f.lease_term_years} onChange={setV('lease_term_years')} />
           <div>
-            <label className={ffLabelCls}>
+            <label className={labelCls}>
               Expiration{!f.lease_expiration_date && derivedExp ? ' (auto from term)' : ''}
             </label>
-            <input type="date" className={ffInputCls}
+            <input type="date" className={inputCls}
               value={f.lease_expiration_date || derivedExp || ''}
               onChange={(e) => setV('lease_expiration_date')(e.target.value)} />
             {f.lease_expiration_date && derivedExp && f.lease_expiration_date !== derivedExp && (
               <button type="button" onClick={() => setV('lease_expiration_date')('')}
-                className="text-[11px] text-[#4A6B94] hover:underline mt-0.5">
+                className="text-[11px] text-[#4A6B94] hover:underline mt-1">
                 Reset to auto ({fmtSchedDate(derivedExp)})
               </button>
             )}
           </div>
-          <FormattedField label="Rent Escalation %" type="percentage" {...money('escalation_pct')} />
+          <NumField label="Rent Escalation" kind="percent" decimals={2} value={f.escalation_pct} onChange={setV('escalation_pct')} />
           <SelField label="Rent Bumps" value={f.rent_bump_frequency} onChange={setV('rent_bump_frequency')}>
             <option value="">—</option>
             {RENT_BUMP_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </SelField>
-          <FormattedField label="Number of Options" type="number" decimalPlaces={0} {...money('option_count')} />
-          <FormattedField label="Option Term (years)" type="number" decimalPlaces={0} {...money('option_term_years')} />
-          <FormattedField label="Reported Tenant Sales (annual)" type="currency" decimalPlaces={0} {...money('reported_tenant_sales')} />
-          <div />
+          <NumField label="Number of Options" value={f.option_count} onChange={setV('option_count')} />
+          <NumField label="Option Term (years)" value={f.option_term_years} onChange={setV('option_term_years')} />
+          <NumField label="Reported Tenant Sales (annual)" kind="currency" className="col-span-2" value={f.reported_tenant_sales} onChange={setV('reported_tenant_sales')} />
           <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
           </SelField>
@@ -826,8 +856,8 @@ const LeasesTab: React.FC<{
         />
 
         <div className="flex gap-2">
-          <button onClick={save} className="flex-1 py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a]">Save Lease</button>
-          <button onClick={() => setEditing(null)} className="px-4 py-2 rounded border border-gray-300 text-sm">Cancel</button>
+          <button onClick={save} className="flex-1 py-2.5 rounded-lg bg-[#002147] text-white text-sm font-semibold shadow-sm hover:bg-[#00306a]">Save Lease</button>
+          <button onClick={() => setEditing(null)} className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
         </div>
       </div>
     );
@@ -835,10 +865,10 @@ const LeasesTab: React.FC<{
 
   return (
     <div className="space-y-2">
-      <button onClick={startNew} className="w-full py-2 rounded border border-dashed border-[#4A6B94] text-[#4A6B94] text-sm font-medium hover:bg-[#8FA9C8]/10">+ Add Lease Comp</button>
+      <button onClick={startNew} className="w-full py-2.5 rounded-lg border border-dashed border-[#8FA9C8] text-[#4A6B94] text-sm font-medium hover:bg-[#8FA9C8]/10 hover:border-[#4A6B94] transition-colors">+ Add Lease Comp</button>
       {leases.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No lease comps yet.</p>}
       {leases.map((l) => (
-        <div key={l.id} className="border border-gray-200 rounded p-3 text-sm">
+        <div key={l.id} className="border border-gray-200 rounded-xl p-3.5 text-sm hover:border-[#8FA9C8] transition-colors">
           <div className="flex justify-between items-start">
             <div className="font-semibold text-[#002147]">{l.tenant_name || 'Unnamed tenant'}{l.suite ? ` · ${l.suite}` : ''}</div>
             <div className="flex gap-2 text-xs">
@@ -885,10 +915,6 @@ const SalesTab: React.FC<{
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [f, setF] = useState({ ...emptySale });
   const setV = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
-  const money = (k: keyof typeof f) => ({
-    value: num(f[k]),
-    onChange: (v: number | null) => setF((p) => ({ ...p, [k]: v == null ? '' : String(v) })),
-  });
 
   const startNew = () => { setF({ ...emptySale }); setEditing('new'); };
   const startEdit = (s: SaleComp) => {
@@ -931,16 +957,16 @@ const SalesTab: React.FC<{
   if (editing) {
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
           <TxtField label="Sale Date" type="date" value={f.sale_date} onChange={setV('sale_date')} />
-          <FormattedField label="Sale Price" type="currency" decimalPlaces={0} {...money('sale_price')} />
-          <FormattedField label="NOI" type="currency" decimalPlaces={0} {...money('noi')} />
-          <FormattedField label="Cap Rate % (blank = auto)" type="percentage" {...money('cap_rate')}
-            placeholder={derivedCap != null ? derivedCap.toFixed(2) : '0'} />
+          <NumField label="Sale Price" kind="currency" value={f.sale_price} onChange={setV('sale_price')} />
+          <NumField label="NOI" kind="currency" value={f.noi} onChange={setV('noi')} />
+          <NumField label="Cap Rate (blank = auto)" kind="percent" decimals={2} value={f.cap_rate} onChange={setV('cap_rate')}
+            placeholder={derivedCap != null ? derivedCap.toFixed(2) : ''} />
           <TxtField label="Buyer" value={f.buyer_name} onChange={setV('buyer_name')} />
           <TxtField label="Seller" value={f.seller_name} onChange={setV('seller_name')} />
           <TxtField label="Broker" value={f.broker} onChange={setV('broker')} />
-          <FormattedField label="Occupancy % at Sale" type="percentage" decimalPlaces={0} {...money('occupancy_at_sale')} />
+          <NumField label="Occupancy % at Sale" kind="percent" value={f.occupancy_at_sale} onChange={setV('occupancy_at_sale')} />
           <TxtField label="Financing" className="col-span-2" value={f.financing} onChange={setV('financing')} />
           <SelField label="Sale Condition" value={f.sale_condition} onChange={setV('sale_condition')}>
             <option value="">—</option>
@@ -956,8 +982,8 @@ const SalesTab: React.FC<{
           <div>Price PSF (÷ building SF): <b>{dash(derivedPpsf, (n) => `$${n.toFixed(0)}`)}</b></div>
         </div>
         <div className="flex gap-2">
-          <button onClick={save} className="flex-1 py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a]">Save Sale</button>
-          <button onClick={() => setEditing(null)} className="px-4 py-2 rounded border border-gray-300 text-sm">Cancel</button>
+          <button onClick={save} className="flex-1 py-2.5 rounded-lg bg-[#002147] text-white text-sm font-semibold shadow-sm hover:bg-[#00306a]">Save Sale</button>
+          <button onClick={() => setEditing(null)} className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
         </div>
       </div>
     );
@@ -965,10 +991,10 @@ const SalesTab: React.FC<{
 
   return (
     <div className="space-y-2">
-      <button onClick={startNew} className="w-full py-2 rounded border border-dashed border-[#4A6B94] text-[#4A6B94] text-sm font-medium hover:bg-[#8FA9C8]/10">+ Add Sale Comp</button>
+      <button onClick={startNew} className="w-full py-2.5 rounded-lg border border-dashed border-[#8FA9C8] text-[#4A6B94] text-sm font-medium hover:bg-[#8FA9C8]/10 hover:border-[#4A6B94] transition-colors">+ Add Sale Comp</button>
       {sales.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No sale comps yet.</p>}
       {sales.map((s) => (
-        <div key={s.id} className="border border-gray-200 rounded p-3 text-sm">
+        <div key={s.id} className="border border-gray-200 rounded-xl p-3.5 text-sm hover:border-[#8FA9C8] transition-colors">
           <div className="flex justify-between items-start">
             <div className="font-semibold text-[#002147]">{s.sale_date ?? 'Undated'} · {dash(s.sale_price, (n) => formatCurrency(n))}</div>
             <div className="flex gap-2 text-xs">
@@ -1037,7 +1063,7 @@ const OmTab: React.FC<{
   if (editing) {
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
           <Field label="Title" className="col-span-2"><input className={inputCls} value={f.title} onChange={set('title')} /></Field>
           <Field label="Broker"><input className={inputCls} value={f.broker_name} onChange={set('broker_name')} /></Field>
           <Field label="Brokerage"><input className={inputCls} value={f.brokerage} onChange={set('brokerage')} /></Field>
@@ -1054,8 +1080,8 @@ const OmTab: React.FC<{
         </div>
         <p className="text-xs text-gray-400">OM PDF files attach via the property's Dropbox folder (Phase 2).</p>
         <div className="flex gap-2">
-          <button onClick={save} className="flex-1 py-2 rounded bg-[#002147] text-white text-sm font-semibold hover:bg-[#00306a]">Save OM</button>
-          <button onClick={() => setEditing(null)} className="px-4 py-2 rounded border border-gray-300 text-sm">Cancel</button>
+          <button onClick={save} className="flex-1 py-2.5 rounded-lg bg-[#002147] text-white text-sm font-semibold shadow-sm hover:bg-[#00306a]">Save OM</button>
+          <button onClick={() => setEditing(null)} className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
         </div>
       </div>
     );
@@ -1063,10 +1089,10 @@ const OmTab: React.FC<{
 
   return (
     <div className="space-y-2">
-      <button onClick={startNew} className="w-full py-2 rounded border border-dashed border-[#4A6B94] text-[#4A6B94] text-sm font-medium hover:bg-[#8FA9C8]/10">+ Add Operating Memorandum</button>
+      <button onClick={startNew} className="w-full py-2.5 rounded-lg border border-dashed border-[#8FA9C8] text-[#4A6B94] text-sm font-medium hover:bg-[#8FA9C8]/10 hover:border-[#4A6B94] transition-colors">+ Add Operating Memorandum</button>
       {oms.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No OMs yet.</p>}
       {oms.map((o) => (
-        <div key={o.id} className="border border-gray-200 rounded p-3 text-sm">
+        <div key={o.id} className="border border-gray-200 rounded-xl p-3.5 text-sm hover:border-[#8FA9C8] transition-colors">
           <div className="flex justify-between items-start">
             <div className="font-semibold text-[#002147]">{o.title || 'Untitled OM'}</div>
             <div className="flex gap-2 text-xs">
@@ -1114,7 +1140,7 @@ const NotesTab: React.FC<{
       </div>
       {notes.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No notes yet.</p>}
       {notes.map((n) => (
-        <div key={n.id} className="border border-gray-200 rounded p-3 text-sm">
+        <div key={n.id} className="border border-gray-200 rounded-xl p-3.5 text-sm hover:border-[#8FA9C8] transition-colors">
           <div className="flex justify-between items-start gap-2">
             <p className="text-gray-700 whitespace-pre-wrap flex-1">{n.body}</p>
             <button onClick={() => del(n.id)} className="text-red-500 hover:underline text-xs">Delete</button>
