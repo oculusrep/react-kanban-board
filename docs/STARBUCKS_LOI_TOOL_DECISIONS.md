@@ -232,6 +232,23 @@ migration risk).
 
 ---
 
+## Validation status (pass one)
+
+Schema applied to the throwaway `loi-tool-dev` Supabase project via `psql` (no Docker
+locally; full-history-from-empty is impossible because base OVIS schema + real
+`is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
+the two helper functions instead; see `supabase/dev-only/`).
+
+All nine decision-encoding negative tests **PASS** (each operation correctly rejected):
+collision guard (unique), canonical-body immutability (trigger), modifier/alternative
+shape ×3 (CHECK), no-coded-gaps ×2 (trigger), duplicate rank (partial unique index),
+`applies_when` cross-clause FK.
+
+**RLS is NOT validated** — `is_internal_user()` was stubbed to `true` for the runs;
+row-level access behavior is unverified until tested against the real helper.
+
+Next: Mike extracts the 39 clause records as JSON against `supabase/seeds/loi/_SAMPLE_clause.json`.
+
 ## Build order (from briefing §9)
 
 1. Clause library + custom catalog seeded into Supabase.
