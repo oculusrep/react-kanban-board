@@ -135,6 +135,17 @@ const AuditFooter: React.FC<{
 const fmtSchedDate = (s: string) =>
   new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+// Short headline for a comp's current asking terms (shown passively in the header).
+function askSummary(a: CompAvailability): string {
+  const parts: string[] = [];
+  if (a.asking_purchase_price != null) parts.push(`${formatCurrency(a.asking_purchase_price)} purchase`);
+  if (a.asking_ground_lease_price != null) parts.push(`${formatCurrency(a.asking_ground_lease_price)}/yr ground`);
+  if (a.asking_annual_rent != null) parts.push(`${formatCurrency(a.asking_annual_rent)}/yr`);
+  if (a.asking_rent_psf != null) parts.push(`$${a.asking_rent_psf.toFixed(2)} PSF`);
+  if (a.asking_nnn_psf != null) parts.push(`$${a.asking_nnn_psf.toFixed(2)} NNN`);
+  return parts.join(' · ');
+}
+
 // Auto-calculated rent schedule for a lease (from commencement + rent + escalation + bump cadence).
 const RentScheduleCard: React.FC<{
   commencementDate: string | null;
@@ -391,6 +402,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
         saving={saving}
         saveError={saveError}
         current={current}
+        currentAsk={avails[0] ?? null}
         onEdit={() => setHeaderEditing(true)}
         onCancel={() => { setDraft(buildDraft(current, createAt)); setHeaderEditing(false); setSaveError(null); }}
         onSave={async () => { const ok = await saveComp(); if (ok) setHeaderEditing(false); }}
@@ -477,12 +489,13 @@ const CompHeader: React.FC<{
   saving: boolean;
   saveError: string | null;
   current: CompProperty | null;
+  currentAsk: CompAvailability | null;
   onEdit: () => void;
   onCancel: () => void;
   onSave: () => void;
   onDelete: () => void;
   onClose: () => void;
-}> = ({ draft, setField, editing, isNew, geocoding, saving, saveError, current, onEdit, onCancel, onSave, onDelete, onClose }) => {
+}> = ({ draft, setField, editing, isNew, geocoding, saving, saveError, current, currentAsk, onEdit, onCancel, onSave, onDelete, onClose }) => {
   const cityLine = [draft.city, draft.state].filter(Boolean).join(', ') + (draft.zip ? ` ${draft.zip}` : '');
   const coordLine = draft.verified_latitude && draft.verified_longitude
     ? `${Number(draft.verified_latitude).toFixed(6)}, ${Number(draft.verified_longitude).toFixed(6)}`
@@ -540,6 +553,19 @@ const CompHeader: React.FC<{
             : current.confidence === 'reported' ? 'bg-yellow-500/30 text-yellow-100'
             : 'bg-white/10 text-gray-300'
           }`}>{current.confidence}</span>
+        </div>
+      )}
+
+      {/* Current asking terms (latest availability record) */}
+      {!editing && currentAsk && (askSummary(currentAsk) || currentAsk.availability_type) && (
+        <div className="mt-2 text-xs">
+          <span className="font-semibold text-amber-300">Asking</span>
+          {currentAsk.as_of_date && <span className="text-gray-500"> ({fmtSchedDate(currentAsk.as_of_date)})</span>}
+          <span className="text-gray-500"> · </span>
+          <span className="text-gray-100">
+            {currentAsk.availability_type ? `${AVAILABILITY_LABEL[currentAsk.availability_type]} · ` : ''}
+            {askSummary(currentAsk) || '—'}
+          </span>
         </div>
       )}
 
