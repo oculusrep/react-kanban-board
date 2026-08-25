@@ -410,7 +410,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
               ['sales', `Sales (${sales.length})`],
               ['om', `OM (${oms.length})`],
               ['files', 'Files'],
-              ['notes', 'Notes'],
+              ['notes', 'Chat'],
             ] as [Tab, string][]).map(([key, label]) => (
               <button
                 key={key}
@@ -913,6 +913,7 @@ const SalesTab: React.FC<{
   compId: string; sales: SaleComp[]; buildingSqft: number | null; userId: string | null; reload: () => void;
 }> = ({ compId, sales, buildingSqft, userId, reload }) => {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [showMore, setShowMore] = useState(false);
   const [f, setF] = useState({ ...emptySale });
   const setV = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
 
@@ -956,27 +957,43 @@ const SalesTab: React.FC<{
 
   if (editing) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
           <TxtField label="Sale Date" type="date" value={f.sale_date} onChange={setV('sale_date')} />
           <NumField label="Sale Price" kind="currency" value={f.sale_price} onChange={setV('sale_price')} />
           <NumField label="NOI" kind="currency" value={f.noi} onChange={setV('noi')} />
           <NumField label="Cap Rate (blank = auto)" kind="percent" decimals={2} value={f.cap_rate} onChange={setV('cap_rate')}
             placeholder={derivedCap != null ? derivedCap.toFixed(2) : ''} />
-          <TxtField label="Buyer" value={f.buyer_name} onChange={setV('buyer_name')} />
-          <TxtField label="Seller" value={f.seller_name} onChange={setV('seller_name')} />
-          <TxtField label="Broker" value={f.broker} onChange={setV('broker')} />
-          <NumField label="Occupancy % at Sale" kind="percent" value={f.occupancy_at_sale} onChange={setV('occupancy_at_sale')} />
-          <TxtField label="Financing" className="col-span-2" value={f.financing} onChange={setV('financing')} />
-          <SelField label="Sale Condition" value={f.sale_condition} onChange={setV('sale_condition')}>
-            <option value="">—</option>
-            {SALE_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </SelField>
           <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
           </SelField>
-          <TxtAreaField label="Notes" className="col-span-2" value={f.notes} onChange={setV('notes')} rows={2} placeholder="Any other notes on this sale…" />
         </div>
+
+        {/* More Details */}
+        <div className="border-t border-gray-200 pt-2">
+          <button onClick={() => setShowMore((v) => !v)}
+            className="flex items-center gap-1.5 text-sm font-semibold text-[#4A6B94] hover:text-[#002147]">
+            <svg className={`w-4 h-4 transition-transform ${showMore ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            More Details
+          </button>
+          {showMore && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4 mt-3">
+              <TxtField label="Buyer" value={f.buyer_name} onChange={setV('buyer_name')} />
+              <TxtField label="Seller" value={f.seller_name} onChange={setV('seller_name')} />
+              <TxtField label="Broker" value={f.broker} onChange={setV('broker')} />
+              <NumField label="Occupancy % at Sale" kind="percent" value={f.occupancy_at_sale} onChange={setV('occupancy_at_sale')} />
+              <TxtField label="Financing" className="col-span-2" value={f.financing} onChange={setV('financing')} />
+              <SelField label="Sale Condition" value={f.sale_condition} onChange={setV('sale_condition')}>
+                <option value="">—</option>
+                {SALE_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </SelField>
+            </div>
+          )}
+        </div>
+
+        <TxtAreaField label="Notes" value={f.notes} onChange={setV('notes')} rows={2} placeholder="Any other notes on this sale…" />
         <div className="text-xs text-[#4A6B94] bg-[#8FA9C8]/10 rounded p-2 space-y-0.5">
           <div>Derived cap rate (NOI ÷ price): <b>{dash(derivedCap, (n) => `${n.toFixed(2)}%`)}</b></div>
           <div>Price PSF (÷ building SF): <b>{dash(derivedPpsf, (n) => `$${n.toFixed(0)}`)}</b></div>
