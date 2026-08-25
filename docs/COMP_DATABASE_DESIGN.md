@@ -1,8 +1,9 @@
 # Comp Database — Design & Scope
 
-**Status:** Phase 1 shipped to production (2026-07-25) — schema live in prod; frontend deployed via `main` (commit `30bf8d78`)
+**Status:** Live in production and actively iterated. Phase 1 shipped 2026-07-25; many enhancements
+shipped 2026-08-24/25 (see "Enhancements since Phase 1" below).
 **Owner:** Mike
-**Last updated:** 2026-07-25
+**Last updated:** 2026-08-25
 
 ## Next steps
 
@@ -49,6 +50,69 @@ See the full phase breakdown and open items below.
 
 Deployed: commit `30bf8d78` on `main` (2026-07-25). The DB migration was applied to prod directly via
 the Supabase MCP (additive-only new tables) before the frontend push, so schema + UI are in sync.
+
+## Enhancements since Phase 1 (all shipped to prod, 2026-08-24/25)
+
+Migrations `20260824120000` … `20260825160000` (each applied to prod via the Supabase MCP, then the
+matching frontend pushed to `main`). The comp sidebar `CompDetailSlideout.tsx` now has tabs:
+**Overview · Leases · Sales · OM · Availability · Files · Chat**.
+
+**Sidebar / UX**
+- **Black location header** (name / address / city / state / zip / coordinates) — display-only with a
+  pencil to edit; mirrors the site-submit/deal header. New comps **reverse-geocode** the dropped
+  lat/lng (`geocodingService`) to autofill the address block. Header also shows **provenance badges**,
+  **created/modified by + when**, and the **current asking headline** (latest availability record).
+- **Modern, unified field styling** across all tabs; numeric fields are always-editable with inline
+  `$`/`%` adornments + comma formatting (custom `NumField`, replaced the shared `FormattedField`).
+- **Overview**: Property Type / Building SF / Land Acres / Source / Confidence + collapsible
+  **More Details** (Year Built, Anchor/Co-tenants, Trade Area, Parcel ID, Source URL/Reference) +
+  an **On-market** toggle (drives the amber pin). County removed from the UI.
+- **Delete a comp** from the header (cascades to its leases/sales/OMs/availability/notes).
+
+**Leases** (`lease_comp`) — reworked per Mike's field matrix (see
+[COMP_LEASE_FIELD_MATRIX.md](COMP_LEASE_FIELD_MATRIX.md)):
+- Lease types: **Ground Lease · BTS (NNN) · BTS (NN) · Multi-Tenant**; fields shown gate by type.
+- Base Rent & **TI entered as Annual $** (PSF derived); **Lease Term in years**;
+  **Expiration auto-derives** from commencement + term (overridable); **Rent Escalation %** +
+  **Rent Bumps** (Annual / Every 5 Years / Other); **Number of Options** + **Option Term (years)**.
+- **Auto rent-schedule card**: projects each period's rent, current period highlighted, extended
+  through the option periods (labeled Option 1/2…). Per-record **Notes** + created/modified audit.
+- New columns: `annual_base_rent`(reused), `ti_annual`, `lease_term_years`, `rent_bump_frequency`,
+  `option_count`, `option_term_years`, `notes`, `updated_by_id`. `lease_type` CHECK swapped to the new
+  values. (`option_periods` free-text + `occupancy_status` retained in DB but dropped from the UI.)
+
+**Sales** (`sale_comp`) — currency inputs; primary fields (Date/Price/NOI/Cap Rate/Source) up top,
+collapsible **More Details** (Buyer, Seller, Broker, Occupancy %, Financing, Sale Condition);
+per-record **Notes** + `updated_by_id` audit; derived cap-rate / price-PSF calculators.
+
+**OM** (`operating_memorandum`) — separate **Guidance** and **Notes** fields; `updated_by_id` audit.
+
+**Availability** (`comp_availability`, migration `20260825160000`) — **historical asking scenarios**
+in their own tab (mirrors Lease/Sale). Each dated record: `as_of_date`, `availability_type`
+(For Lease / For Purchase / For Lease or Purchase), `asking_type` (Land / Shopping Center /
+Lease Conversion) with **asking fields gated by asking type**, notes, provenance, audit. Newest
+record = "current". The comp's `is_available` flag (on `comp_property`) is the manual **on-market**
+switch that turns the pin **amber**. (An earlier single-snapshot version lived on `comp_property`;
+those columns were migrated into `comp_availability` and dropped.)
+
+**Files** — a **Files tab** mounts the shared `FileManager` (`entityType='comp_property'`), giving one
+Dropbox folder per comp at `/Salesforce Documents/Comps/<name or address> - City, ST`. No new UI —
+same integration as properties/deals (`useDropboxFiles`, `dropboxService`).
+
+**Chat** — the **Notes tab is now the shared chat** (`PortalChatTab`) used on site submit / deal /
+property. Reuses the `site_submit_comment` table via a new nullable `comp_property_id` target column
+(mirrors how deals were added); internal RLS already permits it. Any old `comp_note` rows migrated in.
+
+**Map layer**
+- **Availability amber pin** (`is_available`) takes precedence over the content-based color.
+- **Right-click a pin → Verify Location** → the pin becomes draggable; drop it to save
+  `verified_latitude/longitude` (mirrors the municipal-project verify flow). Menu also has
+  **Open Details** (`CompContextMenu.tsx`).
+- **Hover tooltip** shows the comp name + current asking headline (latest availability record).
+
+**Audit** — `updated_by_id` added to `comp_property`, `lease_comp`, `sale_comp`,
+`operating_memorandum`, and `comp_availability`; set on every save. Records show "Created by … · date
+— Modified by … · date" via the shared `UserByIdDisplay`.
 
 ## Purpose
 
@@ -261,16 +325,17 @@ UI *and* the future agent:
 
 ## Open questions
 
-Resolved in Phase 1:
+Resolved:
 1. ~~merchant/brand table~~ → `merchant_brand(id)`; `lease_comp.merchant_brand_id` FKs to it.
 2. ~~property_type granularity~~ → reused existing `property_type` lookup; add retail/QSR rows if needed.
 3. ~~cap_rate decimal vs percent~~ → **percent** (6.25 = 6.25%), enforced by convention + code comments.
+6. ~~Attachments / Files tab~~ → **shipped**: Files tab mounts the shared `FileManager`
+   (`entity_type='comp_property'`), one Dropbox folder per comp.
 
 Still open (future phases):
 4. Report output: does this feed the existing [Site Analysis report](STARBUCKS_SITE_ANALYSIS.md), or a
-   new "Comp Report" export? (Phase 1 = manual selection off the map.)
+   new "Comp Report" export? (Today = manual selection off the map.)
 5. Whether `sale_comp` / `lease_comp` should also allow a direct FK to OVIS `property` for comps that
    *are* our own tracked properties (today they attach to `comp_property`, which itself may link to a
    `property`).
-6. Attachments: wire `dropbox_mapping` (`entity_type='comp_property'`) into the sidebar Files tab
-   (deferred from Phase 1 — the OM tab notes this).
+7. **Availability-only map filter** + a legend entry for the amber "on-market" pin (suggested next).
