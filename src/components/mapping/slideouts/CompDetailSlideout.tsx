@@ -8,7 +8,7 @@ import UserByIdDisplay from '../../shared/UserByIdDisplay';
 import FileManager from '../../FileManager/FileManager';
 import {
   CompProperty, LeaseComp, SaleComp, OperatingMemorandum, CompNote,
-  SOURCE_TYPES, CONFIDENCE_LEVELS, OCCUPANCY_STATUSES, SALE_CONDITIONS,
+  SOURCE_TYPES, CONFIDENCE_LEVELS, SALE_CONDITIONS,
   LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS, RENT_BUMP_OPTIONS,
 } from '../../../lib/compTypes';
 import {
@@ -639,7 +639,8 @@ const emptyLease = {
   tenant_name: '', merchant_brand_id: '', suite: '', tenant_sqft: '', lease_type: '',
   annual_base_rent: '', nnn_psf: '', ti_annual: '',
   lease_commencement_date: '', lease_expiration_date: '',
-  lease_term_years: '', escalation_pct: '', rent_bump_frequency: '', option_periods: '',
+  lease_term_years: '', escalation_pct: '', rent_bump_frequency: '',
+  option_count: '', option_term_years: '5',
   reported_tenant_sales: '', occupancy_status: '', notes: '', source_type: 'manual', confidence: 'unverified',
 };
 
@@ -658,7 +659,8 @@ const LeasesTab: React.FC<{
       ti_annual: l.ti_annual?.toString() ?? '',
       lease_commencement_date: l.lease_commencement_date ?? '', lease_expiration_date: l.lease_expiration_date ?? '',
       lease_term_years: l.lease_term_years?.toString() ?? '', escalation_pct: l.escalation_pct?.toString() ?? '',
-      rent_bump_frequency: l.rent_bump_frequency ?? '', option_periods: l.option_periods ?? '',
+      rent_bump_frequency: l.rent_bump_frequency ?? '',
+      option_count: l.option_count?.toString() ?? '', option_term_years: l.option_term_years?.toString() ?? '5',
       reported_tenant_sales: l.reported_tenant_sales?.toString() ?? '', occupancy_status: l.occupancy_status ?? '',
       notes: l.notes ?? '', source_type: l.source_type, confidence: l.confidence,
     });
@@ -701,12 +703,14 @@ const LeasesTab: React.FC<{
       ti_annual: tiAnnual,
       ti_psf: tiAnnual != null && sqft != null && sqft !== 0 ? tiAnnual / sqft : null,
       lease_commencement_date: f.lease_commencement_date || null,
-      lease_expiration_date: leaseExpiration(f.lease_commencement_date || null, years) ?? (f.lease_expiration_date || null),
+      // Explicit override wins; otherwise auto-derive from commencement + term.
+      lease_expiration_date: f.lease_expiration_date || leaseExpiration(f.lease_commencement_date || null, years) || null,
       lease_term_years: years,
       lease_term_months: years != null ? Math.round(years * 12) : null,
       escalation_pct: num(f.escalation_pct),
       rent_bump_frequency: f.rent_bump_frequency || null,
-      option_periods: str(f.option_periods),
+      option_count: num(f.option_count),
+      option_term_years: num(f.option_term_years),
       reported_tenant_sales: num(f.reported_tenant_sales),
       sales_psf: salesPsf(num(f.reported_tenant_sales), sqft),
       occupancy_status: f.occupancy_status || null,
@@ -738,10 +742,6 @@ const LeasesTab: React.FC<{
             <option value="">Select a type…</option>
             {LEASE_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </SelField>
-          <SelField label="Occupancy" value={f.occupancy_status} onChange={setV('occupancy_status')}>
-            <option value="">—</option>
-            {OCCUPANCY_STATUSES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </SelField>
 
           {/* Type-specific fields (from the field matrix) */}
           {has('suite') && <TxtField label="Suite" value={f.suite} onChange={setV('suite')} />}
@@ -757,20 +757,27 @@ const LeasesTab: React.FC<{
           {/* Common lease terms */}
           <TxtField label="Commencement" type="date" value={f.lease_commencement_date} onChange={setV('lease_commencement_date')} />
           <FormattedField label="Lease Term (years)" type="number" decimalPlaces={0} {...money('lease_term_years')} />
-          {derivedExp ? (
-            <div>
-              <label className={ffLabelCls}>Expiration (auto)</label>
-              <div className={`${ffInputCls} bg-gray-50 text-gray-700 flex items-center`}>{fmtSchedDate(derivedExp)}</div>
-            </div>
-          ) : (
-            <TxtField label="Expiration" type="date" value={f.lease_expiration_date} onChange={setV('lease_expiration_date')} />
-          )}
+          <div>
+            <label className={ffLabelCls}>
+              Expiration{!f.lease_expiration_date && derivedExp ? ' (auto from term)' : ''}
+            </label>
+            <input type="date" className={ffInputCls}
+              value={f.lease_expiration_date || derivedExp || ''}
+              onChange={(e) => setV('lease_expiration_date')(e.target.value)} />
+            {f.lease_expiration_date && derivedExp && f.lease_expiration_date !== derivedExp && (
+              <button type="button" onClick={() => setV('lease_expiration_date')('')}
+                className="text-[11px] text-[#4A6B94] hover:underline mt-0.5">
+                Reset to auto ({fmtSchedDate(derivedExp)})
+              </button>
+            )}
+          </div>
           <FormattedField label="Rent Escalation %" type="percentage" {...money('escalation_pct')} />
           <SelField label="Rent Bumps" value={f.rent_bump_frequency} onChange={setV('rent_bump_frequency')}>
             <option value="">—</option>
             {RENT_BUMP_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </SelField>
-          <TxtField label="Option Periods" value={f.option_periods} onChange={setV('option_periods')} placeholder="e.g. 4 × 5-year" />
+          <FormattedField label="Number of Options" type="number" decimalPlaces={0} {...money('option_count')} />
+          <FormattedField label="Option Term (years)" type="number" decimalPlaces={0} {...money('option_term_years')} />
           <FormattedField label="Reported Tenant Sales (annual)" type="currency" decimalPlaces={0} {...money('reported_tenant_sales')} />
           <div />
           <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>

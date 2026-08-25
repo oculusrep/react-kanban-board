@@ -111,6 +111,8 @@ export interface LeaseComp extends CompProvenance {
   ti_psf: number | null;
   ti_annual: number | null;
   option_periods: string | null;
+  option_count: number | null;
+  option_term_years: number | null;
   reported_tenant_sales: number | null;
   sales_psf: number | null;
   occupancy_status: OccupancyStatus | null;
