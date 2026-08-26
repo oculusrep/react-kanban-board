@@ -23,11 +23,14 @@ import ClosedDateModal from "./ClosedDateModal";
 import BookedDateModal from "./BookedDateModal";
 import HandoffBadge from "./deals/HandoffBadge";
 import HandoffDatePicker from "./deals/HandoffDatePicker";
+import ClientSelector from "./mapping/ClientSelector";
+import { ClientSearchResult } from "../hooks/useClientSearch";
 
 export default function KanbanBoard() {
   const { columns, cards, loading, refresh } = useKanbanData();
   const [localCards, setLocalCards] = useState<DealCard[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
+  const selectedClientId = selectedClient?.id ?? '';
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dealToDelete, setDealToDelete] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -92,19 +95,6 @@ export default function KanbanBoard() {
   useEffect(() => {
     setLocalCards(cards);
   }, [cards]);
-
-  // Unique clients present on the board (for the filter dropdown), sorted by name
-  const clientOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    localCards.forEach((card) => {
-      if (card.client_id) {
-        map.set(card.client_id, card.client_name || 'Unnamed Client');
-      }
-    });
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [localCards]);
 
   // Cards visible on the board after applying the client filter
   const visibleCards = useMemo(
@@ -566,34 +556,17 @@ export default function KanbanBoard() {
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
         <h1 className="text-2xl font-bold" style={{ color: '#002147' }}>Master Pipeline</h1>
 
-        {/* Client filter */}
-        <div className="flex items-center gap-2">
-          <label htmlFor="client-filter" className="text-sm font-medium" style={{ color: '#4A6B94' }}>
-            Client
-          </label>
-          <select
-            id="client-filter"
-            value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-            className="text-sm rounded-md px-3 py-1.5 bg-white focus:outline-none"
-            style={{ border: '1px solid #8FA9C8', color: '#002147', minWidth: '200px' }}
-          >
-            <option value="">All Clients</option>
-            {clientOptions.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
-          {selectedClientId && (
-            <button
-              onClick={() => setSelectedClientId('')}
-              className="text-sm px-3 py-1.5 rounded-md"
-              style={{ color: '#4A6B94', border: '1px solid #8FA9C8' }}
-            >
-              Clear
-            </button>
-          )}
+        {/* Client filter — mirrors the map's client search (MappingPageNew.tsx) */}
+        <div className="flex items-center space-x-2">
+          <label className="text-sm font-medium text-gray-700">Client:</label>
+          <div className="w-64">
+            <ClientSelector
+              selectedClient={selectedClient}
+              onClientSelect={setSelectedClient}
+              placeholder="Search active clients..."
+              className="text-sm"
+            />
+          </div>
         </div>
       </div>
 
