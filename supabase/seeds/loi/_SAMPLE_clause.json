@@ -3,117 +3,114 @@
     "SAMPLE LOI clause seed — DUMMY CONTENT ONLY. Body text is placeholder, not real",
     "Starbucks/Oculus language. Mike extracts the real 39 records against THIS SHAPE.",
     "",
-    "Shape mirrors migrations _clause_library + _v2 + _selector_domain_versioning + _body_parameters:",
-    "  selectors (+ versioned domain, SEED-MANAGED) ; canonical_bodies (keyed code+source+version",
-    "  +segment; may carry parameters[]) ; clause -> variant -> position -> position_bodies[] / applies_when[]",
+    "Shape mirrors migrations _clause_library + _v2 + _selector_domain_versioning + _body_parameters",
+    "+ _param_kinds_and_brace_relax.",
     "",
-    "Decisions baked in from the FALLBACK/IF/CHOOSE/OPTION sweep:",
-    " - MULTIPLE selectors, not one. rent_structure (R0/R1) and landlord_work_structure (LCW0/1/2)",
-    "   are conditional_alternative partitions (NOT ranked ladders — no concession order).",
-    " - building_type is PROVISIONAL/UNRESOLVED (may be net-vs-triple-net lease structure, not shape);",
-    "   its domain is intentionally empty here pending a Director answer. premises_type is a SEPARATE",
-    "   selector (physical config), never merged into it.",
-    " - landlord_posture (L1/SIGN1/TI2) is NOT a selector — independent booleans across clauses =>",
-    "   applies_when deal_field predicates.",
-    " - body parameters: a preferred+fallback value inside one body via a {{param:key}} token.",
-    " - a modifier's valid target positions = OR-grouped position_selection applies_when rows.",
-    " - L1 carries no braces in the drop: brace_code 'L1', code_status 'provisional', anomaly noted.",
-    "Keys under `_comment` are documentation; the loader strips them.",
-    "CAM is NOT seeded here — its selector axis is a live Director question (see director_questions)."
+    "CRITICAL — codes are NOT emitted. body_text holds CLEAN emitted text only; the brace code",
+    "lives in brace_code and is stripped by the assembler. Do NOT inline {CAM0} etc. in body_text.",
+    "('DUMMY:' here is a placeholder marker, not real text; real bodies have neither markers nor codes.)",
+    "",
+    "Four bracket types in the drop:",
+    "  [{EU0}] code marker      -> stripped; never in body_text.",
+    "  [Fallback: 90] concession-> loi_body_parameter param_kind 'concession' (preferred+fallback).",
+    "  [Building/Shopping Ctr]  -> loi_body_parameter param_kind 'choose_one' + options[] (is_free_fill",
+    "                              for a '___' blank); resolved to exactly one value; NO preferred/fallback.",
+    "  [FOR DRIVE-THROUGH, ADD:]-> instructional GATE => becomes applies_when at extraction; the gated",
+    "                              (often UNCODED) add-on is a modifier with brace_code null.",
+    "",
+    "Other decisions: rent_structure/landlord_work_structure are conditional_alternative partitions;",
+    "building_type PROVISIONAL/empty (Director); premises_type separate; landlord_posture => applies_when.",
+    "brace_code is REQUIRED for alternative/conditional_alternative under coded-position, OPTIONAL for",
+    "modifiers, FORBIDDEN for custom-owned. Keys under `_comment` are docs; the loader strips them.",
+    "ACCEPTANCE: emitted output must have ZERO unresolved [...] brackets and ZERO {...} codes, else FAIL.",
+    "CAM is NOT seeded here — its selector axis is a live Director question."
   ],
 
   "selectors": [
-    {
-      "selector_field": "rent_structure",
-      "current_version": 1,
-      "note": "R0 vs R1 — a structure switch, not a concession.",
+    { "selector_field": "rent_structure", "current_version": 1, "note": "R0 vs R1 — structure switch, not concession.",
       "domain": [
-        { "version": 1, "value": "set_annual",   "description": "Rent is a set annual amount (R0)" },
-        { "version": 1, "value": "tied_to_sqft", "description": "Rent tied to square footage (R1)" }
-      ]
-    },
-    {
-      "selector_field": "landlord_work_structure",
-      "current_version": 1,
-      "note": "LCW0/1/2 — how landlord work + allowance are structured. LCW2 is 'ALTERNATIVE', not a fallback.",
+        { "version": 1, "value": "set_annual",   "description": "Set annual amount (R0)" },
+        { "version": 1, "value": "tied_to_sqft", "description": "Tied to square footage (R1)" }
+      ] },
+    { "selector_field": "landlord_work_structure", "current_version": 1, "note": "LCW0/1/2 — LCW2 is 'ALTERNATIVE', not a fallback.",
       "domain": [
         { "version": 1, "value": "allowance_plus_work",  "description": "Allowance in addition to landlord work (LCW0)" },
-        { "version": 1, "value": "allowance_substitute", "description": "Allowance as a substitute for landlord work (LCW1)" },
-        { "version": 1, "value": "as_is",                "description": "Delivered in current condition, no work (LCW2)" }
-      ]
-    },
-    {
-      "selector_field": "building_type",
-      "current_version": 1,
-      "note": "PROVISIONAL / UNRESOLVED — CAM1 (single-tenant building) vs NNN (single-tenant building OR parcel) OVERLAP, so this cannot partition as drafted. The real axis may be net-vs-triple-net lease structure. Domain intentionally EMPTY pending Director. Do not seed CAM on it yet.",
-      "domain": []
-    },
-    {
-      "selector_field": "premises_type",
-      "current_version": 1,
-      "note": "SEPARATE selector (physical configuration from the Premises '[CHOOSE: ...]'). Provisional; do NOT silently merge with building_type/lease-structure.",
+        { "version": 1, "value": "allowance_substitute", "description": "Allowance as substitute for landlord work (LCW1)" },
+        { "version": 1, "value": "as_is",                "description": "Current condition, no work (LCW2)" }
+      ] },
+    { "selector_field": "building_type", "current_version": 1, "note": "PROVISIONAL/UNRESOLVED — CAM1 vs NNN overlap; likely net-vs-triple-net. Empty pending Director.",
+      "domain": [] },
+    { "selector_field": "premises_type", "current_version": 1, "note": "SEPARATE selector (physical config). Do NOT merge with building_type/lease-structure.",
       "domain": [
         { "version": 1, "value": "in_line",           "description": "In-line" },
         { "version": 1, "value": "end_cap",           "description": "End-cap" },
         { "version": 1, "value": "multi_tenant_pad",  "description": "Multi-tenant pad" },
         { "version": 1, "value": "single_tenant_pad", "description": "Single-tenant pad" }
-      ]
-    }
+      ] }
   ],
 
   "canonical_bodies": [
-    { "ref": "R0__ntd__v1__main",  "brace_code": "R0",  "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {R0} Base Rent shall be a set annual amount of $X per year." },
-    { "ref": "R1__ntd__v1__main",  "brace_code": "R1",  "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {R1} Base Rent shall be $Y per square foot of the Premises per year." },
+    { "ref": "R0__ntd__v1__main", "brace_code": "R0", "source": "national-template-drop", "version": "v1", "segment_key": "main",
+      "body_text": "DUMMY: Base Rent shall be a set annual amount of $X per year." },
+    { "ref": "R1__ntd__v1__main", "brace_code": "R1", "source": "national-template-drop", "version": "v1", "segment_key": "main",
+      "body_text": "DUMMY: Base Rent shall be $Y per square foot of the Premises per year." },
 
     { "ref": "LCW0__ntd__v1__main", "brace_code": "LCW0", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {LCW0} Landlord shall perform Landlord's Work AND provide a $Z allowance." },
+      "body_text": "DUMMY: Landlord shall perform Landlord's Work AND provide a $Z allowance." },
     { "ref": "LCW1__ntd__v1__main", "brace_code": "LCW1", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {LCW1} Landlord shall provide a $Z allowance in substitution for Landlord's Work." },
+      "body_text": "DUMMY: Landlord shall provide a $Z allowance in substitution for Landlord's Work." },
     { "ref": "LCW2__ntd__v1__main", "brace_code": "LCW2", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {LCW2} Landlord delivers the Premises in current condition; no Landlord's Work or allowance." },
+      "body_text": "DUMMY: Landlord delivers the Premises in current condition; no Landlord's Work or allowance." },
 
     { "ref": "RCD0__ntd__v1__main", "brace_code": "RCD0", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] Rent Commencement shall occur {{param:rcd_days}} days after delivery of the Premises.",
-      "_comment_param": "Preferred/fallback live in parameters[], NOT as two bodies. Token {{param:rcd_days}} is filled at assembly.",
+      "body_text": "DUMMY: Rent Commencement shall occur {{param:rcd_days}} days after delivery of the Premises.",
       "parameters": [
-        { "param_key": "rcd_days", "preferred_value": "one hundred twenty (120)", "fallback_value": "ninety (90)", "value_unit": "days", "code_status": "confirmed",
-          "note": "Concession is 120 -> 90; audit states 'unchanged' vs 'conceded 120->90'." }
-      ]
-    },
+        { "param_kind": "concession", "param_key": "rcd_days", "preferred_value": "one hundred twenty (120)", "fallback_value": "ninety (90)", "value_unit": "days", "code_status": "confirmed",
+          "note": "Audit states 'unchanged' vs 'conceded 120->90'." }
+      ] },
+
+    { "ref": "PREM0__ntd__v1__main", "brace_code": "PREM0", "source": "national-template-drop", "version": "v1", "segment_key": "main",
+      "body_text": "DUMMY: The Premises are located within the {{param:building_or_center}}.",
+      "_comment_param": "CHOOSE-ONE: exactly one value at assembly; NO preferred/fallback; options[] enumerated.",
+      "parameters": [
+        { "param_kind": "choose_one", "param_key": "building_or_center", "value_unit": null, "code_status": "confirmed",
+          "note": "[Building OR Shopping Center] — a deal fact, not a concession.",
+          "options": [
+            { "option_value": "Building", "is_free_fill": false, "sort_order": 0 },
+            { "option_value": "Shopping Center", "is_free_fill": false, "sort_order": 1 }
+          ] }
+      ] },
+    { "ref": "PREMDT__ntd__v1__main", "brace_code": null, "source": "national-template-drop", "version": "v1", "segment_key": "main",
+      "body_text": "DUMMY: Tenant shall construct a drive-through lane in the location shown on Exhibit E." },
 
     { "ref": "SIGN0__ntd__v1__main",     "brace_code": "SIGN0",      "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {SIGN0} Tenant may install its standard signage per Exhibit D." },
+      "body_text": "DUMMY: Tenant may install its standard signage per Exhibit D." },
     { "ref": "SIGN1__ntd__v1__main",     "brace_code": "SIGN1",      "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {SIGN1} Signage subject to Landlord's sign criteria." },
+      "body_text": "DUMMY: Signage subject to Landlord's sign criteria." },
     { "ref": "SIGNMASTER__ntd__v1__main","brace_code": "SIGNMASTER", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] Additionally, Tenant may participate in the master sign program." },
+      "body_text": "DUMMY: Additionally, Tenant may participate in the master sign program." },
 
     { "ref": "EU0__ntd__v1__main", "brace_code": "EU0", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] Tenant shall have the exclusive right to sell coffee and espresso-based beverages {EU0}." },
+      "body_text": "DUMMY: Tenant shall have the exclusive right to sell coffee and espresso-based beverages." },
     { "ref": "EU1__ntd__v1__main", "brace_code": "EU1", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {EU1} and may also sell gourmet, brand-identified coffee and tea." },
+      "body_text": "DUMMY: and may also sell gourmet, brand-identified coffee and tea." },
     { "ref": "EU1__ntd__v1__defs", "brace_code": "EU1", "source": "national-template-drop", "version": "v1", "segment_key": "definitions",
-      "body_text": "[DUMMY] \"Gourmet\" means Arabica-bean-based ...; \"brand identified\" means advertised by brand name ..." },
+      "body_text": "DUMMY: \"Gourmet\" means Arabica-bean-based ...; \"brand identified\" means advertised by brand name ..." },
     { "ref": "EU2__ntd__v1__main", "brace_code": "EU2", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] {EU2} and may also sell pre-bottled tea or pre-bottled tea-based drinks." },
+      "body_text": "DUMMY: and may also sell pre-bottled tea or pre-bottled tea-based drinks." },
 
     { "ref": "L0__ntd__v1__main", "brace_code": "L0", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] Lease shall be Starbucks' standard form of lease." },
+      "body_text": "DUMMY: Lease shall be Starbucks' standard form of lease." },
     { "ref": "L1__ntd__v1__main", "brace_code": "L1", "source": "national-template-drop", "version": "v1", "segment_key": "main",
-      "body_text": "[DUMMY] Lease shall be on Landlord's form, subject to Starbucks' review." }
+      "body_text": "DUMMY: Lease shall be on Landlord's form, subject to Starbucks' review." }
   ],
 
   "clauses": [
     {
-      "clause_key": "rent",
-      "title": "Base Rent",
-      "bucket": "coded-position",
+      "clause_key": "rent", "title": "Base Rent", "bucket": "coded-position",
       "description": "Rent structure — selected by rent_structure, NOT a concession ladder.",
       "variants": [
-        {
-          "variant_key": "rent_bt", "deal_type_scope": ["end-cap-drive-thru"],
+        { "variant_key": "rent_bt", "deal_type_scope": ["end-cap-drive-thru"],
           "selector_field": "rent_structure", "selector_version": 1, "replaces_base": false,
           "positions": [
             { "position_kind": "conditional_alternative", "brace_code": "R0", "selector_value": "set_annual",
@@ -128,19 +125,15 @@
               "approval_required": false, "approval_authority": null, "firing_mode": "per-deal", "director_question_key": null,
               "internal_note": null, "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
               "position_bodies": [ { "canonical_body_ref": "R1__ntd__v1__main", "emit_sequence": 0 } ], "applies_when": [] }
-          ]
-        }
+          ] }
       ]
     },
 
     {
-      "clause_key": "landlord_work",
-      "title": "Landlord Work / Allowance",
-      "bucket": "coded-position",
+      "clause_key": "landlord_work", "title": "Landlord Work / Allowance", "bucket": "coded-position",
       "description": "LCW structure — selected by landlord_work_structure (3-way partition).",
       "variants": [
-        {
-          "variant_key": "lcw_bt", "deal_type_scope": ["end-cap-drive-thru"],
+        { "variant_key": "lcw_bt", "deal_type_scope": ["end-cap-drive-thru"],
           "selector_field": "landlord_work_structure", "selector_version": 1, "replaces_base": false,
           "positions": [
             { "position_kind": "conditional_alternative", "brace_code": "LCW0", "selector_value": "allowance_plus_work",
@@ -161,42 +154,60 @@
               "approval_required": false, "approval_authority": null, "firing_mode": "per-deal", "director_question_key": null,
               "internal_note": null, "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
               "position_bodies": [ { "canonical_body_ref": "LCW2__ntd__v1__main", "emit_sequence": 0 } ], "applies_when": [] }
-          ]
-        }
+          ] }
       ]
     },
 
     {
-      "clause_key": "rent_commencement",
-      "title": "Rent Commencement",
-      "bucket": "coded-position",
-      "description": "Single position carrying a negotiable inline parameter (preferred/fallback).",
+      "clause_key": "rent_commencement", "title": "Rent Commencement", "bucket": "coded-position",
+      "description": "One position carrying a CONCESSION parameter (preferred 120 / fallback 90).",
       "variants": [
-        {
-          "variant_key": "rcd", "deal_type_scope": ["end-cap-drive-thru"],
-          "selector_field": null, "selector_version": null, "replaces_base": false,
+        { "variant_key": "rcd", "deal_type_scope": ["end-cap-drive-thru"], "selector_field": null, "selector_version": null, "replaces_base": false,
           "positions": [
             { "position_kind": "alternative", "brace_code": "RCD0", "rank": 0,
               "emit_order": null, "modifies_clause_id": null, "selector_value": null, "is_default": true,
               "code_status": "confirmed", "rule_status": "confirmed", "authority": "national-handbook",
               "approval_required": false, "approval_authority": null, "firing_mode": "per-deal", "director_question_key": null,
-              "internal_note": "[DUMMY] The 120/90 concession lives on the body PARAMETER, not on the position.",
-              "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
+              "internal_note": null, "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
               "position_bodies": [ { "canonical_body_ref": "RCD0__ntd__v1__main", "emit_sequence": 0 } ], "applies_when": [] }
-          ]
-        }
+          ] }
       ]
     },
 
     {
-      "clause_key": "signage",
-      "title": "Signage",
-      "bucket": "coded-position",
-      "description": "SIGN0/SIGN1 alternatives + optional master-program modifier ridable on EITHER.",
+      "clause_key": "premises", "title": "Premises", "bucket": "coded-position",
+      "description": "CHOOSE-ONE fill (Building/Shopping Center) + a drive-through UNCODED modifier gated by applies_when.",
       "variants": [
-        {
-          "variant_key": "sign", "deal_type_scope": ["end-cap-drive-thru"],
-          "selector_field": null, "selector_version": null, "replaces_base": false,
+        { "variant_key": "prem", "deal_type_scope": ["end-cap-drive-thru"], "selector_field": null, "selector_version": null, "replaces_base": false,
+          "positions": [
+            { "position_kind": "alternative", "brace_code": "PREM0", "rank": 0,
+              "emit_order": null, "modifies_clause_id": null, "selector_value": null, "is_default": true,
+              "code_status": "confirmed", "rule_status": "confirmed", "authority": "national-handbook",
+              "approval_required": false, "approval_authority": null, "firing_mode": "per-deal", "director_question_key": null,
+              "internal_note": null, "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
+              "position_bodies": [ { "canonical_body_ref": "PREM0__ntd__v1__main", "emit_sequence": 0 } ], "applies_when": [] },
+            {
+              "_comment": "TYPE-2 gate '[FOR DRIVE-THROUGH LOCATIONS, ADD:]' => an UNCODED modifier (brace_code null, allowed) gated by applies_when deal_field is_drive_through.",
+              "position_kind": "modifier", "brace_code": null, "emit_order": 10, "modifies_clause_id": "premises",
+              "rank": null, "selector_value": null, "is_default": false,
+              "code_status": "confirmed", "rule_status": "confirmed", "authority": "national-handbook",
+              "approval_required": false, "approval_authority": null, "firing_mode": "per-deal", "director_question_key": null,
+              "internal_note": "[DUMMY] Instructional bracket became this applies_when; the '[FOR DRIVE-THROUGH...]' text is never emitted.",
+              "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
+              "position_bodies": [ { "canonical_body_ref": "PREMDT__ntd__v1__main", "emit_sequence": 0 } ],
+              "applies_when": [
+                { "condition_group": 0, "ref_kind": "deal_field", "ref_clause_key": null, "ref_brace_code": null, "ref_field": "is_drive_through", "operator": "eq", "compare_value": "true", "compare_unit": null, "note": "gate: emit only for drive-through locations" }
+              ]
+            }
+          ] }
+      ]
+    },
+
+    {
+      "clause_key": "signage", "title": "Signage", "bucket": "coded-position",
+      "description": "SIGN0/SIGN1 alternatives + master-program modifier ridable on EITHER.",
+      "variants": [
+        { "variant_key": "sign", "deal_type_scope": ["end-cap-drive-thru"], "selector_field": null, "selector_version": null, "replaces_base": false,
           "positions": [
             { "position_kind": "alternative", "brace_code": "SIGN0", "rank": 0,
               "emit_order": null, "modifies_clause_id": null, "selector_value": null, "is_default": true,
@@ -211,7 +222,7 @@
               "internal_note": null, "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
               "position_bodies": [ { "canonical_body_ref": "SIGN1__ntd__v1__main", "emit_sequence": 0 } ], "applies_when": [] },
             {
-              "_comment": "MODIFIER ridable on SIGN0 OR SIGN1 — two OR-grouped position_selection rows (different condition_group = OR).",
+              "_comment": "MODIFIER ridable on SIGN0 OR SIGN1 — two OR-grouped position_selection rows.",
               "position_kind": "modifier", "brace_code": "SIGNMASTER", "emit_order": 10, "modifies_clause_id": "signage",
               "rank": null, "selector_value": null, "is_default": false,
               "code_status": "confirmed", "rule_status": "confirmed", "authority": "national-handbook",
@@ -223,20 +234,15 @@
                 { "condition_group": 1, "ref_kind": "position_selection", "ref_clause_key": "signage", "ref_brace_code": "SIGN1", "ref_field": null, "operator": "is_selected", "compare_value": null, "compare_unit": null, "note": "OR ridable on SIGN1" }
               ]
             }
-          ]
-        }
+          ] }
       ]
     },
 
     {
-      "clause_key": "exclusive_use",
-      "title": "Exclusive Use",
-      "bucket": "coded-position",
-      "description": "EU0 base; EU1 modifier (carries the shared definitions as a 2nd segment); EU2 modifier requires EU1.",
+      "clause_key": "exclusive_use", "title": "Exclusive Use", "bucket": "coded-position",
+      "description": "EU0 base; EU1 modifier (carries shared definitions as a 2nd segment); EU2 modifier requires EU1.",
       "variants": [
-        {
-          "variant_key": "eu", "deal_type_scope": ["end-cap-drive-thru"],
-          "selector_field": null, "selector_version": null, "replaces_base": false,
+        { "variant_key": "eu", "deal_type_scope": ["end-cap-drive-thru"], "selector_field": null, "selector_version": null, "replaces_base": false,
           "positions": [
             { "position_kind": "alternative", "brace_code": "EU0", "rank": 0,
               "emit_order": null, "modifies_clause_id": null, "selector_value": null, "is_default": true,
@@ -263,20 +269,15 @@
               "applies_when": [
                 { "condition_group": 0, "ref_kind": "position_selection", "ref_clause_key": "exclusive_use", "ref_brace_code": "EU1", "ref_field": null, "operator": "is_selected", "compare_value": null, "compare_unit": null, "note": "EU2 requires EU1" }
               ] }
-          ]
-        }
+          ] }
       ]
     },
 
     {
-      "clause_key": "lease",
-      "title": "Lease Form",
-      "bucket": "coded-position",
-      "description": "L0 standing default (Starbucks standard); L1 landlord form, offered only under landlord posture.",
+      "clause_key": "lease", "title": "Lease Form", "bucket": "coded-position",
+      "description": "L0 standing default (Starbucks standard); L1 landlord form under landlord posture (applies_when).",
       "variants": [
-        {
-          "variant_key": "lease", "deal_type_scope": ["end-cap-drive-thru"],
-          "selector_field": null, "selector_version": null, "replaces_base": false,
+        { "variant_key": "lease", "deal_type_scope": ["end-cap-drive-thru"], "selector_field": null, "selector_version": null, "replaces_base": false,
           "positions": [
             { "position_kind": "alternative", "brace_code": "L0", "rank": 0,
               "emit_order": null, "modifies_clause_id": null, "selector_value": null, "is_default": true,
@@ -285,35 +286,33 @@
               "internal_note": null, "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
               "position_bodies": [ { "canonical_body_ref": "L0__ntd__v1__main", "emit_sequence": 0 } ], "applies_when": [] },
             {
-              "_comment": "L1 — no braces in the drop (anomaly). Offered only when landlord insists on its form: applies_when deal_field. Landlord-posture is applies_when territory, NOT a selector.",
+              "_comment": "L1 — no braces in the drop (anomaly); code_status provisional. Offered only when landlord insists (applies_when deal_field).",
               "position_kind": "alternative", "brace_code": "L1", "rank": 1,
               "emit_order": null, "modifies_clause_id": null, "selector_value": null, "is_default": false,
               "code_status": "provisional", "rule_status": "confirmed", "authority": "national-handbook",
               "approval_required": false, "approval_authority": null, "firing_mode": "per-deal", "director_question_key": "l1_no_brace_anomaly",
               "internal_note": null, "deviation_rationale": null, "landlord_fill_prompt": null,
-              "provisional_note": "[DUMMY] Template writes '[L1 – FALLBACK ...]' with NO curly braces, unlike every other code. Template defect or out-of-convention code — confirm with Director.",
+              "provisional_note": "[DUMMY] Template writes '[L1 – FALLBACK ...]' with NO curly braces, unlike every other code — confirm defect vs intentional.",
               "position_bodies": [ { "canonical_body_ref": "L1__ntd__v1__main", "emit_sequence": 0 } ],
               "applies_when": [
                 { "condition_group": 0, "ref_kind": "deal_field", "ref_clause_key": null, "ref_brace_code": null, "ref_field": "landlord_insists_own_form", "operator": "eq", "compare_value": "true", "compare_unit": null, "note": "landlord-posture boolean gates whether L1 is offered" }
               ]
             }
-          ]
-        }
+          ] }
       ]
     }
   ],
 
   "director_questions": [
     { "question_key": "eu_defs_placement", "question_text": "[DUMMY] EU gourmet/brand-identified definitions sit in the EU2 bracket but are used by EU1 — confirm moving them to EU1.", "status": "open", "date_asked": null, "date_answered": null, "answer_text": null, "authority": "national-handbook" },
-    { "question_key": "cam_selector_axis", "question_text": "Is the CAM1-vs-NNN split driven by building type or by net-vs-triple-net lease structure, and can a single-tenant building ever take NNN? (building_type cannot partition until resolved.)", "status": "open", "date_asked": null, "date_answered": null, "answer_text": null, "authority": "southeast-regional" },
-    { "question_key": "premises_vs_building_reconcile", "question_text": "Do the Premises '[CHOOSE: in-line/end-cap/multi-tenant pad/single-tenant pad]' values and the CAM building/structure axis reconcile into one selector or stay two separate selectors?", "status": "open", "date_asked": null, "date_answered": null, "answer_text": null, "authority": "national-handbook" },
+    { "question_key": "cam_selector_axis", "question_text": "Is CAM1-vs-NNN driven by building type or net-vs-triple-net lease structure, and can a single-tenant building take NNN? (building_type cannot partition until resolved.)", "status": "open", "date_asked": null, "date_answered": null, "answer_text": null, "authority": "southeast-regional" },
+    { "question_key": "premises_vs_building_reconcile", "question_text": "Do the Premises '[CHOOSE: in-line/end-cap/multi-tenant pad/single-tenant pad]' values and the CAM building/structure axis reconcile into one selector or stay two?", "status": "open", "date_asked": null, "date_answered": null, "answer_text": null, "authority": "national-handbook" },
     { "question_key": "l1_no_brace_anomaly", "question_text": "LEASE '[L1 – FALLBACK ...]' carries no curly braces unlike every other code — template defect or intentional out-of-convention code?", "status": "open", "date_asked": null, "date_answered": null, "answer_text": null, "authority": "national-handbook" }
   ],
 
   "_notes_on_shared_tables": [
-    "loi_approval_label + loi_config are seeded by migrations. Selector domains are SEED-MANAGED here",
-    "(loader upserts loi_selector + loi_selector_domain). Confirm every domain against ALL clauses before",
-    "seeding; post-seed domain changes are VERSIONED (bump current_version + re-partition), never edits.",
-    "CAM is deliberately omitted — seeding it requires the cam_selector_axis Director answer first."
+    "loi_approval_label + loi_config seeded by migrations. Selector domains are SEED-MANAGED here.",
+    "Confirm every domain against ALL clauses before seeding; post-seed domain changes are VERSIONED.",
+    "CAM omitted — requires the cam_selector_axis Director answer first."
   ]
 }

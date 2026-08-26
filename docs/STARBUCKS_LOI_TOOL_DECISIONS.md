@@ -206,6 +206,11 @@ migration risk).
 
 - **Reproduce Powder Springs Rd v1 LOI** (incl. Word comments + Workletter scope matrix)
   from a wizard run — the acceptance test.
+- **Emitted output must contain ZERO unresolved `[...]` brackets and ZERO `{...}` brace codes.**
+  Any remaining → **fail assembly, do not ship.** (Real justification: the Powder Springs LOI went
+  to the landlord with an unresolved `[Property/Shopping Center]` in the last sentence of Exclusive
+  Use — first occurrence resolved to "Shopping Center", the second left raw. That leak is exactly
+  what this tool exists to prevent.)
 
 ## Pass-one build contract
 
@@ -296,6 +301,27 @@ selector and one new pattern:
 - **L1 no-brace anomaly:** `brace_code='L1'`, `code_status='provisional'`, anomaly in
   `provisional_note`. Director Q: *template defect or intentional out-of-convention code?*
 
+## Canonical body vs emitted text + param kinds (migration _param_kinds_and_brace_relax)
+
+- **Brace codes are NEVER emitted.** The `{CODE}` marker is a separate run in the source (verified:
+  EXCLUSIVE USE run 0 = `EXCLUSIVE USE:`, run 1 = `\t[{EU0}]`, body runs after). So
+  **`canonical_body.body_text` stores CLEAN emitted text only**; the code lives in `brace_code`; the
+  assembler strips the marker run. Word-for-word-vs-modified computes against clean text (else every
+  position would always read "modified"). Data rule — no schema change.
+- **Four bracket types, two needed schema:**
+  - `[{EU0}]` code marker → stripped.
+  - `[Fallback: 90]` concession → `loi_body_parameter` `param_kind='concession'` (preferred+fallback).
+  - `[Property/Shopping Center]` **choose-one fill** → `param_kind='choose_one'` + `loi_body_parameter_option`
+    (enumerated options, `is_free_fill` for a `___` blank), resolved to exactly one value; **no**
+    preferred/fallback (a deal fact, not a concession). Load-time: choose_one ≥2 options, concession 0
+    (deferred constraint trigger).
+  - `[FOR DRIVE-THROUGH…, ADD:]` **instructional gate** → **`applies_when` at extraction** (the gate is
+    a condition, not prose; the instruction text is never stored as emittable body). The gated content
+    is a position carrying the predicate.
+- **Brace-guard relaxed** to house uncoded gated add-ons: `brace_code` **required** for
+  `alternative`/`conditional_alternative` under `coded-position` (the "AS1 word-for-word" items),
+  **optional** for `modifier` (coded like EU1 or uncoded boilerplate), **forbidden** for `custom-owned`.
+
 ## Assembler & document skeleton (LOCKED requirements — build later, per §9 step 2/3)
 
 **Assembler = in-place surgery on the real template .docx, never generate-from-scratch.** Output must
@@ -325,7 +351,7 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 27 assertions PASS** across four migrations:
+**All 34 assertions PASS** across six migrations:
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
@@ -336,6 +362,9 @@ the two helper functions instead; see `supabase/dev-only/`).
 - v3 (body parameters + multi-target modifier): valid preferred/fallback param, duplicate
   param_key rejected, preferred_value required, OR-grouped position_selection targets,
   building_type domain confirmed seed-managed (removed).
+- v4 (param kinds + brace relaxation): uncoded modifier accepted, uncoded alternative still
+  rejected, choose_one rejects preferred_value, concession valid, choose_one needs ≥2 options,
+  concession rejects options.
 
 **RLS is NOT validated** — `is_internal_user()` was stubbed to `true` for the runs;
 row-level access behavior is unverified until tested against the real helper.
