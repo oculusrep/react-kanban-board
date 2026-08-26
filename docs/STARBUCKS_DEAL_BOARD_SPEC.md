@@ -103,35 +103,27 @@ A board-wide boolean for assembling the weekly Starbucks call agenda incremental
 - v1 is deliberately minimal: **no ordering, no per-item agenda notes, no "clear agenda" bulk action.** Just a flag, a filter, and a count. Ordering/notes are a phase-2 ask if the weekly-agenda habit sticks.
 - Not stage-scoped — any deal on the board can be starred, in any column.
 
-### 3.3 The reset event
+### 3.3 The reset event — BUILT (migrations `20260825190000`, `20260826120000`)
 
-Three actions cool a tile. All three set `ball_in_court_since = now()`:
+Four actions cool a tile. Each sets `ball_in_court_since = now()` via a Postgres trigger that **upserts** the `deal_activity_state` row (so a row is created on first touch — no pre-seeding needed):
 
-1. A note is logged against the deal
-2. A next action (task) is created against the deal
-3. An existing next action's due date is changed
+1. **An `activity` row is logged against the deal** — the primary touch signal (see below)
+2. A note is logged against the deal
+3. A next action (task) is created against the deal
+4. An existing next action's due date is changed
 
-Implement as Postgres triggers rather than in application code — otherwise the email-triage layer and the voice layer will each need to remember to call it, and one of them won't.
+Implemented as triggers, not application code — otherwise the email-triage and voice layers each have to remember to call it, and one won't. All four call one `SECURITY DEFINER` function `reset_deal_activity_clock()`:
 
-Because OVIS notes are polymorphic, the note trigger fires on **`note_object_link`** (where `object_type = 'deal'` / `deal_id IS NOT NULL`), not on `note`. The action triggers fire on **`task`**.
+| # | Fires on | When |
+|---|---|---|
+| 1 | `AFTER INSERT ON activity` | `NEW.deal_id IS NOT NULL` |
+| 2 | `AFTER INSERT ON note_object_link` | `NEW.deal_id IS NOT NULL` (notes are polymorphic — the link row carries `deal_id`, not the note) |
+| 3 | `AFTER INSERT ON task` | `NEW.deal_id IS NOT NULL` |
+| 4 | `AFTER UPDATE OF due_at ON task` | `NEW.deal_id IS NOT NULL AND NEW.due_at IS DISTINCT FROM OLD.due_at` |
 
-```sql
--- 1. Note logged against a deal: AFTER INSERT ON note_object_link
---    WHEN (NEW.deal_id IS NOT NULL)
-UPDATE deal SET ball_in_court_since = now() WHERE id = NEW.deal_id;
+**Why `activity` is #1, not an afterthought (resolves old open item #5):** recon found Starbucks deal history lives almost entirely in the legacy `activity` table (`LogCallModal` writes it) — **0 of the (then) 44 Starbucks deals had any `note_object_link` row**, while 19 had activity. For this account, logging a call *is* the touch that must cool the tile; notes are the supplement, not the reverse.
 
--- 2. Next action created: AFTER INSERT ON task
---    WHEN (NEW.deal_id IS NOT NULL)
-UPDATE deal SET ball_in_court_since = now() WHERE id = NEW.deal_id;
-
--- 3. Next action due date changed: AFTER UPDATE OF due_at ON task
---    WHEN (NEW.deal_id IS NOT NULL AND NEW.due_at IS DISTINCT FROM OLD.due_at)
-UPDATE deal SET ball_in_court_since = now() WHERE id = NEW.deal_id;
-```
-
-(If we adopt a `deal_activity_state` satellite table instead of columns on `deal`, the trigger upserts that row instead. Same logic.)
-
-Note: the legacy `activity` table also carries `deal_id` and is what `LogCallModal` writes. If "log a call" should also cool a tile, add a fourth trigger on `activity`. Flagged in §12 — v1 assumes notes + tasks only, since the slide-over's "Log a note" button (§7) writes a `note`.
+**Caveat (revisit for v2):** `activity` has no source/system discriminator column (only Salesforce `sf_*` fields). The trigger therefore fires on *all* activity inserts with a `deal_id`. If a Salesforce→OVIS sync inserts activity rows automatically, that would cool a tile spuriously; guard with `AND NEW.sf_id IS NULL` if it turns out to matter.
 
 ### 3.4 Next actions
 
@@ -351,9 +343,9 @@ Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live 
 
 ## 10. Build order
 
-1. **Schema:** create the 1:1 `deal_activity_state` satellite (§12.8) with the five board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`, `on_agenda`); write the three reset triggers on `note_object_link` and `task`, plus a clear-`blocked_on`-on-leaving-Pre-Submittal trigger. Confirm `task` covers next-actions (it does).
-2. **Backfill** `ball_in_court_since` — seed from each deal's most recent note (`note_object_link → note.created_at`) or `now()` if none. Expect the board to look wrong for the first few days until real data accumulates.
-3. **Static board rendering** with fake heat, to tune visual density on the actual TV.
+1. ~~**Schema**~~ **DONE (migration `20260825190000`):** 1:1 `deal_activity_state` satellite with the five board-owned fields; reset triggers on `note_object_link` + `task` (insert & `due_at` change); clear-`blocked_on`-on-leaving-Pre-Submittal trigger; RLS mirroring `deal`/`task`. Verified in a self-rolling-back functional test.
+2. ~~**Backfill**~~ **DONE (migration `20260826120000`):** added the `activity`-insert reset trigger (activity is the primary touch signal, not notes — see §3.3) and seeded `ball_in_court_since` for all **46** Starbucks deals from the most-recent of `activity.activity_date` / `note_object_link.created_at`, falling back to `now()`. Result: **19 real seeds, 27 `now()` fallbacks.** `ball_in_court` and `blocked_on` left unset (Mike classifies manually). Board will look partly wrong until real touches accumulate. Starbucks filter now uses `client.starbucks_layer_enabled = true` (flag set on both clients).
+3. **Static board rendering** with fake heat, to tune visual density on the actual TV.  ← **next**
 4. **Real heat calculation** (client-side from `ball_in_court_since`).
 5. **Slide-over panel** with the three action buttons.
 6. **Realtime subscription.**
@@ -372,12 +364,12 @@ New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OV
 ## 12. Open items for Mike
 
 1. ~~**Board columns.**~~ **Resolved:** four fixed columns — Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA; Lost and all paid/terminal stages off-board (§4).
-2. **Starbucks filter.** The `starbucks_layer_enabled` flag is currently `false` on both Starbucks clients, so the spec's assumed filter returns zero rows (recon). Set the flag `true` on both clients (cleaner, recommended) or filter by their `client_id`s?
+2. ~~**Starbucks filter.**~~ **Resolved:** `starbucks_layer_enabled` set `true` on both Starbucks clients; board filters on the flag. (Note: this flag also gates the Starbucks map layer / portal per recon — mentioned in case that surfaces elsewhere.)
 3. **`blocked_on` domain.** Confirm the five values (`pricing` / `site_plan` / `under_contract` / `info` / `ready`) and the fixed subhead order (§4.1). Any Pre-Submittal blocker missing?
 4. **Ball-in-court source of truth.** Recommended: the board keeps its own trigger-owned fields, separate from the (currently non-functional — see recon) AI `deal_synopsis` and from `deal.current_handoff_holder` (§3.2). Confirm — or drive one of those existing signals instead?
 5. **Does a deal ever legitimately sit at `ball_in_court = none`,** or should the board force a choice at "Change court"?
 6. **Archived / dead deals.** Derive on/off-board purely from stage (no migration), or add an explicit `is_active` flag (§3.5)? Reachable from the board at all, or only from the master pipeline?
-7. **Does "log a call" (the `activity` table via `LogCallModal`) also cool a tile,** or only notes + tasks? v1 assumes notes + tasks (§3.3). Adding `activity` is one more trigger.
+7. ~~**Does "log a call" also cool a tile?**~~ **Resolved: yes.** `activity` is the primary touch signal for Starbucks deals (0/44 had notes; 19 had activity), so the reset trigger fires on `activity` insert (§3.3). One caveat left open there: no human-vs-system discriminator on `activity`, so it fires on all inserts — guard on `sf_id` if Salesforce sync proves noisy.
 8. **Deal fields vs satellite table:** ~~open~~ **Decided:** a 1:1 `deal_activity_state` satellite table (named to generalize to the full pipeline in phase 3, not just this board view) holding all five board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`, `on_agenda`). Keeps `deal` from accreting view-specific state.
 
 ---
