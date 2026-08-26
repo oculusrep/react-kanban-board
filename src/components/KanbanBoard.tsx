@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   DragDropContext,
   DropResult,
@@ -27,6 +27,7 @@ import HandoffDatePicker from "./deals/HandoffDatePicker";
 export default function KanbanBoard() {
   const { columns, cards, loading, refresh } = useKanbanData();
   const [localCards, setLocalCards] = useState<DealCard[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dealToDelete, setDealToDelete] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -92,6 +93,28 @@ export default function KanbanBoard() {
     setLocalCards(cards);
   }, [cards]);
 
+  // Unique clients present on the board (for the filter dropdown), sorted by name
+  const clientOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    localCards.forEach((card) => {
+      if (card.client_id) {
+        map.set(card.client_id, card.client_name || 'Unnamed Client');
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [localCards]);
+
+  // Cards visible on the board after applying the client filter
+  const visibleCards = useMemo(
+    () =>
+      selectedClientId
+        ? localCards.filter((card) => card.client_id === selectedClientId)
+        : localCards,
+    [localCards, selectedClientId]
+  );
+
   useEffect(() => {
     document.title = "Master Pipeline | OVIS";
   }, []);
@@ -111,6 +134,11 @@ export default function KanbanBoard() {
   const handleDragEnd = async (result: DropResult) => {
     const { destination, draggableId } = result;
     if (!destination) return;
+
+    // Drag is disabled while a client filter is active (the visible cards are a
+    // subset, so destination.index wouldn't map to the full-list position and
+    // would scramble hidden cards' kanban_position). Guard as a safety net.
+    if (selectedClientId) return;
 
     const destColId = destination.droppableId;
 
@@ -535,7 +563,39 @@ export default function KanbanBoard() {
 
   return (
     <div className="p-4 overflow-x-auto min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
-      <h1 className="text-2xl font-bold mb-4" style={{ color: '#002147' }}>Master Pipeline</h1>
+      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+        <h1 className="text-2xl font-bold" style={{ color: '#002147' }}>Master Pipeline</h1>
+
+        {/* Client filter */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="client-filter" className="text-sm font-medium" style={{ color: '#4A6B94' }}>
+            Client
+          </label>
+          <select
+            id="client-filter"
+            value={selectedClientId}
+            onChange={(e) => setSelectedClientId(e.target.value)}
+            className="text-sm rounded-md px-3 py-1.5 bg-white focus:outline-none"
+            style={{ border: '1px solid #8FA9C8', color: '#002147', minWidth: '200px' }}
+          >
+            <option value="">All Clients</option>
+            {clientOptions.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </select>
+          {selectedClientId && (
+            <button
+              onClick={() => setSelectedClientId('')}
+              className="text-sm px-3 py-1.5 rounded-md"
+              style={{ color: '#4A6B94', border: '1px solid #8FA9C8' }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Confirm Dialog */}
       <ConfirmDialog
@@ -599,7 +659,7 @@ export default function KanbanBoard() {
       <div className="flex min-w-max gap-[2px]">
         <DragDropContext onDragEnd={handleDragEnd}>
           {columns.map((column, index) => {
-            let cardsInColumn = localCards
+            let cardsInColumn = visibleCards
               .filter((card) => card.stage_id === column.id)
               .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
 
@@ -644,7 +704,7 @@ export default function KanbanBoard() {
                     </div>
                     <div className="p-2 flex-1">
                       {cardsInColumn.map((card, index) => (
-                        <Draggable key={card.id} draggableId={card.id} index={index}>
+                        <Draggable key={card.id} draggableId={card.id} index={index} isDragDisabled={!!selectedClientId}>
                           {(provided, snapshot) => {
                             const cardDaysInStage = getDaysInStage(card.last_stage_change_at, card.created_at);
                             const cardWeeksBehind = calculateWeeksBehind(cardDaysInStage, column.label);

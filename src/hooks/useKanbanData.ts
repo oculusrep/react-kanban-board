@@ -84,6 +84,7 @@ export default function useKanbanData() {
           closed_date: deal.closed_date,
           stage_id: deal.stage_id,
           kanban_position: deal.kanban_position,
+          client_id: deal.client_id || null,
           client_name: deal.client_id ? clientMap.get(deal.client_id) || null : null,
           created_at: deal.created_at,
           last_stage_change_at: deal.last_stage_change_at,

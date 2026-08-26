@@ -87,6 +87,7 @@ export interface DealCard {
   stage: string | null;
   close_date: string | null;
   probability: number | null;
+  client_id?: string | null;
   client_name?: string | null;
   property_name?: string | null;
   // AI synopsis alert level for Kanban indicators
