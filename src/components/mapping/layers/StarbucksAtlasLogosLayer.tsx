@@ -218,10 +218,18 @@ const StarbucksAtlasLogosLayer: React.FC<StarbucksAtlasLogosLayerProps> = ({
   }, [map, isVisible, fetchStores]);
 
   useEffect(() => {
-    if (!map || !stores.length) return;
+    if (!map) return;
 
+    // Always tear down the previous batch first, before deciding whether to
+    // rebuild. This runs when `stores` changes AND when `isVisible` flips.
     if (clusterer) clusterer.clearMarkers();
     markers.forEach(m => m.setMap(null));
+
+    // Don't build markers for a hidden layer. An in-flight fetch (map-idle
+    // refresh) can resolve and repopulate `stores` AFTER the layer is toggled
+    // off; without this guard those markers would reappear on a hidden layer
+    // and nothing would remove them until a manual map refresh.
+    if (!isVisible || !stores.length) return;
 
     const newMarkers: google.maps.Marker[] = stores
       .filter(s => s.latitude && s.longitude)
@@ -286,7 +294,7 @@ const StarbucksAtlasLogosLayer: React.FC<StarbucksAtlasLogosLayerProps> = ({
         setClusterer(newClusterer);
       }
     }
-  }, [stores, selectedStoreNumber, map, createPopupOverlay, clusterConfig]);
+  }, [stores, selectedStoreNumber, map, createPopupOverlay, clusterConfig, isVisible]);
 
   useEffect(() => {
     if (!map || !markers.length) return;

@@ -299,15 +299,18 @@ const TrafficCountLayer: React.FC<TrafficCountLayerProps> = ({ map, isVisible })
     return () => google.maps.event.removeListener(listener);
   }, [map, isVisible, refreshSegments, clearError, clearPolylines]);
 
-  // Re-render polylines when aadtMap or billedSet updates
+  // Re-render polylines when aadtMap or billedSet updates.
+  // Guard on isVisible: an in-flight fetch (map-idle refresh) can resolve and
+  // update `segments` AFTER the layer is toggled off. Without this guard those
+  // late updates would redraw polylines onto a hidden layer, and nothing would
+  // clear them until a manual map refresh.
   useEffect(() => {
+    if (!isVisible) {
+      clearPolylines();
+      return;
+    }
     renderPolylines(segments, aadtMap, billedSet);
-  }, [segments, aadtMap, billedSet, renderPolylines]);
-
-  // Close polylines when hidden
-  useEffect(() => {
-    if (!isVisible) clearPolylines();
-  }, [isVisible, clearPolylines]);
+  }, [isVisible, segments, aadtMap, billedSet, renderPolylines, clearPolylines]);
 
   // Info popup via InfoWindow
   useEffect(() => {
