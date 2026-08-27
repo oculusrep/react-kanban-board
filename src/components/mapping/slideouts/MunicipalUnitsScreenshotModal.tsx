@@ -4,10 +4,17 @@ import * as turf from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import { supabase } from '../../../lib/supabaseClient';
 
-// Screenshot-ready modal: total housing units by stage for municipal_project
-// polygons that intersect each of the four catchments around an ad-hoc point.
-// Any-overlap counts; nested catchments are cumulative (a project inside 1mi
-// also counts toward 3mi, 5min, 10min if it intersects those too).
+// Screenshot-ready modal: total housing units by stage for municipal projects
+// falling inside each of the four catchments around an ad-hoc point.
+// Nested catchments are cumulative (a project inside 1mi also counts toward
+// 3mi, 5min, 10min if it falls inside those too).
+//
+// Two modes, selected via the `mode` prop:
+//   - 'polygon' (default): count a project when its drawn boundary (geometry_geojson)
+//     intersects the catchment. Any overlap counts the project's full unit total.
+//   - 'pin': count a project when its map-pin point (centroid_lat/lng) falls inside
+//     the catchment. A fast read on units before polygons are drawn — every project
+//     with a pin and units is counted, regardless of whether it has a polygon yet.
 
 interface Props {
   isOpen: boolean;
@@ -16,6 +23,8 @@ interface Props {
   // Drive-time isochrone polygons from the parent slideout's fetch,
   // keyed like "5min_drive" / "10min_drive".
   isochrones: Record<string, { type: 'Polygon'; coordinates: number[][][] }>;
+  // How to place a project in a catchment. Defaults to 'polygon'.
+  mode?: 'polygon' | 'pin';
 }
 
 const GRID_LINE = '1px solid rgba(255, 255, 255, 0.18)';
@@ -43,6 +52,8 @@ interface ProjectRow {
   effective_stage_name: string | null;
   total_housing_units: number | null;
   geometry_geojson: Polygon | null;
+  centroid_lat: number | null;
+  centroid_lng: number | null;
 }
 
 type UnitsByStageByCatchment = Record<string, Partial<Record<CatchmentKey, number>>>;
@@ -105,6 +116,34 @@ function computeUnitsByStage(
   return out;
 }
 
+// Pin variant: place each project by its map-pin point (centroid) rather than its
+// drawn boundary. Same cumulative-catchment behavior as computeUnitsByStage.
+function computeUnitsByStagePins(
+  projects: ProjectRow[],
+  catchments: Partial<Record<CatchmentKey, Feature<Polygon>>>,
+): UnitsByStageByCatchment {
+  const out: UnitsByStageByCatchment = {};
+  for (const row of STAGE_ROWS) out[row.label] = {};
+
+  for (const p of projects) {
+    const stageLabel = stageLabelFor(p.effective_stage_name);
+    if (!stageLabel) continue;
+    if (p.centroid_lat == null || p.centroid_lng == null || !p.total_housing_units) continue;
+
+    const pinPoint = turf.point([p.centroid_lng, p.centroid_lat]);
+
+    for (const key of Object.keys(catchments) as CatchmentKey[]) {
+      const catch_ = catchments[key];
+      if (!catch_) continue;
+      if (turf.booleanPointInPolygon(pinPoint, catch_)) {
+        out[stageLabel][key] = (out[stageLabel][key] ?? 0) + p.total_housing_units;
+      }
+    }
+  }
+
+  return out;
+}
+
 const formatNumber = (n: number | null | undefined) =>
   n == null ? '—' : Math.round(n).toLocaleString();
 
@@ -113,6 +152,7 @@ const MunicipalUnitsScreenshotModal: React.FC<Props> = ({
   onClose,
   coordinates,
   isochrones,
+  mode = 'polygon',
 }) => {
   const [projects, setProjects] = useState<ProjectRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -124,11 +164,18 @@ const MunicipalUnitsScreenshotModal: React.FC<Props> = ({
     setIsLoading(true);
     setLoadError(null);
     (async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('municipal_project_v')
-        .select('id, effective_stage_name, total_housing_units, geometry_geojson')
-        .not('geometry_geojson', 'is', null)
+        .select(
+          'id, effective_stage_name, total_housing_units, geometry_geojson, centroid_lat, centroid_lng',
+        )
         .gt('total_housing_units', 0);
+      // Polygon mode needs a drawn boundary; pin mode needs a placed point.
+      query =
+        mode === 'pin'
+          ? query.not('centroid_lat', 'is', null).not('centroid_lng', 'is', null)
+          : query.not('geometry_geojson', 'is', null);
+      const { data, error } = await query;
       if (cancelled) return;
       if (error) {
         console.error('[MunicipalUnitsScreenshot] fetch failed:', error);
@@ -142,7 +189,7 @@ const MunicipalUnitsScreenshotModal: React.FC<Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, mode]);
 
   const catchmentFeatures = useMemo(() => {
     if (!coordinates) return {};
@@ -151,8 +198,10 @@ const MunicipalUnitsScreenshotModal: React.FC<Props> = ({
 
   const totals = useMemo(() => {
     if (!projects) return null;
-    return computeUnitsByStage(projects, catchmentFeatures);
-  }, [projects, catchmentFeatures]);
+    return mode === 'pin'
+      ? computeUnitsByStagePins(projects, catchmentFeatures)
+      : computeUnitsByStage(projects, catchmentFeatures);
+  }, [projects, catchmentFeatures, mode]);
 
   if (!isOpen) return null;
 

@@ -237,7 +237,10 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
   const [dtDemosData, setDtDemosData] = useState<DemographicData | null>(null);
   const [dtDemosLoading, setDtDemosLoading] = useState(false);
   const [showMunicipalUnitsModal, setShowMunicipalUnitsModal] = useState(false);
-  // The Demo Map / DT Demos / Units screenshot boxes share one header dropdown.
+  // Pin-based variant: units summed from project map-pins (centroids) inside
+  // each catchment — a fast read before polygons are drawn.
+  const [showMunicipalUnitsPinsModal, setShowMunicipalUnitsPinsModal] = useState(false);
+  // The Demo Map / DT Demos / Polygon Units / Pin Units boxes share one header dropdown.
   const [showBoxesMenu, setShowBoxesMenu] = useState(false);
   // Minimize collapses the body but keeps the slideout open — overlays
   // stay mounted on the map so rings/isochrones/polygon remain visible
@@ -473,6 +476,15 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
         onClose={() => setShowMunicipalUnitsModal(false)}
         coordinates={coordinates}
         isochrones={result?.isochrones ?? {}}
+        mode="polygon"
+      />
+
+      <MunicipalUnitsScreenshotModal
+        isOpen={showMunicipalUnitsPinsModal}
+        onClose={() => setShowMunicipalUnitsPinsModal(false)}
+        coordinates={coordinates}
+        isochrones={result?.isochrones ?? {}}
+        mode="pin"
       />
 
       <aside
@@ -541,7 +553,7 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                   onClick={() => setShowBoxesMenu((o) => !o)}
                   className="text-xs font-medium hover:underline"
                   style={{ color: BRAND.steel }}
-                  title="Screenshot-ready boxes: Demo Map, DT Demos, Units"
+                  title="Screenshot-ready boxes: Demo Map, DT Demos, Polygon Units, Pin Units"
                 >
                   {dtDemosLoading ? 'Boxes…' : 'Boxes ▾'}
                 </button>
@@ -595,9 +607,22 @@ const DemographicsAnalysisSlideout: React.FC<Props> = ({
                         }}
                         className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                         style={{ color: BRAND.midnight }}
-                        title="Total housing units by stage for municipal projects in each catchment"
+                        title="Housing units by stage for municipal projects whose drawn polygon intersects each catchment"
                       >
-                        Units
+                        Polygon Units
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!result}
+                        onClick={() => {
+                          setShowMunicipalUnitsPinsModal(true);
+                          setShowBoxesMenu(false);
+                        }}
+                        className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ color: BRAND.midnight }}
+                        title="Housing units by stage for municipal projects whose map-pin falls inside each catchment (fast read before polygons are drawn)"
+                      >
+                        Pin Units
                       </button>
                     </div>
                   </>
