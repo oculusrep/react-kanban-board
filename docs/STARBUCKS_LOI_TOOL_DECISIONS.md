@@ -315,6 +315,11 @@ selector and one new pattern:
     (enumerated options, `is_free_fill` for a `___` blank), resolved to exactly one value; **no**
     preferred/fallback (a deal fact, not a concession). Load-time: choose_one ≥2 options, concession 0
     (deferred constraint trigger).
+  - **plain per-deal free-fill** (premises dimensions `___ x ___`, sqft, address) → `param_kind='fill'`
+    (added in _param_kind_fill after tranche 1): no preferred/fallback, no options — a labeled blank.
+- **Loader/validator:** `supabase/seeds/loi/load_seed.py` validates a tranche against these rules
+  (ref resolution, enums, kind/brace shape, partition exhaustiveness, stray `{...}`/`[...]`) before
+  emitting ordered INSERT SQL — catches extraction errors by name, not as raw constraint violations.
   - `[FOR DRIVE-THROUGH…, ADD:]` **instructional gate** → **`applies_when` at extraction** (the gate is
     a condition, not prose; the instruction text is never stored as emittable body). The gated content
     is a position carrying the predicate.
@@ -359,7 +364,7 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 35 assertions PASS** across seven migrations:
+**All 38 assertions PASS** across seven migrations:
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
@@ -375,6 +380,7 @@ the two helper functions instead; see `supabase/dev-only/`).
   concession rejects options.
 - v5 (uncoded-modifier visibility): loi_uncoded_modifier surfaces the add-on by clause+segment
   and excludes custom-owned.
+- v6 (param_kind 'fill'): valid free-fill accepted, fill rejects preferred_value, fill rejects options.
 
 **RLS is NOT validated** — `is_internal_user()` was stubbed to `true` for the runs;
 row-level access behavior is unverified until tested against the real helper.
