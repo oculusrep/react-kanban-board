@@ -123,7 +123,17 @@ Implemented as triggers, not application code — otherwise the email-triage and
 
 **Why `activity` is #1, not an afterthought (resolves old open item #5):** recon found Starbucks deal history lives almost entirely in the legacy `activity` table (`LogCallModal` writes it) — **0 of the (then) 44 Starbucks deals had any `note_object_link` row**, while 19 had activity. For this account, logging a call *is* the touch that must cool the tile; notes are the supplement, not the reverse.
 
-**Caveat (revisit for v2):** `activity` has no source/system discriminator column (only Salesforce `sf_*` fields). The trigger therefore fires on *all* activity inserts with a `deal_id`. If a Salesforce→OVIS sync inserts activity rows automatically, that would cool a tile spuriously; guard with `AND NEW.sf_id IS NULL` if it turns out to matter.
+**All activity inserts are human-originated — no guard needed.** OVIS has no Salesforce sync and hasn't for over a year; the `sf_*` columns are one-time migration residue, and nothing else auto-writes `activity`. So every activity insert is a real human touch by definition, and firing on all of them is correct. There is no system-vs-human ambiguity to guard against. **Open item #5 is fully closed.**
+
+### 3.3.1 The "no history" marker (`seeded_fallback`)
+
+The step-2 backfill seeded `ball_in_court_since = now()` for the 27 Starbucks deals with no activity and no notes. Those clocks are placeholders, not real touches — rendering them as *cool* would lie (cool means "recently worked, not your problem"; these have zero history). So `deal_activity_state` carries a boolean `seeded_fallback`:
+
+- `true` = the clock is a backfill placeholder, not a real touch.
+- Trigger-cleared: the first real reset event (§3.3) sets `seeded_fallback = false`, because that event *is* the first real touch.
+- A deal with **no row at all** is treated the same as `seeded_fallback = true` ("no history").
+
+The board renders these as a distinct neutral **"no history"** tile (§6.4) and excludes them from warm/hot heat (§5.3, §8) and from the daily "need attention" number (§9) until a real touch lands.
 
 ### 3.4 Next actions
 
@@ -220,6 +230,8 @@ Hottest first, then by days descending. A red tile is always above an amber tile
 
 Within a Pre-Submittal subhead, the same hottest-first rule applies. Across subheads, subhead order (§4.1) wins first, then heat within each.
 
+**"No history" tiles (`seeded_fallback`, §3.3.1) are exempt from heat entirely.** Their clock is a placeholder, so they are never cool/warm/hot — they render in the neutral "no history" state (§6.4) and sort to the *bottom* of their column (below cool), since we can't rank an unknown. The instant a real touch clears the flag, they re-enter normal heat.
+
 ---
 
 ## 6. Visual design
@@ -280,6 +292,8 @@ The **agenda star** (top-right) toggles `on_agenda` (§3.2.2). Filled when starr
 
 Site name source: prefer the deal's linked `property`/`site_submit` site name; fall back to `deal.deal_name`. City comes from the linked property. (Confirm exact field during build.)
 
+**"No history" tile state (§3.3.1).** A `seeded_fallback` tile (or a deal with no `deal_activity_state` row) is neither cool nor hot — its clock is unknown. Render it distinctly: a **dashed** 6px left edge in `--text-dim` (not a solid heat bar), and in place of the court chip + day count, a single dim **"no history"** label. No day count (there's no real clock to show). It should read as "unrated," quietly — not alarming, but clearly not a worked-and-cool tile. Sorts to the bottom of its column (§5.3).
+
 Do not add: last note preview, deal value, next action text, contact avatars, stage name (the column says it). Every one of these will be suggested and every one of them costs legibility.
 
 ### 6.5 Motion
@@ -335,6 +349,8 @@ Count of tiles that are warm or hot. This is the game — the target is zero, an
 
 Below it in dim text: `4 yours · 5 theirs`. The split matters, because five deals waiting on landlords is a very different day from five deals waiting on Mike.
 
+**"No history" deals are not counted here** — their clock is a placeholder, so they can't be "warm/hot" (§3.3.1). Show them as a separate dim tail on the same line, e.g. `4 yours · 5 theirs · 27 no history`. That number should shrink toward zero on its own as deals get their first real touch, which is its own kind of win.
+
 ### 9.1 Agenda control
 
 Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live count of starred (`on_agenda = true`) deals. Clicking it filters the board to only those deals — same columns, same tiles, same slide-over on click — and toggles back to the full board. It's a filter over the existing board, not a separate screen. This is how the weekly call agenda gets built up through the week.
@@ -344,8 +360,8 @@ Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live 
 ## 10. Build order
 
 1. ~~**Schema**~~ **DONE (migration `20260825190000`):** 1:1 `deal_activity_state` satellite with the five board-owned fields; reset triggers on `note_object_link` + `task` (insert & `due_at` change); clear-`blocked_on`-on-leaving-Pre-Submittal trigger; RLS mirroring `deal`/`task`. Verified in a self-rolling-back functional test.
-2. ~~**Backfill**~~ **DONE (migration `20260826120000`):** added the `activity`-insert reset trigger (activity is the primary touch signal, not notes — see §3.3) and seeded `ball_in_court_since` for all **46** Starbucks deals from the most-recent of `activity.activity_date` / `note_object_link.created_at`, falling back to `now()`. Result: **19 real seeds, 27 `now()` fallbacks.** `ball_in_court` and `blocked_on` left unset (Mike classifies manually). Board will look partly wrong until real touches accumulate. Starbucks filter now uses `client.starbucks_layer_enabled = true` (flag set on both clients).
-3. **Static board rendering** with fake heat, to tune visual density on the actual TV.  ← **next**
+2. ~~**Backfill**~~ **DONE (migrations `20260826120000`, `20260826130000`):** added the `activity`-insert reset trigger (activity is the primary touch signal, not notes — see §3.3) and seeded `ball_in_court_since` for all Starbucks deals from the most-recent of `activity.activity_date` / `note_object_link.created_at`, falling back to `now()`. Result: **20 real seeds, 27 `now()` fallbacks** — the fallbacks are flagged `seeded_fallback` and render as "no history" (§3.3.1). `ball_in_court` and `blocked_on` left unset (Mike classifies manually). Starbucks filter now uses `client.starbucks_layer_enabled = true` (flag set on both clients).
+3. **Static board rendering** — the four columns, tiles, Pre-Submittal subheads, daily number, dark palette; heat computed client-side from `ball_in_court_since`.  ← **in progress**
 4. **Real heat calculation** (client-side from `ball_in_court_since`).
 5. **Slide-over panel** with the three action buttons.
 6. **Realtime subscription.**
@@ -369,7 +385,7 @@ New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OV
 4. **Ball-in-court source of truth.** Recommended: the board keeps its own trigger-owned fields, separate from the (currently non-functional — see recon) AI `deal_synopsis` and from `deal.current_handoff_holder` (§3.2). Confirm — or drive one of those existing signals instead?
 5. **Does a deal ever legitimately sit at `ball_in_court = none`,** or should the board force a choice at "Change court"?
 6. **Archived / dead deals.** Derive on/off-board purely from stage (no migration), or add an explicit `is_active` flag (§3.5)? Reachable from the board at all, or only from the master pipeline?
-7. ~~**Does "log a call" also cool a tile?**~~ **Resolved: yes.** `activity` is the primary touch signal for Starbucks deals (0/44 had notes; 19 had activity), so the reset trigger fires on `activity` insert (§3.3). One caveat left open there: no human-vs-system discriminator on `activity`, so it fires on all inserts — guard on `sf_id` if Salesforce sync proves noisy.
+7. ~~**Does "log a call" also cool a tile?**~~ **Fully closed: yes.** `activity` is the primary touch signal for Starbucks deals (0/44 had notes; 19 had activity), so the reset trigger fires on `activity` insert (§3.3). No `sf_id` guard is needed — OVIS has no Salesforce sync (the `sf_*` columns are historical migration residue), so every activity insert is a human touch by definition.
 8. **Deal fields vs satellite table:** ~~open~~ **Decided:** a 1:1 `deal_activity_state` satellite table (named to generalize to the full pipeline in phase 3, not just this board view) holding all five board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`, `on_agenda`). Keeps `deal` from accreting view-specific state.
 
 ---
