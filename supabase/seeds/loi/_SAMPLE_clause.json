@@ -80,7 +80,8 @@
             { "option_value": "Shopping Center", "is_free_fill": false, "sort_order": 1 }
           ] }
       ] },
-    { "ref": "PREMDT__ntd__v1__main", "brace_code": null, "source": "national-template-drop", "version": "v1", "segment_key": "main",
+    { "ref": "PREMDT__ntd__v1__dt", "brace_code": null, "source": "national-template-drop", "version": "v1", "segment_key": "drive_through_add_on",
+      "_comment_segment": "Uncoded add-on => DESCRIPTIVE segment_key (not 'main') so the audit identifies it as 'Premises / drive_through_add_on'.",
       "body_text": "DUMMY: Tenant shall construct a drive-through lane in the location shown on Exhibit E." },
 
     { "ref": "SIGN0__ntd__v1__main",     "brace_code": "SIGN0",      "source": "national-template-drop", "version": "v1", "segment_key": "main",
@@ -192,9 +193,9 @@
               "rank": null, "selector_value": null, "is_default": false,
               "code_status": "confirmed", "rule_status": "confirmed", "authority": "national-handbook",
               "approval_required": false, "approval_authority": null, "firing_mode": "per-deal", "director_question_key": null,
-              "internal_note": "[DUMMY] Instructional bracket became this applies_when; the '[FOR DRIVE-THROUGH...]' text is never emitted.",
+              "internal_note": "[DUMMY] Instructional bracket became this applies_when; the '[FOR DRIVE-THROUGH...]' text is never emitted. Audit id = clause+segment ('Premises / drive_through_add_on'); appears in loi_uncoded_modifier.",
               "deviation_rationale": null, "landlord_fill_prompt": null, "provisional_note": null,
-              "position_bodies": [ { "canonical_body_ref": "PREMDT__ntd__v1__main", "emit_sequence": 0 } ],
+              "position_bodies": [ { "canonical_body_ref": "PREMDT__ntd__v1__dt", "emit_sequence": 0 } ],
               "applies_when": [
                 { "condition_group": 0, "ref_kind": "deal_field", "ref_clause_key": null, "ref_brace_code": null, "ref_field": "is_drive_through", "operator": "eq", "compare_value": "true", "compare_unit": null, "note": "gate: emit only for drive-through locations" }
               ]

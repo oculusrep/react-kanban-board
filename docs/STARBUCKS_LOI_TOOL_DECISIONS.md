@@ -321,6 +321,14 @@ selector and one new pattern:
 - **Brace-guard relaxed** to house uncoded gated add-ons: `brace_code` **required** for
   `alternative`/`conditional_alternative` under `coded-position` (the "AS1 word-for-word" items),
   **optional** for `modifier` (coded like EU1 or uncoded boilerplate), **forbidden** for `custom-owned`.
+  Uncoded add-ons stay `coded-position` clauses (they're Starbucks template language — `custom-owned`
+  would misattribute authorship; `standing-default` would misstate why they emit). Two guards:
+  - **Audit identity (Guard 1):** uncoded add-ons still appear in the LRM, identified by
+    **clause + `segment_key`** (no brace code) — e.g. "Premises drive-through add-on, word-for-word."
+    Extraction convention: give uncoded add-on bodies a **descriptive `segment_key`** (not `main`).
+  - **Visibility (Guard 2):** `loi_uncoded_modifier` view lists every uncoded template add-on
+    (brace-null modifiers, excluding `custom-owned`) — countable/reviewable so the set never becomes
+    a silent dumping ground.
 
 ## Assembler & document skeleton (LOCKED requirements — build later, per §9 step 2/3)
 
@@ -351,7 +359,7 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 34 assertions PASS** across six migrations:
+**All 35 assertions PASS** across seven migrations:
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
@@ -365,6 +373,8 @@ the two helper functions instead; see `supabase/dev-only/`).
 - v4 (param kinds + brace relaxation): uncoded modifier accepted, uncoded alternative still
   rejected, choose_one rejects preferred_value, concession valid, choose_one needs ≥2 options,
   concession rejects options.
+- v5 (uncoded-modifier visibility): loi_uncoded_modifier surfaces the add-on by clause+segment
+  and excludes custom-owned.
 
 **RLS is NOT validated** — `is_internal_user()` was stubbed to `true` for the runs;
 row-level access behavior is unverified until tested against the real helper.
