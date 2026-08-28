@@ -81,6 +81,34 @@ export const BLOCKED_ON_LABEL: Record<BlockedOn | 'null', string> = {
   null: 'No blocker set',
 };
 
+// Blocker → implied ball-in-court, used to pre-select the court when Mike sets
+// a Pre-Submittal blocker (saves a click across the ~23 Pre-Submittal deals).
+// He can override before saving. (User addition, step 5.)
+//   pricing / site_plan / under_contract → them (we're waiting on the other side)
+//   ready / info                         → us   (the next move is ours)
+export const IMPLIED_COURT: Record<BlockedOn, BallInCourt> = {
+  pricing: 'them',
+  site_plan: 'them',
+  under_contract: 'them',
+  ready: 'us',
+  info: 'us',
+};
+
+// Option lists for the slide-over forms.
+export const COURT_OPTIONS: Array<{ value: BallInCourt; label: string }> = [
+  { value: 'us', label: 'Us' },
+  { value: 'them', label: 'Them' },
+  { value: 'none', label: 'No one (parked)' },
+];
+
+export const BLOCKED_ON_OPTIONS: BlockedOn[] = [
+  'ready',
+  'pricing',
+  'site_plan',
+  'under_contract',
+  'info',
+];
+
 // ---- Heat thresholds (spec §5.1). Tunable — kept here, not inline. ---------
 // Days at/above `hot` → hot; at/above `warm` → warm; below → cool.
 // `none` has no cool band: it's warm from day 0, hot at 3+ (treated suspicious).

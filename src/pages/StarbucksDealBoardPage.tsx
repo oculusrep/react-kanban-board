@@ -1,6 +1,7 @@
 // Starbucks Deal Board — full-screen wall display (spec: docs/STARBUCKS_DEAL_BOARD_SPEC.md).
-// Step 3: static render. Heat is computed client-side from ball_in_court_since;
-// tiles are not yet interactive (slide-over is step 5, realtime step 6).
+// Steps 3–5: static render + slide-over. Heat is client-side from
+// ball_in_court_since. Clicking a tile opens the slide-over (Change court /
+// Log a note / Set next action); the star toggles on_agenda. Realtime is step 6.
 // Renders fixed inset-0 so it covers the app nav — it's a TV surface.
 
 import { useEffect, useMemo, useState } from 'react';
@@ -16,10 +17,17 @@ import {
   instruction,
   PALETTE,
 } from '../lib/starbucksBoard';
+import { supabase } from '../lib/supabaseClient';
+import DealSlideOver from '../components/starbucksBoard/DealSlideOver';
+
+// A column denser than this many tiles switches to the compact tile so the
+// fat Pre-Submittal column fits ~23 tiles without scrolling at 1080p (spec §4.1).
+const DENSE_THRESHOLD = 12;
 
 export default function StarbucksDealBoardPage() {
   const { columns, daily, loading, error, lastSynced, refresh } = useStarbucksBoard();
   const [agendaOnly, setAgendaOnly] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = 'Starbucks Deal Board | OVIS';
@@ -34,6 +42,24 @@ export default function StarbucksDealBoardPage() {
     if (!agendaOnly) return columns;
     return columns.map((c) => filterColumn(c, (d) => d.onAgenda));
   }, [columns, agendaOnly]);
+
+  const selectedDeal = useMemo(
+    () => columns.flatMap((c) => c.deals).find((d) => d.id === selectedId) ?? null,
+    [columns, selectedId]
+  );
+
+  // Star toggle — update only on_agenda (row always exists post-backfill).
+  async function toggleStar(deal: BoardDeal) {
+    try {
+      await supabase
+        .from('deal_activity_state')
+        .update({ on_agenda: !deal.onAgenda })
+        .eq('deal_id', deal.id);
+      refresh();
+    } catch (e) {
+      console.error('toggleStar', e);
+    }
+  }
 
   return (
     <div
@@ -57,7 +83,7 @@ export default function StarbucksDealBoardPage() {
 
       <div className="flex-1 grid gap-3 px-4 pb-4 overflow-hidden" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
         {shown.map((col) => (
-          <Column key={col.stage} col={col} />
+          <Column key={col.stage} col={col} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
         ))}
       </div>
 
@@ -65,6 +91,10 @@ export default function StarbucksDealBoardPage() {
         <div className="absolute inset-0 flex items-center justify-center" style={{ color: PALETTE.textDim }}>
           Loading…
         </div>
+      )}
+
+      {selectedDeal && (
+        <DealSlideOver deal={selectedDeal} onClose={() => setSelectedId(null)} onChanged={refresh} />
       )}
     </div>
   );
@@ -125,9 +155,15 @@ function Header({
   );
 }
 
+interface TileHandlers {
+  onOpen: (d: BoardDeal) => void;
+  onToggleStar: (d: BoardDeal) => void;
+}
+
 // ---- Column (spec §4). Empty renders dim; Pre-Submittal shows subheads. ----
-function Column({ col }: { col: BoardColumn }) {
+function Column({ col, onOpen, onToggleStar }: { col: BoardColumn } & TileHandlers) {
   const empty = col.count === 0;
+  const dense = col.deals.length > DENSE_THRESHOLD;
   return (
     <div
       className="flex flex-col rounded-lg overflow-hidden"
@@ -140,20 +176,20 @@ function Column({ col }: { col: BoardColumn }) {
         <span className="tabular-nums text-sm" style={{ color: PALETTE.textDim }}>{col.count}</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-2 flex flex-col gap-2">
+      <div className={`flex-1 overflow-y-auto px-2 pb-2 flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
         {col.subheads
-          ? col.subheads.map((sh) => <Subhead key={sh.key} sh={sh} />)
-          : col.deals.map((d) => <Tile key={d.id} deal={d} />)}
+          ? col.subheads.map((sh) => <Subhead key={sh.key} sh={sh} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)
+          : col.deals.map((d) => <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)}
       </div>
     </div>
   );
 }
 
 // ---- Pre-Submittal blocker subhead (spec §4.1) ----------------------------
-function Subhead({ sh }: { sh: BoardSubhead }) {
+function Subhead({ sh, dense, onOpen, onToggleStar }: { sh: BoardSubhead; dense: boolean } & TileHandlers) {
   if (sh.deals.length === 0) return null; // hide empty blocker groups (tune on TV)
   return (
-    <div className="flex flex-col gap-2">
+    <div className={`flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
       <div className="flex items-baseline justify-between px-1 pt-1">
         <span className="text-xs uppercase tracking-wider" style={{ color: PALETTE.textDim }}>
           {sh.label}
@@ -161,39 +197,66 @@ function Subhead({ sh }: { sh: BoardSubhead }) {
         <span className="tabular-nums text-xs" style={{ color: PALETTE.textDim }}>{sh.deals.length}</span>
       </div>
       {sh.deals.map((d) => (
-        <Tile key={d.id} deal={d} />
+        <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />
       ))}
     </div>
   );
 }
 
-// ---- Tile (spec §6.4) -----------------------------------------------------
-function Tile({ deal }: { deal: BoardDeal }) {
+// ---- Tile (spec §6.4). Dense variant keeps fat columns scroll-free. -------
+function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: boolean } & TileHandlers) {
   const hs = heatStyle(deal.heat);
-  const verb = instruction(deal);
 
+  const star = (
+    <button
+      onClick={(e) => { e.stopPropagation(); onToggleStar(deal); }}
+      style={{ color: deal.onAgenda ? PALETTE.text : PALETTE.textDim, opacity: deal.onAgenda ? 1 : 0.4 }}
+      aria-label={deal.onAgenda ? 'Remove from agenda' : 'Add to agenda'}
+    >
+      {deal.onAgenda ? '★' : '☆'}
+    </button>
+  );
+
+  const leftBar = (
+    <div
+      className="absolute left-0 top-0 bottom-0 rounded-l-md"
+      style={{
+        width: 6,
+        backgroundColor: hs.dashed ? 'transparent' : hs.bar,
+        borderLeft: hs.dashed ? `3px dashed ${PALETTE.textDim}` : undefined,
+      }}
+    />
+  );
+
+  if (dense) {
+    return (
+      <div
+        onClick={() => onOpen(deal)}
+        className="relative rounded-md pl-3 pr-2 flex items-center gap-2 cursor-pointer"
+        style={{ backgroundColor: hs.fill, height: 30 }}
+        title={deal.name}
+      >
+        {leftBar}
+        <span className="truncate flex-1" style={{ fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em', color: PALETTE.text }}>
+          {deal.name}
+        </span>
+        <span className="tabular-nums whitespace-nowrap" style={{ fontSize: 11, color: denseRightColor(deal) }}>
+          {denseRightText(deal)}
+        </span>
+        {star}
+      </div>
+    );
+  }
+
+  const verb = instruction(deal);
   return (
     <div
-      className="relative rounded-md px-3 py-2"
+      onClick={() => onOpen(deal)}
+      className="relative rounded-md px-3 py-2 cursor-pointer"
       style={{ backgroundColor: hs.fill, minHeight: 76 }}
     >
-      {/* heat bar */}
-      <div
-        className="absolute left-0 top-0 bottom-0 rounded-l-md"
-        style={{
-          width: 6,
-          backgroundColor: hs.dashed ? 'transparent' : hs.bar,
-          borderLeft: hs.dashed ? `3px dashed ${PALETTE.textDim}` : undefined,
-        }}
-      />
-
-      {/* agenda star (visual only in step 3) */}
-      <div
-        className="absolute right-2 top-2 text-sm"
-        style={{ color: deal.onAgenda ? PALETTE.text : PALETTE.textDim, opacity: deal.onAgenda ? 1 : 0.4 }}
-      >
-        {deal.onAgenda ? '★' : '☆'}
-      </div>
+      {leftBar}
+      <div className="absolute right-2 top-2 text-sm">{star}</div>
 
       <div className="pl-2 pr-4">
         <div className="truncate" style={{ fontWeight: 600, fontSize: 18, letterSpacing: '-0.01em', color: PALETTE.text }}>
@@ -208,12 +271,8 @@ function Tile({ deal }: { deal: BoardDeal }) {
             <span style={{ color: PALETTE.textDim }}>no history</span>
           ) : deal.heat === 'unclassified' ? (
             <>
-              <span style={{ color: PALETTE.textDim }} className="tabular-nums">
-                {deal.days}d
-              </span>
-              <span style={{ color: PALETTE.text, fontWeight: 600 }} className="whitespace-nowrap">
-                Set the court →
-              </span>
+              <span style={{ color: PALETTE.textDim }} className="tabular-nums">{deal.days}d</span>
+              <span style={{ color: PALETTE.text, fontWeight: 600 }} className="whitespace-nowrap">Set the court →</span>
             </>
           ) : (
             <>
@@ -231,6 +290,18 @@ function Tile({ deal }: { deal: BoardDeal }) {
       </div>
     </div>
   );
+}
+
+// Compact right-hand token for a dense tile.
+function denseRightText(d: BoardDeal): string {
+  if (d.heat === 'no_history') return '—';
+  if (d.heat === 'unclassified') return 'set';
+  return `${d.days}d`;
+}
+function denseRightColor(d: BoardDeal): string {
+  if (d.heat === 'hot') return PALETTE.hot;
+  if (d.heat === 'warm') return PALETTE.warm;
+  return PALETTE.textDim;
 }
 
 // filter a column's deals + subheads by a predicate (agenda view)

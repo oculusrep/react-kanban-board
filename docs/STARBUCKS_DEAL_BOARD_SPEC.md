@@ -198,6 +198,8 @@ PRE-SUBMITTAL                    22
 - Within a subhead, tiles order by the normal heat rule (§5.3).
 - The other three columns have no subheads — they're plain tile stacks.
 
+**Density (must fit ~23 tiles, no scroll, at 1080p).** A column with more than 12 tiles switches to a **compact tile** (30px tall, one line: heat bar · site name · a small right token [`{days}d` / `set` / `—`] · star; city dropped) with tighter gaps. At 1080p that's ~800px used of ~920px available for the current single-subhead Pre-Submittal layout — fits without scrolling. If a fully-classified Pre-Submittal (all blocker subheads populated) ever crowds, shave the dense tile to ~28px. `DENSE_THRESHOLD` in `StarbucksDealBoardPage.tsx`.
+
 ---
 
 ## 5. Heat logic
@@ -313,7 +315,9 @@ Tiles do **not** animate on load. A board that reshuffles itself every time the 
 
 ---
 
-## 7. Slide-over panel
+## 7. Slide-over panel — BUILT (step 5)
+
+Implemented in `src/components/starbucksBoard/DealSlideOver.tsx` (420px, dark, dimmed board behind). Click a tile → opens; the star on a tile toggles `on_agenda` without opening it.
 
 Click a tile → panel slides from the right, ~420px, board stays visible and dimmed behind it.
 
@@ -330,9 +334,12 @@ The three buttons are the whole point. Cooling a tile must take under ten second
 
 - **Log a note** → inserts a `note` + a `note_object_link` (`object_type='deal'`, `deal_id`). Trigger cools the tile.
 - **Set next action** → inserts/updates a `task` (`deal_id`, `subject`, `due_at`). Trigger cools the tile.
-- **Change court** → sets `ball_in_court` and `ball_in_court_party` and resets the clock (`ball_in_court_since = now()`). **For Pre-Submittal deals, this control also sets `blocked_on`** (§3.2.1) — the two live together since both answer "why isn't this moving." Setting `blocked_on = 'ready'` should be a single obvious action, because it flips the tile hot on purpose.
+- **Change court** → sets `ball_in_court` and `ball_in_court_party`, resets the clock (`ball_in_court_since = now()`), and clears `seeded_fallback` (a human classification means the tile is no longer "no history"). **For Pre-Submittal deals, this control also sets `blocked_on`** (§3.2.1) — the two live together since both answer "why isn't this moving." Setting `blocked_on = 'ready'` flips the tile hot on purpose.
+- **Blocker → implied court (step-5 addition).** When Mike picks a Pre-Submittal `blocked_on`, the court pre-selects: `pricing`/`site_plan`/`under_contract` → **them**, `ready`/`info` → **us**. He can override before saving. Saves a click across the ~23 Pre-Submittal deals. (`IMPLIED_COURT` in `src/lib/starbucksBoard.ts`.)
+- **Log a note** → inserts a `note` + a `note_object_link` (`object_type='deal'`, `deal_id`). Trigger cools the tile.
+- **Set next action** → inserts a `task` (`deal_id`, `subject`, `due_at`, `owner_id`/`created_by_id` = `useAuth().userTableId`, `category_id` via `getCategoryIdByName('other')`). Trigger cools the tile.
 
-Reuse the existing `NoteFormModal` / task creation paths where practical rather than reimplementing writes.
+Writes are done directly here rather than reusing `NoteFormModal` (which is a heavier, light-themed modal) — the slide-over's inline fields keep "cool a tile" under ten seconds.
 
 ---
 
@@ -372,11 +379,11 @@ Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live 
 2. ~~**Backfill**~~ **DONE (migrations `20260826120000`, `20260826130000`):** added the `activity`-insert reset trigger (activity is the primary touch signal, not notes — see §3.3) and seeded `ball_in_court_since` for all Starbucks deals from the most-recent of `activity.activity_date` / `note_object_link.created_at`, falling back to `now()`. Result: **20 real seeds, 27 `now()` fallbacks** — the fallbacks are flagged `seeded_fallback` and render as "no history" (§3.3.1). `ball_in_court` and `blocked_on` left unset (Mike classifies manually). Starbucks filter now uses `client.starbucks_layer_enabled = true` (flag set on both clients).
 3. ~~**Static board rendering**~~ **DONE:** full-screen route `/starbucks-board` (renders `fixed inset-0`, covers the app nav). Files: `src/lib/starbucksBoard.ts` (palette, heat/ordering/chip logic, all pure), `src/hooks/useStarbucksBoard.ts` (fetch + assemble columns/subheads/daily number), `src/pages/StarbucksDealBoardPage.tsx` (board UI). Heat computed client-side from `ball_in_court_since`; four columns, Pre-Submittal blocker subheads, "no history" tiles, agenda filter, daily number, click-to-refresh "synced" stamp. Not yet interactive (slide-over = step 5) and no realtime (step 6). Typechecks clean; `npm run build` passes. **Visual density is tuned on the actual TV — that's the point of this step.**
 4. **Real heat calculation** (client-side from `ball_in_court_since`).
-5. **Slide-over panel** with the three action buttons.
-6. **Realtime subscription.**
-7. **The daily number.**
+5. ~~**Slide-over panel**~~ **DONE:** `DealSlideOver.tsx` — Change court (+ blocker with implied-court pre-select), Log a note, Set next action, recent notes, current open action, Open full deal. Tile click opens it; star toggles `on_agenda`. Dense-tile density fix for Pre-Submittal (§4.1). Typechecks clean; build passes.
+6. **Realtime subscription** (Supabase realtime on `deal_activity_state`/`activity`/`note_object_link`/`task`).  ← **next**
+7. **The daily number** — already rendered in step 3 (header). Refinements only.
 
-Steps 1–5 are the shippable core. Live on the TV before touching realtime.
+Steps 1–5 are the shippable core — **done**. Live on the TV, then realtime.
 
 ---
 
