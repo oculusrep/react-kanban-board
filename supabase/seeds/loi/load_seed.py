@@ -14,7 +14,7 @@ Usage:
 """
 import sys, json, re, uuid
 
-SOURCES = {"national-template-drop", "national-handbook", "southeast-doc", "oculus-authored"}
+SOURCES = {"national-template-drop", "national-handbook", "southeast-doc", "oculus-authored", "national-template-ecdt"}
 BUCKETS = {"custom-owned", "coded-position", "standing-default"}
 KINDS = {"alternative", "conditional_alternative", "modifier"}
 CODE_STATUS = {"confirmed", "provisional"}

@@ -1,0 +1,376 @@
+{
+ "_README": [
+  "REAL EXTRACTION - TRANCHE 3. ATTRIBUTION CORRECTED: none of these are Oculus-authored.",
+  "Every clause traces to a Starbucks source, so bucket is 'standing-default', NOT 'custom-owned',",
+  "and Bucket 1 (custom-owned) is EMPTY for the end-cap drive-thru deal type.",
+  "",
+  "NEW SOURCE VALUE REQUIRED: 'national-template-ecdt' - the July 2025 End-Cap Drive-Thru template",
+  "is a distinct Starbucks document from the national drop. Four clauses here exist only in it.",
+  "",
+  "Broker's Commission is a national-drop standing default with a payee BLANK; Powder Springs filled",
+  "it with OCULUS REAL ESTATE PARTNERS, LLC. The clause is Starbucks'; only the fill value is Mike's."
+ ],
+ "canonical_bodies": [
+  {
+   "ref": "BROKERS_COMMISSION__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "BROKER’S COMMISSION: {{param:brokers_commission_blank_2}} Landlord agrees to pay a brokerage commission to {{param:brokers_commission_blank_1}} for services provided in connection with the Lease in accordance with the terms of the separate commission agreement. Except as specifically identified above, Landlord and Tenant each represent and warrant to the other that they have not dealt, directly or indirectly, in connection with the leasing of the Premises, with any other broker or person entitled to claim a commission or leasing fee.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "brokers_commission_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "brokers_commission_blank_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank (tab run in source)"
+    }
+   ]
+  },
+  {
+   "ref": "FUTURE_CONSTRUCTION__se__v1__main",
+   "brace_code": null,
+   "source": "southeast-doc",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant’s business shall not be impacted by any renovation, reconfiguration or construction of the Property at which the Premises are located. Landlord shall ensure that there shall be no change of visibility, signage or otherwise allow disruption to Tenant’s business. Landlord shall ensure that any change to the parking lot will not materially affect Tenant. There shall be no change to the access to Tenant’s Premises without Tenant’s approval, which shall not be unreasonably withheld."
+  },
+  {
+   "ref": "SALE_OF_PROPERTY__se__v1__main",
+   "brace_code": null,
+   "source": "southeast-doc",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord shall not transfer its interest in this lease prior to the latest to occur of (i) the date that Landlord and Tenant shall have executed and delivered a written notice of delivery and acceptance of the Premises, and Landlord shall have completed all work (if any) described on such written notice, or (ii) payment of the full amount of the Allowance to tenant."
+  },
+  {
+   "ref": "AUDIT_RIGHT__ecdt__v1__main",
+   "brace_code": null,
+   "source": "national-template-ecdt",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant shall have the right to inspect and audit at any time, Landlord's books, records and other documents which relate to the acquisition of property and development and construction costs of all improvements required to be constructed or installed by Landlord pursuant to the terms of the Lease. Landlord and Tenant understand and agree that if and only if the following calculation will result in a reduction of rent from that set forth above, the amount of rent due under the Lease as referenced above shall be adjusted to reflect a seven percent (7%) return to Landlord upon all costs verified to Tenant’s satisfaction incurred by Landlord in connection with the development of the Premises to the effect that the first years rent shall be adjusted downward and determined by multiplying said verified costs by seven percent (7%) to set the first year’s annual rent with the adjusted annual rent being increased by the same percentage increases at the same time intervals as set forth in the rent schedule above."
+  },
+  {
+   "ref": "TITLE_CONTINGENCY__ecdt__v1__main",
+   "brace_code": null,
+   "source": "national-template-ecdt",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord shall become the fee simple owner of the property on or before {{param:title_contingency_blank_1}} .",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "title_contingency_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank (tab run in source)"
+    }
+   ]
+  },
+  {
+   "ref": "RECORDED_DOCUMENTS__ecdt__v1__main",
+   "brace_code": null,
+   "source": "national-template-ecdt",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "The Lease will be subject to a Declaration or Recorded Document to Starbucks approval to be recorded on {{param:recorded_documents_blank_1}} .",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "recorded_documents_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank (tab run in source)"
+    }
+   ]
+  }
+ ],
+ "clauses": [
+  {
+   "clause_key": "brokers_commission",
+   "title": "Broker's Commission",
+   "bucket": "standing-default",
+   "description": "Standing default from the national drop with a payee blank. Powder Springs filled it with OCULUS REAL ESTATE PARTNERS, LLC. NOT an Oculus-authored clause - only the fill value is Mike's.",
+   "variants": [
+    {
+     "variant_key": "brokers_commission",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Standing default from the national drop with a payee blank. Powder Springs filled it with OCULUS REAL ESTATE PARTNERS, LLC. NOT an Oculus-authored clause - only the fill value is Mike's.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "BROKERS_COMMISSION__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "future_construction",
+   "title": "Future Construction",
+   "bucket": "standing-default",
+   "description": "Southeast-only addition; verbatim in both the Southeast doc and Powder Springs. No national counterpart.",
+   "variants": [
+    {
+     "variant_key": "future_construction",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "southeast-regional",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Southeast-only addition; verbatim in both the Southeast doc and Powder Springs. No national counterpart.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "FUTURE_CONSTRUCTION__se__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "sale_of_property",
+   "title": "Sale of Property",
+   "bucket": "standing-default",
+   "description": "Southeast-only addition; verbatim in both the Southeast doc and Powder Springs. No national counterpart.",
+   "variants": [
+    {
+     "variant_key": "sale_of_property",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "southeast-regional",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Southeast-only addition; verbatim in both the Southeast doc and Powder Springs. No national counterpart.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SALE_OF_PROPERTY__se__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "audit_right",
+   "title": "Audit Right",
+   "bucket": "standing-default",
+   "description": "Present in the July ECDT template variant, absent from the new national drop. Reconcile on template transition.",
+   "variants": [
+    {
+     "variant_key": "audit_right",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Present in the July ECDT template variant, absent from the new national drop. Reconcile on template transition.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "AUDIT_RIGHT__ecdt__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "title_contingency",
+   "title": "Title Contingency",
+   "bucket": "standing-default",
+   "description": "ECDT template variant. Heading + body are separate paragraphs.",
+   "variants": [
+    {
+     "variant_key": "title_contingency",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "ECDT template variant. Heading + body are separate paragraphs.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TITLE_CONTINGENCY__ecdt__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "recorded_documents",
+   "title": "Recorded Documents",
+   "bucket": "standing-default",
+   "description": "ECDT template variant.",
+   "variants": [
+    {
+     "variant_key": "recorded_documents",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "ECDT template variant.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "RECORDED_DOCUMENTS__ecdt__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "director_questions": []
+}

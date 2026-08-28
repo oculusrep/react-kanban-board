@@ -172,17 +172,29 @@ full body. Southeast runs a **four-rung ladder**; top two are coded:
 
 ### G — Custom clause catalog: Georgia scope, deal-type scope only
 
-**Bucket 1 Georgia in-scope set** (seed as `authority = self-authored`, no brace code,
-preload into every GA Position 1):
-- Broker's Commission (Oculus named, references separate commission agreement)
-- Future Construction
-- Sale of Property
-- Shopping Center Use Restrictions
-- ROFR
-- Storm Water / Roads contribution
-- Title Contingency
-- Recorded Documents
-- Other Contingency
+**ATTRIBUTION CORRECTION (tranche 3): Bucket 1 (custom-owned / self-authored) is EMPTY for the
+end-cap drive-thru deal type.** The earlier list below was based on reading Powder Springs' *filled*
+Broker's Commission clause as Mike-authored — it wasn't; that was a completed blank. All seven
+"custom" clauses trace back to Starbucks source, so every clause now has a Starbucks baseline to
+diff against (nothing renders un-diffable). Corrected attribution:
+- **Broker's Commission** — Starbucks clause with a payee blank ("pay a brokerage commission to
+  ______"); Powder Springs filled it with Oculus. Seeded `standing-default`, `national-handbook`,
+  payee as a `fill` param. The clause is Starbucks'; only the fill value is Mike's.
+- **Future Construction, Sale of Property** — verbatim in the Southeast doc → `southeast-doc` /
+  `southeast-regional`. Southeast-only additions, no national counterpart, but Starbucks-sourced.
+- **Audit Right, Title Contingency, Recorded Documents** — in the July 2025 ECDT template only →
+  **`source = national-template-ecdt`** (new value; a distinct Starbucks doc from the national drop,
+  so provenance and the collision guard stay honest across the transition).
+
+**Deliberately NOT seeded (tranche 3):**
+- **Other Contingency** — a heading with an EMPTY body in both Powder Springs and the ECDT; no
+  canonical text to extract. Not fabricated. Modeling: an **optional, wizard-offered clause** whose
+  body is a single `fill` param holding the whole deal-specific text — `standing-default`,
+  `is_default=false` (not auto-included), gated by an opt-in `applies_when deal_field`
+  (e.g. `include_other_contingency`). Expressible with the current schema; no new columns. Pending
+  Mike seeding it.
+- **Third-Party Use and Development Approvals** — found in Powder Springs, not on the 39 list; needs
+  a source check against the ECDT before attribution.
 
 **ROFO: dropped** (Florida-only). Not catalogued, not scope-gated. Returns as a fresh
 seed if GA ever needs it — no dead Florida-only rows.
@@ -384,9 +396,9 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 43 assertions PASS** across nine migrations (+ tranches 1–2 loaded: 30 clauses, 47 positions,
-50 bodies, 27 params, 19 uncoded standing-defaults, 3 uncoded add-ons, 2 attachment obligations,
-Hazmat `on-deviation`):
+**All 43 assertions PASS** across ten migrations (+ tranches 1–3 loaded: **36 of 39 clauses**,
+0 custom-owned, sources 51 national-drop / 3 ECDT / 2 southeast; 19 uncoded standing-defaults,
+3 uncoded add-ons, 2 attachment obligations, Hazmat `on-deviation`):
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
