@@ -66,8 +66,11 @@ def validate(d):
                     E(f"body {ref} param {p.get('param_key')}: choose_one must not have preferred/fallback")
                 opts = p.get("options") or []
                 if len(opts) < 2: E(f"body {ref} param {p.get('param_key')}: choose_one needs >=2 options")
+                if sum(1 for o in opts if o.get("is_omit")) > 1: E(f"body {ref} param {p.get('param_key')}: >1 omit option")
                 for o in opts:
-                    if not o.get("option_value"): E(f"body {ref} param {p.get('param_key')}: option missing option_value")
+                    if o.get("is_omit"):
+                        if o.get("option_value"): E(f"body {ref} param {p.get('param_key')}: omit option must not carry option_value")
+                    elif not o.get("option_value"): E(f"body {ref} param {p.get('param_key')}: option missing option_value (use is_omit for an intentional 'emit nothing')")
             elif pk == "fill":
                 if p.get("preferred_value") or p.get("fallback_value"):
                     E(f"body {ref} param {p.get('param_key')}: fill must not have preferred/fallback")
@@ -147,6 +150,8 @@ def validate(d):
                 if mc and mc not in clause_keys: E(f"{loc}: modifies_clause_id '{mc}' not a clause in this seed")
                 dq = p.get("director_question_key")
                 if dq and dq not in dqs: E(f"{loc}: director_question_key '{dq}' not defined")
+                for at in p.get("attachment_requirements", []) or []:
+                    if not at.get("requirement"): E(f"{loc}: attachment_requirement missing 'requirement'")
                 for pb in p.get("position_bodies", []):
                     r = pb.get("canonical_body_ref")
                     if r not in bodies: E(f"{loc}: position_bodies ref '{r}' not a declared canonical_body")
@@ -213,8 +218,8 @@ def emit_sql(d):
             out.append(f"INSERT INTO loi_body_parameter (id,canonical_body_id,param_kind,param_key,preferred_value,fallback_value,value_unit,code_status,note) VALUES "
                        f"({q(pid)},{q(bid)},{q(p['param_kind'])},{q(p['param_key'])},{q(p.get('preferred_value'))},{q(p.get('fallback_value'))},{q(p.get('value_unit'))},{q(p.get('code_status','confirmed'))},{q(p.get('note'))});")
             for i, o in enumerate(p.get("options", []) or []):
-                out.append(f"INSERT INTO loi_body_parameter_option (body_parameter_id,option_value,is_free_fill,sort_order) VALUES "
-                           f"({q(pid)},{q(o['option_value'])},{q(o.get('is_free_fill',False))},{q(o.get('sort_order',i))});")
+                out.append(f"INSERT INTO loi_body_parameter_option (body_parameter_id,option_value,is_free_fill,is_omit,sort_order) VALUES "
+                           f"({q(pid)},{q(o.get('option_value'))},{q(o.get('is_free_fill',False))},{q(o.get('is_omit',False))},{q(o.get('sort_order',i))});")
     for s in d.get("selectors", []):
         out.append(f"INSERT INTO loi_selector (selector_field,current_version,note) VALUES ({q(s['selector_field'])},{q(s.get('current_version',1))},{q(s.get('note'))}) ON CONFLICT (selector_field) DO NOTHING;")
         for dv in s.get("domain", []):
@@ -249,6 +254,9 @@ def emit_sql(d):
                 for aw in p.get("applies_when", []):
                     out.append("INSERT INTO loi_applies_when_condition (position_id,condition_group,ref_kind,ref_clause_key,ref_brace_code,ref_field,operator,compare_value,compare_unit,note) VALUES ("
                                f"{q(pid)},{q(aw.get('condition_group',0))},{q(aw['ref_kind'])},{q(aw.get('ref_clause_key'))},{q(aw.get('ref_brace_code'))},{q(aw.get('ref_field'))},{q(aw['operator'])},{q(aw.get('compare_value'))},{q(aw.get('compare_unit'))},{q(aw.get('note'))});")
+                for i, at in enumerate(p.get("attachment_requirements", []) or []):
+                    out.append("INSERT INTO loi_attachment_requirement (position_id,requirement,exhibit_ref,note,sort_order) VALUES ("
+                               f"{q(pid)},{q(at['requirement'])},{q(at.get('exhibit_ref'))},{q(at.get('note'))},{q(at.get('sort_order',i))});")
     out.append("COMMIT;")
     return "\n".join(out)
 

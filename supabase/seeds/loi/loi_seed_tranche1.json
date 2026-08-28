@@ -1,0 +1,1625 @@
+{
+ "_README": [
+  "REAL EXTRACTION - TRANCHE 1 of the 39. Source: LOI_US__2_.docx (national template drop), v1.",
+  "Body text is BYTE-ACCURATE from the drop: heading labels, tabs and [{CODE}] markers removed;",
+  "no {CODE} tokens remain in body_text; {{param:key}} tokens inserted only where the template",
+  "carried a concession fallback or a choose-one fill.",
+  "",
+  "NOT INCLUDED and why:",
+  " - CAM/NNN cam_block segment: BLOCKED on cam_selector_axis (Director).",
+  " - R0/R1 and LCW0/1/2: rent-schedule and landlord-work bodies are tab-delimited multi-row",
+  "   structures; extracting them as segments needs the assembler's column-insert contract first.",
+  " - Southeast CO-SE-BU2/BU3 and the Oculus custom clauses (broker commission, title contingency,",
+  "   recorded documents, future construction, other contingency, sale of property, audit right):",
+  "   sourced from the Southeast doc and Powder Springs, not the national drop - separate tranche.",
+  " - Uncoded standing-default clauses (Term, Percentage Rent, Scheduled Delivery Date, Delivery",
+  "   Date Delays, Construction/Co-Tenancy contingencies, Condition of Premises, Utilities,",
+  "   Hazardous Materials, Pro-Rata Share, Parking, Permit Contingency, Transfer of Property,",
+  "   Alternative Energy, EV Charging, Warranty, Confidentiality): Bucket 3, next tranche.",
+  "",
+  "NEW SHAPE OBSERVED: trash_recycling is a HYBRID - explicitly ranked 'in order of preference'",
+  "AND each rung gated by a deal fact. Modeled as ranked alternatives with applies_when gates.",
+  "Uncoded modifiers carry DESCRIPTIVE segment_key per the audit-identity convention: drive_through_add_on, master_sign_program, alternative_rent_period.",
+  "All template underscore blanks tokenized as param_kind 'fill' so the acceptance test can assert zero unresolved blanks.",
+  "All inline brackets resolved: choose_one / fill / concession params, or stripped as instructions (recorded in extraction_note as wizard tasks, never emitted)."
+ ],
+ "canonical_bodies": [
+  {
+   "ref": "PREM0__ntd__v1__main",
+   "brace_code": "PREM0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Approximately {{param:premises_sqft}} square feet of {{param:premises_config}} retail space measuring {{param:dimensions}} as shown on the attached site plan.  Premises means the interior space of the Premises as measured from the exterior faces of exterior walls and the centerline of any demising walls, together with any patio area shown on the site plan.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "premises_config",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "[CHOOSE: in-line, end-cap, multi-tenant pad OR single-tenant pad]",
+     "options": [
+      {
+       "option_value": "in-line",
+       "is_free_fill": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "end-cap",
+       "is_free_fill": false,
+       "sort_order": 1
+      },
+      {
+       "option_value": "multi-tenant pad",
+       "is_free_fill": false,
+       "sort_order": 2
+      },
+      {
+       "option_value": "single-tenant pad",
+       "is_free_fill": false,
+       "sort_order": 3
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "dimensions",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "[INSERT DIMENSIONS] free-fill (e.g. 00' x 00')"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "premises_sqft",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Approximate rentable square feet"
+    }
+   ]
+  },
+  {
+   "ref": "PREMDT__ntd__v1__drive_through_add_on",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "drive_through_add_on",
+   "body_text": "Tenant will have the right to configure the Premises and, if necessary, the parking area, to provide drive-through service for its customers in accordance with all codes and regulations."
+  },
+  {
+   "ref": "PREMNNN__ntd__v1__premises",
+   "brace_code": "NNN",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "premises_block",
+   "body_text": "Landlord shall provide Tenant with the legal description of the separate tax parcel containing the Building (the “Parcel”)."
+  },
+  {
+   "ref": "L0__ntd__v1__main",
+   "brace_code": "L0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Starbucks standard lease."
+  },
+  {
+   "ref": "L1__ntd__v1__main",
+   "brace_code": "L1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord and Tenant will use Landlord’s form lease as a basis for negotiation.  The terms and conditions of the Landlord’s form lease will be subject to compromise and must be reviewed and approved by Tenant and Tenant’s counsel."
+  },
+  {
+   "ref": "U0__ntd__v1__main",
+   "brace_code": "U0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Any lawful retail or restaurant use, including the sale of beer and wine."
+  },
+  {
+   "ref": "U1__ntd__v1__main",
+   "brace_code": "U1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "A coffee store or any other lawful retail or restaurant use, including the sale of beer and wine, which does not conflict with any written exclusive use granted to another tenant in the {{param:building_or_center}} prior to the date of this Letter of Intent and disclosed to Tenant in writing.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "building_or_center",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "[Building or Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "sort_order": 1
+      }
+     ]
+    }
+   ],
+   "extraction_note": "Instruction '[LANDLORD TO ATTACH LIST OF EXCLUSIVES FOR ALL EXISTING TENANTS, PROHIBITED USES, AND ALL USE RESTRICTIONS TO THE LOI.]' stripped - never emitted. It is an ATTACHMENT REQUIREMENT: selecting U1 obliges Mike to attach the landlord's exclusives/prohibited-uses list. Should surface as a wizard task, not document text."
+  },
+  {
+   "ref": "EU0__ntd__v1__main",
+   "brace_code": "EU0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will not sell or permit any party, other than Tenant, to sell on the {{param:property_or_center}}: (a) whole or ground coffee beans, (b) espresso, espresso-based drinks or coffee-based drinks, (c) tea or tea-based drinks, (d) brewed coffee, and/or (e) blended beverages.  Landlord shall not lease to any other tenant nor use or allow any other person or entity to use any portion of the {{param:property_or_center}} for or in support of any of the uses or activities described on Exhibit N.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "property_or_center",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "[Property/Shopping Center] appears TWICE in this body; one param fills both. Powder Springs shipped with the second occurrence unresolved - this is the defect the zero-brackets gate exists to prevent.",
+     "options": [
+      {
+       "option_value": "Property",
+       "is_free_fill": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "EU1__ntd__v1__main",
+   "brace_code": "EU1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Notwithstanding the foregoing, other tenants on the Property may sell brewed coffee or brewed tea that is neither (i) gourmet nor (ii) brand identified"
+  },
+  {
+   "ref": "EU1__ntd__v1__defs",
+   "brace_code": "EU1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "definitions",
+   "body_text": "For purposes of the Lease, “gourmet” shall be defined as: (a) Arabica bean-based or (b) sourced from a gourmet coffee or tea brand such as Coffee Bean & Tea Leaf, Intelligentsia, Peets, Caribou or similar branding.  “Brand identified” shall mean coffee or tea that is advertised or marketed within the premises by its brand name, or served in a brand-identified cup."
+  },
+  {
+   "ref": "EU2__ntd__v1__main",
+   "brace_code": "EU2",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "and may also sell pre-bottled tea or pre-bottled tea-based drinks."
+  },
+  {
+   "ref": "CO0__ntd__v1__main",
+   "brace_code": "CO0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "None."
+  },
+  {
+   "ref": "CO1__ntd__v1__main",
+   "brace_code": "CO1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "If Tenant ceases operations in the Premises for a period of {{param:co1_cessation_days}} consecutive days, excluding closure(s) due to force majeure, casualty, condemnation, inventory, renovation, remodeling, or assignment of the Lease or subletting of the Premises, then Landlord may recapture the Premises and terminate the Lease upon thirty (30) days prior written notice to Tenant unless Tenant resumes operations in the Premises prior to the expiration of such thirty (30) day notice period, in which case Landlord’s recapture and termination notice shall be null and void.  If Landlord terminates the Lease, Landlord shall reimburse Tenant for the unamortized cost of Tenant’s improvements to the Premises.",
+   "parameters": [
+    {
+     "param_kind": "concession",
+     "param_key": "co1_cessation_days",
+     "preferred_value": "one hundred eighty (180)",
+     "fallback_value": "sixty (60)",
+     "value_unit": "days",
+     "code_status": "confirmed",
+     "note": "Template: cessation period may be reduced to no fewer than sixty (60) consecutive days. Audit: 'unchanged' vs 'conceded 180->60'."
+    }
+   ]
+  },
+  {
+   "ref": "TI0__ntd__v1__main",
+   "brace_code": "TI0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may install such tenant improvements, fixtures, finishes, communications, security devices and internet services infrastructure in, on or about the Premises as Tenant deems necessary or desirable.  Landlord shall cooperate with Tenant for such installations, including giving Tenant access prior to possession."
+  },
+  {
+   "ref": "TI1__ntd__v1__main",
+   "brace_code": "TI1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord acknowledges that it is familiar with Tenant's retail operations and agrees that Tenant may build out the Premises (including installation of Tenant’s communications, security devices and internet services infrastructure in, on or about the Premises) and install signage consistent with Tenant’s then-current trade dress and standards."
+  },
+  {
+   "ref": "TI2__ntd__v1__main",
+   "brace_code": "TI2",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may install such tenant improvements, fixtures and finishes in, on or about the Premises as Tenant deems necessary or desirable.  Landlord will have the right to approve structural changes or changes to the exterior of the Premises, including the storefront, as proposed by Tenant.  Landlord shall cooperate with Tenant and will not unreasonably withhold its approval."
+  },
+  {
+   "ref": "SIGN0__ntd__v1__main",
+   "brace_code": "SIGN0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may install signs in, on and about the Premises to the maximum extent permitted by local law.  Landlord hereby consents to Tenant’s trademarked name(s), colors, letters, font and logo in Tenant’s signage."
+  },
+  {
+   "ref": "SIGN1__ntd__v1__main",
+   "brace_code": "SIGN1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may install signs in, on and about the Premises to the maximum extent permitted by local law and in accordance with Landlord's sign criteria attached hereto provided, however, that notwithstanding any such sign criteria, Landlord hereby consents to Tenant’s trademarked name(s), colors, letters, font and logo in Tenant’s signage."
+  },
+  {
+   "ref": "SIGNMASTER__ntd__v1__master_sign_program",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "master_sign_program",
+   "body_text": "Landlord will obtain Tenant’s input in the design of a master sign program and obtain all necessary approvals to finalize the master sign program by the date that Landlord delivers its plans for the Premises and surrounding areas to Tenant, but no later than one hundred twenty (120) days before the Scheduled Delivery Date."
+  },
+  {
+   "ref": "OS0__ntd__v1__main",
+   "brace_code": "OS0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may set up outdoor seating at no additional rent. In accordance with the attached Landlord Workletter, Landlord will provide a fully permitted {{param:os0_blank_0}} {{param:os0_dimensions}} outdoor seating area immediately adjacent to the Premises containing a minimum of {{param:os0_blank_1}} square feet as depicted on the attached Site Plan and install railings per code {{param:os0_exclusive_use}}.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "os0_blank_0",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "os0_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "os0_dimensions",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "[INSERT DIMENSIONS] of the outdoor seating area"
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "os0_exclusive_use",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source '[OPTIONAL:  for Tenant's exclusive use]'. Empty option omits the phrase.",
+     "options": [
+      {
+       "option_value": "for Tenant's exclusive use",
+       "is_free_fill": false,
+       "sort_order": 0
+      },
+      {
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    }
+   ],
+   "extraction_note": "Instruction '[ATTACH SITE PLAN WITH OUTDOOR SEATING AREA IDENTIFIED]' stripped - attachment requirement, surface as a wizard task."
+  },
+  {
+   "ref": "OS1__ntd__v1__main",
+   "brace_code": "OS1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may set up outdoor seating of a design mutually acceptable to Landlord and Tenant in the common areas adjacent to the Premises at no additional rent."
+  },
+  {
+   "ref": "OS2__ntd__v1__main",
+   "brace_code": "OS2",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "If permitted by applicable law, Tenant may set up outdoor seating in an area mutually acceptable to Landlord and Tenant at no additional rent."
+  },
+  {
+   "ref": "TR0__ntd__v1__main",
+   "brace_code": "TR0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant shall arrange for its own hauling services for trash, recycling, and all other legally required hauling services for Tenant’s waste materials (i.e., composting, glass only, paper only, etc.). Tenant shall pay all costs of such services directly to the provider and such cost shall not be part of the common area maintenance expenses."
+  },
+  {
+   "ref": "TR1__ntd__v1__main",
+   "brace_code": "TR1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will arrange for all hauling services for trash, recycling, and all other legally required hauling services for Tenant’s waste materials (i.e., composting, glass only, paper only, etc.). Tenant shall pay the costs of such services {{param:trash_billing}} and such cost shall not be part of the common area maintenance expenses.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "trash_billing",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [OPTIONS ADD EITHER: directly to the provider OR, WHEN PAID TO LANDLORD: when billed by Landlord as additional rent]",
+     "options": [
+      {
+       "option_value": "directly to the provider",
+       "is_free_fill": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "when billed by Landlord as additional rent",
+       "is_free_fill": false,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "TR2__ntd__v1__main",
+   "brace_code": "TR2",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will arrange for all hauling services for trash, recycling, and all other legally required hauling services for Tenant’s waste materials (i.e., composting, glass only, paper only, etc.). Tenant shall pay its proportionate share of the cost of such services as a part of common area maintenance expenses."
+  },
+  {
+   "ref": "AS0__ntd__v1__main",
+   "brace_code": "AS0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may sublease the Premises or any portion of the Premises or assign the Lease without Landlord's consent.  For purposes of the Lease, any sale or transfer of capital stock including redemption or issuance of additional stock of any class will not be deemed an assignment, subletting or any other transfer of the Lease or the Premises.  Landlord will not be entitled to receive any consideration with respect to any assignment or subletting."
+  },
+  {
+   "ref": "AS0__ntd__v1__stock",
+   "brace_code": "AS0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "stock_transfer",
+   "body_text": "For purposes of the Lease, any sale or transfer of capital stock, including redemption or issuance of additional stock of any class, will not be deemed an assignment, subletting or transfer of the Lease."
+  },
+  {
+   "ref": "AS1__ntd__v1__main",
+   "brace_code": "AS1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant may, without Landlord’s consent, sublet all or any portion of the Premises or assign the Lease to: (a) a parent, subsidiary, affiliate, division or other entity controlling, controlled by, or under common control with Tenant; or (b) a successor entity related to Tenant by merger, consolidation, reorganization or government action; or (c) an entity that acquires not less than ten (10) of Tenant’s locations, operating under the trade name “Starbucks” or any other trade name then used by Tenant.   Landlord will not be entitled to receive any consideration with respect to any assignment or subletting.  Except as stated above, prior to any other assignment or sublet, Tenant shall first notify Landlord of its intent to market the Premises for assignment or sublet.  Upon receipt of such notice, Landlord shall have thirty (30) days to elect to terminate the Lease by notice to Tenant.  Such termination shall be effective ninety (90) days after Tenant’s receipt of such notice.  If Landlord does not elect to terminate the Lease within such thirty (30) days, Tenant shall have the right to sublet all or any portion of the Premises or assign the Lease without Landlord’s consent."
+  },
+  {
+   "ref": "RCD0__ntd__v1__main",
+   "brace_code": "RCD0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant will not commence payment of rent (nor charges for common area maintenance, taxes or insurance) until the date that is {{param:rcd_days}} days following the earlier of: (a) the date Tenant opens for business at the Premises, or (b) {{param:rcd0_blank_0}} ({{param:rcd0_blank_1}}) days after the later of the date: (i) Tenant accepts possession of the Premises with Landlord’s Work (defined by the attached Landlord workletter, and including any permits Landlord is responsible to obtain) complete and a mutually executed possession letter, and (ii) Tenant receives all permits, variances and governmental approvals necessary to construct and operate Tenant's store in the Premises, provided however that notwithstanding the satisfaction of the conditions set forth in the foregoing clause (b)(i) and (ii), the foregoing one hundred twenty (120) day period will be extended on a day-for-day basis for each day that Tenant’s construction of Tenant’s Initial Improvements is delayed due to the occurrence of a Force Majeure event.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "rcd0_blank_0",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "rcd0_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "concession",
+     "param_key": "rcd_days",
+     "preferred_value": "one hundred twenty (120)",
+     "fallback_value": "ninety (90)",
+     "value_unit": "days",
+     "code_status": "confirmed",
+     "note": "Audit: 'unchanged' vs 'conceded 120->90'."
+    }
+   ]
+  },
+  {
+   "ref": "ARP__ntd__v1__alternative_rent_period",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "alternative_rent_period",
+   "body_text": "In the event the Alternative Rent Period continues for more than {{param:arp_days}} days, then either Landlord or Tenant may terminate this Lease by giving the other at least thirty (30) days written notice.  Tenant may nullify Landlord’s election to terminate the Lease electing, by written notice within thirty (30) days after the receipt of Landlord’s notice of termination, to resume paying full Base Rent.",
+   "parameters": [
+    {
+     "param_kind": "concession",
+     "param_key": "arp_days",
+     "preferred_value": "one hundred twenty (120)",
+     "fallback_value": "ninety (90)",
+     "value_unit": "days",
+     "code_status": "confirmed",
+     "note": "Alternative Rent Period duration before either party may terminate. Audit: 'unchanged' vs 'conceded 120->90'."
+    }
+   ]
+  }
+ ],
+ "clauses": [
+  {
+   "clause_key": "premises",
+   "title": "Premises",
+   "bucket": "coded-position",
+   "description": "Base premises description with choose-one config + dimensions; drive-through add-on and single-tenant-parcel legal description are gated modifiers.",
+   "variants": [
+    {
+     "variant_key": "premises",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "PREM0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PREM0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "premises",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Source gate '[FOR DRIVE-THROUGH LOCATIONS, ADD:]' converted to applies_when; instruction text never emitted. Uncoded Starbucks language.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PREMDT__ntd__v1__drive_through_add_on",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "is_drive_through",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "emit only for drive-through locations"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": "NNN",
+       "rank": null,
+       "emit_order": 20,
+       "modifies_clause_id": "premises",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "provisional-pending-director",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": "cam_selector_axis",
+       "internal_note": "Second NNN segment. Source gate '[{NNN} FALLBACK FOR SINGLE TENANT BUILDINGS/SINGLE TENANT PARCEL, ADD:]'. Pairs with the CAM-block NNN segment, which is BLOCKED on cam_selector_axis. Audit reports NNN word-for-word only if BOTH segments match.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": "Gating condition depends on the unresolved CAM axis (building type vs net-vs-triple-net).",
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PREMNNN__ntd__v1__premises",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "single_tenant_parcel",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "provisional gate pending cam_selector_axis"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "lease",
+   "title": "Lease Form",
+   "bucket": "coded-position",
+   "description": "L0 Starbucks standard form; L1 landlord form offered only under landlord posture.",
+   "variants": [
+    {
+     "variant_key": "lease",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "L0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "L0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "L1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "provisional",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": "l1_no_brace_anomaly",
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": "Template writes 'LEASE:  [L1 - FALLBACK IF LANDLORD INSISTS ON USING ITS FORM]' with NO curly braces, unlike every other code in the drop.",
+       "position_bodies": [
+        {
+         "canonical_body_ref": "L1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "landlord_insists_own_form",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "L1 offered only when landlord insists on its form"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "use",
+   "title": "Use",
+   "bucket": "coded-position",
+   "description": "U0 is load-bearing: exit strategy (1) unmodified A&S is void unless Use is U0.",
+   "variants": [
+    {
+     "variant_key": "use",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "U0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "EXIT STRATEGY DEPENDENCY: handbook conditions exit strategy (1) on Use being U0. Conceding to U1 eliminates it.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "U0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "U1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Selecting U1 voids exit strategy (1). With ETR permanently omitted (Bucket 3 standing default), coverage then rests on strategy (3) alone.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "U1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ],
+   "guidance_note": "U0 protects exit strategy (1). Do not concede to U1 without checking remaining exit strategy coverage. NEVER emitted."
+  },
+  {
+   "clause_key": "exclusive_use",
+   "title": "Exclusive Use",
+   "bucket": "coded-position",
+   "description": "EU0 base grant; EU1 carve-out modifier carrying the shared definitions; EU2 modifier requiring EU1.",
+   "variants": [
+    {
+     "variant_key": "exclusive_use",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "EU0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EU0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": "EU1",
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "exclusive_use",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": "eu_defs_placement",
+       "internal_note": "SOURCE DEFECT: 'gourmet' and 'brand identified' are introduced in EU1 but defined inside the EU2 bracket. Definitions relocated to travel with EU1 as segment 'definitions' so EU1 can emit alone without undefined terms.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EU1__ntd__v1__main",
+         "emit_sequence": 0
+        },
+        {
+         "canonical_body_ref": "EU1__ntd__v1__defs",
+         "emit_sequence": 1
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": "EU2",
+       "rank": null,
+       "emit_order": 20,
+       "modifies_clause_id": "exclusive_use",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "EU2 grammatically continues EU1 ('and may also sell...') and cannot stand alone.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EU2__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "position_selection",
+         "ref_clause_key": "exclusive_use",
+         "ref_brace_code": "EU1",
+         "ref_field": null,
+         "operator": "is_selected",
+         "compare_value": null,
+         "compare_unit": null,
+         "note": "EU2 requires EU1"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "continuous_operation",
+   "title": "Continuous Operation",
+   "bucket": "coded-position",
+   "description": "CO0 none (preferred). CO1 confirmed fallback. Southeast back-ups 2 and 3 provisional, seeded separately once Southeast bodies are extracted.",
+   "variants": [
+    {
+     "variant_key": "continuous_operation",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "CO0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "EXIT STRATEGY: CO0 is the only rung preserving strategy (3) no-minimum-operations. With ETR omitted, descending this ladder leaves only strategy (1) A&S.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "CO0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "CO1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": true,
+       "approval_authority": "national-handbook",
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Handbook: ANY continuous operations requirement for any period requires director + store development VP + Real Estate Committee approval. Selecting CO1 eliminates exit strategy (3).",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "CO1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ],
+   "guidance_note": "Southeast back-ups CO-SE-BU2 and CO-SE-BU3 are provisional and pending cam-independent Director confirmation; their bodies come from the Southeast doc and are not in this national-drop tranche. NEVER emitted."
+  },
+  {
+   "clause_key": "tenant_improvements",
+   "title": "Tenant Improvements",
+   "bucket": "coded-position",
+   "description": "TI0 preferred; TI1 adds build-out and signage acknowledgement; TI2 concedes landlord approval rights.",
+   "variants": [
+    {
+     "variant_key": "tenant_improvements",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "TI0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TI0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "TI1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TI1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "TI2",
+       "rank": 2,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Source label: 'LANGUAGE TO BE INCLUDED IF LANDLORD WANTS APPROVAL RIGHTS' - landlord posture, gated rather than freely selectable.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TI2__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "landlord_wants_ti_approval",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "TI2 offered only when landlord seeks approval rights"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "signage",
+   "title": "Signage",
+   "bucket": "coded-position",
+   "description": "SIGN0 preferred; SIGN1 under landlord sign criteria; master sign program modifier ridable on either.",
+   "variants": [
+    {
+     "variant_key": "signage",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "SIGN0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SIGN0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "SIGN1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SIGN1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "landlord_has_sign_criteria",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "SIGN1 offered only where landlord sign criteria exist"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "signage",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Uncoded optional add-on. Source: 'OPTIONAL MASTER SIGN PROGRAM LANGUAGE THAT MAY BE ADDED TO {SIGN0} - {SIGN1}'. Ridable on either position via OR-grouped conditions.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SIGNMASTER__ntd__v1__master_sign_program",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "position_selection",
+         "ref_clause_key": "signage",
+         "ref_brace_code": "SIGN0",
+         "ref_field": null,
+         "operator": "is_selected",
+         "compare_value": null,
+         "compare_unit": null,
+         "note": "ridable on SIGN0"
+        },
+        {
+         "condition_group": 1,
+         "ref_kind": "position_selection",
+         "ref_clause_key": "signage",
+         "ref_brace_code": "SIGN1",
+         "ref_field": null,
+         "operator": "is_selected",
+         "compare_value": null,
+         "compare_unit": null,
+         "note": "OR ridable on SIGN1"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "outdoor_seating",
+   "title": "Outdoor Seating",
+   "bucket": "coded-position",
+   "description": "OS0 preferred (permitted patio provided by landlord); OS1 and OS2 progressively weaker.",
+   "variants": [
+    {
+     "variant_key": "outdoor_seating",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "OS0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "OS0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "OS1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "OS1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "OS2",
+       "rank": 2,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "OS2__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "trash_recycling",
+   "title": "Trash and Recycling",
+   "bucket": "coded-position",
+   "description": "HYBRID: ranked in order of preference per the template, but each rung is also gated by a deal fact (trash area and hauler arrangement).",
+   "variants": [
+    {
+     "variant_key": "trash_recycling",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "TR0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TR0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "trash_arrangement",
+         "operator": "eq",
+         "compare_value": "exclusive_area_tenant_hauler",
+         "compare_unit": null,
+         "note": "IF EXCLUSIVE TRASH AREA AND TENANT PROVIDES HAULER & SERVICES"
+        }
+       ]
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "TR1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TR1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "trash_arrangement",
+         "operator": "eq",
+         "compare_value": "landlord_exclusive_hauler",
+         "compare_unit": null,
+         "note": "IF LANDLORD PROVIDES EXCLUSIVE HAULER & SERVICES"
+        }
+       ]
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "TR2",
+       "rank": 2,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TR2__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "trash_arrangement",
+         "operator": "eq",
+         "compare_value": "shared_area_common_hauler",
+         "compare_unit": null,
+         "note": "IF SHARED TRASH AREA AND LANDLORD PROVIDES COMMON HAULER & SERVICES"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "guidance_note": "Template: 'STARBUCKS SHALL NEGOTIATE ONE OF THE FOLLOWING POSITIONS IN ORDER OF PREFERENCE'. Rank is real; the gates narrow which rungs are available for a given deal. NEVER emitted."
+  },
+  {
+   "clause_key": "assignment_subletting",
+   "title": "Assignment and Subletting",
+   "bucket": "coded-position",
+   "description": "AS0 unrestricted (load-bearing for exit strategy 1); AS1 fallback with enumerated permitted transferees.",
+   "variants": [
+    {
+     "variant_key": "assignment_subletting",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "AS0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "EXIT STRATEGY: unmodified A&S is exit strategy (1), valid only if Use is U0. With ETR omitted this is one of only two remaining strategies.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "AS0__ntd__v1__main",
+         "emit_sequence": 0
+        },
+        {
+         "canonical_body_ref": "AS0__ntd__v1__stock",
+         "emit_sequence": 1
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": "AS1",
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "provisional-pending-director",
+       "authority": "national-handbook",
+       "approval_required": true,
+       "approval_authority": "national-handbook",
+       "firing_mode": "per-deal",
+       "director_question_key": "as_secondary_liability",
+       "internal_note": "Template NOTE following this clause: 'Restrictions of any kind on (A) or (b) transfers will require appropriate approvals.' AS1 restricts transfers, so the approval trigger fires.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": "Secondary-liability treatment is one of the five open Director questions.",
+       "position_bodies": [
+        {
+         "canonical_body_ref": "AS1__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "rent_commencement",
+   "title": "Rent Commencement",
+   "bucket": "coded-position",
+   "description": "Single position; the Alternative Rent Period add-on carries the 120/90 concession parameter.",
+   "variants": [
+    {
+     "variant_key": "rent_commencement",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": "RCD0",
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "RCD0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "rent_commencement",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Template NOTE: 'THE FOLLOWING THREE PARAGRAPHS MAY BE DELETED FOR ANY DRIVE THROUGH LOCATION'. Gated off for drive-through deals.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ARP__ntd__v1__alternative_rent_period",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "is_drive_through",
+         "operator": "eq",
+         "compare_value": "false",
+         "compare_unit": null,
+         "note": "Alternative Rent Period paragraphs may be deleted for drive-through locations"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "director_questions": [
+  {
+   "question_key": "eu_defs_placement",
+   "question_text": "The 'gourmet' and 'brand identified' definitions sit inside the EU2 bracket but the terms are introduced in EU1. Confirm relocating them to travel with EU1 so EU1 can be selected alone without undefined terms.",
+   "status": "open",
+   "date_asked": null,
+   "date_answered": null,
+   "answer_text": null,
+   "authority": "national-handbook"
+  },
+  {
+   "question_key": "cam_selector_axis",
+   "question_text": "Is the CAM1-vs-NNN split driven by building type or by net-vs-triple-net lease structure, and can a single-tenant building ever take NNN? building_type cannot partition until resolved.",
+   "status": "open",
+   "date_asked": null,
+   "date_answered": null,
+   "answer_text": null,
+   "authority": "southeast-regional"
+  },
+  {
+   "question_key": "l1_no_brace_anomaly",
+   "question_text": "LEASE '[L1 - FALLBACK IF LANDLORD INSISTS ON USING ITS FORM]' carries no curly braces unlike every other code in the drop. Template defect or intentional out-of-convention code?",
+   "status": "open",
+   "date_asked": null,
+   "date_answered": null,
+   "answer_text": null,
+   "authority": "national-handbook"
+  },
+  {
+   "question_key": "as_secondary_liability",
+   "question_text": "Assignment and subletting: confirm the secondary-liability treatment on AS1 and whether the template NOTE's approval trigger applies to AS1 as drafted.",
+   "status": "open",
+   "date_asked": null,
+   "date_answered": null,
+   "answer_text": null,
+   "authority": "southeast-regional"
+  }
+ ]
+}

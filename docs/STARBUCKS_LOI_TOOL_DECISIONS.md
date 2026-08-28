@@ -317,6 +317,14 @@ selector and one new pattern:
     (deferred constraint trigger).
   - **plain per-deal free-fill** (premises dimensions `___ x ___`, sqft, address) → `param_kind='fill'`
     (added in _param_kind_fill after tranche 1): no preferred/fallback, no options — a labeled blank.
+    Every template underscore run is tokenized as a `fill` so the acceptance test can assert **zero
+    leftover blanks** alongside zero brackets/codes.
+  - `[OPTIONAL: <phrase>]` inline optional phrase → a `choose_one` with an explicit **omit option**
+    (`is_omit=true`, no value) — distinguishable from a forgotten value. One omit per param.
+- **Attachment requirements** (migration _omit_option_and_attachments): stripped `[ATTACH …]`
+  instructions (U1 exclusives list, OS0 site plan) are obligations, not document text →
+  `loi_attachment_requirement` (position-level) + `loi_attachment_task` view, surfaced as wizard
+  tasks raised by selecting the position. Seed field: `attachment_requirements[]` on the position.
 - **Loader/validator:** `supabase/seeds/loi/load_seed.py` validates a tranche against these rules
   (ref resolution, enums, kind/brace shape, partition exhaustiveness, stray `{...}`/`[...]`) before
   emitting ordered INSERT SQL — catches extraction errors by name, not as raw constraint violations.
@@ -364,7 +372,8 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 38 assertions PASS** across seven migrations:
+**All 43 assertions PASS** across eight migrations (+ tranche 1 loaded: 11 clauses, 28 positions,
+30 bodies, 15 params, 12 applies_when, 3 uncoded add-ons):
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
@@ -381,6 +390,8 @@ the two helper functions instead; see `supabase/dev-only/`).
 - v5 (uncoded-modifier visibility): loi_uncoded_modifier surfaces the add-on by clause+segment
   and excludes custom-owned.
 - v6 (param_kind 'fill'): valid free-fill accepted, fill rejects preferred_value, fill rejects options.
+- v7 (omit option + attachments): omit rejects a value, valid omit accepted, single omit enforced,
+  attachment requires text, attachment surfaces in loi_attachment_task.
 
 **RLS is NOT validated** — `is_internal_user()` was stubbed to `true` for the runs;
 row-level access behavior is unverified until tested against the real helper.
