@@ -36,10 +36,11 @@ export interface BoardColumn {
 }
 
 export interface DailyNumber {
-  attention: number;   // warm + hot
-  yours: number;       // warm/hot where court is us or none
-  theirs: number;      // warm/hot where court is them
-  noHistory: number;   // seeded_fallback / unrated
+  attention: number;    // warm + hot
+  yours: number;        // warm/hot where court is us or none
+  theirs: number;       // warm/hot where court is them
+  unclassified: number; // court not set yet (has a clock)
+  noHistory: number;    // seeded_fallback / no touch data
 }
 
 export interface BoardData {
@@ -94,7 +95,8 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     'Untitled site';
 
   // No activity_state row → treat as "no history" (spec §3.3.1).
-  const ballInCourt: BallInCourt = st?.ball_in_court ?? 'none';
+  // Court null = unclassified — do NOT default to 'none' (spec §5.1).
+  const ballInCourt: BallInCourt | null = st?.ball_in_court ?? null;
   const ballInCourtSince = st?.ball_in_court_since ?? null;
   const blockedOn: BlockedOn | null = st?.blocked_on ?? null;
   const onAgenda = st?.on_agenda ?? false;
@@ -143,10 +145,15 @@ function computeDaily(deals: BoardDeal[]): DailyNumber {
   let attention = 0;
   let yours = 0;
   let theirs = 0;
+  let unclassified = 0;
   let noHistory = 0;
   for (const d of deals) {
     if (d.heat === 'no_history') {
       noHistory++;
+      continue;
+    }
+    if (d.heat === 'unclassified') {
+      unclassified++;
       continue;
     }
     if (needsAttention(d)) {
@@ -155,7 +162,7 @@ function computeDaily(deals: BoardDeal[]): DailyNumber {
       else yours++; // us + none (none is treated as your problem — spec §3.2, §9)
     }
   }
-  return { attention, yours, theirs, noHistory };
+  return { attention, yours, theirs, unclassified, noHistory };
 }
 
 const SELECT = `
@@ -173,7 +180,7 @@ const SELECT = `
 
 export default function useStarbucksBoard(): BoardData {
   const [columns, setColumns] = useState<BoardColumn[]>([]);
-  const [daily, setDaily] = useState<DailyNumber>({ attention: 0, yours: 0, theirs: 0, noHistory: 0 });
+  const [daily, setDaily] = useState<DailyNumber>({ attention: 0, yours: 0, theirs: 0, unclassified: 0, noHistory: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);

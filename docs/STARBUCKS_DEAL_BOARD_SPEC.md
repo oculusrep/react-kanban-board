@@ -63,7 +63,7 @@ The board's heat logic (§5) needs a **hard, trigger-maintained timestamp** — 
 
 | Field | Type | Notes |
 |---|---|---|
-| `ball_in_court` | enum | `us` \| `them` \| `none` |
+| `ball_in_court` | enum, **nullable** | `null` \| `us` \| `them` \| `none`. **`null` = unclassified** (nobody has set who owes) — see the critical note below. |
 | `ball_in_court_party` | text, nullable | Who specifically — "Landlord", "Starbucks RE", "GDOT", "Seller". Free text in v1; may FK to `contact` later. Displayed on the tile. |
 | `ball_in_court_since` | timestamptz | **The clock.** Set whenever `ball_in_court` changes or a reset event (§3.3) fires. |
 
@@ -75,6 +75,8 @@ Rationale for a dedicated set of fields rather than reusing `current_handoff_hol
 Open item §12 asks Mike whether he'd rather the board *drive* `current_handoff_holder`/`deal_synopsis` (single source of truth, more integration work) or stay a clean separate layer (recommended for v1).
 
 `ball_in_court = 'none'` means the deal is genuinely parked with nobody owing anything. It should be rare and it should look suspicious — treat it as "us" for heat purposes. A deal where nobody owes anything is a deal nobody is working.
+
+**CRITICAL — `null` (unclassified) is NOT `'none'`, and must never be silently heated (migration `20260828120000`).** `null` means Mike hasn't told the board who owes yet; `'none'` is a deliberate human classification (parked). Defaulting an unclassified deal into *any* tolerance is a bug — it fabricates heat from data we don't have. So `computeHeat` returns a dedicated **`unclassified`** state for `null`, resolved *before* any tolerance is consulted (spec §5.1): the tile renders neutral with a **"Set the court"** chip (§6.4), is exempt from heat, and is excluded from the "need attention" number (shown as "N to classify", §9). `ball_in_court` is therefore nullable with **no default** — new rows (from a reset-clock touch) start `null` until a human classifies them. This is the same discipline as `seeded_fallback`/"no history" (§3.3.1): the board says "I don't know" rather than guessing.
 
 ### 3.2.1 Pre-Submittal blocker (`blocked_on`)
 
@@ -210,7 +212,9 @@ One clock — `now() - ball_in_court_since` — read through two different toler
 | **Them** | 0–9 days | 10–20 days | 21+ days |
 | **None** | — | 0–2 days | 3+ days |
 
-Store thresholds in a config table or constants file, not inline. Mike will want to tune these after living with the board for a week. (A `loi_config`-style key/value table already exists as precedent for tunable config; a small `deal_board_config` table or a constants module is fine.)
+Store thresholds in a config table or constants file, not inline. Mike will want to tune these after living with the board for a week. (A `loi_config`-style key/value table already exists as precedent for tunable config; a small `deal_board_config` table or a constants module is fine.) Currently in `src/lib/starbucksBoard.ts` (`HEAT_THRESHOLDS`).
+
+**A tolerance is only ever applied to a *classified* deal.** `computeHeat` resolves the exempt states first — `seeded_fallback` → `no_history`, `blocked_on='ready'` → hot, `ball_in_court IS NULL` → `unclassified` — and only reaches the table above for `us`/`them`/`none`. An unclassified deal is never assigned a tolerance (§3.2).
 
 ### 5.2 The chip text differs, the color does not
 
@@ -292,7 +296,12 @@ The **agenda star** (top-right) toggles `on_agenda` (§3.2.2). Filled when starr
 
 Site name source: prefer the deal's linked `property`/`site_submit` site name; fall back to `deal.deal_name`. City comes from the linked property. (Confirm exact field during build.)
 
-**"No history" tile state (§3.3.1).** A `seeded_fallback` tile (or a deal with no `deal_activity_state` row) is neither cool nor hot — its clock is unknown. Render it distinctly: a **dashed** 6px left edge in `--text-dim` (not a solid heat bar), and in place of the court chip + day count, a single dim **"no history"** label. No day count (there's no real clock to show). It should read as "unrated," quietly — not alarming, but clearly not a worked-and-cool tile. Sorts to the bottom of its column (§5.3).
+**Two "unrated" tile states — both quiet, but distinct:**
+
+- **Unclassified (`ball_in_court IS NULL`, §3.2).** The deal has a real clock but no assigned court. Render a **solid** 6px `--text-dim` left bar and, in place of the court chip, a `{days}d` figure plus a **"Set the court →"** prompt in `--text` (a legible nudge, not an alarm — no warm/hot color). It is a call to action, not a warning.
+- **"No history" (`seeded_fallback`, §3.3.1).** No touch data at all (placeholder clock). Render a **dashed** 6px `--text-dim` left edge and a single dim **"no history"** label — no day count. It reads as "we don't know yet."
+
+Both are neither cool nor hot, sort to the bottom of their column (§5.3), and are excluded from the daily number (§9). Neither is ever heated by a tolerance.
 
 Do not add: last note preview, deal value, next action text, contact avatars, stage name (the column says it). Every one of these will be suggested and every one of them costs legibility.
 
@@ -349,7 +358,7 @@ Count of tiles that are warm or hot. This is the game — the target is zero, an
 
 Below it in dim text: `4 yours · 5 theirs`. The split matters, because five deals waiting on landlords is a very different day from five deals waiting on Mike.
 
-**"No history" deals are not counted here** — their clock is a placeholder, so they can't be "warm/hot" (§3.3.1). Show them as a separate dim tail on the same line, e.g. `4 yours · 5 theirs · 27 no history`. That number should shrink toward zero on its own as deals get their first real touch, which is its own kind of win.
+**Unclassified and "no history" deals are not counted here** — an unclassified deal has no assigned court and a no-history deal has a placeholder clock, so neither can be "warm/hot" (§3.2, §3.3.1). Show them as a dim tail on the same line, e.g. `4 yours · 5 theirs · 23 to classify · 27 no history`. Both tails should shrink toward zero as deals get classified / get their first real touch — each is its own kind of win.
 
 ### 9.1 Agenda control
 

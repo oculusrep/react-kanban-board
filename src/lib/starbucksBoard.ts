@@ -28,7 +28,11 @@ export type BlockedOn =
   | 'under_contract'
   | 'info'
   | 'ready';
-export type Heat = 'no_history' | 'cool' | 'warm' | 'hot';
+// 'unclassified' = ball_in_court is NULL (Mike hasn't set who owes). Distinct
+// from 'no_history' (no touch data at all). Both are exempt from heat, but
+// unclassified is actionable ("Set the court") whereas no_history is "needs a
+// first touch". Neither is silently defaulted to a tolerance (spec §5.1).
+export type Heat = 'no_history' | 'unclassified' | 'cool' | 'warm' | 'hot';
 
 export interface BoardDeal {
   id: string;
@@ -36,7 +40,7 @@ export interface BoardDeal {
   city: string | null;
   stageLabel: string;
   stageSortOrder: number;
-  ballInCourt: BallInCourt;
+  ballInCourt: BallInCourt | null;   // null = unclassified
   ballInCourtParty: string | null;
   ballInCourtSince: string | null; // ISO
   blockedOn: BlockedOn | null;
@@ -97,16 +101,20 @@ export function daysSince(iso: string | null, now: Date = new Date()): number {
   return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
-// Heat for a deal (spec §5.1, §5.3). seeded_fallback / no row → no_history
-// (exempt from heat). blocked_on='ready' → always hot (spec §3.2.1, §5.3).
+// Heat for a deal (spec §5.1, §5.3). Precedence:
+//   seeded_fallback / no row  → no_history (exempt; no clock at all)
+//   blocked_on = 'ready'      → hot ("Submit it", regardless of clock — §3.2.1)
+//   ball_in_court IS NULL     → unclassified (exempt; NEVER default to a tolerance)
+//   otherwise                 → the ball_in_court tolerance
 export function computeHeat(d: {
   seededFallback: boolean;
   blockedOn: BlockedOn | null;
-  ballInCourt: BallInCourt;
+  ballInCourt: BallInCourt | null;
   days: number;
 }): Heat {
   if (d.seededFallback) return 'no_history';
   if (d.blockedOn === 'ready') return 'hot';
+  if (d.ballInCourt === null) return 'unclassified';
   const t = HEAT_THRESHOLDS[d.ballInCourt];
   if (d.ballInCourt === 'none') return d.days >= t.hot ? 'hot' : 'warm';
   if (d.days >= t.hot) return 'hot';
@@ -114,7 +122,9 @@ export function computeHeat(d: {
   return 'cool';
 }
 
-const HEAT_RANK: Record<Heat, number> = { hot: 3, warm: 2, cool: 1, no_history: 0 };
+// Sort rank. unclassified sits just above no_history (both below cool) — an
+// unclassified deal at least has a clock, so it outranks a historyless one.
+const HEAT_RANK: Record<Heat, number> = { hot: 4, warm: 3, cool: 2, unclassified: 1, no_history: 0 };
 
 // Ordering within a column/subhead (spec §5.3): hottest first, then days desc.
 // no_history sinks to the bottom.
@@ -129,13 +139,15 @@ export function courtLabel(d: BoardDeal): string {
   if (d.ballInCourtParty) return d.ballInCourtParty;
   if (d.ballInCourt === 'us') return 'You';
   if (d.ballInCourt === 'them') return 'Them';
-  return 'No one';
+  if (d.ballInCourt === 'none') return 'No one';
+  return 'Unset';
 }
 
-// The instruction verb (spec §5.2 + the 'ready' case §5.3). Null when the tile
-// is calm enough to need no instruction.
+// The instruction verb (spec §5.2 + the 'ready' §5.3 and unclassified §5.1
+// cases). Null when the tile is calm enough to need no instruction.
 export function instruction(d: BoardDeal): string | null {
   if (d.blockedOn === 'ready') return 'Submit it';
+  if (d.heat === 'unclassified') return 'Set the court';
   if (d.heat === 'hot' && d.ballInCourt === 'us') return 'You owe a move';
   if (d.heat === 'hot' && d.ballInCourt === 'them') return 'Chase them';
   if ((d.heat === 'warm' || d.heat === 'hot') && d.ballInCourt === 'none')
@@ -147,16 +159,20 @@ export function needsAttention(d: BoardDeal): boolean {
   return d.heat === 'warm' || d.heat === 'hot';
 }
 
-// The left-edge heat bar color + fill tint (spec §6.2). Cool/no_history are
-// quiet; energy is spent on warm/hot.
+// The left-edge heat bar + tile fill (spec §6.2). Cool/unclassified/no_history
+// are quiet (base tile fill); the energy is spent on warm/hot tints. The bar
+// distinguishes the quiet states: none (cool), solid dim (unclassified),
+// dashed dim (no_history).
 export function heatStyle(heat: Heat): { bar: string; dashed: boolean; fill: string } {
   switch (heat) {
     case 'hot':
       return { bar: PALETTE.hot, dashed: false, fill: 'rgba(214,69,60,0.18)' };
     case 'warm':
       return { bar: PALETTE.warm, dashed: false, fill: 'rgba(217,137,31,0.12)' };
+    case 'unclassified':
+      return { bar: PALETTE.textDim, dashed: false, fill: PALETTE.tileCool };
     case 'no_history':
-      return { bar: PALETTE.textDim, dashed: true, fill: 'transparent' };
+      return { bar: PALETTE.textDim, dashed: true, fill: PALETTE.tileCool };
     case 'cool':
     default:
       return { bar: 'transparent', dashed: false, fill: PALETTE.tileCool };

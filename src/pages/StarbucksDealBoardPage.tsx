@@ -79,7 +79,7 @@ function Header({
   lastSynced,
   onRefresh,
 }: {
-  daily: { attention: number; yours: number; theirs: number; noHistory: number };
+  daily: { attention: number; yours: number; theirs: number; unclassified: number; noHistory: number };
   agendaCount: number;
   agendaOnly: boolean;
   onToggleAgenda: () => void;
@@ -110,7 +110,7 @@ function Header({
           {daily.attention} <span style={{ fontSize: 18, color: PALETTE.textDim }}>need attention</span>
         </div>
         <div className="text-sm" style={{ color: PALETTE.textDim }}>
-          {daily.yours} yours · {daily.theirs} theirs · {daily.noHistory} no history
+          {daily.yours} yours · {daily.theirs} theirs · {daily.unclassified} to classify · {daily.noHistory} no history
         </div>
         <button
           onClick={onRefresh}
@@ -170,16 +170,12 @@ function Subhead({ sh }: { sh: BoardSubhead }) {
 // ---- Tile (spec §6.4) -----------------------------------------------------
 function Tile({ deal }: { deal: BoardDeal }) {
   const hs = heatStyle(deal.heat);
-  const noHistory = deal.heat === 'no_history';
   const verb = instruction(deal);
 
   return (
     <div
       className="relative rounded-md px-3 py-2"
-      style={{
-        backgroundColor: deal.heat === 'cool' || noHistory ? PALETTE.tileCool : hs.fill,
-        minHeight: 76,
-      }}
+      style={{ backgroundColor: hs.fill, minHeight: 76 }}
     >
       {/* heat bar */}
       <div
@@ -208,8 +204,17 @@ function Tile({ deal }: { deal: BoardDeal }) {
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2" style={{ fontSize: 12 }}>
-          {noHistory ? (
+          {deal.heat === 'no_history' ? (
             <span style={{ color: PALETTE.textDim }}>no history</span>
+          ) : deal.heat === 'unclassified' ? (
+            <>
+              <span style={{ color: PALETTE.textDim }} className="tabular-nums">
+                {deal.days}d
+              </span>
+              <span style={{ color: PALETTE.text, fontWeight: 600 }} className="whitespace-nowrap">
+                Set the court →
+              </span>
+            </>
           ) : (
             <>
               <span style={{ color: PALETTE.textDim }} className="tabular-nums truncate">
