@@ -341,6 +341,8 @@ The three buttons are the whole point. Cooling a tile must take under ten second
 
 Writes are done directly here rather than reusing `NoteFormModal` (which is a heavier, light-themed modal) — the slide-over's inline fields keep "cool a tile" under ten seconds.
 
+**Stage change (build step 7, not yet built).** The slide-over will also carry a **stage dropdown** (four board stages + Lost → `deal.stage_id`, not drag-and-drop) so a miscategorized deal can be re-filed without leaving the board. This is the first board write to shared pipeline data and needs a confirm when it moves a deal off the board — see [STARBUCKS_DEAL_BOARD_DECISIONS.md](STARBUCKS_DEAL_BOARD_DECISIONS.md) §D1.
+
 ---
 
 ## 8. Refresh behavior
@@ -381,9 +383,11 @@ Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live 
 4. **Real heat calculation** (client-side from `ball_in_court_since`).
 5. ~~**Slide-over panel**~~ **DONE:** `DealSlideOver.tsx` — Change court (+ blocker with implied-court pre-select), Log a note, Set next action, recent notes, current open action, Open full deal. Tile click opens it; star toggles `on_agenda`. Dense-tile density fix for Pre-Submittal (§4.1). Typechecks clean; build passes.
 6. **Realtime subscription** (Supabase realtime on `deal_activity_state`/`activity`/`note_object_link`/`task`).  ← **next**
-7. **The daily number** — already rendered in step 3 (header). Refinements only.
+7. **Stage change from the slide-over** — a **dropdown** of the four board stages **+ Lost**, writing `deal.stage_id`. **Not drag-and-drop.** Reverses the v1 deferral of stage changes (§2); rationale + landmines in [STARBUCKS_DEAL_BOARD_DECISIONS.md](STARBUCKS_DEAL_BOARD_DECISIONS.md) §D1. **First board write to shared pipeline data** (not `deal_activity_state`) — it propagates to `site_submit` via the existing stage sync. Moving a deal **off** the four board stages removes it from the board → **require a confirm** for that case.
 
-Steps 1–5 are the shippable core — **done**. Live on the TV, then realtime.
+(The daily number, §9, was delivered in step 3's header — no separate step.)
+
+Steps 1–5 are the shippable core — **done**. Live on the TV, then realtime (6), then stage change (7).
 
 ---
 
