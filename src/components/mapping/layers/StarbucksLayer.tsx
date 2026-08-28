@@ -90,8 +90,8 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
 }) => {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [stores, setStores] = useState<StarbucksStoreWithSnapshot[]>([]);
-  const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
-  const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const clustererRef = useRef<MarkerClusterer | null>(null);
   const [openPopup, setOpenPopup] = useState<{
     store: StarbucksStoreWithSnapshot;
     overlay: google.maps.OverlayView;
@@ -285,14 +285,30 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
     };
   }, [map, isVisible, fetchStores]);
 
+  // Fully remove the current batch from the map. Uses clusterer.setMap(null)
+  // (→ OverlayView.onRemove → reset), which deletes every cluster glyph and
+  // detaches every marker UNCONDITIONALLY. clusterer.clearMarkers() is not
+  // enough: its glyph removal runs through render(), which is guarded by
+  // `map.getProjection()`. When the projection is momentarily unavailable
+  // (right after a toggle, before the map settles) that render no-ops and the
+  // cluster glyphs linger until the next map idle — the "won't turn off until
+  // I move the map" bug.
+  const teardownMarkers = useCallback(() => {
+    if (clustererRef.current) {
+      clustererRef.current.setMap(null);
+      clustererRef.current = null;
+    }
+    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current = [];
+  }, []);
+
   // Create markers
   useEffect(() => {
     if (!map) return;
 
     // Always tear down the previous batch first, before deciding whether to
     // rebuild. This runs when `stores` changes AND when `isVisible` flips.
-    if (clusterer) clusterer.clearMarkers();
-    markers.forEach(m => m.setMap(null));
+    teardownMarkers();
 
     // Don't build markers for a hidden layer. An in-flight fetch (map-idle
     // refresh) can resolve and repopulate `stores` AFTER the layer is toggled
@@ -300,13 +316,16 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
     // and nothing would remove them until a manual map refresh.
     if (!isVisible || !stores.length) return;
 
+    const clusteringDisabled = clusterConfig && clusterConfig.minimumClusterSize >= 100;
+
     const newMarkers: google.maps.Marker[] = stores
       .filter(s => s.latitude && s.longitude)
       .map(store => {
         const isSelected = selectedStoreNumber === store.store_number;
         const marker = new google.maps.Marker({
+          // Clustered markers are placed by the clusterer; unclustered go straight on the map.
           position: { lat: store.latitude!, lng: store.longitude! },
-          map: null,
+          map: clusteringDisabled ? map : null,
           title: store.store_name || `Store ${store.store_number}`,
           icon: logoUrl ? createLogoIcon(logoUrl, isSelected) : createFallbackIcon(isSelected),
           zIndex: isSelected ? 3000 : 100,
@@ -332,63 +351,36 @@ const StarbucksLayer: React.FC<StarbucksLayerProps> = ({
         return marker;
       });
 
-    setMarkers(newMarkers);
+    markersRef.current = newMarkers;
 
-    const clusteringDisabled = clusterConfig && clusterConfig.minimumClusterSize >= 100;
-
-    if (newMarkers.length > 0) {
-      if (clusteringDisabled) {
-        if (isVisible) newMarkers.forEach(m => m.setMap(map));
-      } else {
-        const renderer = {
-          render: ({ count, position }: { count: number; position: google.maps.LatLng }) => {
-            const svg = `
-              <svg fill="${STARBUCKS_GREEN}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
-                <circle cx="120" cy="120" opacity=".6" r="70" />
-                <circle cx="120" cy="120" opacity=".3" r="90" />
-                <circle cx="120" cy="120" opacity=".2" r="110" />
-                <text x="50%" y="50%" style="fill:#fff" text-anchor="middle" font-size="50" dominant-baseline="middle" font-family="roboto,arial,sans-serif">${count}</text>
-              </svg>`;
-            return new google.maps.Marker({
-              position,
-              icon: {
-                url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-                scaledSize: new google.maps.Size(45, 45),
-              },
-              zIndex: Number(google.maps.Marker.MAX_ZINDEX) + count,
-            });
-          },
-        };
-        const newClusterer = new MarkerClusterer({ map, markers: [], renderer });
-        setClusterer(newClusterer);
-      }
+    if (newMarkers.length > 0 && !clusteringDisabled) {
+      const renderer = {
+        render: ({ count, position }: { count: number; position: google.maps.LatLng }) => {
+          const svg = `
+            <svg fill="${STARBUCKS_GREEN}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+              <circle cx="120" cy="120" opacity=".6" r="70" />
+              <circle cx="120" cy="120" opacity=".3" r="90" />
+              <circle cx="120" cy="120" opacity=".2" r="110" />
+              <text x="50%" y="50%" style="fill:#fff" text-anchor="middle" font-size="50" dominant-baseline="middle" font-family="roboto,arial,sans-serif">${count}</text>
+            </svg>`;
+          return new google.maps.Marker({
+            position,
+            icon: {
+              url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+              scaledSize: new google.maps.Size(45, 45),
+            },
+            zIndex: Number(google.maps.Marker.MAX_ZINDEX) + count,
+          });
+        },
+      };
+      clustererRef.current = new MarkerClusterer({ map, markers: newMarkers, renderer });
     }
-  }, [stores, selectedStoreNumber, map, createPopupOverlay, clusterConfig, logoUrl, isVisible]);
-
-  // Visibility toggle
-  useEffect(() => {
-    if (!map || !markers.length) return;
-    const clusteringDisabled = clusterConfig && clusterConfig.minimumClusterSize >= 100;
-
-    if (isVisible) {
-      if (clusteringDisabled || !clusterer) {
-        markers.forEach(m => { if (m.getMap() !== map) m.setMap(map); });
-      } else {
-        clusterer.addMarkers(markers);
-      }
-    } else {
-      clusterer?.clearMarkers();
-      markers.forEach(m => m.setMap(null));
-    }
-  }, [isVisible, markers, clusterer, map, clusterConfig]);
+  }, [stores, selectedStoreNumber, map, createPopupOverlay, clusterConfig, logoUrl, isVisible, teardownMarkers]);
 
   // Cleanup
   useEffect(() => {
-    return () => {
-      clusterer?.clearMarkers();
-      markers.forEach(m => m.setMap(null));
-    };
-  }, []);
+    return () => teardownMarkers();
+  }, [teardownMarkers]);
 
   return null;
 };
