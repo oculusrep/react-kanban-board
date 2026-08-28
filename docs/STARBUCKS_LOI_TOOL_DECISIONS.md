@@ -206,11 +206,21 @@ migration risk).
 
 - **Reproduce Powder Springs Rd v1 LOI** (incl. Word comments + Workletter scope matrix)
   from a wizard run — the acceptance test.
-- **Emitted output must contain ZERO unresolved `[...]` brackets and ZERO `{...}` brace codes.**
-  Any remaining → **fail assembly, do not ship.** (Real justification: the Powder Springs LOI went
-  to the landlord with an unresolved `[Property/Shopping Center]` in the last sentence of Exclusive
-  Use — first occurrence resolved to "Shopping Center", the second left raw. That leak is exactly
-  what this tool exists to prevent.)
+- **Emitted output must contain ZERO residual template constructs. Three assertions:**
+  1. Zero `[...]` square-bracket instructions/fills.
+  2. Zero `{...}` curly constructs of ANY kind — `{CODE}` markers **and** curly-brace non-code forms
+     like `{Choose: Building or Shopping Center}` (tranche 2, Ongoing Co-Tenancy). This form is
+     neither `[...]` nor a `{CODE}` pattern, so it needs its own assertion. **Sweep the drop for
+     other curly-brace constructs before Powder Springs runs.**
+  3. Zero leftover underscore-blank runs (`____`) — every template blank is a tokenized `fill`, so an
+     un-filled blank means an unresolved parameter.
+  Any residual → **fail assembly, do not ship.** (Real justification: the Powder Springs LOI shipped
+  with an unresolved `[Property/Shopping Center]` — the exact leak this exists to prevent.)
+- **Approval firing modes render distinctly in the audit:** `per-deal` (fires on selecting this
+  position — coded fallback rungs), `standing-acknowledged` (a once-decided owned deviation, e.g. ETR
+  omission), and **`on-deviation`** (fires only if a standing default is emitted MODIFIED — e.g.
+  Hazardous Materials, which has no fallback). `on-deviation` combines with word-for-word-vs-modified
+  so approval is flagged only when the position actually deviates.
 
 ## Pass-one build contract
 
@@ -372,8 +382,8 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 43 assertions PASS** across eight migrations (+ tranche 1 loaded: 11 clauses, 28 positions,
-30 bodies, 15 params, 12 applies_when, 3 uncoded add-ons):
+**All 43 assertions PASS** across nine migrations (+ tranche 1 top-up loaded: 11 clauses, 28
+positions, 30 bodies, 15 params, 12 applies_when, 3 uncoded add-ons, 2 attachment obligations):
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector

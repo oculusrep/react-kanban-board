@@ -21,7 +21,8 @@
   "AND each rung gated by a deal fact. Modeled as ranked alternatives with applies_when gates.",
   "Uncoded modifiers carry DESCRIPTIVE segment_key per the audit-identity convention: drive_through_add_on, master_sign_program, alternative_rent_period.",
   "All template underscore blanks tokenized as param_kind 'fill' so the acceptance test can assert zero unresolved blanks.",
-  "All inline brackets resolved: choose_one / fill / concession params, or stripped as instructions (recorded in extraction_note as wizard tasks, never emitted)."
+  "All inline brackets resolved: choose_one / fill / concession params, or stripped as instructions (recorded in extraction_note as wizard tasks, never emitted).",
+  "Adopted is_omit on choose_one options and attachment_requirements[] on positions (U1 exclusives list, OS0 site plan)."
  ],
  "canonical_bodies": [
   {
@@ -42,22 +43,26 @@
       {
        "option_value": "in-line",
        "is_free_fill": false,
-       "sort_order": 0
+       "sort_order": 0,
+       "is_omit": false
       },
       {
        "option_value": "end-cap",
        "is_free_fill": false,
-       "sort_order": 1
+       "sort_order": 1,
+       "is_omit": false
       },
       {
        "option_value": "multi-tenant pad",
        "is_free_fill": false,
-       "sort_order": 2
+       "sort_order": 2,
+       "is_omit": false
       },
       {
        "option_value": "single-tenant pad",
        "is_free_fill": false,
-       "sort_order": 3
+       "sort_order": 3,
+       "is_omit": false
       }
      ]
     },
@@ -135,17 +140,18 @@
       {
        "option_value": "Building",
        "is_free_fill": false,
-       "sort_order": 0
+       "sort_order": 0,
+       "is_omit": false
       },
       {
        "option_value": "Shopping Center",
        "is_free_fill": false,
-       "sort_order": 1
+       "sort_order": 1,
+       "is_omit": false
       }
      ]
     }
-   ],
-   "extraction_note": "Instruction '[LANDLORD TO ATTACH LIST OF EXCLUSIVES FOR ALL EXISTING TENANTS, PROHIBITED USES, AND ALL USE RESTRICTIONS TO THE LOI.]' stripped - never emitted. It is an ATTACHMENT REQUIREMENT: selecting U1 obliges Mike to attach the landlord's exclusives/prohibited-uses list. Should surface as a wizard task, not document text."
+   ]
   },
   {
    "ref": "EU0__ntd__v1__main",
@@ -165,12 +171,14 @@
       {
        "option_value": "Property",
        "is_free_fill": false,
-       "sort_order": 0
+       "sort_order": 0,
+       "is_omit": false
       },
       {
        "option_value": "Shopping Center",
        "is_free_fill": false,
-       "sort_order": 1
+       "sort_order": 1,
+       "is_omit": false
       }
      ]
     }
@@ -314,16 +322,18 @@
       {
        "option_value": "for Tenant's exclusive use",
        "is_free_fill": false,
+       "is_omit": false,
        "sort_order": 0
       },
       {
+       "option_value": null,
+       "is_free_fill": false,
        "is_omit": true,
        "sort_order": 1
       }
      ]
     }
-   ],
-   "extraction_note": "Instruction '[ATTACH SITE PLAN WITH OUTDOOR SEATING AREA IDENTIFIED]' stripped - attachment requirement, surface as a wizard task."
+   ]
   },
   {
    "ref": "OS1__ntd__v1__main",
@@ -367,12 +377,14 @@
       {
        "option_value": "directly to the provider",
        "is_free_fill": false,
-       "sort_order": 0
+       "sort_order": 0,
+       "is_omit": false
       },
       {
        "option_value": "when billed by Landlord as additional rent",
        "is_free_fill": false,
-       "sort_order": 1
+       "sort_order": 1,
+       "is_omit": false
       }
      ]
     }
@@ -740,7 +752,14 @@
          "emit_sequence": 0
         }
        ],
-       "applies_when": []
+       "applies_when": [],
+       "attachment_requirements": [
+        {
+         "requirement": "Landlord to attach list of exclusives for all existing tenants, prohibited uses, and all use restrictions to the LOI.",
+         "exhibit_ref": null,
+         "note": "Source instruction in the U1 bracket; never emitted as document text. Obligation falls on the landlord and must be collected before the LOI is complete."
+        }
+       ]
       }
      ]
     }
@@ -1224,7 +1243,14 @@
          "emit_sequence": 0
         }
        ],
-       "applies_when": []
+       "applies_when": [],
+       "attachment_requirements": [
+        {
+         "requirement": "Attach site plan with outdoor seating area identified.",
+         "exhibit_ref": null,
+         "note": "Source instruction in the OS0 bracket; never emitted. Attachment must accompany the LOI when OS0 is selected."
+        }
+       ]
       },
       {
        "position_kind": "alternative",
