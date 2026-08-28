@@ -1,0 +1,1306 @@
+{
+ "_README": [
+  "REAL EXTRACTION - TRANCHE 2 of the 39. Source: LOI_US__2_.docx (national-template-drop, v1).",
+  "BUCKET 3 STANDING DEFAULTS: uncoded clauses with no ladder and no choice. They carry no brace",
+  "code because Starbucks offers no alternative position - they preload into Position 1 and the",
+  "wizard never prompts on them. Only their per-deal fills are asked.",
+  "",
+  "All bodies byte-accurate; heading labels stripped; zero brackets, zero underscore blanks,",
+  "zero stray codes. Bracket types resolved: choose_one, OPTIONAL->choose_one with is_omit,",
+  "free-fill blanks, all-caps instructions stripped to attachment_requirements[].",
+  "",
+  "NEW PATTERN: Ongoing Co-Tenancy used CURLY braces '{Choose:  Building or Shopping Center}',",
+  "not square brackets. This slips past BOTH the zero-[brackets] gate and the {CODE} gate.",
+  "The acceptance test needs a third assertion: no residual '{Choose:' or bare '{...}' of any form.",
+  "Fixes: SDD collapsed to one fill; condition_of_premises and permit_contingency optional phrases given is_omit options; hazardous_materials re-keyed firing_mode 'on-deviation'."
+ ],
+ "canonical_bodies": [
+  {
+   "ref": "LANDLORD_PROPERTY_INTEREST__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "{{param:landlord_property_interest_choose_1}}",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "landlord_property_interest_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [Fee/Ground Lease/Under Contract to Purchase]",
+     "options": [
+      {
+       "option_value": "Fee",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Ground Lease",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      },
+      {
+       "option_value": "Under Contract to Purchase",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "TERM__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Ten (10) years plus four (4) consecutive five (5)-year unconditional options to extend the term. If the last day of the first Lease Year falls between September 1 and January 31, then the first Lease Year shall be extended to end on the last day in February and each subsequent Lease Year shall begin on March 1. To exercise an extension option, Tenant shall give Landlord notice at least ninety (90) days prior to the then-current expiration date. Tenant may exercise more than one option at a time."
+  },
+  {
+   "ref": "TERM__ntd__v1__cont_1",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "cont_1",
+   "body_text": "The rent schedule below is inclusive of all charges other than taxes, insurance and common area maintenance expenses and Tenant will not pay any other charges to Landlord except those described in this letter."
+  },
+  {
+   "ref": "PERCENTAGE_RENT__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "None."
+  },
+  {
+   "ref": "SCHEDULED_DELIVERY_DATE__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will deliver possession of the Premises (with Landlord’s Work complete pursuant to Landlord Workletter, attached) to Tenant on {{param:scheduled_delivery_date}}.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "scheduled_delivery_date",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Template: 'to Tenant on _________ [INSERT FIXED DATE].' The underscore run is the blank; the bracket was an instruction naming what fills it, not content. One fill."
+    }
+   ]
+  },
+  {
+   "ref": "DELIVERY_DATE_DELAYS__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "In the event that Landlord fails to deliver the Premises with Landlord’s Work complete within fourteen (14) days after the Scheduled Delivery Date, in addition to any rights and remedies in the Landlord Workletter, Tenant will be entitled to five (5) days of free rent for each day of delay accruing from the Scheduled Delivery Date until the day Landlord delivers possession of the Premises to Tenant with all Landlord’s Work completed in accordance with the Lease and Landlord shall deliver payment to Tenant within twenty (20) days of Landlord’s receipt of Tenant’s written request. If Landlord fails to deliver possession of the Premises with Landlord’s Work complete within thirty (30) days of the Scheduled Delivery Date, Tenant may terminate the Lease, whereupon Landlord will pay Tenant an amount equal to the accrued free rent and Landlord will reimburse Tenant for all of Tenant’s expenses incurred in connection with the Lease, including, without limitation, site selection, design and lease negotiation costs and expenses, including the allocated cost of in-house personnel."
+  },
+  {
+   "ref": "CONSTRUCTION_CONTINGENCY__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant will not be obligated to pay rent, common area maintenance charges, or any other charges, nor operate for business in the Premises, until construction of all common areas and parking areas is complete (including removal of construction equipment and debris and any remaining Landlord construction items which prevent Tenant from obtaining its certificate of occupancy); provided, however, that Tenant may elect to operate before such conditions are satisfied, in which event the lease term will commence and Tenant will be entitled to a reduction in rent by fifty percent (50%) until the conditions are satisfied, whereupon Tenant will commence to pay full rent. In the event such conditions are not satisfied for a period of six (6) consecutive months, Tenant may terminate the Lease, whereupon Landlord will reimburse Tenant for all of Tenant’s unamortized expenses incurred in connection with the Lease, including, without limitation, site selection, design and lease negotiation costs and expenses, including the allocated cost of in-house personnel."
+  },
+  {
+   "ref": "INITIAL_COTENANCY__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant will not be obligated to pay rent, common area maintenance charges, or any other charges, nor operate for business in the Premises, until: (a) at least eighty percent (80%) of the gross leasable area of the {{param:initial_cotenancy_choose_1}}, excluding Tenant, {{param:initial_cotenancy_optional_2}} is/are occupied and operating for business (for at least eight (8) hours per day, six (6) days per week); provided, however, that Tenant may elect to operate before such conditions are satisfied, in which event the lease term will commence and Tenant will be entitled to a reduction in rent by fifty percent (50%) until the conditions are satisfied, whereupon Tenant will commence to pay full rent. In the event such conditions are not satisfied for a period of six (6) consecutive months, Tenant may terminate the Lease, whereupon Landlord will reimburse Tenant for all of Tenant’s unamortized expenses incurred in connection with the Lease, including, without limitation, site selection, design and lease negotiation costs and expenses, including the allocated cost of in-house personnel.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "initial_cotenancy_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  Building OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "CHOOSE:  Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "initial_cotenancy_optional_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [OPTIONAL:  and/or __________________ [IDENTIFY KEY TENANT(S)]",
+     "options": [
+      {
+       "option_value": "and/or __________________ [IDENTIFY KEY TENANT(S)",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "ONGOING_COTENANCY__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "In the event that at any time during the term of the Lease the occupancy of the {{param:ongoing_cotenancy_choose_1}} is less than fifty percent (50%) of the gross leasable area of the {{param:ongoing_cotenancy_choose_1}} (including the Premises) occupied by tenants or occupants who are operating at least six (6) days per week and eight (8) hours per day, rent due under the Lease shall be reduced by fifty percent (50%) until the specified conditions are satisfied. If the conditions remain unsatisfied for 180 consecutive days, Tenant may terminate the Lease, whereupon Landlord will reimburse Tenant for all of Tenant’s unamortized expenses incurred in connection with the Lease, including all of Tenant’s development costs.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "ongoing_cotenancy_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source used CURLY braces: {Choose:  Building or Shopping Center}",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "CONDITION_OF_PREMISES__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "The Premises will be in sound condition, with all of Landlord's Work complete and in compliance with all applicable federal, state and local codes. The structural elements, roof and building systems of the {{param:condition_of_premises_choose_1}} will be seismically and otherwise sound and will meet all applicable federal, state, and local codes, including but not limited to, disabled accessibility standards related to the interior, exterior and any portion of the Premises {{param:condition_of_premises_optional_2}} {{param:condition_of_premises_choose_3}}, throughout the term of the Lease. Landlord shall, at its sole cost and expense, correct any latent defects promptly after Tenant notifies Landlord of any such defect.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "condition_of_premises_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [Building OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "condition_of_premises_optional_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [optional:  add any local requirements, such as upkeep of grease traps, etc.]",
+     "options": [
+      {
+       "option_value": "add any local requirements, such as upkeep of grease traps, etc.",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "condition_of_premises_choose_3",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Optional Southeast-region hurricane-protection phrase. Omit option added. Wizard should pre-select from the deal's region; all deals are Georgia (Southeast, non-Florida), so this will normally include.",
+     "options": [
+      {
+       "option_value": "FOR SOUTHEAST REGION ADD: and hurricane protection requirements",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "UTILITIES__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will be responsible for all water connection, sewer connection, traffic impact and any other extraordinary fees {{param:utilities_optional_1}} that are associated with Tenant’s use of the Premises. At Landlord’s sole cost and expense, Landlord will provide for separately metered utilities for Tenant’s Premises, with all utilities in working condition in compliance with all federal, state and local laws, codes, rules and regulations. Landlord shall ensure that site internet and voice systems, with minimum speed of 50x10 Mbps and from a service provider acceptable to Tenant are available for Tenant’s use at the Premises and installed in in accordance with the attached Landlord Workletter.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "utilities_optional_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [OPTIONAL:  in excess of an aggregate of $____________]",
+     "options": [
+      {
+       "option_value": "in excess of an aggregate of $____________",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "HAZARDOUS_MATERIALS__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will: (a) be responsible for removing any hazardous materials on the Property which affect the Premises, and (b) indemnify, defend, and hold Tenant harmless from loss relating to any such hazardous materials. Landlord will remove any hazardous materials (including asbestos or asbestos containing materials and mold), from the Premises before delivering possession of the Premises. Tenant will hold Landlord harmless from loss for any hazardous materials created by Tenant. Promptly after execution of this Letter of Intent, Landlord will provide Tenant with copies of all environmental reports relating to the Property, including a Phase I Environmental Site Assessment conducted within the six (6) month period prior to the execution of the Lease."
+  },
+  {
+   "ref": "PRO_RATA_SHARE__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant's Pro-Rata Share of common area maintenance, real estate taxes and insurance will be the square footage of the Premises divided by the total square feet of leasable area in the {{param:pro_rata_share_choose_1}} Not to exceed {{param:pro_rata_share_blank_2}} %.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "pro_rata_share_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  Building OR Shopping Center.]",
+     "options": [
+      {
+       "option_value": "CHOOSE:  Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center.",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "pro_rata_share_blank_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "PARKING__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "At no expense to Tenant, its employees or customers, Landlord will provide all necessary parking for Tenant’s employees and customers (and Landlord will apply for and obtain all variances) necessary to meet all codes and permitting requirements for Tenant's anticipated use, throughout the Lease term. Landlord will install bike racks as required by code."
+  },
+  {
+   "ref": "PERMIT_CONTINGENCY__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant will have the right to terminate the Lease if it is unable to obtain all permits, variances and governmental approvals needed for the lawful construction and operation of its store (including signage {{param:permit_contingency_choose_1}} and outdoor seating, IF APPLICABLE]).",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "permit_contingency_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Optional ', drive-through, IF APPLICABLE' phrase. Omit option added. Wizard should pre-select from the same is_drive_through deal fact that gates the Premises drive_through_add_on - do not ask twice.",
+     "options": [
+      {
+       "option_value": ", drive-through, IF APPLICABLE",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "TRANSFER_OF_PROPERTY__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord agrees not to sell, transfer, or assign the property until at least thirty (30) days following the later of the (i) Rent Commencement Date, (ii) completion of all of Landlord's Work and (iii) payment of the full amount of the Allowance to Tenant."
+  },
+  {
+   "ref": "ALTERNATIVE_ENERGY__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant will have the right to install, utilize, maintain and remove a solar photovoltaic or other alternative energy system, such as wind power (“AE System”), including all related equipment, appurtenances, battery systems, wiring and meters on the roof of the Building for use at the Premises. The installation will include the right to make necessary penetrations through the roof and/or Building for such use. Landlord will grant Tenant the necessary roof-top and other easements to do so at no additional rental charge. All systems will be in accordance with applicable law and the approved AE performance specifications and shall comply with the proper roofing standards for such systems. Tenant will be permitted to make any necessary changes, alterations or additions to AE System at any time during the Lease Term (including any extensions or renewals). Tenant will bear sole responsibility and cost to obtain all required related permits; install, operate and maintain the AE System; and indemnify Landlord, its agents and employees, from and against all costs for property damage arising solely out of the installation, operation, maintenance and/or removal of the AE System. Tenant will be solely entitled to the exclusive use and proceeds from the sale of any electricity generated by the AE System at the Premises."
+  },
+  {
+   "ref": "EV_CHARGING__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Tenant will have the right, but not the obligation, to install, utilize, maintain and remove an electric vehicle charging station system (“EV Charging System”), including all related equipment, signage, appurtenances, battery systems, and wiring and meters. The EV Charging System may use up to ten (10) parking spaces on the Property, and any ancillary space as necessary to support the EV Charging System. The installation will include the right to make necessary penetrations or trenchings into the parking lots and driveways of the Property for such use. Landlord will obtain the necessary consents and grant Tenant the necessary easements to do so at no additional rental charge. The EV Charging System will be in accordance with applicable law. Tenant will be permitted to make any necessary changes, alterations or additions to EV Charging System at any time during the Lease Term (including any extensions or renewals). Tenant will bear sole responsibility and cost to obtain all required related permits; install, operate and maintain the EV Charging System; and indemnify Landlord, its agents and employees, from and against all costs for property damage arising solely out of the installation, operation, maintenance and/or removal of the EV Charging System. Tenant will be solely entitled to the proceeds generated by the EV Charging System. The forgoing shall not constitute a waiver of Landlord’s obligations to install any electric vehicle charging system as required by code."
+  },
+  {
+   "ref": "WARRANTY_REPRESENTATION__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord hereby confirms to Tenant that none of its principles, partners, employees, agents and/or other persons or entities which have any direct or indirect financial interest in Landlord or the Building/Shopping Center have been employees of Tenant within eighteen (18) months prior to the execution of this Letter of Intent."
+  },
+  {
+   "ref": "CONFIDENTIALITY__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord and Tenant will maintain in confidence all information relating to Tenant’s proposed tenancy and development of the Premises, including, but not limited to, the terms of this Letter of Intent and the Lease, and will not disclose such information to any other party without written consent. Such confidential information may be released to the parties' employees, partners, consultants, attorneys, accountants and lenders who have a reasonable need for such confidential information, provided that such individuals agree to maintain the confidential nature of the information. Notwithstanding anything in this Letter of Intent to the contrary, the foregoing provision shall be binding on the parties."
+  }
+ ],
+ "clauses": [
+  {
+   "clause_key": "landlord_property_interest",
+   "title": "Landlord Property Interest",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "landlord_property_interest",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "LANDLORD_PROPERTY_INTEREST__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "term",
+   "title": "Term",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "term",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TERM__ntd__v1__main",
+         "emit_sequence": 0
+        },
+        {
+         "canonical_body_ref": "TERM__ntd__v1__cont_1",
+         "emit_sequence": 1
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "percentage_rent",
+   "title": "Percentage Rent",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "percentage_rent",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PERCENTAGE_RENT__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "scheduled_delivery_date",
+   "title": "Scheduled Delivery Date",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "scheduled_delivery_date",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SCHEDULED_DELIVERY_DATE__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "delivery_date_delays",
+   "title": "Delivery Date Delays",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "delivery_date_delays",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "DELIVERY_DATE_DELAYS__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "construction_contingency",
+   "title": "Construction Contingency",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "construction_contingency",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "CONSTRUCTION_CONTINGENCY__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "initial_cotenancy",
+   "title": "Initial Co-Tenancy Contingency",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "initial_cotenancy",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "INITIAL_COTENANCY__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "ongoing_cotenancy",
+   "title": "Ongoing Co-Tenancy Contingency",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "ongoing_cotenancy",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ONGOING_COTENANCY__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "condition_of_premises",
+   "title": "Condition of Premises and Building/Shopping Center",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "condition_of_premises",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "CONDITION_OF_PREMISES__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "utilities",
+   "title": "Utilities",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "utilities",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "UTILITIES__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "hazardous_materials",
+   "title": "Hazardous Materials",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "hazardous_materials",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": true,
+       "approval_authority": "national-handbook",
+       "firing_mode": "on-deviation",
+       "director_question_key": null,
+       "internal_note": "Template approval trigger: EXCEPT AS NOTED BELOW, YOU MAY NOT DEVIATE FROM THIS LANGUAGE WITHOUT APPROPRIATE APPROVALS",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "HAZARDOUS_MATERIALS__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "pro_rata_share",
+   "title": "Pro-Rata Share",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "pro_rata_share",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PRO_RATA_SHARE__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "parking",
+   "title": "Parking",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "parking",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PARKING__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "permit_contingency",
+   "title": "Permit Contingency",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "permit_contingency",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PERMIT_CONTINGENCY__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "transfer_of_property",
+   "title": "Transfer of the Property",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "transfer_of_property",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TRANSFER_OF_PROPERTY__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "alternative_energy",
+   "title": "Alternative Energy Systems",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "alternative_energy",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ALTERNATIVE_ENERGY__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "ev_charging",
+   "title": "Electric Vehicle Charging Station System",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "ev_charging",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EV_CHARGING__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "warranty_representation",
+   "title": "Warranty and Representation",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "warranty_representation",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "WARRANTY_REPRESENTATION__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "confidentiality",
+   "title": "Confidentiality",
+   "bucket": "standing-default",
+   "description": "Uncoded standing default from the national drop - no ladder, no choice; preloaded into Position 1 without wizard prompting.",
+   "variants": [
+    {
+     "variant_key": "confidentiality",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": null,
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "CONFIDENTIALITY__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "director_questions": []
+}

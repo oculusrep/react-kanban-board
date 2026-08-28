@@ -25,6 +25,7 @@ PARAM_KINDS = {"concession", "choose_one", "fill"}
 REF_KINDS = {"deal_field", "clause_selection", "clause_field", "position_selection"}
 OPERATORS = {"eq","neq","lt","lte","gt","gte","within_days_of","is_selected","not_selected","exists","not_exists"}
 PARAM_TOKEN = re.compile(r"\{\{param:[^}]+\}\}")   # valid token; removed before scanning for strays
+TOKEN_KEY = re.compile(r"\{\{param:([^}]+)\}\}")   # capture the key for token<->param cross-validation
 
 def stray_braces(bt):
     return re.findall(r"\{[^{}]*\}", PARAM_TOKEN.sub("", bt))  # any {...} left after valid tokens = stray code/marker
@@ -54,6 +55,13 @@ def validate(d):
         bt = b.get("body_text", "")
         for m in stray_braces(bt):
             E(f"body {ref}: stray '{m}' in body_text (only {{{{param:key}}}} tokens allowed; codes/markers must be stripped)")
+        # token <-> param cross-validation (both directions)
+        tokens = set(TOKEN_KEY.findall(bt))
+        pkeys = {p.get("param_key") for p in b.get("parameters", []) or [] if p.get("param_key")}
+        for t in tokens - pkeys:
+            E(f"body {ref}: token {{{{param:{t}}}}} has NO declared param (would emit raw into the document)")
+        for pk in pkeys - tokens:
+            E(f"body {ref}: param '{pk}' declared but NO {{{{param:{pk}}}}} token in body_text (orphaned)")
         for p in b.get("parameters", []) or []:
             pk = p.get("param_kind")
             if pk not in PARAM_KINDS: E(f"body {ref} param: bad param_kind '{pk}'")

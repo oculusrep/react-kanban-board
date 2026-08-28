@@ -336,8 +336,10 @@ selector and one new pattern:
   `loi_attachment_requirement` (position-level) + `loi_attachment_task` view, surfaced as wizard
   tasks raised by selecting the position. Seed field: `attachment_requirements[]` on the position.
 - **Loader/validator:** `supabase/seeds/loi/load_seed.py` validates a tranche against these rules
-  (ref resolution, enums, kind/brace shape, partition exhaustiveness, stray `{...}`/`[...]`) before
-  emitting ordered INSERT SQL — catches extraction errors by name, not as raw constraint violations.
+  (ref resolution, enums, kind/brace shape, partition exhaustiveness, stray `{...}`/`[...]`, and
+  **token↔param cross-validation both directions** — a `{{param:key}}` with no declared param would
+  emit raw into a landlord doc; a declared param with no token is orphaned) before emitting ordered
+  INSERT SQL — catches extraction errors by name, not as raw constraint violations.
   - `[FOR DRIVE-THROUGH…, ADD:]` **instructional gate** → **`applies_when` at extraction** (the gate is
     a condition, not prose; the instruction text is never stored as emittable body). The gated content
     is a position carrying the predicate.
@@ -382,8 +384,9 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 43 assertions PASS** across nine migrations (+ tranche 1 top-up loaded: 11 clauses, 28
-positions, 30 bodies, 15 params, 12 applies_when, 3 uncoded add-ons, 2 attachment obligations):
+**All 43 assertions PASS** across nine migrations (+ tranches 1–2 loaded: 30 clauses, 47 positions,
+50 bodies, 27 params, 19 uncoded standing-defaults, 3 uncoded add-ons, 2 attachment obligations,
+Hazmat `on-deviation`):
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
