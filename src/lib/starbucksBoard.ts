@@ -67,6 +67,7 @@ export interface BoardDeal {
   clientId: string | null;
   clientName: string | null;
   accountToken: string;  // short account label for the tile, e.g. "JW"
+  siteSubmitId: string | null;
   stageLabel: string;
   stageSortOrder: number;
   ballInCourt: BallInCourt | null;   // null = unclassified
@@ -192,6 +193,36 @@ export const COURT_OPTIONS: Array<{ value: BallInCourt; label: string }> = [
 ];
 
 export const BLOCKED_ON_OPTIONS: BlockedOn[] = ['awaiting_ll', 'site_control'];
+
+// Structured pass-reason buckets (decisions §2.23). Stored on
+// site_submit.pass_reason_category so the client site report can show a
+// distribution rather than 40 unique sentences.
+export type PassCategory =
+  | 'pricing'
+  | 'site_control'
+  | 'traffic'
+  | 'client_declined'
+  | 'competition'
+  | 'other';
+
+export const PASS_CATEGORIES: Array<{ value: PassCategory; label: string }> = [
+  { value: 'pricing', label: 'Pricing' },
+  { value: 'site_control', label: 'Site control' },
+  { value: 'traffic', label: 'Traffic' },
+  { value: 'client_declined', label: 'Client declined' },
+  { value: 'competition', label: 'Competition' },
+  { value: 'other', label: 'Other' },
+];
+
+export function passCategoryLabel(v: PassCategory | null): string {
+  return PASS_CATEGORIES.find((c) => c.value === v)?.label ?? 'Other';
+}
+
+// Early = site-evaluation phase → "Pass on this site". Later = a real deal →
+// "Mark lost". (decisions §2.23)
+export function isEarlyStage(stageLabel: string): boolean {
+  return stageLabel === 'Pre-Submittal' || stageLabel === 'Submitted-Reviewing';
+}
 
 // ---- Heat thresholds (spec §5.1). Tunable — kept here, not inline. ---------
 // Days at/above `hot` → hot; at/above `warm` → warm; below → cool.

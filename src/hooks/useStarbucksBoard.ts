@@ -68,8 +68,8 @@ interface RawRow {
   stage: { label: string | null; sort_order: number | null } | { label: string | null; sort_order: number | null }[] | null;
   property: { property_name: string | null; city: string | null } | { property_name: string | null; city: string | null }[] | null;
   site_submit:
-    | { site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }
-    | { site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }[]
+    | { id: string | null; site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }
+    | { id: string | null; site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }[]
     | null;
   activity_state:
     | {
@@ -128,6 +128,7 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     clientId,
     clientName,
     accountToken: accountFor(clientId, clientName).token,
+    siteSubmitId: siteSubmit?.id ?? null,
     stageLabel,
     stageSortOrder: stage?.sort_order ?? 0,
     ballInCourt,
@@ -181,7 +182,7 @@ const SELECT = `
   client:client_id!inner ( id, client_name, starbucks_layer_enabled ),
   stage:stage_id ( label, sort_order ),
   property:property_id ( property_name, city ),
-  site_submit:site_submit_id ( site_submit_name, submit_stage:submit_stage_id ( name ) ),
+  site_submit:site_submit_id ( id, site_submit_name, submit_stage:submit_stage_id ( name ) ),
   activity_state:deal_activity_state (
     ball_in_court, ball_in_court_party, ball_in_court_since,
     blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback

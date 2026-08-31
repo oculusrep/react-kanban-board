@@ -106,7 +106,18 @@ A deal whose linked `site_submit` is in a **declined/dead** submit-stage — **P
 
 This dropped the board from **39 → 30** (9 deals sat on a dead site while their deal stage still put them on the board). Membership is now: Starbucks client **and** deal-stage ∈ the four board stages **and** (no site_submit **or** site_submit not dead).
 
-**This is also the mechanism that makes a future "Pass" action work.** Verified: setting `site_submit → Pass` does **not** change the linked deal's stage — the bidirectional stage sync only fires for stages present in `deal_submit_stage_map`, and `Pass` is not mapped (a test flipped a site to Pass; the deal stayed Pre-Submittal). So a Pass action can just write the site_submit; this rule removes the deal from the board, and the deal record itself stays put. Because membership now depends on `site_submit`, the board subscribes to `site_submit` realtime too (a pass/kill done on the map reflects live).
+**This is also the mechanism that makes the "Pass" action work (§2.23).** Verified: setting `site_submit → Pass` does **not** change the linked deal's stage — the bidirectional stage sync only fires for stages present in `deal_submit_stage_map`, and `Pass` is not mapped (a test flipped a site to Pass; the deal stayed Pre-Submittal). So the Pass action just writes the site_submit; this rule removes the deal from the board, and the deal record itself stays put. Because membership now depends on `site_submit`, the board subscribes to `site_submit` realtime too (a pass/kill done on the map reflects live).
+
+### 2.23 The kill/pass action — one action, labeled by stage, one input written to two places
+The slide-over has **one** remove-from-board action, labeled by stage:
+
+- **Early (Pre-Submittal / Submitted-Reviewing, with a linked site_submit) → "Pass on this site".** One reason input, written twice:
+  1. `site_submit.pass_reason` (free text) + `site_submit.pass_reason_category` (structured dropdown: **Pricing / Site control / Traffic / Client declined / Competition / Other**) — a dedicated field, **not** the generic `site_submit.notes`, so the **client site report** can show a pass-reason breakdown rather than 40 unique sentences (migration `20260831150000`).
+  2. A **narrative note on the deal** (via `insertDealNote`) so the "why" is in deal history and readable by the synopsis later.
+  Then `site_submit → Pass`. The tile drops via §2.22; **the deal record stays at its stage** (Pass isn't synced to the deal).
+- **Later (Negotiating LOI / At Lease/PSA), or any early deal with no site_submit → "Mark lost".** Canonical OVIS deal-kill: required `deal.loss_reason` + `deal.stage_id = Lost` (the stage-sync trigger flips the site to `Lost / Killed`), **plus the same narrative note** on the deal. `Lost` is off-board so the tile drops. No category (that's a site/pass concept).
+
+A required reason is enforced in the same step (not a second modal). Both paths write a note, so the history/synopsis sees every removal. The reason input writing to two places from one action is the point: structured field for reporting + narrative note for humans/AI.
 
 ### 2.12 Pre-Submittal blockers, the ready-to-submit band, and the triage counter
 `blocked_on` is a set of parallel blockers, not a sequence. **`blocked_on = awaiting_ll | site_control`** — just two (migrations `20260831130000`, `20260831140000`). The board is **five columns**: Awaiting landlord · Awaiting site control · Submitted-Reviewing · Negotiating LOI · At Lease/PSA. The first two carry a small "Pre-Submittal" super-label. This retires the "one column with subheads" design, the two-column-grid stopgap (§5), *and* the Unset/Ready columns.

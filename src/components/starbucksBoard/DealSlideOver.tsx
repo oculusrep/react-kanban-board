@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCategoryIdByName } from '../../lib/taskCategory';
+import { insertDealNote } from '../../lib/boardWrites';
 import {
   BoardDeal,
   CONDENSED_STACK,
@@ -16,6 +17,7 @@ import {
   PALETTE,
 } from '../../lib/starbucksBoard';
 import ClassifyControls from './ClassifyControls';
+import KillPassAction from './KillPassAction';
 
 interface NoteRow { id: string; title: string | null; body: string | null; created_at: string | null; }
 interface TaskRow { id: string; subject: string | null; due_at: string | null; }
@@ -83,31 +85,7 @@ export default function DealSlideOver({
     setSaving(true);
     setErr(null);
     try {
-      const stamp = `manual_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const title = body.length > 60 ? `${body.slice(0, 57)}…` : body;
-      const { data: note, error: noteErr } = await supabase
-        .from('note')
-        .insert({
-          sf_content_note_id: stamp,
-          title,
-          body,
-          content_size: body.length,
-          share_type: 'V',
-          visibility: 'AllUsers',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select('id')
-        .single();
-      if (noteErr) throw noteErr;
-      const { error: linkErr } = await supabase.from('note_object_link').insert({
-        note_id: note!.id,
-        sf_content_document_link_id: `${stamp}_deal`,
-        object_type: 'deal',
-        object_id: deal.id,
-        deal_id: deal.id,
-      });
-      if (linkErr) throw linkErr;
+      await insertDealNote(deal.id, body);
       setNoteBody('');
       await loadDetails();
       onChanged();
@@ -246,6 +224,11 @@ export default function DealSlideOver({
                 ))}
               </div>
             )}
+          </Section>
+
+          {/* Pass / Mark lost — removes the tile (decisions §2.23) */}
+          <Section title="Remove from board" px={px}>
+            <KillPassAction deal={deal} px={px} onDone={() => { onChanged(); onClose(); }} />
           </Section>
         </div>
 
