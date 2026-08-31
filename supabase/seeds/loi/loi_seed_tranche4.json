@@ -1,0 +1,159 @@
+{
+ "_README": [
+  "REAL EXTRACTION - TRANCHE 4 (final unblocked). Both clauses Starbucks-sourced; Bucket 1 stays EMPTY.",
+  "Third-Party Approvals source-checked: present in the July ECDT and the Freestanding template,",
+  "absent from the new national drop. NOT Oculus-authored.",
+  "Other Contingency modeled per the agreed shape: is_default false + opt-in applies_when gate,",
+  "body is a single fill param. No canonical text fabricated - none exists in any source."
+ ],
+ "canonical_bodies": [
+  {
+   "ref": "THIRD_PARTY_APPROVALS__ecdt__v1__main",
+   "brace_code": null,
+   "source": "national-template-ecdt",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord shall deliver all appropriate approvals, waivers, or consents {{param:third_party_source}} for Starbucks permitted development and use of the Premises on or before {{param:third_party_deadline}}.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "third_party_source",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source '[from _________]' - names the third party whose approval is required. The Freestanding template omits this phrase entirely; ECDT-only."
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "third_party_deadline",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Delivery deadline date (tab-run blank in source)."
+    }
+   ]
+  },
+  {
+   "ref": "OTHER_CONTINGENCY__ecdt__v1__main",
+   "brace_code": null,
+   "source": "national-template-ecdt",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "{{param:other_contingency_text}}",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "other_contingency_text",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Heading exists in the ECDT and Powder Springs with NO canonical body - a deliberate placeholder for deal-specific contingencies. The entire clause body is this fill. Nothing fabricated."
+    }
+   ]
+  }
+ ],
+ "clauses": [
+  {
+   "clause_key": "third_party_approvals",
+   "title": "Third-Party Use and Development Approvals, Waivers, or Consents",
+   "bucket": "standing-default",
+   "description": "ECDT/Freestanding standing default. Starbucks language, not Oculus-authored - Bucket 1 remains empty.",
+   "variants": [
+    {
+     "variant_key": "third_party_approvals",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Present in the July ECDT AND the Freestanding template; absent from the new national drop. Variant difference: Freestanding omits the '[from ____]' phrase. Reconcile on template transition.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "THIRD_PARTY_APPROVALS__ecdt__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "other_contingency",
+   "title": "Other Contingency",
+   "bucket": "standing-default",
+   "description": "Opt-in placeholder for deal-specific contingencies. is_default false + opt-in gate; the fill IS the clause body.",
+   "variants": [
+    {
+     "variant_key": "other_contingency",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "No canonical body exists in any source - the heading is a deliberate blank. Nothing fabricated; the entire body is a free-fill.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "OTHER_CONTINGENCY__ecdt__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "include_other_contingency",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "Opt-in gate; clause emits only when Mike adds a deal-specific contingency."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "director_questions": []
+}

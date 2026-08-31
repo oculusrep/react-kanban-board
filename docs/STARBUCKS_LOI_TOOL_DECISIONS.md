@@ -186,15 +186,15 @@ diff against (nothing renders un-diffable). Corrected attribution:
   **`source = national-template-ecdt`** (new value; a distinct Starbucks doc from the national drop,
   so provenance and the collision guard stay honest across the transition).
 
-**Deliberately NOT seeded (tranche 3):**
-- **Other Contingency** — a heading with an EMPTY body in both Powder Springs and the ECDT; no
-  canonical text to extract. Not fabricated. Modeling: an **optional, wizard-offered clause** whose
-  body is a single `fill` param holding the whole deal-specific text — `standing-default`,
-  `is_default=false` (not auto-included), gated by an opt-in `applies_when deal_field`
-  (e.g. `include_other_contingency`). Expressible with the current schema; no new columns. Pending
-  Mike seeding it.
-- **Third-Party Use and Development Approvals** — found in Powder Springs, not on the 39 list; needs
-  a source check against the ECDT before attribution.
+**Seeded in tranche 4:**
+- **Other Contingency** — the optional wizard-offered clause: `standing-default`, `is_default=false`,
+  gated by opt-in `applies_when deal_field include_other_contingency=true`, body = single
+  `fill:other_contingency_text` (the whole deal-specific text). Heading is a deliberate blank in
+  every source; nothing fabricated.
+- **Third-Party Use and Development Approvals** — source-checked: Starbucks language in the July ECDT
+  and the Freestanding 10-yr NN template, absent from the national drop → `national-template-ecdt`.
+  The ECDT "consents [from ___]" phrase (which the Freestanding version omits) seeded as a `fill`.
+  Bucket 1 stays empty.
 
 **ROFO: dropped** (Florida-only). Not catalogued, not scope-gated. Returns as a fresh
 seed if GA ever needs it — no dead Florida-only rows.
@@ -396,9 +396,11 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 43 assertions PASS** across ten migrations (+ tranches 1–3 loaded: **36 of 39 clauses**,
-0 custom-owned, sources 51 national-drop / 3 ECDT / 2 southeast; 19 uncoded standing-defaults,
-3 uncoded add-ons, 2 attachment obligations, Hazmat `on-deviation`):
+**All 43 assertions PASS** across ten migrations (+ tranches 1–4 loaded: **38 of 39 clauses**,
+0 custom-owned, sources 51 national-drop / 5 ECDT / 2 southeast; 19 uncoded standing-defaults,
+3 uncoded add-ons, 2 attachment obligations, Hazmat `on-deviation`, Other Contingency opt-in).
+**Remaining: CAM** (blocked on `cam_selector_axis`), **R0/R1 + LCW** (assembler column-insert
+contract), **Southeast CO back-ups**:
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
   shape ×3, no-coded-gaps ×2, duplicate rank, applies_when FK.
 - v2 negatives (N1–N9): per-segment collision, exhaustiveness, out-of-domain, selector
