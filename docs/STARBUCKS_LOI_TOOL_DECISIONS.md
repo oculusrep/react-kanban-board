@@ -494,6 +494,43 @@ handling. **Template ingestion is a separate admin path**, used only on a new St
 that appears / disappears / changes body text vs the prior version. **Old skeleton versions stay
 immutable** so in-flight deals keep assembling reproducibly (ties to the triple version-pin in B).
 
+## Completeness gap + permanent completeness test (HALT before assembler/Phase-2)
+
+A full sweep of all 236 template paragraphs found a systematic **add-on-layer gap**: of 117 body
+paragraphs, 54 were extracted and 63 not — **30 emittable paragraphs missing or misattributed**. Root
+cause: the original extraction matched headings with a "paragraph starts with HEADING:" test, but 19
+paragraphs carry their heading at a non-zero offset behind a bracketed instruction, and the
+conditional ADD add-on paragraphs between clauses were never enumerated. The clause **spine is
+correct and every structural shape is validated** — what's missing is the add-on layer (Trash base
+clause para 148, four Exclusive Use add-ons incl. the violation remedy, Premises replat, three
+Pro-Rata Share segments, two Landlord Work add-ons, three Signage add-ons, Parking exclusive spaces;
+Audit Right is in the 2026 drop at para 212, misattributed). Two (Premises replat, Parking exclusive
+spaces) were used in a real deal (Douglasville) — practical proof the gap matters.
+
+**DECISION: no assembler, no Phase-2 on the current library. Tranche 6 re-extraction first.**
+
+**Permanent completeness test** (`supabase/seeds/loi/completeness_test.py`): assign EVERY template
+paragraph to exactly one category — `primary_position` / `add_on_modifier` / `instruction` /
+`letter_shell` / `blocked` / `empty`. Anything unassigned is a gap BY CONSTRUCTION. The harness
+asserts (1) all 236 paragraphs assigned once, (2) content refs (clause_key/brace_code) exist in the
+tranches; re-runnable against any future template drop (also part of the template-transition guard).
+Tranche 6 supplies the authoritative manifest (`--draft` emits a starting point). Corroborated the
+gap: the rough draft fails with 83 unclassified paragraphs.
+
+**Letter shell** (paras 0/8/9/11/13/15: title, `<Insert Name>`, `<Insert Address>`, `RE:`,
+salutation, opening paragraph) — not clauses, but the assembler can't emit a document without them.
+Modeled as **deal fields feeding a fixed frame** (answers the payload-contract top-block question).
+Must exist before the Powder Springs acceptance test can run end-to-end.
+
+## Payload contract (proposed — pending confirmation, on hold until after tranche 6)
+
+Self-contained, text-in, triple-version-pinned, persisted verbatim as the operation log. Proposed
+decisions: (A) tokens stay in body_text + explicit param values ride alongside, assembler fills them
+mechanically; (B) skeleton mapping by the template's own `[{CODE}]` markers / section headings / R1
+instruction anchor; (C) assembler emits what's in the payload and strips everything else; (D)
+`modified` is OVIS-computed metadata, `body_text` authoritative; (E) rent rows precomputed, assembler
+renders the table with zero math. Confirm A–E when the library is complete.
+
 ## Validation status (pass one)
 
 Schema applied to the throwaway `loi-tool-dev` Supabase project via `psql` (no Docker
