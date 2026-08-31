@@ -221,28 +221,39 @@ function Column({ col, onOpen, onToggleStar }: { col: BoardColumn } & TileHandle
       </div>
 
       <div className={`flex-1 overflow-y-auto px-2 pb-2 flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
-        {col.subheads
-          ? col.subheads.map((sh) => <Subhead key={sh.key} sh={sh} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)
-          : col.deals.map((d) => <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)}
+        {col.subheads ? (
+          col.subheads.map((sh) => <Subhead key={sh.key} sh={sh} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)
+        ) : dense ? (
+          <div className="grid grid-cols-2 gap-1">
+            {col.deals.map((d) => <Tile key={d.id} deal={d} dense onOpen={onOpen} onToggleStar={onToggleStar} />)}
+          </div>
+        ) : (
+          col.deals.map((d) => <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)
+        )}
       </div>
     </div>
   );
 }
 
 // ---- Pre-Submittal blocker subhead (spec §4.1) ----------------------------
+// When dense, tiles flow into TWO sub-columns so the fat column fits without
+// scrolling (decisions §1.1) — the well is ~1/4 of a 1080p screen, wide enough
+// for two compact tiles side by side. The subhead header spans both.
 function Subhead({ sh, dense, onOpen, onToggleStar }: { sh: BoardSubhead; dense: boolean } & TileHandlers) {
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
   if (sh.deals.length === 0) return null;
   return (
-    <div className={`flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
+    <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between px-1 pt-1">
         <span className="uppercase tracking-wider" style={{ color: PALETTE.textDim, fontSize: px(12) }}>{sh.label}</span>
         <span className="tabular-nums" style={{ color: PALETTE.textDim, fontSize: px(12) }}>{sh.deals.length}</span>
       </div>
-      {sh.deals.map((d) => (
-        <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />
-      ))}
+      <div className={dense ? 'grid grid-cols-2 gap-1' : 'flex flex-col gap-2'}>
+        {sh.deals.map((d) => (
+          <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -283,7 +294,7 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
         title={deal.name}
       >
         {leftBar}
-        <span className="truncate flex-1" style={{ fontWeight: 600, fontSize: px(17), letterSpacing: '-0.01em', color: PALETTE.text }}>
+        <span className="truncate flex-1 min-w-0" style={{ fontWeight: 600, fontSize: px(17), letterSpacing: '-0.01em', color: PALETTE.text }}>
           {deal.name}
         </span>
         <span className="tabular-nums whitespace-nowrap" style={{ fontSize: px(12), color: denseRightColor(deal) }}>

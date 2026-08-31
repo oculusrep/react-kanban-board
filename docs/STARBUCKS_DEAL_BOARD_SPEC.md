@@ -198,7 +198,7 @@ PRE-SUBMITTAL                    22
 - Within a subhead, tiles order by the normal heat rule (§5.3).
 - The other three columns have no subheads — they're plain tile stacks.
 
-**Density (must fit ~23 tiles, no scroll, at 1080p).** A column with more than 12 tiles switches to a **compact tile** (30px tall, one line: heat bar · site name · a small right token [`{days}d` / `set` / `—`] · star; city dropped) with tighter gaps. At 1080p that's ~800px used of ~920px available for the current single-subhead Pre-Submittal layout — fits without scrolling. If a fully-classified Pre-Submittal (all blocker subheads populated) ever crowds, shave the dense tile to ~28px. `DENSE_THRESHOLD` in `StarbucksDealBoardPage.tsx`.
+**Density (must fit, no scroll, at 1080p — decisions §1.1).** A column with more than 12 tiles switches to a **compact tile** (one line: heat bar · site name · a small right token [`{days}d` / `set` / `—`] · star; city dropped) AND lays its tiles out in **two sub-columns** (blocker subheads preserved, header spanning both). Two ~230px sub-columns in the wide well roughly halve the vertical space, so ~23 tiles fit at a legible size without scrolling; the `A−/A+` text-scale control (persisted) tunes for viewing distance. `DENSE_THRESHOLD` in `StarbucksDealBoardPage.tsx`. Note: this two-column layout is a *symptom fix* — Pre-Submittal is overloaded because it buckets four blockers into one stage; see decisions §5 for the revisit (split into real stages once classification is done).
 
 ---
 
