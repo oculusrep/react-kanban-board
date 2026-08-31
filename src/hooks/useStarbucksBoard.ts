@@ -230,5 +230,27 @@ export default function useStarbucksBoard(): BoardData {
     };
   }, [refreshTrigger]);
 
+  // Realtime (spec §8): every board write funnels through deal_activity_state
+  // (directly or via the reset-clock triggers), and stage moves / new deals hit
+  // deal. Both fire OVIS-wide, so we debounce and let the server-filtered
+  // refetch (~50 Starbucks rows) decide what actually changed. The board sits
+  // open for days — no manual reload.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const debouncedRefresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => refresh(), 600);
+    };
+    const channel = supabase
+      .channel('starbucks-board')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deal_activity_state' }, debouncedRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deal' }, debouncedRefresh)
+      .subscribe();
+    return () => {
+      if (timer) clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [refresh]);
+
   return { columns, daily, loading, error, lastSynced, refresh };
 }

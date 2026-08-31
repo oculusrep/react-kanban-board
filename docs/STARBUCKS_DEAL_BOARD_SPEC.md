@@ -345,9 +345,9 @@ Writes are done directly here rather than reusing `NoteFormModal` (which is a he
 
 ---
 
-## 8. Refresh behavior
+## 8. Refresh behavior — BUILT (step 6, migration `20260831120000`)
 
-Live-updating via Supabase realtime subscription on the `deal`, `note_object_link`, and `task` tables. The board sits open on the TV for days; it must not require a manual reload.
+Live-updating via a Supabase realtime channel. Rather than subscribing to each source table, the board subscribes to the two tables every change funnels through: **`deal_activity_state`** (every cool/classify/blocker/agenda write lands here — directly or via the reset-clock triggers on `note_object_link`/`task`/`activity`) and **`deal`** (stage moves + new deals). Both publish OVIS-wide, so the handler **debounces 600ms** and re-runs the server-filtered board query (~50 Starbucks rows) — cheap, and it decides what actually changed. The "synced" stamp updates on every realtime refetch. The board sits open on the TV for days; it must not require a manual reload.
 
 Heat is computed **client-side** from `ball_in_court_since` so tiles roll from cool to warm to hot at midnight without a server round trip.
 
@@ -382,7 +382,7 @@ Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live 
 3. ~~**Static board rendering**~~ **DONE:** full-screen route `/starbucks-board` (renders `fixed inset-0`, covers the app nav). Files: `src/lib/starbucksBoard.ts` (palette, heat/ordering/chip logic, all pure), `src/hooks/useStarbucksBoard.ts` (fetch + assemble columns/subheads/daily number), `src/pages/StarbucksDealBoardPage.tsx` (board UI). Heat computed client-side from `ball_in_court_since`; four columns, Pre-Submittal blocker subheads, "no history" tiles, agenda filter, daily number, click-to-refresh "synced" stamp. Not yet interactive (slide-over = step 5) and no realtime (step 6). Typechecks clean; `npm run build` passes. **Visual density is tuned on the actual TV — that's the point of this step.**
 4. **Real heat calculation** (client-side from `ball_in_court_since`).
 5. ~~**Slide-over panel**~~ **DONE:** `DealSlideOver.tsx` — Change court (+ blocker with implied-court pre-select), Log a note, Set next action, recent notes, current open action, Open full deal. Tile click opens it; star toggles `on_agenda`. Dense-tile density fix for Pre-Submittal (§4.1). Typechecks clean; build passes.
-6. **Realtime subscription** (Supabase realtime on `deal_activity_state`/`activity`/`note_object_link`/`task`).  ← **next**
+6. ~~**Realtime subscription**~~ **DONE (migration `20260831120000`):** channel on `deal_activity_state` + `deal`, debounced refetch (§8).
 7. **Stage change from the slide-over** — a **dropdown** of the four board stages **+ Lost**, writing `deal.stage_id`. **Not drag-and-drop.** Reverses the v1 deferral of stage changes (§2); rationale + landmines in [STARBUCKS_DEAL_BOARD_DECISIONS.md](STARBUCKS_DEAL_BOARD_DECISIONS.md) §D1. **First board write to shared pipeline data** (not `deal_activity_state`) — it propagates to `site_submit` via the existing stage sync. Moving a deal **off** the four board stages removes it from the board → **require a confirm** for that case.
 
 (The daily number, §9, was delivered in step 3's header — no separate step.)
