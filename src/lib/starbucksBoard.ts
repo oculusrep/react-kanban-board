@@ -13,6 +13,8 @@ export const PALETTE = {
   textDim: '#7C8899',  // city, stage, counts
   warm: '#D9891F',
   hot: '#D6453C',
+  urgent: '#6AA6FF', // manual priority marker — a cool accent, deliberately NOT
+                     // in the warm/hot heat spectrum (§2.25). Not green.
 } as const;
 
 // Condensed grotesque per spec §6.3, with graceful system fallbacks so the
@@ -79,9 +81,11 @@ export interface BoardDeal {
   onAgenda: boolean;
   seededFallback: boolean;
   parkedUntil: string | null; // review date (YYYY-MM-DD); parked while future
+  urgentUntil: string | null; // ISO; manual priority while future (§2.25)
   // derived
   days: number;          // whole days since ball_in_court_since (local/Eastern)
   readyToSubmit: boolean; // Pre-Submittal, classified, no blocker → hot "Submit it"
+  urgent: boolean;        // urgentUntil in the future — sorts to top, non-heat marker
   heat: Heat;
 }
 
@@ -251,6 +255,18 @@ export const HEAT_THRESHOLDS: Record<BallInCourt, { warm: number; hot: number }>
   none: { warm: 0, hot: 3 },
 };
 
+// Manual-priority auto-expiry (§2.25) — kept here with the heat thresholds so
+// it's tunable. Marking urgent sets urgent_until = now + this many days.
+export const URGENT_TTL_DAYS = 7;
+
+// urgent while urgent_until is in the future. Auto-clears on the next fetch
+// after it passes (no wallpaper).
+export function isUrgent(d: { urgentUntil: string | null }, now: Date = new Date()): boolean {
+  if (!d.urgentUntil) return false;
+  const t = new Date(d.urgentUntil).getTime();
+  return !isNaN(t) && t > now.getTime();
+}
+
 // Whole calendar days between the clock and today, in the viewer's local
 // timezone (the Mac driving the TV is Eastern — CLAUDE.md). Rolls at midnight.
 export function daysSince(iso: string | null, now: Date = new Date()): number {
@@ -287,9 +303,10 @@ export function computeHeat(d: {
 // unclassified deal at least has a clock, so it outranks a historyless one.
 const HEAT_RANK: Record<Heat, number> = { hot: 4, warm: 3, cool: 2, unclassified: 1, no_history: 0 };
 
-// Ordering within a column/subhead (spec §5.3): hottest first, then days desc.
-// no_history sinks to the bottom.
+// Ordering within a column (spec §5.3, §2.25): manual-urgent first (a separate
+// channel from heat), then hottest, then days desc. no_history sinks to bottom.
 export function compareDeals(a: BoardDeal, b: BoardDeal): number {
+  if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
   const r = HEAT_RANK[b.heat] - HEAT_RANK[a.heat];
   if (r !== 0) return r;
   return b.days - a.days;

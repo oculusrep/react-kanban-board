@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { BoardDeal, CONDENSED_STACK, PALETTE } from '../../lib/starbucksBoard';
 import ClassifyControls from './ClassifyControls';
 import ParkControl from './ParkControl';
+import UrgentToggle from './UrgentToggle';
 
 interface HistoryRow { id: string; kind: 'activity' | 'note'; text: string; date: string | null; }
 
@@ -98,8 +99,11 @@ export default function TriageQueue({
       <div className="flex-1 overflow-y-auto flex justify-center px-6">
         <div style={{ width: Math.round(920 * scale), maxWidth: '94vw' }}>
           <div className="truncate" style={{ fontWeight: 700, fontSize: px(44), letterSpacing: '-0.01em', color: PALETTE.text }}>{current.name}</div>
-          <div style={{ fontSize: px(20), color: PALETTE.textDim, marginBottom: px(18) }}>
+          <div style={{ fontSize: px(20), color: PALETTE.textDim, marginBottom: px(12) }}>
             {current.city ?? '—'} · {current.stageLabel}
+          </div>
+          <div style={{ marginBottom: px(18) }}>
+            <UrgentToggle deal={current} px={px} onChanged={onChanged} />
           </div>
 
           {/* history */}

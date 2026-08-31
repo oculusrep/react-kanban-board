@@ -22,6 +22,7 @@ import {
   daysSince,
   isParked,
   isToClassify,
+  isUrgent,
   needsAttention,
   readyToSubmit as computeReadyToSubmit,
 } from '../lib/starbucksBoard';
@@ -84,6 +85,7 @@ interface RawRow {
         on_agenda: boolean | null;
         seeded_fallback: boolean | null;
         parked_until: string | null;
+        urgent_until: string | null;
       }
     | any[]
     | null;
@@ -143,8 +145,10 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     onAgenda,
     seededFallback,
     parkedUntil: st?.parked_until ?? null,
+    urgentUntil: st?.urgent_until ?? null,
     days,
     readyToSubmit: ready,
+    urgent: isUrgent({ urgentUntil: st?.urgent_until ?? null }),
     heat,
   };
 }
@@ -194,7 +198,7 @@ const SELECT = `
   site_submit:site_submit_id ( id, site_submit_name, submit_stage!site_submit_submit_stage_id_fkey ( name ) ),
   activity_state:deal_activity_state (
     ball_in_court, ball_in_court_party, ball_in_court_since,
-    blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until
+    blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until, urgent_until
   )
 `;
 

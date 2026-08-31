@@ -128,6 +128,15 @@ A required reason is enforced in the same step (not a second modal). Both paths 
 - **Header item "Parking lot (n)"** next to the to-classify counter, but **quiet** (dim, never hot — parking must not burn). Click → a full-height list (same pattern as triage; Escape exits) showing each parked deal's **site name, the stage it's parked at, and the review date**; click a row → slide-over (to un-park or act).
 - **Park is available from both the slide-over and the triage queue** (`ParkControl`, shared). Un-park (from the slide-over / parking lot) clears `parked_until` and starts the clock now.
 
+### 2.25 Manual priority ("urgent") — a separate channel from heat, auto-expiring
+Manual "this matters most" priority, independent of heat.
+
+- **Board-owned field, auto-expiring:** `deal_activity_state.urgent_until` (TIMESTAMPTZ, migration `20260831170000`). Marking urgent sets `urgent_until = now + URGENT_TTL_DAYS` (**7 days, in config beside the heat thresholds**); it auto-clears client-side when passed (`isUrgent` = `urgent_until > now`). **Re-tap to renew.**
+- **Why auto-expiry, not a user-picked date:** urgent is a *"now"* state (uniform, short horizon), unlike parking's *"defer until X"* (variable future). A date picker is friction on the wrong axis, and a permanent flag becomes wallpaper — an automatic TTL kills both. (If *volume* ever becomes the wallpaper — too many urgent at once — add a small cap; not built yet.)
+- **Sorts to the top of its column regardless of heat** (`compareDeals`: urgent first, then heat, then days). A deal can be urgent-and-fresh or urgent-and-neglected — different situations, both surfaced at the top.
+- **Does NOT change the heat color.** Heat means only "nobody has touched this" and must keep meaning only that. The tile marker is a distinct **`▲` in a cool accent (`PALETTE.urgent`, `#6AA6FF`)** — deliberately outside the warm/hot spectrum, and not green.
+- **Set from the slide-over and the triage queue** (`UrgentToggle`, shared; optimistic so it reflects immediately). Urgent does not remove the deal from the board — it stays in its column, pinned to the top.
+
 
 ### 2.12 Pre-Submittal blockers, the ready-to-submit band, and the triage counter
 `blocked_on` is a set of parallel blockers, not a sequence. **`blocked_on = awaiting_ll | site_control`** — just two (migrations `20260831130000`, `20260831140000`). The board is **five columns**: Awaiting landlord · Awaiting site control · Submitted-Reviewing · Negotiating LOI · At Lease/PSA. The first two carry a small "Pre-Submittal" super-label. This retires the "one column with subheads" design, the two-column-grid stopgap (§5), *and* the Unset/Ready columns.

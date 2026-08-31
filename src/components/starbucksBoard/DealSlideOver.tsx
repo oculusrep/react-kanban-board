@@ -19,6 +19,7 @@ import {
 import ClassifyControls from './ClassifyControls';
 import KillPassAction from './KillPassAction';
 import ParkControl from './ParkControl';
+import UrgentToggle from './UrgentToggle';
 
 interface NoteRow { id: string; title: string | null; body: string | null; created_at: string | null; }
 interface TaskRow { id: string; subject: string | null; due_at: string | null; }
@@ -159,6 +160,9 @@ export default function DealSlideOver({
                 {deal.readyToSubmit ? 'Ready to submit' : courtLabel(deal)} · {deal.days}d{verb ? ` — ${verb}` : ''}
               </span>
             )}
+          </div>
+          <div className="mt-3">
+            <UrgentToggle deal={deal} px={px} onChanged={onChanged} />
           </div>
         </div>
 
