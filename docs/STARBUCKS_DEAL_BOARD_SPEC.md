@@ -160,32 +160,35 @@ There is no `is_active` boolean today. Two options for Mike (§12): (a) derive o
 
 ---
 
-## 4. Columns — seven, fixed
+## 4. Columns — five, plus a band and a counter
 
-**Pre-Submittal is exploded into its blockers as real columns** (decisions §2.12); the other three stages are one column each. Left→right:
+Decisions §2.12, §2.20. The board is **five columns**, left→right:
 
 | # | Column | Source | Group |
 |---|---|---|---|
-| 1 | Ready | `blocked_on = 'ready'` | Pre-Submittal |
-| 2 | Awaiting landlord | `blocked_on = 'awaiting_ll'` | Pre-Submittal |
-| 3 | Awaiting site control | `blocked_on = 'site_control'` | Pre-Submittal |
-| 4 | Unset | Pre-Submittal, `blocked_on IS NULL` | Pre-Submittal |
-| 5 | Submitted-Reviewing | `deal_stage.label` | — |
-| 6 | Negotiating LOI | `deal_stage.label` | — |
-| 7 | At Lease/PSA | `deal_stage.label` | — |
+| 1 | Awaiting landlord | `blocked_on = 'awaiting_ll'` | Pre-Submittal |
+| 2 | Awaiting site control | `blocked_on = 'site_control'` | Pre-Submittal |
+| 3 | Submitted-Reviewing | `deal_stage.label` | — |
+| 4 | Negotiating LOI | `deal_stage.label` | — |
+| 5 | At Lease/PSA | `deal_stage.label` | — |
 
-The first four carry a small **"Pre-Submittal"** super-label so they read as one stage. A deal's column: Pre-Submittal deals route by `blocked_on` (null → Unset); everything else routes by stage (`columnKeyForDeal` in `starbucksBoard.ts`). **Lost + all paid/terminal stages are off-board.**
+The first two carry a small **"Pre-Submittal"** super-label. Routing (`columnKeyForDeal` in `starbucksBoard.ts`): Pre-Submittal deals route by `blocked_on`; everything else by stage. **Lost + all paid/terminal stages are off-board.** Two Pre-Submittal states are deliberately **not** columns:
+
+- **Ready-to-submit band** — a full-width strip *above* the columns for Pre-Submittal deals that are **classified but have no blocker** (nothing's stopping them). Hot, "Submit it", sorted top. **Hidden entirely when empty** (usually is). See §4.2.
+- **"To classify" counter + triage** — Pre-Submittal deals with **no blocker and no court** are off-board, surfaced only by the header counter (§9) and its triage queue.
 
 Rules:
 - Empty columns still render, at reduced opacity. An empty column is information.
 - Column header shows the name and a count.
-- **Unset drains as classification happens.** Before classification it holds most of Pre-Submittal (~23) and uses the compact/dense tile (below); as deals are classified they move to Ready / Awaiting landlord / Awaiting site control and Unset shrinks.
 
 ### 4.1 Awaiting landlord detail + density
 
-- **Awaiting landlord** collapses pricing + site plan. Two booleans `needs_pricing` / `needs_site_plan` detail it; the tile shows a **Pricing / Site plan / Both** tag, and the slide-over requires at least one (DB invariant `deal_activity_state_awaiting_ll_needs`).
-- **`ready`** still always renders hot ("Submit it", §5.3); its column is effectively an always-hot column.
-- **Density (must fit, no scroll, at 1080p — decisions §1.1).** With seven columns each is narrow; a column over `DENSE_THRESHOLD` tiles uses a **compact tile** (one line: heat bar · site name · optional Pricing/Site-plan/Both tag · a small right token [`{days}d` / `set` / `—`] · star; city dropped). The `A−/A+` text-scale control (persisted) tunes for viewing distance. The old two-sub-column hack is retired — the blocker split *is* the real fix (decisions §2.12, §5).
+- **Awaiting landlord** collapses pricing + site plan. Two booleans `needs_pricing` / `needs_site_plan` detail it; the tile shows a **Pricing / Site plan / Both** tag, and the classify controls require at least one (DB invariant `deal_activity_state_awaiting_ll_needs`).
+- **Density.** A column over `DENSE_THRESHOLD` tiles uses a **compact tile** (one line: heat bar · site name · optional detail tag · a small right token · star; city dropped). The `A−/A+` text-scale control (persisted) tunes for viewing distance. (With Unset gone, no column is chronically overloaded — new unclassified deals go to the counter, not a column.)
+
+### 4.2 Ready-to-submit band (decisions §2.12)
+
+`readyToSubmit` = `stage = Pre-Submittal AND blocked_on IS NULL AND ball_in_court IS NOT NULL` (a classified deal with nothing blocking it). Rendered `hot`, chip **"Submit it"**, in a full-width band above the columns — the loudest thing under the header. **The band is not rendered at all when there are no ready deals** (don't leave a labeled empty strip).
 
 ---
 
@@ -354,7 +357,11 @@ Count of tiles that are warm or hot. This is the game — the target is zero, an
 
 Below it in dim text: `4 yours · 5 theirs`. The split matters, because five deals waiting on landlords is a very different day from five deals waiting on Mike.
 
-**Unclassified and "no history" deals are not counted here** — an unclassified deal has no assigned court and a no-history deal has a placeholder clock, so neither can be "warm/hot" (§3.2, §3.3.1). Show them as a dim tail on the same line, e.g. `4 yours · 5 theirs · 23 to classify · 27 no history`. Both tails should shrink toward zero as deals get classified / get their first real touch — each is its own kind of win.
+On-board deals with no court ("no court") and no-history deals are not counted here — neither can be warm/hot (§3.2, §3.3.1). They show as a dim tail: `4 yours · 5 theirs · 3 no court · 27 no history`.
+
+### 9.0 The "to classify" counter (loudest element — decisions §2.20)
+
+Left of the daily number, a **"N to classify"** counter for Pre-Submittal deals with no blocker and no court. **When non-zero it renders hot and is the largest thing in the header — louder than the daily number** — because an unclassified deal corrupts every other figure (it can't be placed or heated). **At zero it disappears.** Click → the triage queue: one deal at a time, full-height, showing site/city/stage/history; classify (court + blocker) → auto-advance; Escape exits; saved per deal. **Never auto-opens** — a newly-arrived unclassified deal must not interrupt. Built for ~2–3 new deals/week, not bulk.
 
 ### 9.1 Agenda control
 

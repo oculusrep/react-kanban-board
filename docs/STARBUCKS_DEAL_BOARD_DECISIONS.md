@@ -101,15 +101,26 @@ Your court: 3d warm / 7d hot. Their court: 10d warm / 21d hot. Ten days waiting 
 ### 2.11 Board membership derives from stage
 No `is_active` flag. Four columns: Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA. Lost and all terminal/paid stages are off-board — once a lease is executed, nothing on this board can help.
 
-### 2.12 Pre-Submittal is exploded into blocker columns
-`blocked_on` is a set of parallel blockers, not a sequence — a deal waits on one and then moves to Submitted. **Each blocker is its own board column** (migration `20260831130000`). This supersedes the earlier "one column with subheads" design *and* the two-column-grid stopgap (§5) — the blockers becoming real columns is the fix that stopgap was standing in for.
+### 2.12 Pre-Submittal blockers, the ready-to-submit band, and the triage counter
+`blocked_on` is a set of parallel blockers, not a sequence. **`blocked_on = awaiting_ll | site_control`** — just two (migrations `20260831130000`, `20260831140000`). The board is **five columns**: Awaiting landlord · Awaiting site control · Submitted-Reviewing · Negotiating LOI · At Lease/PSA. The first two carry a small "Pre-Submittal" super-label. This retires the "one column with subheads" design, the two-column-grid stopgap (§5), *and* the Unset/Ready columns.
 
-Enum: **`ready | awaiting_ll | site_control`** (was `pricing | site_plan | under_contract | info | ready`). Board columns, left→right: **Ready · Awaiting landlord · Awaiting site control · Unset**, then the three later stages — **seven columns total**, the first four tied together by a small "Pre-Submittal" super-label.
+Two Pre-Submittal states are **not** columns:
 
-- **`awaiting_ll`** ("Awaiting landlord") collapses the former `pricing` + `site_plan`. Two booleans `needs_pricing` / `needs_site_plan` detail it; the tile tag reads **Pricing / Site plan / Both**. **At least one is required** (DB invariant `deal_activity_state_awaiting_ll_needs`; the slide-over enforces it too).
+- **Ready to submit** — a *derived* state (Pre-Submittal, **classified** [court set], **no blocker**): nothing is stopping it, so submit it. Renders in a **full-width band above the columns**, hot, chip "Submit it", sorted top. **The band is hidden entirely when empty** — no labeled empty strip. It's usually empty (a ready deal moves to Submitted quickly), so it costs nothing when there's nothing to act on. Ready-to-submit is the *absence* of a blocker, not one of them — a band says "clear these first"; a column would make it one option among several.
+- **To classify** — a Pre-Submittal deal, **no blocker**, **not yet classified** (no court). Off-board entirely; surfaced only by the header counter + triage queue (2.20). New deals arrive here.
+
+Details:
+- **`awaiting_ll`** ("Awaiting landlord") collapses the former `pricing` + `site_plan`. Two booleans `needs_pricing` / `needs_site_plan` detail it; the tile tag reads **Pricing / Site plan / Both**. **At least one is required** (DB invariant `deal_activity_state_awaiting_ll_needs`; the UI enforces it too).
 - **`site_control`** ("Awaiting site control") is the former `under_contract`, renamed.
-- **`info` was dropped.** Deals that don't fit the three stay **unclassified** (Unset column). A real fourth blocker gets named when it actually emerges during classification — not speculatively.
-- Implied court on pick (overridable): `ready` → us, `awaiting_ll` / `site_control` → them.
+- **`info` and `ready` were dropped** as enum values (`info` → unclassified; `ready` → derived band). A real new blocker gets named when it actually emerges during classification — not speculatively.
+- Implied court on pick (overridable): `awaiting_ll` / `site_control` → them. Classifying with **no blocker + court** = ready-to-submit.
+
+### 2.20 Unclassified is a header counter + triage queue, never a column or a modal
+Removing Unset as a column, the unclassified Pre-Submittal deals become a single **"N to classify" counter** at the top of the header, left of the daily number. **When non-zero it renders hot and is the loudest element in the header — louder than the daily number** — because an unclassified deal corrupts every other figure on the board (it can't be placed or heated, so it silently drags the counts). **At zero it disappears.**
+
+Clicking it opens a **triage queue**: one deal at a time, full-height, showing site name, city, stage, and any history; set court + blocker, then advance automatically; Escape exits; progress is saved per deal.
+
+**No blocking modal on load.** A deal arriving unclassified must never interrupt what Mike is doing — the counter is passive; triage is opt-in. Designed for the **steady state of 2–3 new deals a week**, not a one-time bulk pass.
 
 ### 2.13 Satellite table, named for the general case
 `deal_activity_state`, 1:1 on `deal`. Not columns on `deal` — the reset trigger fires constantly, and writing to `deal` would trip every realtime subscriber in OVIS and add vacuum pressure.
