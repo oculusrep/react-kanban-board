@@ -292,6 +292,45 @@ backfilled**; staleness is a queryable **work list** (`loi_stale_selector_varian
 **hard error at BOTH assembly and the LRM freeze** (a frozen audit artifact on a stale partition is
 worse than a stale draft). Pre-seed the domain is free to correct as v1 (nothing pins it yet).
 
+## Economic terms as concessions + rent as computed data (LOCKED — build before Phase-2 tables)
+
+**Rent is structured deal terms; the schedule, commission, and pipeline value are DERIVED. No
+rendered rent row is ever the source of truth** — if a value is only recoverable by reading the
+emitted document, it's stored wrong. The deal record holds base rent, escalation rate, escalation
+period, measurement basis, and term length; everything else recomputes from those. R0/R1 is "which
+schedule **shape** to render," not a column threaded through tab stops.
+
+**Rent engine (OVIS-side; assembler does zero math), built BIDIRECTIONAL:**
+- Forward: terms → computed schedule rows. Business rules: **freestanding (NN/NNN) escalates on
+  annual rent; end-cap drive-thru escalates on rent per SF**; on the **final period the $/SF column
+  drops and reverts to a fixed annual rent** — a *protective* rule so a later square-footage
+  remeasurement can't retrigger a rent recalculation (encode with the reason). Escalation pattern is
+  a per-deal input, not a constant.
+- Backward (landlord counters): a landlord's counter arrives as a fully rewritten table (output, not
+  input) → **fit terms to their rows**. Three outcomes: **clean fit** → record as term deltas
+  ("escalation 10%/5yr → 8%/5yr", not a cell diff); **fit-with-exceptions** → report exactly which
+  periods deviate and by how much (usually the landlord's arithmetic error — the highest-value
+  automation); **no regular fit** → irregular by intent, require Mike to confirm, store explicit
+  periods. Distinguishing exception-from-error vs irregular-by-intent is the core requirement.
+  Fitting is deterministic OVIS arithmetic; only extracting the table from the redlined .docx is an
+  LLM step. **Rounding convention (round $/SF before or after ×sqft, and precision) must match Mike's
+  Excel exactly** — discovered by reproducing Powder Springs, not assumed.
+- **Commission engine** derives from the schedule and is built ONCE for two consumers (LOI tool +
+  deal module) — designed for both up front so the commission agreement and LOI can't drift.
+
+**Economic terms as trackable concessions (the Phase-2 gating decision):**
+- **`loi_economic_term` catalog** (pass-one analog of the clause library): the negotiable economic
+  parameters — base_rent, escalation_rate, escalation_period, measurement_basis (derived from deal
+  type), term_length, ti_allowance — each with **`value_type`, `unit`, `direction_of_favor`**
+  (e.g. lower escalation favors tenant, higher TI favors tenant) so a change reads as a *concession*,
+  not just a delta, and **`is_derived`** (measurement_basis, schedule/commission/pipeline are derived
+  outputs, never negotiated directly).
+- **Unified negotiable item** — a Phase-2 event targets a `loi_negotiable_item` that is *either* a
+  clause-position instance *or* an economic-term instance, so the LRM's `provision | status |
+  deviation` columns render language and economics uniformly.
+- **Opening value captured at Phase-1 assembly for EVERY negotiable item** (language and economic) —
+  the LRM's "opened at X, closed at Y" cannot be reconstructed after the fact.
+
 ## FALLBACK/IF/CHOOSE/OPTION sweep decisions (migration _body_parameters)
 
 A full sweep of the national drop's conditional markers found the schema needed more than one
