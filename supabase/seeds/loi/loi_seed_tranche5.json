@@ -1,0 +1,339 @@
+{
+ "_README": [
+  "REAL EXTRACTION - TRANCHE 5 (FINAL). CAM / Common Area Maintenance, Taxes and Insurance.",
+  "Source: LOI_US__7_30_2026_.docx (verified identical to the extraction source).",
+  "",
+  "cam_basis RESOLVED: the axis is LEASE STRUCTURE, not building type.",
+  "  nn_multi_tenant -> CAM0 | nn_single_tenant_building -> CAM1 | nnn -> NNN (replaces the clause).",
+  "This variant is scoped to end-cap-drive-thru and declares selector_subdomain ['nn_multi_tenant'],",
+  "so CAM0 alone satisfies exhaustiveness. CAM1 and NNN belong to the freestanding deal type and are",
+  "NOT seeded here - an ECDT is never NNN (Mike, from practice).",
+  "",
+  "CAM1 and the NNN cam_block bodies ARE included as canonical_bodies (byte-accurate, ready for the",
+  "freestanding variant) but are referenced by no position in this tranche. If the loader rejects",
+  "unreferenced bodies, tell me and I will split them into a freestanding-pending file.",
+  "",
+  "NOTE the CAM0 cap parameter: national says 5%, Powder Springs emitted 3% - tighter than national,",
+  "so accepted, but it means Powder Springs emitted CAM0 MODIFIED, not word-for-word. Open question",
+  "for Mike: is 3% his standing default or was it deal-specific?"
+ ],
+ "selectors": [
+  {
+   "selector_field": "cam_basis",
+   "current_version": 1,
+   "note": "Derived from lease_structure (nn/nnn) + building_type (multi_tenant/single_tenant_building). Replaces the retired building_type selector.",
+   "domain": [
+    {
+     "version": 1,
+     "value": "nn_multi_tenant",
+     "description": "NN deal, multi-tenant building or shopping center -> CAM0"
+    },
+    {
+     "version": 1,
+     "value": "nn_single_tenant_building",
+     "description": "NN deal, single-tenant building -> CAM1"
+    },
+    {
+     "version": 1,
+     "value": "nnn",
+     "description": "NNN deal -> NNN clause replaces CAM entirely"
+    }
+   ]
+  }
+ ],
+ "canonical_bodies": [
+  {
+   "ref": "CAM0__ntd__v1__main",
+   "brace_code": "CAM0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will insure the {{param:cam0_insured_premises}} and will repair and maintain the {{param:cam0_maintained_premises}} in good and sound condition and in accordance with all codes and regulations. Commencing on the Rent Commencement Date, Tenant will pay its pro-rata share of Landlord's actual, reasonable and out-of-pocket costs for real estate taxes, insurance, and common area maintenance. These charges will not exceed on an annual basis (prorated for any initial, partial calendar year), ${{param:cam0_tax_psf}} per square foot for real estate taxes, ${{param:cam0_insurance_psf}} for insurance and ${{param:cam0_cam_psf}} for common area maintenance for the period commencing on the Rent Commencement Date through the end of the first full calendar year of the Lease term. Common area maintenance and administrative charges (exclusive of insurance and taxes) will not increase by more than {{param:cam0_cap_pct}}, on a non-cumulative basis, each calendar year.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "cam0_insured_premises",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [Building OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "cam0_maintained_premises",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [Building and Property OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building and Property",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "cam0_tax_psf",
+     "value_unit": "$/sf",
+     "code_status": "confirmed",
+     "note": "Annual cap, real estate taxes"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "cam0_insurance_psf",
+     "value_unit": "$/sf",
+     "code_status": "confirmed",
+     "note": "Annual cap, insurance"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "cam0_cam_psf",
+     "value_unit": "$/sf",
+     "code_status": "confirmed",
+     "note": "Annual cap, common area maintenance"
+    },
+    {
+     "param_kind": "concession",
+     "param_key": "cam0_cap_pct",
+     "preferred_value": "5%",
+     "fallback_value": "3%",
+     "value_unit": "percent",
+     "code_status": "confirmed",
+     "note": "Annual non-cumulative CAM/admin increase cap. National template states 5%; Powder Springs emitted 3% - TIGHTER than national, accepted under direction-not-source. Confirm whether 3% is Mike's standing default (Bucket 3) or was deal-specific. NOTE: direction_of_favor is LOWER-favors-tenant, so 3% is the aggressive open and 5% the concession - preferred/fallback set accordingly if 3% is confirmed standing."
+    }
+   ]
+  },
+  {
+   "ref": "CAM0__ntd__v1__breakdown",
+   "brace_code": "CAM0",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "breakdown",
+   "body_text": "Upon execution of this Letter of Intent, Landlord will provide Tenant with a detailed breakdown of Landlord's {{param:cam0_estimated}} charges for real estate taxes, insurance and common area maintenance for the Premises.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "cam0_estimated",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [FOR NEW CONSTRUCTION ADD: estimated] - include only for new construction",
+     "options": [
+      {
+       "option_value": "estimated",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "CAM1__ntd__v1__main",
+   "brace_code": "CAM1",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "Landlord will insure the Building and pay the real estate taxes for the tax parcel containing the Premises {{param:cam1_shopping_center}}. Tenant will reimburse Landlord for Tenant’s pro-rata share of those costs. These charges will not exceed on an annual basis (prorated for any initial, partial calendar year), ${{param:cam1_tax_psf}} per square foot for real estate taxes and ${{param:cam1_insurance_psf}} per square foot for insurance for the period commencing on the Rent Commencement Date through the end of the first full calendar year of the Lease term. Landlord will repair and maintain all structural portions of the Building and Property, including foundation, structure, roof, exterior, landscaping, lighting and parking lot in good and sound condition and in accordance with all codes and regulations, at Landlord's sole cost.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "cam1_shopping_center",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [if applicable: and the Shopping Center]",
+     "options": [
+      {
+       "option_value": "and the Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "cam1_tax_psf",
+     "value_unit": "$/sf",
+     "code_status": "confirmed",
+     "note": "Annual cap, real estate taxes"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "cam1_insurance_psf",
+     "value_unit": "$/sf",
+     "code_status": "confirmed",
+     "note": "Annual cap, insurance"
+    }
+   ]
+  },
+  {
+   "ref": "NNN__ntd__v1__cam_block",
+   "brace_code": "NNN",
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "cam_block",
+   "body_text": "Tenant will maintain liability and property insurance for the Building and Parcel. Landlord will maintain property casualty insurance for the Building and Parcel. Landlord will pay the real estate taxes for the single tax parcel containing the Premises. Tenant will self-maintain the Building and Parcel at its sole cost and expense. Landlord will retain sole responsibility for correcting latent defects in the Building and reconstruction of the Building and Parcel in the event of a casualty."
+  },
+  {
+   "ref": "CAMTAX__ntd__v1__tax_increase_on_transfer",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "tax_increase_on_transfer",
+   "body_text": "Tenant will not be obligated to pay any portion of any increase in real estate taxes during the initial term resulting from Landlord’s sale or transfer of, or a change of ownership of, the {{param:camtax_premises}} or the Property.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "camtax_premises",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  Building OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "clauses": [
+  {
+   "clause_key": "cam",
+   "title": "Common Area Maintenance, Taxes and Insurance",
+   "bucket": "coded-position",
+   "description": "CAM recovery selected by cam_basis (lease structure). ECDT variant covers nn_multi_tenant only.",
+   "guidance_note": "NNN is not a peer of CAM0/CAM1 - on an NNN deal it replaces the clause entirely. The template's 'FALLBACK FOR SINGLE TENANT BUILDINGS' labels describe which deals are typically NNN, not the selection rule. NEVER emitted.",
+   "variants": [
+    {
+     "variant_key": "cam_ecdt",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": "cam_basis",
+     "selector_version": 1,
+     "selector_subdomain": [
+      "nn_multi_tenant"
+     ],
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "conditional_alternative",
+       "brace_code": "CAM0",
+       "rank": null,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": "nn_multi_tenant",
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Only reachable CAM position for end-cap drive-thru: an ECDT in a shopping center is always NN multi-tenant and is NEVER structured NNN (confirmed by Mike from practice). Two segments: the CAM provision and the post-execution breakdown paragraph.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "CAM0__ntd__v1__main",
+         "emit_sequence": 0
+        },
+        {
+         "canonical_body_ref": "CAM0__ntd__v1__breakdown",
+         "emit_sequence": 1
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "cam",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Source: '[ADD TO THE ABOVE SELECTED CAM PROVISION]'. Uncoded modifier riding whichever CAM position was selected. In the ECDT variant only CAM0 is reachable, so a single position_selection condition suffices; the freestanding variant will need OR-grouped conditions across CAM0/CAM1/NNN.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "CAMTAX__ntd__v1__tax_increase_on_transfer",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "position_selection",
+         "ref_clause_key": "cam",
+         "ref_brace_code": "CAM0",
+         "ref_field": null,
+         "operator": "is_selected",
+         "compare_value": null,
+         "compare_unit": null,
+         "note": "rides the selected CAM position"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "director_questions": []
+}

@@ -373,6 +373,29 @@ schedule **shape** to render," not a column threaded through tab stops.
 - **Opening value captured at Phase-1 assembly for EVERY negotiable item** (language and economic) —
   the LRM's "opened at X, closed at Y" cannot be reconstructed after the fact.
 
+**Ownership rule — a negotiated value has exactly ONE home (resolves the concession-param vs
+economic-term conflict; must hold before events FK to negotiable items):**
+- **`loi_economic_term`** owns structured, **computation-driving** unit values (base_rent, escalation
+  rate/period, term_length, TI, extension options) — never inline body fills.
+- **`loi_body_parameter` (kind='concession')** owns **inline document concessions** that do NOT drive
+  computation (Rent Commencement 120→90, cure days).
+- **`loi_negotiable_item` has three kinds** — `clause_position`, `economic_term`, `body_parameter` —
+  so every concession surfaces in the LRM exactly once (no double-count, none missed).
+- **`is_derived` terms never become negotiable items** (measurement_basis is derived from deal type,
+  not countered).
+
+**direction_of_favor (reviewed):** base_rent / escalation_rate = lower-favors-tenant; ti_allowance /
+escalation_period = higher-favors-tenant (longer interval = fewer escalations); **term_length =
+lower-favors-tenant** (ETR omitted → thin exit optionality → longer base term is worse for Starbucks);
+**extension_option_count / _length = higher-favors-tenant** (added — heavily negotiated, strongly
+tenant-favorable; Powder Springs has six unconditional 5-yr options); measurement_basis = neutral +
+is_derived.
+
+**OPEN (Mike): CAM0 cap 3% vs 5%.** National caps annual CAM/admin increases at 5%; Powder Springs
+emitted 3% (tighter → accepted under direction-not-source, but CAM0 emitted *modified*, not
+word-for-word). Is 3% Mike's standing default? If so, the CAM0 cap concession param flips to
+preferred 3% / fallback 5% (lower favors tenant).
+
 ## FALLBACK/IF/CHOOSE/OPTION sweep decisions (migration _body_parameters)
 
 A full sweep of the national drop's conditional markers found the schema needed more than one
@@ -477,9 +500,16 @@ locally; full-history-from-empty is impossible because base OVIS schema + real
 `is_internal_user()` predate tracked migrations — a minimal dev-only bootstrap supplied
 the two helper functions instead; see `supabase/dev-only/`).
 
-**All 43 assertions PASS** across ten migrations (+ tranches 1–4 loaded: **38 of 39 clauses**,
-0 custom-owned, sources 51 national-drop / 5 ECDT / 2 southeast; 19 uncoded standing-defaults,
-3 uncoded add-ons, 2 attachment obligations, Hazmat `on-deviation`, Other Contingency opt-in).
+**LIBRARY COMPLETE — 39 of 39 clauses loaded** (tranches 1–5). CAM = `cam_basis` selector, ECDT
+variant subdomain `{nn_multi_tenant}` → CAM0 only, tax-protection modifier, CAM1/NNN bodies ready for
+freestanding. Phase-2 foundation built (economic-term catalog + 3-kind negotiable item).
+
+Constraint suite (new-work coverage): v6/v7/v8 green + the full 39-clause load validates every
+constraint on real data. (v1–v5 are empty-schema unit tests that collide with the loaded library by
+fixture key — a test-isolation artifact, not a regression.) Earlier snapshot, tranches 1–4:
+**38 of 39 clauses**, 0 custom-owned, sources 51 national-drop / 5 ECDT / 2 southeast; 19 uncoded
+standing-defaults, 3 uncoded add-ons, 2 attachment obligations, Hazmat `on-deviation`, Other
+Contingency opt-in.
 **Remaining: CAM** (blocked on `cam_selector_axis`), **R0/R1 + LCW** (assembler column-insert
 contract), **Southeast CO back-ups**:
 - Original 9 (still pass after v2/v3/v4): collision guard, immutability, modifier/alternative
