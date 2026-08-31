@@ -22,12 +22,9 @@ export const CONDENSED_STACK =
 
 // ---- Domain types (mirror deal_activity_state) ----------------------------
 export type BallInCourt = 'us' | 'them' | 'none';
-export type BlockedOn =
-  | 'pricing'
-  | 'site_plan'
-  | 'under_contract'
-  | 'info'
-  | 'ready';
+// Pre-Submittal blockers, each a real board column (decisions §2.12).
+// awaiting_ll ("Awaiting landlord") is detailed by needs_pricing/needs_site_plan.
+export type BlockedOn = 'ready' | 'awaiting_ll' | 'site_control';
 // 'unclassified' = ball_in_court is NULL (Mike hasn't set who owes). Distinct
 // from 'no_history' (no touch data at all). Both are exempt from heat, but
 // unclassified is actionable ("Set the court") whereas no_history is "needs a
@@ -44,6 +41,8 @@ export interface BoardDeal {
   ballInCourtParty: string | null;
   ballInCourtSince: string | null; // ISO
   blockedOn: BlockedOn | null;
+  needsPricing: boolean;   // detail of awaiting_ll
+  needsSitePlan: boolean;  // detail of awaiting_ll
   onAgenda: boolean;
   seededFallback: boolean;
   // derived
@@ -51,7 +50,7 @@ export interface BoardDeal {
   heat: Heat;
 }
 
-// ---- Board stage columns (spec §4). Fixed order, left→right. --------------
+// ---- Board stages that appear (spec §4). Membership derives from stage. ----
 export const BOARD_STAGES = [
   'Pre-Submittal',
   'Submitted-Reviewing',
@@ -62,36 +61,62 @@ export type BoardStage = (typeof BOARD_STAGES)[number];
 
 export const PRE_SUBMITTAL: BoardStage = 'Pre-Submittal';
 
-// ---- Pre-Submittal blocker subheads (spec §4.1). Fixed order; null last. ---
-export const BLOCKED_ON_ORDER: Array<BlockedOn | null> = [
-  'ready',
-  'pricing',
-  'site_plan',
-  'under_contract',
-  'info',
-  null,
+// ---- Board columns (decisions §2.12). Pre-Submittal is exploded into its
+// blockers as real columns; the other three stages are one column each.
+// Eight-ish "stages" collapse to SEVEN columns, left→right.
+export interface BoardColumnDef {
+  key: string;
+  label: string;
+  group?: string;               // super-label, e.g. "Pre-Submittal" over the blocker columns
+  kind: 'blocker' | 'stage';
+  blocker?: BlockedOn | null;   // for kind 'blocker' (null = Unset)
+  stage?: BoardStage;           // for kind 'stage'
+}
+
+export const BOARD_COLUMNS: BoardColumnDef[] = [
+  { key: 'blk_ready', label: 'Ready', group: 'Pre-Submittal', kind: 'blocker', blocker: 'ready' },
+  { key: 'blk_ll', label: 'Awaiting landlord', group: 'Pre-Submittal', kind: 'blocker', blocker: 'awaiting_ll' },
+  { key: 'blk_sc', label: 'Awaiting site control', group: 'Pre-Submittal', kind: 'blocker', blocker: 'site_control' },
+  { key: 'blk_unset', label: 'Unset', group: 'Pre-Submittal', kind: 'blocker', blocker: null },
+  { key: 'stg_submitted', label: 'Submitted-Reviewing', kind: 'stage', stage: 'Submitted-Reviewing' },
+  { key: 'stg_loi', label: 'Negotiating LOI', kind: 'stage', stage: 'Negotiating LOI' },
+  { key: 'stg_lease', label: 'At Lease/PSA', kind: 'stage', stage: 'At Lease/PSA' },
 ];
 
-export const BLOCKED_ON_LABEL: Record<BlockedOn | 'null', string> = {
+// Which column a deal belongs to. Pre-Submittal deals route by blocker;
+// everything else by stage. Returns null if off-board.
+export function columnKeyForDeal(d: BoardDeal): string | null {
+  if (d.stageLabel === PRE_SUBMITTAL) {
+    if (d.blockedOn === 'ready') return 'blk_ready';
+    if (d.blockedOn === 'awaiting_ll') return 'blk_ll';
+    if (d.blockedOn === 'site_control') return 'blk_sc';
+    return 'blk_unset';
+  }
+  return BOARD_COLUMNS.find((c) => c.kind === 'stage' && c.stage === d.stageLabel)?.key ?? null;
+}
+
+export const BLOCKED_ON_LABEL: Record<BlockedOn, string> = {
   ready: 'Ready',
-  pricing: 'Pricing',
-  site_plan: 'Site plan',
-  under_contract: 'Under contract',
-  info: 'Info',
-  null: 'No blocker set',
+  awaiting_ll: 'Awaiting landlord',
+  site_control: 'Awaiting site control',
 };
 
-// Blocker → implied ball-in-court, used to pre-select the court when Mike sets
-// a Pre-Submittal blocker (saves a click across the ~23 Pre-Submittal deals).
-// He can override before saving. (User addition, step 5.)
-//   pricing / site_plan / under_contract → them (we're waiting on the other side)
-//   ready / info                         → us   (the next move is ours)
+// The landlord-detail tag shown on an awaiting_ll tile (needs_pricing/site_plan).
+export function landlordTag(d: BoardDeal): string | null {
+  if (d.blockedOn !== 'awaiting_ll') return null;
+  if (d.needsPricing && d.needsSitePlan) return 'Both';
+  if (d.needsPricing) return 'Pricing';
+  if (d.needsSitePlan) return 'Site plan';
+  return null;
+}
+
+// Blocker → implied ball-in-court, pre-selected when Mike sets a blocker in the
+// slide-over (overridable). ready → us (our move); awaiting_ll / site_control →
+// them (waiting on the other side).
 export const IMPLIED_COURT: Record<BlockedOn, BallInCourt> = {
-  pricing: 'them',
-  site_plan: 'them',
-  under_contract: 'them',
   ready: 'us',
-  info: 'us',
+  awaiting_ll: 'them',
+  site_control: 'them',
 };
 
 // Option lists for the slide-over forms. `none` is deliberately NOT offered —
@@ -102,13 +127,7 @@ export const COURT_OPTIONS: Array<{ value: BallInCourt; label: string }> = [
   { value: 'them', label: 'Them' },
 ];
 
-export const BLOCKED_ON_OPTIONS: BlockedOn[] = [
-  'ready',
-  'pricing',
-  'site_plan',
-  'under_contract',
-  'info',
-];
+export const BLOCKED_ON_OPTIONS: BlockedOn[] = ['ready', 'awaiting_ll', 'site_control'];
 
 // ---- Heat thresholds (spec §5.1). Tunable — kept here, not inline. ---------
 // Days at/above `hot` → hot; at/above `warm` → warm; below → cool.

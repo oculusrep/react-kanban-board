@@ -101,8 +101,15 @@ Your court: 3d warm / 7d hot. Their court: 10d warm / 21d hot. Ten days waiting 
 ### 2.11 Board membership derives from stage
 No `is_active` flag. Four columns: Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA. Lost and all terminal/paid stages are off-board — once a lease is executed, nothing on this board can help.
 
-### 2.12 Pre-Submittal is one column, grouped by blocker
-`blocked_on` is a set of parallel blockers, not a sequence — a deal waits on one and then moves to Submitted. Subheads within the single column, fixed order: Ready → Pricing → Site plan → Under contract → Info → (unset).
+### 2.12 Pre-Submittal is exploded into blocker columns
+`blocked_on` is a set of parallel blockers, not a sequence — a deal waits on one and then moves to Submitted. **Each blocker is its own board column** (migration `20260831130000`). This supersedes the earlier "one column with subheads" design *and* the two-column-grid stopgap (§5) — the blockers becoming real columns is the fix that stopgap was standing in for.
+
+Enum: **`ready | awaiting_ll | site_control`** (was `pricing | site_plan | under_contract | info | ready`). Board columns, left→right: **Ready · Awaiting landlord · Awaiting site control · Unset**, then the three later stages — **seven columns total**, the first four tied together by a small "Pre-Submittal" super-label.
+
+- **`awaiting_ll`** ("Awaiting landlord") collapses the former `pricing` + `site_plan`. Two booleans `needs_pricing` / `needs_site_plan` detail it; the tile tag reads **Pricing / Site plan / Both**. **At least one is required** (DB invariant `deal_activity_state_awaiting_ll_needs`; the slide-over enforces it too).
+- **`site_control`** ("Awaiting site control") is the former `under_contract`, renamed.
+- **`info` was dropped.** Deals that don't fit the three stay **unclassified** (Unset column). A real fourth blocker gets named when it actually emerges during classification — not speculatively.
+- Implied court on pick (overridable): `ready` → us, `awaiting_ll` / `site_control` → them.
 
 ### 2.13 Satellite table, named for the general case
 `deal_activity_state`, 1:1 on `deal`. Not columns on `deal` — the reset trigger fires constantly, and writing to `deal` would trip every realtime subscriber in OVIS and add vacuum pressure.
@@ -173,4 +180,4 @@ Append reversible calls made without the user, with a one-line reason. Reviewed 
 
 - **Live text-size control (A− / A+, default 135%, persisted to localStorage).** Added because the board was too small to read from ~10 ft on the office TV. Its 1.1 tension (scrolling at large scales) is resolved by the two-column Pre-Submittal below.
 - **Removed `none` from the court picker.** It was incorrectly offered as "No one (parked)", violating 2.10. The picker now offers Us / Them + a "clear" (→ unclassified). `none` remains a valid stored value but is never set from the UI.
-- **Two-column Pre-Submittal layout.** Tiles in the fat column flow into two sub-columns (blocker subheads preserved, 2.12) so big text and no-scroll coexist (1.1). **This is a symptom fix.** The root cause is that Pre-Submittal holds **23 of 50** deals because it is really *four blockers bucketed into one stage*. Revisit splitting Pre-Submittal into real `deal_stage` rows once classification is complete and the blocker distribution is visible — at that point the columns may want to be the blockers themselves, and the two-column hack goes away.
+- ~~**Two-column Pre-Submittal layout.**~~ **Superseded** (2.12): the blockers are now real board columns, so the two-column-grid stopgap is gone. Its "revisit" — split Pre-Submittal by blocker — is what happened, at the board-column level rather than `deal_stage` rows. (Whether the blockers should become real `deal_stage` rows, so the split is shared with the master pipeline, is still open — revisit once the blocker distribution is visible post-classification.)

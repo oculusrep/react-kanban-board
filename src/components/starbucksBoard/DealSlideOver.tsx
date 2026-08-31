@@ -63,6 +63,8 @@ export default function DealSlideOver({
   const [court, setCourt] = useState<BallInCourt | null>(deal.ballInCourt);
   const [party, setParty] = useState(deal.ballInCourtParty ?? '');
   const [blockedOn, setBlockedOn] = useState<BlockedOn | null>(deal.blockedOn);
+  const [needsPricing, setNeedsPricing] = useState(deal.needsPricing);
+  const [needsSitePlan, setNeedsSitePlan] = useState(deal.needsSitePlan);
 
   const [noteBody, setNoteBody] = useState('');
   const [taskSubject, setTaskSubject] = useState('');
@@ -72,11 +74,21 @@ export default function DealSlideOver({
     setCourt(deal.ballInCourt);
     setParty(deal.ballInCourtParty ?? '');
     setBlockedOn(deal.blockedOn);
+    setNeedsPricing(deal.needsPricing);
+    setNeedsSitePlan(deal.needsSitePlan);
     setNoteBody('');
     setTaskSubject('');
     setTaskDue('');
     setErr(null);
   }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Selecting a blocker pre-fills the implied court (overridable) and resets the
+  // landlord details unless the blocker is awaiting_ll (decisions §2.12).
+  function pickBlocker(b: BlockedOn) {
+    setBlockedOn(b);
+    setCourt(IMPLIED_COURT[b]);
+    if (b !== 'awaiting_ll') { setNeedsPricing(false); setNeedsSitePlan(false); }
+  }
 
   const loadDetails = useCallback(async () => {
     try {
@@ -119,7 +131,12 @@ export default function DealSlideOver({
         ball_in_court_since: new Date().toISOString(),
         seeded_fallback: false,
       };
-      if (isPreSubmittal) patch.blocked_on = blockedOn;
+      if (isPreSubmittal) {
+        patch.blocked_on = blockedOn;
+        // needs_* only meaningful for awaiting_ll; otherwise cleared (§2.12 invariant).
+        patch.needs_pricing = blockedOn === 'awaiting_ll' ? needsPricing : false;
+        patch.needs_site_plan = blockedOn === 'awaiting_ll' ? needsSitePlan : false;
+      }
       const { error } = await supabase.from('deal_activity_state').upsert(patch, { onConflict: 'deal_id' });
       if (error) throw error;
       onChanged();
@@ -206,7 +223,13 @@ export default function DealSlideOver({
   const dirtyCourt =
     court !== deal.ballInCourt ||
     (party.trim() || null) !== (deal.ballInCourtParty ?? null) ||
-    (isPreSubmittal && blockedOn !== deal.blockedOn);
+    (isPreSubmittal && (blockedOn !== deal.blockedOn ||
+      needsPricing !== deal.needsPricing ||
+      needsSitePlan !== deal.needsSitePlan));
+
+  // awaiting_ll requires at least one landlord detail (DB invariant §2.12).
+  const awaitingInvalid = isPreSubmittal && blockedOn === 'awaiting_ll' && !needsPricing && !needsSitePlan;
+  const canSaveCourt = dirtyCourt && !awaitingInvalid;
 
   const verb = instruction(deal);
 
@@ -275,32 +298,43 @@ export default function DealSlideOver({
                 <div style={{ fontSize: px(13), color: PALETTE.textDim, marginBottom: 4 }}>Blocked on (Pre-Submittal)</div>
                 <div className="flex flex-wrap gap-2">
                   {BLOCKED_ON_OPTIONS.map((b) => (
-                    <Pill
-                      key={b}
-                      active={blockedOn === b}
-                      px={px}
-                      onClick={() => { setBlockedOn(b); setCourt(IMPLIED_COURT[b]); }}
-                    >
+                    <Pill key={b} active={blockedOn === b} px={px} onClick={() => pickBlocker(b)}>
                       {BLOCKED_ON_LABEL[b]}
                     </Pill>
                   ))}
                   {blockedOn !== null && <Pill active={false} muted px={px} onClick={() => setBlockedOn(null)}>clear</Pill>}
                 </div>
+
+                {blockedOn === 'awaiting_ll' && (
+                  <div className="mt-2 flex flex-col gap-1" style={{ fontSize: px(14), color: PALETTE.text }}>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={needsPricing} onChange={(e) => setNeedsPricing(e.target.checked)} />
+                      Pricing
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={needsSitePlan} onChange={(e) => setNeedsSitePlan(e.target.checked)} />
+                      Site plan
+                    </label>
+                    {awaitingInvalid && (
+                      <span style={{ color: PALETTE.warm, fontSize: px(12) }}>Pick at least one.</span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             <button
               onClick={saveCourt}
-              disabled={saving || !dirtyCourt}
+              disabled={saving || !canSaveCourt}
               className="mt-3 w-full rounded py-2"
               style={{
-                backgroundColor: dirtyCourt ? PALETTE.text : 'transparent',
-                color: dirtyCourt ? PALETTE.ground : PALETTE.textDim,
-                border: `1px solid ${dirtyCourt ? PALETTE.text : PALETTE.textDim}`,
+                backgroundColor: canSaveCourt ? PALETTE.text : 'transparent',
+                color: canSaveCourt ? PALETTE.ground : PALETTE.textDim,
+                border: `1px solid ${canSaveCourt ? PALETTE.text : PALETTE.textDim}`,
                 fontWeight: 600, fontSize: px(16), opacity: saving ? 0.6 : 1,
               }}
             >
-              Save court{dirtyCourt ? ' (resets clock)' : ''}
+              Save court{canSaveCourt ? ' (resets clock)' : ''}
             </button>
           </Section>
 

@@ -1,38 +1,30 @@
 // Starbucks Deal Board — data hook.
-// Fetches Starbucks deals + their deal_activity_state, assembles the four
-// columns (with Pre-Submittal blocker subheads), computes heat client-side,
-// and the daily "need attention" number. Mirrors the useState/useEffect +
-// visibilitychange pattern of useKanbanData (no React Query in this repo).
-// Realtime is spec step 6 — not here yet.
+// Fetches Starbucks deals + their deal_activity_state, assembles the seven
+// board columns (Pre-Submittal exploded into blocker columns), computes heat
+// client-side, and the daily "need attention" number. Mirrors the
+// useState/useEffect + visibilitychange pattern of useKanbanData.
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import {
   BoardDeal,
-  BoardStage,
+  BOARD_COLUMNS,
   BOARD_STAGES,
-  BLOCKED_ON_ORDER,
-  BLOCKED_ON_LABEL,
   BallInCourt,
   BlockedOn,
+  columnKeyForDeal,
   compareDeals,
   computeHeat,
   daysSince,
   needsAttention,
-  PRE_SUBMITTAL,
 } from '../lib/starbucksBoard';
 
-export interface BoardSubhead {
-  key: string;                 // blocked_on value or 'null'
-  label: string;
-  deals: BoardDeal[];
-}
-
 export interface BoardColumn {
-  stage: BoardStage;
+  key: string;
+  label: string;
+  group?: string;              // super-label ("Pre-Submittal") over blocker columns
   count: number;
-  deals: BoardDeal[];          // flat, sorted (used by non-Pre-Submittal columns)
-  subheads: BoardSubhead[] | null; // present only for Pre-Submittal
+  deals: BoardDeal[];          // flat, sorted
 }
 
 export interface DailyNumber {
@@ -71,6 +63,8 @@ interface RawRow {
         ball_in_court_party: string | null;
         ball_in_court_since: string | null;
         blocked_on: BlockedOn | null;
+        needs_pricing: boolean | null;
+        needs_site_plan: boolean | null;
         on_agenda: boolean | null;
         seeded_fallback: boolean | null;
       }
@@ -115,6 +109,8 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     ballInCourtParty: st?.ball_in_court_party ?? null,
     ballInCourtSince,
     blockedOn,
+    needsPricing: st?.needs_pricing ?? false,
+    needsSitePlan: st?.needs_site_plan ?? false,
     onAgenda,
     seededFallback,
     days,
@@ -123,21 +119,9 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
 }
 
 function assembleColumns(deals: BoardDeal[]): BoardColumn[] {
-  return BOARD_STAGES.map((stage) => {
-    const inStage = deals.filter((d) => d.stageLabel === stage).sort(compareDeals);
-
-    if (stage === PRE_SUBMITTAL) {
-      const subheads: BoardSubhead[] = BLOCKED_ON_ORDER.map((b) => {
-        const key = b ?? 'null';
-        const groupDeals = inStage
-          .filter((d) => (d.blockedOn ?? null) === b)
-          .sort(compareDeals);
-        return { key, label: BLOCKED_ON_LABEL[key as keyof typeof BLOCKED_ON_LABEL], deals: groupDeals };
-      });
-      return { stage, count: inStage.length, deals: inStage, subheads };
-    }
-
-    return { stage, count: inStage.length, deals: inStage, subheads: null };
+  return BOARD_COLUMNS.map((def) => {
+    const inCol = deals.filter((d) => columnKeyForDeal(d) === def.key).sort(compareDeals);
+    return { key: def.key, label: def.label, group: def.group, count: inCol.length, deals: inCol };
   });
 }
 
@@ -174,7 +158,7 @@ const SELECT = `
   site_submit:site_submit_id ( site_submit_name ),
   activity_state:deal_activity_state (
     ball_in_court, ball_in_court_party, ball_in_court_since,
-    blocked_on, on_agenda, seeded_fallback
+    blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback
   )
 `;
 

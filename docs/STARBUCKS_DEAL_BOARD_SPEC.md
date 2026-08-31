@@ -160,45 +160,32 @@ There is no `is_active` boolean today. Two options for Mike (§12): (a) derive o
 
 ---
 
-## 4. Stage columns
+## 4. Columns — seven, fixed
 
-**Four columns, fixed.** Confirmed against live data (§3.5 recon — 37 active Starbucks deals). All Starbucks deals today fall in these four stages; the paid/terminal stages hold zero Starbucks deals and are omitted.
+**Pre-Submittal is exploded into its blockers as real columns** (decisions §2.12); the other three stages are one column each. Left→right:
 
-| # | `deal_stage.label` | Live deals |
-|---|---|---|
-| 1 | Pre-Submittal | 22 |
-| 2 | Submitted-Reviewing | 3 |
-| 3 | Negotiating LOI | 10 |
-| 4 | At Lease/PSA | 2 |
+| # | Column | Source | Group |
+|---|---|---|---|
+| 1 | Ready | `blocked_on = 'ready'` | Pre-Submittal |
+| 2 | Awaiting landlord | `blocked_on = 'awaiting_ll'` | Pre-Submittal |
+| 3 | Awaiting site control | `blocked_on = 'site_control'` | Pre-Submittal |
+| 4 | Unset | Pre-Submittal, `blocked_on IS NULL` | Pre-Submittal |
+| 5 | Submitted-Reviewing | `deal_stage.label` | — |
+| 6 | Negotiating LOI | `deal_stage.label` | — |
+| 7 | At Lease/PSA | `deal_stage.label` | — |
 
-**Lost is off-board.** So are Under Contract / Booked / Executed Payable / Closed Paid — not because they're excluded by rule, but because no Starbucks deal is in them. (If a deal ever lands in one, it simply won't render; revisit only if that happens.)
+The first four carry a small **"Pre-Submittal"** super-label so they read as one stage. A deal's column: Pre-Submittal deals route by `blocked_on` (null → Unset); everything else routes by stage (`columnKeyForDeal` in `starbucksBoard.ts`). **Lost + all paid/terminal stages are off-board.**
 
 Rules:
-- Exactly these four columns, left-to-right in this order.
-- Empty columns still render, at reduced opacity. Seeing that a stage is empty is information.
-- Column header shows stage name and a count.
+- Empty columns still render, at reduced opacity. An empty column is information.
+- Column header shows the name and a count.
+- **Unset drains as classification happens.** Before classification it holds most of Pre-Submittal (~23) and uses the compact/dense tile (below); as deals are classified they move to Ready / Awaiting landlord / Awaiting site control and Unset shrinks.
 
-### 4.1 Pre-Submittal is one column, grouped by blocker
+### 4.1 Awaiting landlord detail + density
 
-Pre-Submittal holds well over half the board (22 of 37). It stays **one column** — do not split it into two. Instead, tiles within it group under **subheads by `blocked_on`** (§3.2.1), in this fixed order:
-
-```
-PRE-SUBMITTAL                    22
-──────────────────────────────────
-▸ Ready                           3   ← always hot (§5.3), sorts to top
-▸ Pricing                         6
-▸ Site plan                       5
-▸ Under contract                  4
-▸ Info                            3
-▸ (unset)                         1   ← no blocker chosen yet — looks suspicious, like ball=none
-```
-
-- Subhead order is fixed: **Ready → Pricing → Site plan → Under contract → Info → (unset)**. `ready` first because a ready-to-submit deal that hasn't been submitted is the most urgent thing on the board.
-- Each subhead shows a count. A subhead with zero deals renders dim (or collapses — tune on the TV).
-- Within a subhead, tiles order by the normal heat rule (§5.3).
-- The other three columns have no subheads — they're plain tile stacks.
-
-**Density (must fit, no scroll, at 1080p — decisions §1.1).** A column with more than 12 tiles switches to a **compact tile** (one line: heat bar · site name · a small right token [`{days}d` / `set` / `—`] · star; city dropped) AND lays its tiles out in **two sub-columns** (blocker subheads preserved, header spanning both). Two ~230px sub-columns in the wide well roughly halve the vertical space, so ~23 tiles fit at a legible size without scrolling; the `A−/A+` text-scale control (persisted) tunes for viewing distance. `DENSE_THRESHOLD` in `StarbucksDealBoardPage.tsx`. Note: this two-column layout is a *symptom fix* — Pre-Submittal is overloaded because it buckets four blockers into one stage; see decisions §5 for the revisit (split into real stages once classification is done).
+- **Awaiting landlord** collapses pricing + site plan. Two booleans `needs_pricing` / `needs_site_plan` detail it; the tile shows a **Pricing / Site plan / Both** tag, and the slide-over requires at least one (DB invariant `deal_activity_state_awaiting_ll_needs`).
+- **`ready`** still always renders hot ("Submit it", §5.3); its column is effectively an always-hot column.
+- **Density (must fit, no scroll, at 1080p — decisions §1.1).** With seven columns each is narrow; a column over `DENSE_THRESHOLD` tiles uses a **compact tile** (one line: heat bar · site name · optional Pricing/Site-plan/Both tag · a small right token [`{days}d` / `set` / `—`] · star; city dropped). The `A−/A+` text-scale control (persisted) tunes for viewing distance. The old two-sub-column hack is retired — the blocker split *is* the real fix (decisions §2.12, §5).
 
 ---
 

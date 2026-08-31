@@ -7,16 +7,14 @@
 // Renders fixed inset-0 so it covers the app nav — it's a TV surface.
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import useStarbucksBoard, {
-  BoardColumn,
-  BoardSubhead,
-} from '../hooks/useStarbucksBoard';
+import useStarbucksBoard, { BoardColumn } from '../hooks/useStarbucksBoard';
 import {
   BoardDeal,
   CONDENSED_STACK,
   courtLabel,
   heatStyle,
   instruction,
+  landlordTag,
   PALETTE,
 } from '../lib/starbucksBoard';
 import { supabase } from '../lib/supabaseClient';
@@ -105,7 +103,7 @@ export default function StarbucksDealBoardPage() {
 
         <div className="flex-1 grid gap-3 px-4 pb-4 overflow-hidden" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
           {shown.map((col) => (
-            <Column key={col.stage} col={col} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
+            <Column key={col.key} col={col} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
           ))}
         </div>
 
@@ -205,7 +203,10 @@ interface TileHandlers {
   onToggleStar: (d: BoardDeal) => void;
 }
 
-// ---- Column (spec §4). Empty renders dim; Pre-Submittal shows subheads. ----
+// ---- Column (spec §4, decisions §2.12). Pre-Submittal blockers are their own
+// columns; a small group super-label ties the four back to one stage. Columns
+// over the dense threshold (transiently, e.g. Unset before classification) use
+// compact tiles. Empty columns render dim. ------------------------------------
 function Column({ col, onOpen, onToggleStar }: { col: BoardColumn } & TileHandlers) {
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
@@ -213,44 +214,20 @@ function Column({ col, onOpen, onToggleStar }: { col: BoardColumn } & TileHandle
   const dense = col.deals.length > DENSE_THRESHOLD;
   return (
     <div className="flex flex-col rounded-lg overflow-hidden" style={{ backgroundColor: PALETTE.column, opacity: empty ? 0.5 : 1 }}>
-      <div className="flex items-baseline justify-between px-3 py-2">
-        <span className="font-semibold uppercase tracking-wide" style={{ color: PALETTE.textDim, fontSize: px(15) }}>
-          {col.stage}
-        </span>
-        <span className="tabular-nums" style={{ color: PALETTE.textDim, fontSize: px(15) }}>{col.count}</span>
+      <div className="px-3 pt-2 pb-2">
+        {col.group && (
+          <div className="uppercase tracking-wider" style={{ color: PALETTE.textDim, fontSize: px(9), opacity: 0.7 }}>{col.group}</div>
+        )}
+        <div className="flex items-baseline justify-between">
+          <span className="font-semibold uppercase tracking-wide" style={{ color: PALETTE.textDim, fontSize: px(15) }}>
+            {col.label}
+          </span>
+          <span className="tabular-nums" style={{ color: PALETTE.textDim, fontSize: px(15) }}>{col.count}</span>
+        </div>
       </div>
 
       <div className={`flex-1 overflow-y-auto px-2 pb-2 flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
-        {col.subheads ? (
-          col.subheads.map((sh) => <Subhead key={sh.key} sh={sh} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)
-        ) : dense ? (
-          <div className="grid grid-cols-2 gap-1">
-            {col.deals.map((d) => <Tile key={d.id} deal={d} dense onOpen={onOpen} onToggleStar={onToggleStar} />)}
-          </div>
-        ) : (
-          col.deals.map((d) => <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />)
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ---- Pre-Submittal blocker subhead (spec §4.1) ----------------------------
-// When dense, tiles flow into TWO sub-columns so the fat column fits without
-// scrolling (decisions §1.1) — the well is ~1/4 of a 1080p screen, wide enough
-// for two compact tiles side by side. The subhead header spans both.
-function Subhead({ sh, dense, onOpen, onToggleStar }: { sh: BoardSubhead; dense: boolean } & TileHandlers) {
-  const scale = useScale();
-  const px = (n: number) => Math.round(n * scale);
-  if (sh.deals.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between px-1 pt-1">
-        <span className="uppercase tracking-wider" style={{ color: PALETTE.textDim, fontSize: px(12) }}>{sh.label}</span>
-        <span className="tabular-nums" style={{ color: PALETTE.textDim, fontSize: px(12) }}>{sh.deals.length}</span>
-      </div>
-      <div className={dense ? 'grid grid-cols-2 gap-1' : 'flex flex-col gap-2'}>
-        {sh.deals.map((d) => (
+        {col.deals.map((d) => (
           <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />
         ))}
       </div>
@@ -263,6 +240,16 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
   const hs = heatStyle(deal.heat);
+  const tag = landlordTag(deal); // "Pricing" | "Site plan" | "Both" on awaiting_ll tiles
+
+  const tagChip = tag ? (
+    <span
+      className="rounded whitespace-nowrap"
+      style={{ fontSize: px(11), color: PALETTE.textDim, border: `1px solid ${PALETTE.textDim}`, padding: `0 ${px(4)}px` }}
+    >
+      {tag}
+    </span>
+  ) : null;
 
   const star = (
     <button
@@ -297,6 +284,7 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
         <span className="truncate flex-1 min-w-0" style={{ fontWeight: 600, fontSize: px(17), letterSpacing: '-0.01em', color: PALETTE.text }}>
           {deal.name}
         </span>
+        {tagChip}
         <span className="tabular-nums whitespace-nowrap" style={{ fontSize: px(12), color: denseRightColor(deal) }}>
           {denseRightText(deal)}
         </span>
@@ -319,8 +307,9 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
         <div className="truncate" style={{ fontWeight: 600, fontSize: px(20), letterSpacing: '-0.01em', color: PALETTE.text }}>
           {deal.name}
         </div>
-        <div className="truncate" style={{ fontSize: px(13), color: PALETTE.textDim }}>
-          {deal.city ?? '—'}
+        <div className="flex items-center gap-2" style={{ fontSize: px(13), color: PALETTE.textDim }}>
+          <span className="truncate">{deal.city ?? '—'}</span>
+          {tagChip}
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2" style={{ fontSize: px(13) }}>
@@ -362,10 +351,5 @@ function denseRightColor(d: BoardDeal): string {
 
 function filterColumn(col: BoardColumn, pred: (d: BoardDeal) => boolean): BoardColumn {
   const deals = col.deals.filter(pred);
-  return {
-    ...col,
-    deals,
-    count: deals.length,
-    subheads: col.subheads ? col.subheads.map((sh) => ({ ...sh, deals: sh.deals.filter(pred) })) : null,
-  };
+  return { ...col, deals, count: deals.length };
 }
