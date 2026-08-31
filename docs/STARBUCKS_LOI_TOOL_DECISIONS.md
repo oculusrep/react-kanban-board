@@ -292,7 +292,26 @@ backfilled**; staleness is a queryable **work list** (`loi_stale_selector_varian
 **hard error at BOTH assembly and the LRM freeze** (a frozen audit artifact on a stale partition is
 worse than a stale draft). Pre-seed the domain is free to correct as v1 (nothing pins it yet).
 
-## Economic terms as concessions + rent as computed data (LOCKED — build before Phase-2 tables)
+## CAM resolved + deal-type-restricted subdomain (migration _variant_selector_subdomain)
+
+**CAM's axis is LEASE STRUCTURE, not building type** (resolved by Mike from practice). A derived
+composite selector **`cam_basis`** partitions: `nn_multi_tenant → CAM0`, `nn_single_tenant_building →
+CAM1`, `nnn → NNN`. NNN is not a peer of CAM0/CAM1 — it substitutes for the whole clause. `cam_basis`
+is derived from two deal facts the wizard already needs: `lease_structure` (nn/nnn) + `building_type`
+(multi/single-tenant). The template's "FALLBACK FOR SINGLE TENANT…" label describes which deals are
+typically NNN; it is NOT the selection rule (that was the apparent-overlap source). **End-cap
+drive-thru is ALWAYS `nn_multi_tenant → CAM0`** (never NNN).
+
+**Deal-type-restricted subdomain** (`loi_variant_selector_value`): a selector-bearing variant may
+declare a **subdomain** — the subset of its selector's domain reachable for that variant's deal type
+— and exhaustiveness is checked against the subdomain, not the full domain. So the **ECDT CAM variant
+declares subdomain `{nn_multi_tenant}` and is valid with just CAM0**; CAM1/NNN belong to the
+freestanding variant and are not forced in. Variants with no declared subdomain still require
+full-domain coverage (`rent_structure`, `landlord_work_structure` unchanged). Seed field:
+`selector_subdomain: [...]` on the variant. The empty provisional **`building_type` selector is
+retired**; `building_type` remains a deal FIELD feeding the `cam_basis` derivation.
+
+## Economic terms as concessions + rent as computed data (BUILT — migration _economic_terms_negotiable_item)
 
 **Rent is structured deal terms; the schedule, commission, and pipeline value are DERIVED. No
 rendered rent row is ever the source of truth** — if a value is only recoverable by reading the

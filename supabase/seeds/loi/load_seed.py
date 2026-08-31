@@ -184,13 +184,20 @@ def validate(d):
                 if n > 1: E(f"{ck}/{vk}: brace_code '{bc}' used {n}x in one variant")
             for rk, n in rank_in_variant.items():
                 if n > 1: E(f"{ck}/{vk}: rank {rk} used {n}x among alternatives")
-            # exhaustive partition
+            # exhaustive partition — against the variant's declared subdomain if present, else full domain
             if sf is not None and cond_vals:
                 domain = {dv["value"] for dv in selectors[sf]["domain"] if dv.get("version") == sv}
                 used = set(cond_vals)
+                sub = v.get("selector_subdomain")
+                if sub is not None:
+                    outside = set(sub) - domain
+                    if outside: E(f"{ck}/{vk}: selector_subdomain value(s) outside domain: {outside}")
+                    effective = set(sub)
+                else:
+                    effective = domain
                 if len(cond_vals) != len(used): E(f"{ck}/{vk}: duplicate selector_value in partition")
-                if used - domain: E(f"{ck}/{vk}: selector_value(s) outside domain: {used - domain}")
-                if domain - used: E(f"{ck}/{vk}: partition not exhaustive; missing {domain - used}")
+                if used - effective: E(f"{ck}/{vk}: selector_value(s) outside {'subdomain' if sub else 'domain'}: {used - effective}")
+                if effective - used: E(f"{ck}/{vk}: partition not exhaustive vs {'subdomain' if sub else 'domain'}; missing {effective - used}")
     return errs, warns
 
 def main():
@@ -247,6 +254,8 @@ def emit_sql(d):
             dts = "ARRAY[" + ",".join(q(x) for x in v.get("deal_type_scope", ["end-cap-drive-thru"])) + "]::text[]"
             out.append(f"INSERT INTO loi_variant (id,clause_id,variant_key,deal_type_scope,selector_field,selector_version,replaces_base) VALUES "
                        f"({q(vid)},(SELECT id FROM loi_clause WHERE clause_key={q(c['clause_key'])}),{q(v['variant_key'])},{dts},{q(v.get('selector_field'))},{q(v.get('selector_version'))},{q(v.get('replaces_base',False))});")
+            for sval in v.get("selector_subdomain", []) or []:
+                out.append(f"INSERT INTO loi_variant_selector_value (variant_id,value) VALUES ({q(vid)},{q(sval)});")
             for p in v.get("positions", []):
                 pid = str(uuid.uuid4())
                 mc = f"(SELECT id FROM loi_clause WHERE clause_key={q(p['modifies_clause_id'])})" if p.get("modifies_clause_id") else "NULL"

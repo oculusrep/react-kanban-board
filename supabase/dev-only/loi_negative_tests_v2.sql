@@ -12,6 +12,14 @@
 -- ===========================================================================
 BEGIN;
 
+-- building_type is retired from the real schema (CAM axis is lease structure now), so this test
+-- seeds a transient selector + domain of its own (rolled back with the transaction).
+INSERT INTO loi_selector (selector_field, current_version) VALUES ('building_type', 1);
+INSERT INTO loi_selector_domain (selector_field, version, value) VALUES
+  ('building_type', 1, 'multi_tenant'),
+  ('building_type', 1, 'single_tenant_building'),
+  ('building_type', 1, 'single_tenant_parcel');
+
 INSERT INTO loi_clause (clause_key, title, bucket) VALUES
   ('cam',   'Common Area Maintenance', 'coded-position'),
   ('trash', 'Trash / Refuse',          'coded-position');
