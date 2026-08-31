@@ -116,11 +116,11 @@
     {
      "param_kind": "concession",
      "param_key": "cam0_cap_pct",
-     "preferred_value": "5%",
-     "fallback_value": "3%",
+     "preferred_value": "3%",
+     "fallback_value": "5%",
      "value_unit": "percent",
      "code_status": "confirmed",
-     "note": "Annual non-cumulative CAM/admin increase cap. National template states 5%; Powder Springs emitted 3% - TIGHTER than national, accepted under direction-not-source. Confirm whether 3% is Mike's standing default (Bucket 3) or was deal-specific. NOTE: direction_of_favor is LOWER-favors-tenant, so 3% is the aggressive open and 5% the concession - preferred/fallback set accordingly if 3% is confirmed standing."
+     "note": "Oculus standing default (Bucket 3): opens at 3%; national 5% is fallback. Lower favors tenant."
     }
    ]
   },

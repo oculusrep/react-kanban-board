@@ -391,10 +391,11 @@ lower-favors-tenant** (ETR omitted → thin exit optionality → longer base ter
 tenant-favorable; Powder Springs has six unconditional 5-yr options); measurement_basis = neutral +
 is_derived.
 
-**OPEN (Mike): CAM0 cap 3% vs 5%.** National caps annual CAM/admin increases at 5%; Powder Springs
-emitted 3% (tighter → accepted under direction-not-source, but CAM0 emitted *modified*, not
-word-for-word). Is 3% Mike's standing default? If so, the CAM0 cap concession param flips to
-preferred 3% / fallback 5% (lower favors tenant).
+**RESOLVED: CAM0 cap = 3% Oculus standing default.** Oculus always opens at 3%; national 5% is the
+fallback. `cam0_cap_pct` concession param re-keyed to **preferred 3% / fallback 5%** (lower favors
+tenant), recorded as a **Bucket 3 standing default** (Mike's standing position, not per-deal). Powder
+Springs at 3% is therefore CAM0 at the standing default — NOT a per-deal tightening (so CAM0 emits
+word-for-word against the standing baseline, not modified).
 
 ## FALLBACK/IF/CHOOSE/OPTION sweep decisions (migration _body_parameters)
 
