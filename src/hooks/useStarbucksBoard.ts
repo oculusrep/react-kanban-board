@@ -20,6 +20,7 @@ import {
   DEAD_SUBMIT_STAGES,
   computeHeat,
   daysSince,
+  isParked,
   isToClassify,
   needsAttention,
   readyToSubmit as computeReadyToSubmit,
@@ -45,6 +46,7 @@ export interface BoardData {
   columns: BoardColumn[];
   ready: BoardDeal[];        // ready-to-submit band (hot, "Submit it")
   toClassify: BoardDeal[];   // header counter + triage queue (off-board)
+  parked: BoardDeal[];       // Parking lot (off-board until review date)
   daily: DailyNumber;
   accounts: Account[];               // available accounts (from ALL data)
   agendaByAccount: Record<string, number>; // clientId → # on_agenda (from ALL data)
@@ -81,6 +83,7 @@ interface RawRow {
         needs_site_plan: boolean | null;
         on_agenda: boolean | null;
         seeded_fallback: boolean | null;
+        parked_until: string | null;
       }
     | any[]
     | null;
@@ -139,10 +142,16 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     needsSitePlan: st?.needs_site_plan ?? false,
     onAgenda,
     seededFallback,
+    parkedUntil: st?.parked_until ?? null,
     days,
     readyToSubmit: ready,
     heat,
   };
+}
+
+// Parking lot order: soonest review date first.
+function sortByReviewDate(a: BoardDeal, b: BoardDeal): number {
+  return (a.parkedUntil ?? '').localeCompare(b.parkedUntil ?? '');
 }
 
 function assembleColumns(deals: BoardDeal[]): BoardColumn[] {
@@ -185,7 +194,7 @@ const SELECT = `
   site_submit:site_submit_id ( id, site_submit_name, submit_stage!site_submit_submit_stage_id_fkey ( name ) ),
   activity_state:deal_activity_state (
     ball_in_court, ball_in_court_party, ball_in_court_since,
-    blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback
+    blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until
   )
 `;
 
@@ -224,12 +233,16 @@ export default function useStarbucksBoard(accountFilter: string = ACCOUNT_ALL): 
     () => (accountFilter === ACCOUNT_ALL ? allDeals : allDeals.filter((d) => d.clientId === accountFilter)),
     [allDeals, accountFilter]
   );
-  const columns = useMemo(() => assembleColumns(filtered), [filtered]);
-  const ready = useMemo(() => filtered.filter((d) => d.readyToSubmit).sort(compareDeals), [filtered]);
-  const toClassify = useMemo(() => filtered.filter((d) => isToClassify(d)).sort(compareDeals), [filtered]);
+  // Parked deals are off the board entirely (columns, band, counter, daily) —
+  // they live only in the Parking lot until their review date (§2.24).
+  const parked = useMemo(() => filtered.filter((d) => isParked(d)).sort(sortByReviewDate), [filtered]);
+  const active = useMemo(() => filtered.filter((d) => !isParked(d)), [filtered]);
+  const columns = useMemo(() => assembleColumns(active), [active]);
+  const ready = useMemo(() => active.filter((d) => d.readyToSubmit).sort(compareDeals), [active]);
+  const toClassify = useMemo(() => active.filter((d) => isToClassify(d)).sort(compareDeals), [active]);
   const daily = useMemo(
-    () => computeDaily([...filtered.filter((d) => columnKeyForDeal(d) !== null), ...ready]),
-    [filtered, ready]
+    () => computeDaily([...active.filter((d) => columnKeyForDeal(d) !== null), ...ready]),
+    [active, ready]
   );
 
   useEffect(() => {
@@ -298,5 +311,5 @@ export default function useStarbucksBoard(accountFilter: string = ACCOUNT_ALL): 
     };
   }, [refresh]);
 
-  return { columns, ready, toClassify, daily, accounts, agendaByAccount, loading, error, lastSynced, refresh };
+  return { columns, ready, toClassify, parked, daily, accounts, agendaByAccount, loading, error, lastSynced, refresh };
 }

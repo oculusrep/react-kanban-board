@@ -22,6 +22,7 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import DealSlideOver from '../components/starbucksBoard/DealSlideOver';
 import TriageQueue from '../components/starbucksBoard/TriageQueue';
+import ParkingLot from '../components/starbucksBoard/ParkingLot';
 
 // A column denser than this many tiles switches to the compact tile (spec §4.1).
 const DENSE_THRESHOLD = 12;
@@ -43,10 +44,11 @@ const ACCOUNT_KEY = 'sbBoardAccount';
 
 export default function StarbucksDealBoardPage() {
   const [accountFilter, setAccountFilterState] = useState<string>(() => localStorage.getItem(ACCOUNT_KEY) || ACCOUNT_ALL);
-  const { columns, ready, toClassify, daily, accounts, agendaByAccount, loading, error, lastSynced, refresh } = useStarbucksBoard(accountFilter);
+  const { columns, ready, toClassify, parked, daily, accounts, agendaByAccount, loading, error, lastSynced, refresh } = useStarbucksBoard(accountFilter);
   const [agendaOnly, setAgendaOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [triageOpen, setTriageOpen] = useState(false);
+  const [parkingOpen, setParkingOpen] = useState(false);
   const [scale, setScale] = useState<number>(loadScale);
 
   useEffect(() => {
@@ -80,10 +82,10 @@ export default function StarbucksDealBoardPage() {
     return columns.map((c) => filterColumn(c, (d) => d.onAgenda));
   }, [columns, agendaOnly]);
 
-  // selectable across columns AND the ready band
+  // selectable across columns, the ready band, and the parking lot
   const selectedDeal = useMemo(
-    () => [...columns.flatMap((c) => c.deals), ...ready].find((d) => d.id === selectedId) ?? null,
-    [columns, ready, selectedId]
+    () => [...columns.flatMap((c) => c.deals), ...ready, ...parked].find((d) => d.id === selectedId) ?? null,
+    [columns, ready, parked, selectedId]
   );
 
   // Agenda filter also applies to the ready band.
@@ -112,6 +114,8 @@ export default function StarbucksDealBoardPage() {
           daily={daily}
           toClassifyCount={toClassify.length}
           onOpenTriage={() => setTriageOpen(true)}
+          parkedCount={parked.length}
+          onOpenParking={() => setParkingOpen(true)}
           accounts={accounts}
           accountFilter={accountFilter}
           onAccountFilter={setAccountFilter}
@@ -152,7 +156,16 @@ export default function StarbucksDealBoardPage() {
         )}
 
         {triageOpen && (
-          <TriageQueue deals={toClassify} scale={scale} onClose={() => setTriageOpen(false)} onChanged={refresh} />
+          <TriageQueue deals={toClassify} scale={scale} onScale={bumpScale} onClose={() => setTriageOpen(false)} onChanged={refresh} />
+        )}
+
+        {parkingOpen && (
+          <ParkingLot
+            deals={parked}
+            scale={scale}
+            onOpenDeal={(d) => { setSelectedId(d.id); setParkingOpen(false); }}
+            onClose={() => setParkingOpen(false)}
+          />
         )}
       </div>
     </ScaleCtx.Provider>
@@ -164,6 +177,8 @@ function Header({
   daily,
   toClassifyCount,
   onOpenTriage,
+  parkedCount,
+  onOpenParking,
   accounts,
   accountFilter,
   onAccountFilter,
@@ -178,6 +193,8 @@ function Header({
   daily: { attention: number; yours: number; theirs: number; unclassified: number; noHistory: number };
   toClassifyCount: number;
   onOpenTriage: () => void;
+  parkedCount: number;
+  onOpenParking: () => void;
   accounts: Account[];
   accountFilter: string;
   onAccountFilter: (id: string) => void;
@@ -250,6 +267,16 @@ function Header({
       </div>
 
       <div className="flex items-start gap-8">
+        {/* Parking lot — quiet (parking shouldn't burn); calm dim counter. Hidden at 0. */}
+        {parkedCount > 0 && (
+          <button onClick={onOpenParking} className="text-right leading-none self-end" title="Open parking lot">
+            <div className="tabular-nums" style={{ fontSize: px(20), fontWeight: 600, color: PALETTE.textDim }}>
+              {parkedCount}
+            </div>
+            <div style={{ fontSize: px(13), color: PALETTE.textDim }}>parking lot →</div>
+          </button>
+        )}
+
         {/* to-classify counter — LOUDER than the daily number when non-zero,
             because unclassified deals corrupt every other figure. Hidden at 0. */}
         {toClassifyCount > 0 && (

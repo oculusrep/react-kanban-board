@@ -9,17 +9,20 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { BoardDeal, CONDENSED_STACK, PALETTE } from '../../lib/starbucksBoard';
 import ClassifyControls from './ClassifyControls';
+import ParkControl from './ParkControl';
 
 interface HistoryRow { id: string; kind: 'activity' | 'note'; text: string; date: string | null; }
 
 export default function TriageQueue({
   deals,
   scale,
+  onScale,
   onClose,
   onChanged,
 }: {
   deals: BoardDeal[];
   scale: number;
+  onScale: (delta: number) => void;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -66,7 +69,7 @@ export default function TriageQueue({
     return (
       <div className="fixed inset-0 z-[10001] flex items-center justify-center" style={{ backgroundColor: PALETTE.ground, color: PALETTE.textDim, fontFamily: CONDENSED_STACK }}>
         <div className="text-center">
-          <div style={{ fontSize: px(22), color: PALETTE.text }}>All classified 🎉</div>
+          <div style={{ fontSize: px(30), color: PALETTE.text }}>All classified 🎉</div>
           <button onClick={onClose} className="mt-3 rounded px-4 py-1.5" style={{ border: `1px solid ${PALETTE.textDim}`, color: PALETTE.text, fontSize: px(14) }}>Close (Esc)</button>
         </div>
       </div>
@@ -77,29 +80,37 @@ export default function TriageQueue({
     <div className="fixed inset-0 z-[10001] flex flex-col" style={{ backgroundColor: PALETTE.ground, color: PALETTE.text, fontFamily: CONDENSED_STACK }}>
       {/* top bar */}
       <div className="flex items-center justify-between px-8 pt-5 pb-3">
-        <div className="uppercase tracking-wider" style={{ fontSize: px(13), color: PALETTE.textDim }}>
+        <div className="uppercase tracking-wider" style={{ fontSize: px(15), color: PALETTE.textDim }}>
           Triage · <span className="tabular-nums">{i + 1} of {queue.length}</span>
         </div>
-        <button onClick={onClose} style={{ fontSize: px(14), color: PALETTE.textDim }}>Close (Esc)</button>
+        <div className="flex items-center gap-3">
+          {/* same A-/A+ zoom as the board (the board header is hidden here) */}
+          <div className="flex items-center gap-1" title="Text size">
+            <button onClick={() => onScale(-0.1)} className="rounded" style={{ fontSize: px(14), color: PALETTE.textDim, border: `1px solid ${PALETTE.textDim}`, padding: `${px(1)}px ${px(7)}px` }}>A−</button>
+            <span className="tabular-nums" style={{ fontSize: px(12), color: PALETTE.textDim, minWidth: px(34), textAlign: 'center' }}>{Math.round(scale * 100)}%</span>
+            <button onClick={() => onScale(0.1)} className="rounded" style={{ fontSize: px(14), color: PALETTE.textDim, border: `1px solid ${PALETTE.textDim}`, padding: `${px(1)}px ${px(7)}px` }}>A+</button>
+          </div>
+          <button onClick={onClose} style={{ fontSize: px(15), color: PALETTE.textDim }}>Close (Esc)</button>
+        </div>
       </div>
 
-      {/* one deal, full height, centered column */}
+      {/* one deal, full height, wide centered column, read at board distance */}
       <div className="flex-1 overflow-y-auto flex justify-center px-6">
-        <div style={{ width: Math.round(680 * Math.min(scale, 1.4)), maxWidth: '94vw' }}>
-          <div style={{ fontWeight: 700, fontSize: px(34), letterSpacing: '-0.01em', color: PALETTE.text }}>{current.name}</div>
-          <div style={{ fontSize: px(16), color: PALETTE.textDim, marginBottom: px(16) }}>
+        <div style={{ width: Math.round(920 * scale), maxWidth: '94vw' }}>
+          <div className="truncate" style={{ fontWeight: 700, fontSize: px(44), letterSpacing: '-0.01em', color: PALETTE.text }}>{current.name}</div>
+          <div style={{ fontSize: px(20), color: PALETTE.textDim, marginBottom: px(18) }}>
             {current.city ?? '—'} · {current.stageLabel}
           </div>
 
           {/* history */}
-          <div className="uppercase tracking-wider" style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 6 }}>History</div>
+          <div className="uppercase tracking-wider" style={{ fontSize: px(14), color: PALETTE.textDim, marginBottom: 6 }}>History</div>
           {history.length === 0 ? (
-            <div style={{ fontSize: px(14), color: PALETTE.textDim, marginBottom: px(20) }}>No history recorded.</div>
+            <div style={{ fontSize: px(18), color: PALETTE.textDim, marginBottom: px(20) }}>No history recorded.</div>
           ) : (
             <div className="flex flex-col gap-1" style={{ marginBottom: px(20) }}>
               {history.map((h) => (
-                <div key={h.id} className="flex items-baseline gap-2" style={{ fontSize: px(14) }}>
-                  <span style={{ color: PALETTE.textDim, fontSize: px(11), minWidth: px(84) }}>
+                <div key={h.id} className="flex items-baseline gap-2" style={{ fontSize: px(18) }}>
+                  <span className="tabular-nums" style={{ color: PALETTE.textDim, fontSize: px(13), minWidth: px(104) }}>
                     {h.date ? new Date(h.date).toLocaleDateString() : ''} · {h.kind}
                   </span>
                   <span className="truncate" style={{ color: PALETTE.text }}>{h.text}</span>
@@ -111,6 +122,9 @@ export default function TriageQueue({
           {/* classify → advance */}
           <div className="rounded-lg p-4" style={{ backgroundColor: PALETTE.column }}>
             <ClassifyControls deal={current} px={px} requireCourt saveLabel="Save & next" onSaved={advance} />
+            <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${PALETTE.ground}` }}>
+              <ParkControl deal={current} px={px} onDone={advance} />
+            </div>
           </div>
 
           <div style={{ height: px(40) }} />

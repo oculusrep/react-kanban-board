@@ -18,6 +18,7 @@ import {
 } from '../../lib/starbucksBoard';
 import ClassifyControls from './ClassifyControls';
 import KillPassAction from './KillPassAction';
+import ParkControl from './ParkControl';
 
 interface NoteRow { id: string; title: string | null; body: string | null; created_at: string | null; }
 interface TaskRow { id: string; subject: string | null; due_at: string | null; }
@@ -224,6 +225,11 @@ export default function DealSlideOver({
                 ))}
               </div>
             )}
+          </Section>
+
+          {/* Park — off the board until a review date (decisions §2.24) */}
+          <Section title="Park" px={px}>
+            <ParkControl deal={deal} px={px} onDone={() => { onChanged(); onClose(); }} />
           </Section>
 
           {/* Pass / Mark lost — removes the tile (decisions §2.23) */}

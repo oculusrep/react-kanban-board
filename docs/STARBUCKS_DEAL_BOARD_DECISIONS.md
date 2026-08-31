@@ -119,6 +119,16 @@ The slide-over has **one** remove-from-board action, labeled by stage:
 
 A required reason is enforced in the same step (not a second modal). Both paths write a note, so the history/synopsis sees every removal. The reason input writing to two places from one action is the point: structured field for reporting + narrative note for humans/AI.
 
+### 2.24 Parked — a board-owned, cross-stage waiting state
+"Parked" is for a deal waiting on something **long-horizon** (e.g. landlord confirming water/sewer feasibility) — no chasing needed, it shouldn't burn on the board.
+
+- **Board-owned field, NOT a `deal_stage`.** `deal_activity_state.parked_until` (DATE, migration `20260831160000`). Parking cuts across stages — a deal can be parked at Pre-Submittal, Submitted-Reviewing, or Negotiating LOI — and **its real deal stage and `site_submit` are unchanged while parked**, so the client site report stays accurate.
+- **Requires a review date; no indefinite parking.** While `parked_until` is in the **future** the deal is parked (off the board). On/after that date it **returns automatically** (client-side; `isParked` = `parked_until > today`), in whatever column its stage puts it, **with the clock running from the review date** — the park action sets `ball_in_court_since = parked_until`, so once it returns `days-since` counts from then. (The park note is written *first* so its reset-trigger stamp is then overwritten by the review date.)
+- **Excluded from the daily number and all columns / band / to-classify** — parked deals are pulled out before any of those are computed.
+- **Header item "Parking lot (n)"** next to the to-classify counter, but **quiet** (dim, never hot — parking must not burn). Click → a full-height list (same pattern as triage; Escape exits) showing each parked deal's **site name, the stage it's parked at, and the review date**; click a row → slide-over (to un-park or act).
+- **Park is available from both the slide-over and the triage queue** (`ParkControl`, shared). Un-park (from the slide-over / parking lot) clears `parked_until` and starts the clock now.
+
+
 ### 2.12 Pre-Submittal blockers, the ready-to-submit band, and the triage counter
 `blocked_on` is a set of parallel blockers, not a sequence. **`blocked_on = awaiting_ll | site_control`** — just two (migrations `20260831130000`, `20260831140000`). The board is **five columns**: Awaiting landlord · Awaiting site control · Submitted-Reviewing · Negotiating LOI · At Lease/PSA. The first two carry a small "Pre-Submittal" super-label. This retires the "one column with subheads" design, the two-column-grid stopgap (§5), *and* the Unset/Ready columns.
 

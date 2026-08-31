@@ -78,6 +78,7 @@ export interface BoardDeal {
   needsSitePlan: boolean;  // detail of awaiting_ll
   onAgenda: boolean;
   seededFallback: boolean;
+  parkedUntil: string | null; // review date (YYYY-MM-DD); parked while future
   // derived
   days: number;          // whole days since ball_in_court_since (local/Eastern)
   readyToSubmit: boolean; // Pre-Submittal, classified, no blocker → hot "Submit it"
@@ -222,6 +223,23 @@ export function passCategoryLabel(v: PassCategory | null): string {
 // "Mark lost". (decisions §2.23)
 export function isEarlyStage(stageLabel: string): boolean {
   return stageLabel === 'Pre-Submittal' || stageLabel === 'Submitted-Reviewing';
+}
+
+// Parked (decisions §2.24): a deal with a review date still in the future is off
+// the board (Parking lot). On/after the review date it returns automatically.
+export function isParked(d: { parkedUntil: string | null }, now: Date = new Date()): boolean {
+  if (!d.parkedUntil) return false;
+  const [y, m, dd] = d.parkedUntil.split('-').map(Number);
+  if (!y || !m || !dd) return false;
+  const review = new Date(y, m - 1, dd);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return review > today;
+}
+
+export function formatReviewDate(iso: string | null): string {
+  if (!iso) return '';
+  const [y, m, dd] = iso.split('-').map(Number);
+  return new Date(y, m - 1, dd).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // ---- Heat thresholds (spec §5.1). Tunable — kept here, not inline. ---------
