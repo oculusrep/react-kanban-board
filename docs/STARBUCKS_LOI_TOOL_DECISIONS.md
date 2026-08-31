@@ -301,11 +301,25 @@ period, measurement basis, and term length; everything else recomputes from thos
 schedule **shape** to render," not a column threaded through tab stops.
 
 **Rent engine (OVIS-side; assembler does zero math), built BIDIRECTIONAL:**
-- Forward: terms → computed schedule rows. Business rules: **freestanding (NN/NNN) escalates on
-  annual rent; end-cap drive-thru escalates on rent per SF**; on the **final period the $/SF column
-  drops and reverts to a fixed annual rent** — a *protective* rule so a later square-footage
-  remeasurement can't retrigger a rent recalculation (encode with the reason). Escalation pattern is
-  a per-deal input, not a constant.
+- Forward: terms → computed schedule rows (Years / Monthly / Yearly / Per SF). Business rules:
+  **freestanding (NN/NNN) escalates on annual rent; end-cap drive-thru escalates on rent per SF**
+  (shown every period). Escalation pattern is a per-deal input, not a constant.
+- **Rounding convention (LOCKED as an assertion, reproduces Powder Springs byte-exact):** escalations
+  compound on **unrounded** $/SF (never re-escalate from a rounded value); displayed $/SF rounded 2dp
+  for display only; **Yearly = unrounded $/SF × sqft, rounded to cents**; Monthly = Yearly ÷ 12,
+  rounded to cents. (Using the rounded $/SF diverges — e.g. period 21-25: $185,267.21 correct vs
+  $185,275.65 wrong, and it widens each period.) `rent_engine.py` asserts all 8 Powder Springs rows.
+- **OPEN ITEM (do not build until Mike confirms): the "$/SF drops / reverts to annual on the final
+  pass" rule.** Powder Springs carries $/SF through ALL periods, so this is NOT schedule-generation.
+  It most likely means the **final version of the LOI before execution** strips the per-SF *basis* so
+  the executed lease can't recompute rent from a remeasured square footage — a **document-lifecycle**
+  rule, not a row rule. Left unimplemented pending confirmation.
+- **OPEN ITEM: schedule render shape (table vs tab-delimited).** The blank template renders the
+  schedule as tab-delimited paragraphs (166 tabs, no Word tables). But the completed Powder Springs
+  LOI renders it as a **real Word table** (4 tables; table 0 = 11×4 rent block with a blank spacer
+  row and an "Extension Options:" label row). If the completed deliverables consistently use a table,
+  emit a table (more faithful; the tab-alignment problem largely disappears). Decide by inspecting the
+  completed examples (ECDT, Freestanding, Powder Springs) before running the spike.
 - Backward (landlord counters): a landlord's counter arrives as a fully rewritten table (output, not
   input) → **fit terms to their rows**. Three outcomes: **clean fit** → record as term deltas
   ("escalation 10%/5yr → 8%/5yr", not a cell diff); **fit-with-exceptions** → report exactly which
