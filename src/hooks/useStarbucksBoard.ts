@@ -4,9 +4,12 @@
 // client-side, and the daily "need attention" number. Mirrors the
 // useState/useEffect + visibilitychange pattern of useKanbanData.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import {
+  Account,
+  ACCOUNT_ALL,
+  accountFor,
   BoardDeal,
   BOARD_COLUMNS,
   BOARD_STAGES,
@@ -42,6 +45,8 @@ export interface BoardData {
   ready: BoardDeal[];        // ready-to-submit band (hot, "Submit it")
   toClassify: BoardDeal[];   // header counter + triage queue (off-board)
   daily: DailyNumber;
+  accounts: Account[];               // available accounts (from ALL data)
+  agendaByAccount: Record<string, number>; // clientId → # on_agenda (from ALL data)
   loading: boolean;
   error: string | null;
   lastSynced: Date | null;
@@ -58,6 +63,7 @@ function embed<T>(v: T | T[] | null | undefined): T | null {
 interface RawRow {
   id: string;
   deal_name: string | null;
+  client: { id: string | null; client_name: string | null } | { id: string | null; client_name: string | null }[] | null;
   stage: { label: string | null; sort_order: number | null } | { label: string | null; sort_order: number | null }[] | null;
   property: { property_name: string | null; city: string | null } | { property_name: string | null; city: string | null }[] | null;
   site_submit: { site_submit_name: string | null } | { site_submit_name: string | null }[] | null;
@@ -85,6 +91,9 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
   const property = embed(row.property);
   const siteSubmit = embed(row.site_submit);
   const st = embed(row.activity_state);
+  const client = embed(row.client);
+  const clientId = client?.id ?? null;
+  const clientName = client?.client_name ?? null;
 
   const name =
     property?.property_name ||
@@ -108,6 +117,9 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     id: row.id,
     name,
     city: property?.city ?? null,
+    clientId,
+    clientName,
+    accountToken: accountFor(clientId, clientName).token,
     stageLabel,
     stageSortOrder: stage?.sort_order ?? 0,
     ballInCourt,
@@ -158,7 +170,7 @@ function computeDaily(deals: BoardDeal[]): DailyNumber {
 const SELECT = `
   id,
   deal_name,
-  client:client_id!inner ( starbucks_layer_enabled ),
+  client:client_id!inner ( id, client_name, starbucks_layer_enabled ),
   stage:stage_id ( label, sort_order ),
   property:property_id ( property_name, city ),
   site_submit:site_submit_id ( site_submit_name ),
@@ -168,17 +180,48 @@ const SELECT = `
   )
 `;
 
-export default function useStarbucksBoard(): BoardData {
-  const [columns, setColumns] = useState<BoardColumn[]>([]);
-  const [ready, setReady] = useState<BoardDeal[]>([]);
-  const [toClassify, setToClassify] = useState<BoardDeal[]>([]);
-  const [daily, setDaily] = useState<DailyNumber>({ attention: 0, yours: 0, theirs: 0, unclassified: 0, noHistory: 0 });
+// Distinct accounts present in the data (from the FULL, unfiltered set) — the
+// header filter offers "All" + one per account. Generalizes to phase 3.
+function deriveAccounts(deals: BoardDeal[]): Account[] {
+  const byId = new Map<string, Account>();
+  for (const d of deals) {
+    if (!d.clientId || byId.has(d.clientId)) continue;
+    const labels = accountFor(d.clientId, d.clientName);
+    byId.set(d.clientId, { clientId: d.clientId, name: d.clientName ?? labels.filter, token: labels.token, filter: labels.filter });
+  }
+  return [...byId.values()].sort((a, b) => a.filter.localeCompare(b.filter));
+}
+
+export default function useStarbucksBoard(accountFilter: string = ACCOUNT_ALL): BoardData {
+  const [allDeals, setAllDeals] = useState<BoardDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const refresh = useCallback(() => setRefreshTrigger((t) => t + 1), []);
+
+  // Derived per account filter. accounts + agenda counts come from the FULL set
+  // (so the filter always shows every account); the board views come from the
+  // account-filtered set.
+  const accounts = useMemo(() => deriveAccounts(allDeals), [allDeals]);
+  const agendaByAccount = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const d of allDeals) if (d.onAgenda && d.clientId) m[d.clientId] = (m[d.clientId] ?? 0) + 1;
+    return m;
+  }, [allDeals]);
+
+  const filtered = useMemo(
+    () => (accountFilter === ACCOUNT_ALL ? allDeals : allDeals.filter((d) => d.clientId === accountFilter)),
+    [allDeals, accountFilter]
+  );
+  const columns = useMemo(() => assembleColumns(filtered), [filtered]);
+  const ready = useMemo(() => filtered.filter((d) => d.readyToSubmit).sort(compareDeals), [filtered]);
+  const toClassify = useMemo(() => filtered.filter((d) => isToClassify(d)).sort(compareDeals), [filtered]);
+  const daily = useMemo(
+    () => computeDaily([...filtered.filter((d) => columnKeyForDeal(d) !== null), ...ready]),
+    [filtered, ready]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -198,16 +241,7 @@ export default function useStarbucksBoard(): BoardData {
           .map(toBoardDeal)
           .filter((d): d is BoardDeal => d !== null);
 
-        const readyDeals = deals.filter((d) => d.readyToSubmit).sort(compareDeals);
-        const toClassifyDeals = deals.filter((d) => isToClassify(d)).sort(compareDeals);
-        // "placed" = deals that land in a column; daily = placed + ready band
-        // (both are on-board and heatable). to-classify is excluded — it's the counter.
-        const placed = deals.filter((d) => columnKeyForDeal(d) !== null);
-
-        setColumns(assembleColumns(deals));
-        setReady(readyDeals);
-        setToClassify(toClassifyDeals);
-        setDaily(computeDaily([...placed, ...readyDeals]));
+        setAllDeals(deals);
         setLastSynced(new Date());
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load board');
@@ -252,5 +286,5 @@ export default function useStarbucksBoard(): BoardData {
     };
   }, [refresh]);
 
-  return { columns, ready, toClassify, daily, loading, error, lastSynced, refresh };
+  return { columns, ready, toClassify, daily, accounts, agendaByAccount, loading, error, lastSynced, refresh };
 }

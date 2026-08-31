@@ -122,6 +122,15 @@ Clicking it opens a **triage queue**: one deal at a time, full-height, showing s
 
 **No blocking modal on load.** A deal arriving unclassified must never interrupt what Mike is doing — the counter is passive; triage is opt-in. Designed for the **steady state of 2–3 new deals a week**, not a one-time bulk pass.
 
+### 2.21 Accounts are clients; the board filters off client_id (phase-3 mechanism)
+Both Starbucks entities (client `Starbucks` and `Starbucks - JW (Coastal GA)`) are on the board. An **account is a client**, and all account behavior keys off **`client_id`** so the exact same mechanism carries the full pipeline in phase 3 — nothing is hardcoded to these two clients in the logic.
+
+- **Tile token.** Each tile shows a short, **dim, text-only** account label (e.g. `SBUX`, `JW`) — no color (1.6). So account is legible in the "All" view.
+- **Header filter.** Segmented `All / <accounts…>` (shown only when >1 account), keyed on `client_id`, persisted across reload.
+- **Short labels are curated, with a derived fallback.** `client_id → { token, filter }` is a small map (`SBUX`/`Starbucks`, `JW`/`Coastal GA`); unknown clients (phase 3) fall back to a token derived from the client name. Default + override, not pure heuristic. (Could later move to a `client` column.)
+- **Agendas are per-account.** The header shows `Agenda: SBUX 6 · JW 3`; clicking one enters agenda view **scoped to that account only**, so clearing stars after a call touches only that account's deals — a natural consequence of scoping, not a new bulk action. `on_agenda` stays a per-deal boolean; "per-account" is a grouping of the view and counts, not a new field.
+- **The triage queue respects the account filter** (its deal list is the account-filtered to-classify set).
+
 ### 2.13 Satellite table, named for the general case
 `deal_activity_state`, 1:1 on `deal`. Not columns on `deal` — the reset trigger fires constantly, and writing to `deal` would trip every realtime subscriber in OVIS and add vacuum pressure.
 

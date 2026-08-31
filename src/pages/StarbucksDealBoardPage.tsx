@@ -9,6 +9,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import useStarbucksBoard, { BoardColumn } from '../hooks/useStarbucksBoard';
 import {
+  Account,
+  ACCOUNT_ALL,
   BoardDeal,
   CONDENSED_STACK,
   courtLabel,
@@ -37,8 +39,11 @@ function loadScale(): number {
   return Number.isFinite(v) && v > 0 ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, v)) : 1.35;
 }
 
+const ACCOUNT_KEY = 'sbBoardAccount';
+
 export default function StarbucksDealBoardPage() {
-  const { columns, ready, toClassify, daily, loading, error, lastSynced, refresh } = useStarbucksBoard();
+  const [accountFilter, setAccountFilterState] = useState<string>(() => localStorage.getItem(ACCOUNT_KEY) || ACCOUNT_ALL);
+  const { columns, ready, toClassify, daily, accounts, agendaByAccount, loading, error, lastSynced, refresh } = useStarbucksBoard(accountFilter);
   const [agendaOnly, setAgendaOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [triageOpen, setTriageOpen] = useState(false);
@@ -56,10 +61,19 @@ export default function StarbucksDealBoardPage() {
     });
   }
 
-  const agendaCount = useMemo(
-    () => columns.reduce((n, c) => n + c.deals.filter((d) => d.onAgenda).length, 0),
-    [columns]
-  );
+  // Account filter (persisted). Switching account via the segmented control
+  // exits agenda view; clicking an account's agenda chip enters it scoped.
+  function setAccountFilter(id: string) {
+    setAccountFilterState(id);
+    localStorage.setItem(ACCOUNT_KEY, id);
+    setAgendaOnly(false);
+  }
+  function onAgendaChip(clientId: string) {
+    if (agendaOnly && accountFilter === clientId) { setAgendaOnly(false); return; }
+    setAccountFilterState(clientId);
+    localStorage.setItem(ACCOUNT_KEY, clientId);
+    setAgendaOnly(true);
+  }
 
   const shown = useMemo<BoardColumn[]>(() => {
     if (!agendaOnly) return columns;
@@ -94,9 +108,12 @@ export default function StarbucksDealBoardPage() {
           daily={daily}
           toClassifyCount={toClassify.length}
           onOpenTriage={() => setTriageOpen(true)}
-          agendaCount={agendaCount}
-          agendaOnly={agendaOnly}
-          onToggleAgenda={() => setAgendaOnly((v) => !v)}
+          accounts={accounts}
+          accountFilter={accountFilter}
+          onAccountFilter={setAccountFilter}
+          agendaByAccount={agendaByAccount}
+          agendaActiveClientId={agendaOnly ? accountFilter : null}
+          onAgendaChip={onAgendaChip}
           lastSynced={lastSynced}
           onRefresh={refresh}
           scale={scale}
@@ -138,14 +155,17 @@ export default function StarbucksDealBoardPage() {
   );
 }
 
-// ---- Header: to-classify counter + daily number + agenda + scale + synced ---
+// ---- Header: account filter + agenda + to-classify counter + daily + scale --
 function Header({
   daily,
   toClassifyCount,
   onOpenTriage,
-  agendaCount,
-  agendaOnly,
-  onToggleAgenda,
+  accounts,
+  accountFilter,
+  onAccountFilter,
+  agendaByAccount,
+  agendaActiveClientId,
+  onAgendaChip,
   lastSynced,
   onRefresh,
   scale,
@@ -154,33 +174,66 @@ function Header({
   daily: { attention: number; yours: number; theirs: number; unclassified: number; noHistory: number };
   toClassifyCount: number;
   onOpenTriage: () => void;
-  agendaCount: number;
-  agendaOnly: boolean;
-  onToggleAgenda: () => void;
+  accounts: Account[];
+  accountFilter: string;
+  onAccountFilter: (id: string) => void;
+  agendaByAccount: Record<string, number>;
+  agendaActiveClientId: string | null;
+  onAgendaChip: (clientId: string) => void;
   lastSynced: Date | null;
   onRefresh: () => void;
   scale: number;
   onScale: (delta: number) => void;
 }) {
   const px = (n: number) => Math.round(n * scale);
+  const seg = (active: boolean) => ({
+    fontSize: px(13),
+    padding: `${px(2)}px ${px(9)}px`,
+    border: `1px solid ${active ? PALETTE.text : PALETTE.textDim}`,
+    backgroundColor: active ? PALETTE.text : 'transparent',
+    color: active ? PALETTE.ground : PALETTE.textDim,
+  });
   return (
     <div className="flex items-start justify-between px-6 pt-4 pb-3">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
         <h1 className="font-semibold tracking-wide" style={{ color: PALETTE.text, fontSize: px(20) }}>
           STARBUCKS
         </h1>
-        <button
-          onClick={onToggleAgenda}
-          className="rounded px-3 py-1"
-          style={{
-            fontSize: px(14),
-            border: `1px solid ${agendaOnly ? PALETTE.text : PALETTE.textDim}`,
-            color: agendaOnly ? PALETTE.ground : PALETTE.textDim,
-            backgroundColor: agendaOnly ? PALETTE.text : 'transparent',
-          }}
-        >
-          {agendaOnly ? '★' : '☆'} Agenda ({agendaCount})
-        </button>
+
+        {/* account filter (only if >1 account) */}
+        {accounts.length > 1 && (
+          <div className="flex items-center gap-1" title="Account">
+            <button className="rounded" style={seg(accountFilter === ACCOUNT_ALL)} onClick={() => onAccountFilter(ACCOUNT_ALL)}>All</button>
+            {accounts.map((a) => (
+              <button key={a.clientId} className="rounded" style={seg(accountFilter === a.clientId && agendaActiveClientId === null)} onClick={() => onAccountFilter(a.clientId)}>
+                {a.filter}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* per-account agenda chips */}
+        {accounts.some((a) => (agendaByAccount[a.clientId] ?? 0) > 0) && (
+          <div className="flex items-center gap-2" style={{ fontSize: px(13), color: PALETTE.textDim }}>
+            <span>Agenda:</span>
+            {accounts.map((a) => {
+              const n = agendaByAccount[a.clientId] ?? 0;
+              if (n === 0) return null;
+              const active = agendaActiveClientId === a.clientId;
+              return (
+                <button
+                  key={a.clientId}
+                  onClick={() => onAgendaChip(a.clientId)}
+                  className="rounded px-2"
+                  style={{ border: `1px solid ${active ? PALETTE.text : PALETTE.textDim}`, backgroundColor: active ? PALETTE.text : 'transparent', color: active ? PALETTE.ground : PALETTE.text, fontSize: px(13) }}
+                  title={active ? 'Exit agenda view' : `Agenda for ${a.filter}`}
+                >
+                  {active ? '★' : '☆'} {a.token} {n}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* text-size control */}
         <div className="flex items-center gap-1" title="Text size">
@@ -267,7 +320,7 @@ function ReadyBand({ deals, onOpen, onToggleStar }: { deals: BoardDeal[] } & Til
             <div className="absolute left-0 top-0 bottom-0 rounded-l-md" style={{ width: 6, backgroundColor: PALETTE.hot }} />
             <div className="min-w-0 flex-1">
               <div className="truncate" style={{ fontWeight: 600, fontSize: px(16), color: PALETTE.text }}>{d.name}</div>
-              <div className="truncate" style={{ fontSize: px(11), color: PALETTE.textDim }}>{d.city ?? '—'} · {d.days}d</div>
+              <div className="truncate" style={{ fontSize: px(11), color: PALETTE.textDim }}>{d.city ?? '—'} · {d.accountToken} · {d.days}d</div>
             </div>
             <span className="whitespace-nowrap" style={{ fontSize: px(12), fontWeight: 600, color: PALETTE.hot }}>Submit it →</span>
             <button
@@ -365,6 +418,7 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
         <span className="truncate flex-1 min-w-0" style={{ fontWeight: 600, fontSize: px(17), letterSpacing: '-0.01em', color: PALETTE.text }}>
           {deal.name}
         </span>
+        <span className="whitespace-nowrap" style={{ fontSize: px(10), color: PALETTE.textDim }}>{deal.accountToken}</span>
         {tagChip}
         <span className="tabular-nums whitespace-nowrap" style={{ fontSize: px(12), color: denseRightColor(deal) }}>
           {denseRightText(deal)}
@@ -390,6 +444,7 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
         </div>
         <div className="flex items-center gap-2" style={{ fontSize: px(13), color: PALETTE.textDim }}>
           <span className="truncate">{deal.city ?? '—'}</span>
+          <span style={{ fontSize: px(11) }}>· {deal.accountToken}</span>
           {tagChip}
         </div>
 

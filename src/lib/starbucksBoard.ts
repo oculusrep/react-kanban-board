@@ -33,10 +33,40 @@ export type BlockedOn = 'awaiting_ll' | 'site_control';
 // first touch". Neither is silently defaulted to a tolerance (spec §5.1).
 export type Heat = 'no_history' | 'unclassified' | 'cool' | 'warm' | 'hot';
 
+// ---- Accounts (decisions §2.21). An account IS a client; filtering keys off
+// client_id so this generalizes to the full pipeline in phase 3. Only the short
+// display labels are curated, with a derived fallback for unknown clients
+// (default + override pattern). ---------------------------------------------
+export interface AccountLabels { token: string; filter: string; }
+
+const ACCOUNT_LABELS: Record<string, AccountLabels> = {
+  '39933b5b-3e8c-438d-be2f-e48cd9228c00': { token: 'SBUX', filter: 'Starbucks' },
+  'e58e358e-0d3e-47cb-a806-2464f0b5795c': { token: 'JW', filter: 'Coastal GA' },
+};
+
+export function accountFor(clientId: string | null, clientName: string | null): AccountLabels {
+  if (clientId && ACCOUNT_LABELS[clientId]) return ACCOUNT_LABELS[clientId];
+  const name = clientName ?? 'Unknown';
+  const first = name.replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/)[0] || name;
+  return { token: first.slice(0, 6).toUpperCase(), filter: name };
+}
+
+export interface Account {
+  clientId: string;
+  name: string;
+  token: string;   // tile/agenda short label, e.g. "JW"
+  filter: string;  // filter-control label, e.g. "Coastal GA"
+}
+
+export const ACCOUNT_ALL = 'all';
+
 export interface BoardDeal {
   id: string;
   name: string;          // site name: property → site_submit → deal_name
   city: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  accountToken: string;  // short account label for the tile, e.g. "JW"
   stageLabel: string;
   stageSortOrder: number;
   ballInCourt: BallInCourt | null;   // null = unclassified
