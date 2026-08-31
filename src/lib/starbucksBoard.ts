@@ -94,11 +94,12 @@ export const IMPLIED_COURT: Record<BlockedOn, BallInCourt> = {
   info: 'us',
 };
 
-// Option lists for the slide-over forms.
+// Option lists for the slide-over forms. `none` is deliberately NOT offered —
+// escape hatches get used on exactly the deals being avoided (decisions §2.10).
+// The picker sets us/them; "clear" returns a deal to unclassified (null).
 export const COURT_OPTIONS: Array<{ value: BallInCourt; label: string }> = [
   { value: 'us', label: 'Us' },
   { value: 'them', label: 'Them' },
-  { value: 'none', label: 'No one (parked)' },
 ];
 
 export const BLOCKED_ON_OPTIONS: BlockedOn[] = [
