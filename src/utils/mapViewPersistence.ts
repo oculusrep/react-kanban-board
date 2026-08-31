@@ -15,7 +15,20 @@
 
 const VIEW_KEY_PREFIX = 'ovis_map_view:';
 const LAYER_VISIBILITY_KEY = 'ovis_map_layer_visibility';
+const LAYER_VISIBILITY_VERSION_KEY = 'ovis_map_layer_visibility_version';
 const CUSTOM_LAYER_VISIBILITY_KEY = 'ovis_map_custom_layer_visibility';
+
+/**
+ * Bump this to force-reset every user's persisted system-layer visibility.
+ *
+ * A default of `defaultVisible: true` for the Properties layer shipped briefly
+ * (Sep 26 2025) before being reverted. Users who loaded the map in that window
+ * cached `{ properties: true }` in localStorage, so the map opened with
+ * Properties toggled on even though the code default is now `false`. Discarding
+ * the stale prefs once lets every layer fall back to its code default (all off)
+ * — the intended "nothing toggled on by default" behavior.
+ */
+const LAYER_VISIBILITY_VERSION = '2';
 
 export interface SavedMapView {
   lat: number;
@@ -61,6 +74,14 @@ export function saveMapViewFromInstance(key: string, map: google.maps.Map): void
 /** System layer visibility: { [layerId]: isVisible }. */
 export function loadLayerVisibility(): Record<string, boolean> {
   try {
+    // One-time migration: on a version bump, discard stale prefs (e.g. a
+    // properties:true default that was reverted) and stamp the new version so
+    // layers fall back to their code defaults.
+    if (localStorage.getItem(LAYER_VISIBILITY_VERSION_KEY) !== LAYER_VISIBILITY_VERSION) {
+      localStorage.removeItem(LAYER_VISIBILITY_KEY);
+      localStorage.setItem(LAYER_VISIBILITY_VERSION_KEY, LAYER_VISIBILITY_VERSION);
+      return {};
+    }
     const raw = localStorage.getItem(LAYER_VISIBILITY_KEY);
     if (!raw) return {};
     const v = JSON.parse(raw);
