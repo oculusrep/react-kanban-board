@@ -309,17 +309,26 @@ schedule **shape** to render," not a column threaded through tab stops.
   for display only; **Yearly = unrounded $/SF × sqft, rounded to cents**; Monthly = Yearly ÷ 12,
   rounded to cents. (Using the rounded $/SF diverges — e.g. period 21-25: $185,267.21 correct vs
   $185,275.65 wrong, and it widens each period.) `rent_engine.py` asserts all 8 Powder Springs rows.
-- **OPEN ITEM (do not build until Mike confirms): the "$/SF drops / reverts to annual on the final
-  pass" rule.** Powder Springs carries $/SF through ALL periods, so this is NOT schedule-generation.
-  It most likely means the **final version of the LOI before execution** strips the per-SF *basis* so
-  the executed lease can't recompute rent from a remeasured square footage — a **document-lifecycle**
-  rule, not a row rule. Left unimplemented pending confirmation.
-- **OPEN ITEM: schedule render shape (table vs tab-delimited).** The blank template renders the
-  schedule as tab-delimited paragraphs (166 tabs, no Word tables). But the completed Powder Springs
-  LOI renders it as a **real Word table** (4 tables; table 0 = 11×4 rent block with a blank spacer
-  row and an "Extension Options:" label row). If the completed deliverables consistently use a table,
-  emit a table (more faithful; the tab-alignment problem largely disappears). Decide by inspecting the
-  completed examples (ECDT, Freestanding, Powder Springs) before running the spike.
+- **$/SF-drop rule — DEFERRED BY CHOICE (not building it).** Powder Springs carries $/SF through ALL
+  periods, so it's not schedule-generation. Mike strips the Per Square Foot column **manually** when a
+  deal is ready to execute — a one-time step at the end of the document lifecycle, outside LOI
+  generation. **Rationale preserved (matters if ever automated):** the per-SF *basis* is stripped
+  pre-execution so the executed lease can't recompute rent from a remeasured square footage — which
+  is why the column exists in every LOI but must not survive into the lease. Deferred by choice, not
+  an open question.
+- **Schedule render shape (DECIDED + SPIKE VERIFIED — two shapes, tracking R0/R1):** the end-cap
+  emission spike ran green — a computed Powder Springs 11×4 table created at the R1 insertion point in
+  the real template matches the worked ECDT byte-for-byte (cells, dims, col widths, "Normal Table"
+  style, no borders, inherited fonts, placement, surrounding styles). Full render contract in
+  `docs/LOI_RENT_TABLE_RENDER_CONTRACT.md`. Inspected all four docs. End-cap
+  drive-thru → emit a **real Word table, 11×4**, matching the two worked ECDT deals (Powder Springs
+  and worked ECDT carry the identical 11×4 rent block: headers Years / Monthly / Yearly / Per Square
+  Foot, base-term rows, a blank spacer row, an "Extension Options:" label row, then the option
+  periods). The blank template has **zero tables**, so this is **table CREATION at a known insertion
+  point, not editing** — preserve surrounding paragraph styles; the created table's borders, fonts,
+  and column widths must match the worked ECDT output. Freestanding renders differently (worked
+  Freestanding has no rent table) — **do NOT generalize**; freestanding gets its own shape decision
+  when that deal type comes into scope. Spike is scoped to **end-cap only**.
 - Backward (landlord counters): a landlord's counter arrives as a fully rewritten table (output, not
   input) → **fit terms to their rows**. Three outcomes: **clean fit** → record as term deltas
   ("escalation 10%/5yr → 8%/5yr", not a cell diff); **fit-with-exceptions** → report exactly which
