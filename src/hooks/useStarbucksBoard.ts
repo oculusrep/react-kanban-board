@@ -182,7 +182,7 @@ const SELECT = `
   client:client_id!inner ( id, client_name, starbucks_layer_enabled ),
   stage:stage_id ( label, sort_order ),
   property:property_id ( property_name, city ),
-  site_submit:site_submit_id ( id, site_submit_name, submit_stage:submit_stage_id ( name ) ),
+  site_submit:site_submit_id ( id, site_submit_name, submit_stage!site_submit_submit_stage_id_fkey ( name ) ),
   activity_state:deal_activity_state (
     ball_in_court, ball_in_court_party, ball_in_court_since,
     blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback
