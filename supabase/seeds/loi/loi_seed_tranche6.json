@@ -1,0 +1,1826 @@
+{
+ "_README": [
+  "REAL EXTRACTION - TRANCHE 6. COMPLETENESS RE-EXTRACTION driven by the full 236-paragraph sweep.",
+  "Closes the gaps in LOI_clause_completeness_report.md. Source: LOI_US__7_30_2026_.docx v1.",
+  "",
+  "Clauses marked _topup add MODIFIERS to clauses already loaded - do not recreate the clause.",
+  "Clause marked _resource is a SOURCE CORRECTION (audit_right: ecdt -> national-template-drop).",
+  "",
+  "MOST MATERIAL FIXES:",
+  " 1. trash_recycling BASE clause (para 148) - the TR0/TR1/TR2 ladder had nothing to modify.",
+  "    TR0/TR1/TR2 must be RE-KEYED from alternatives to modifiers riding this base.",
+  " 2. exclusive_use VIOLATION REMEDY (para 91, '[FOR ALL LEASES]') - always emits; without it the",
+  "    exclusive was being emitted with no enforcement mechanism at all.",
+  " 3. LETTER SHELL - the document frame; the assembler could not produce an LOI without it.",
+  " 4. audit_right re-sourced and gated to buildings of three tenants or fewer.",
+  "",
+  "STILL BLOCKED (unchanged): R0/R1 rent schedules and LCW0/LCW1/LCW2 primaries.",
+  "EXCLUSION CANDIDATE: the two pylon-panel signage variants (existing vs to-be-constructed) are",
+  "mutually exclusive - feed into loi_clause_exclusion when it is built."
+ ],
+ "canonical_bodies": [
+  {
+   "ref": "PREM_REPLAT__ntd__v1__replat_add_on",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "replat_add_on",
+   "body_text": "Landlord will complete {{param:prem_replat_type}} for the Property prior to {{param:prem_replat_date}}.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "prem_replat_type",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: '{replat/boundary lne adjustment/subdivision]' - template has a typo ('lne') and a mismatched curly-open/square-close bracket. Normalised.",
+     "options": [
+      {
+       "option_value": "replat",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "boundary line adjustment",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      },
+      {
+       "option_value": "subdivision",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 2
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "prem_replat_date",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Deadline for Landlord to complete. Source '[Insert Date]'."
+    }
+   ]
+  },
+  {
+   "ref": "ARP_FORCE_MAJEURE__ntd__v1__force_majeure",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "force_majeure",
+   "body_text": "In the event any Force Majeure Event, act by Landlord or act of any governmental authority having jurisdiction over Tenant’s use of the Premises restricts or otherwise limits Tenant’s business operations in the Premises and (i) reduces Tenant’s gross sales for any month of the Term by twenty five percent (25%) or more, then Tenant shall pay fifty percent (50%) of the Monthly Base Rent in lieu of Base Rent each month until such restrictions or limitations are lifted, or (ii) Tenant ceases operations in the Premises, then Tenant shall pay no Base Rent {{param:arp_ceased_rent}} of Base Rent], but shall continue to pay Annual Additional Rent. The “Alternative Rent Period” shall run from the date the restrictions or limitations are imposed until the date such restrictions or limitations are lifted.",
+   "parameters": [
+    {
+     "param_kind": "concession",
+     "param_key": "arp_ceased_rent",
+     "preferred_value": "no Base Rent",
+     "fallback_value": "twenty five percent (25%)",
+     "value_unit": "percent",
+     "code_status": "confirmed",
+     "note": "If Tenant ceases operations: preferred is no Base Rent; template fallback is 25% of Base Rent."
+    }
+   ]
+  },
+  {
+   "ref": "ARP_NOTICE__ntd__v1__election_notice",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "election_notice",
+   "body_text": "Tenant shall provide Landlord notice of its election to apply the foregoing rent adjustments for the Alternative Rent Period. For a rent adjustment pursuant to clause (i) above, upon Landlord’s written request, Tenant shall provide reasonable documentation of the decline gross sales for the months covered by the Alternative Rent Period."
+  },
+  {
+   "ref": "EU_EXISTING_TENANTS__ntd__v1__existing_tenants_carveout",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "existing_tenants_carveout",
+   "body_text": "Any existing tenant as of the date of this Letter of Intent and identified by Landlord in this LOI whose lease allows it to sell any of the foregoing products (Landlord shall include use provisions for each such tenant) will not be subject to Tenant’s exclusive. Landlord agrees that, to the extent that it has reasonable control over such tenant’s use and changes in use, it will exercise such control to enforce Tenant’s exclusive."
+  },
+  {
+   "ref": "EU_ANCHOR__ntd__v1__anchor_grocery_carveout",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "anchor_grocery_carveout",
+   "body_text": "Anchor tenants occupying 20,000 contiguous square feet or more and full-line grocery store tenants occupying 10,000 contiguous square feet or more will not be subject to Tenant’s exclusive items so long as the anchor tenants at all times occupy and operate out of the foregoing minimum contiguous square footage under a single trade name, do not have a separate entrance or exterior signage for the sale of Tenant’s exclusive items, or otherwise advertise, in a manner visible from the exterior of such tenant’s space, the sale of Tenant’s exclusive items."
+  },
+  {
+   "ref": "EU_RESTAURANTS__ntd__v1__full_service_restaurant_carveout",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "full_service_restaurant_carveout",
+   "body_text": "Full service, sit-down restaurants with a wait staff and table service serving a complete dinner menu may sell, in conjunction with a sale of a meal, brewed coffee, tea, and hot espresso drinks for on-premises consumption only."
+  },
+  {
+   "ref": "EU_REMEDY__ntd__v1__violation_remedy",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "violation_remedy",
+   "body_text": "In the event of a violation of Tenant’s exclusive use or use identified on Exhibit N, all rent due under the Lease shall be reduced by fifty percent (50%) {{param:eu_remedy}}, until the violation has been cured and the competing tenant(s) at the Property cease the sale of any of the products protected by Tenant’s exclusive use described above or the use identified on Exhibit N has ceased operation. In the event that the violation continues for more than 90 days, Tenant shall have the right to terminate the Lease, and shall be entitled to reimbursement by Landlord of the unamortized amount of Tenant’s improvements to the Premises as of the effective date of the early termination of the Lease.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "eu_remedy",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source offered two remedies: 50% rent reduction (in the base sentence) OR percentage-rent election in lieu of all rent. Second option carries its own rate fill.",
+     "options": [
+      {
+       "option_value": null,
+       "is_free_fill": false,
+       "is_omit": true,
+       "sort_order": 0
+      },
+      {
+       "option_value": "or: Tenant shall have the option to pay percentage rent of ___ percent (__%) of Tenant's gross sales from the Premises, in lieu of all rent payable under the Lease",
+       "is_free_fill": true,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "ETR0__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "EARLY TERMINATION:\tUpon giving Landlord at least one hundred-twenty (120) days prior written notice, Tenant may terminate the Lease on or after the last day of the {{param:etr_blank_1}} full calendar month of the Lease term.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "etr_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "ETR_FEE__ntd__v1__termination_fee",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "termination_fee",
+   "body_text": "Tenant will pay Landlord a termination fee of ${{param:etr_fee_blank_1}} on the early termination date, provided that if the early termination date is other than the last day of the {{param:etr_fee_blank_2}} full calendar month of the Lease term, Tenant will instead pay Landlord an amount equal to the portion of the termination fee, amortized over the initial term, based on the actual termination date.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "etr_fee_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "etr_fee_blank_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "ETR_OMITTED__ntd__v1__placeholder",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "placeholder",
+   "body_text": "Intentionally Deleted"
+  },
+  {
+   "ref": "LCW_DT_PERMITS__ntd__v1__drive_through_permits",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "drive_through_permits",
+   "body_text": "Landlord’s Work will also include obtaining all permits and/or government approvals for the construction and operation of Tenant’s drive-through facility as described on Exhibit {{param:lcw_dt_blank_1}}.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "lcw_dt_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "LCW_SCHEDULE__ntd__v1__construction_schedule",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "construction_schedule",
+   "body_text": "Landlord will provide Tenant a copy of Landlord’s construction schedule detailing Landlord’s Work in accordance with the attached Landlord Workletter ninety (90) days prior to the Scheduled Delivery Date."
+  },
+  {
+   "ref": "SIGN_TOWER__ntd__v1__tower_element",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "tower_element",
+   "body_text": "Landlord’s design and construction of the Premises will include a tower element. Tenant will have the exclusive right to install and maintain signage on such tower element."
+  },
+  {
+   "ref": "SIGN_PANEL_EXISTING__ntd__v1__panel_existing_pylon",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "panel_existing_pylon",
+   "body_text": "Tenant will have the right, at no additional rent, to install a {{param:sign_pe_blank_4}} sign panel in the {{param:sign_pe_choose_1}} on both sides of the {{param:sign_pe_choose_2}} sign(s) located at {{param:sign_pe_blank_3}} . Landlord will pay for all costs associated with the maintenance of such sign. Tenant will pay all costs associated with the fabrication and installation of Tenant’s sign panel(s).",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "sign_pe_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  top position OR __________ position from the top]",
+     "options": [
+      {
+       "option_value": "top position",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "__________ position from the top",
+       "is_free_fill": true,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "sign_pe_choose_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  monument OR pylon]",
+     "options": [
+      {
+       "option_value": "monument",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "pylon",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "sign_pe_blank_3",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "sign_pe_blank_4",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "SIGN_PANEL_NEW__ntd__v1__panel_new_pylon",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "panel_new_pylon",
+   "body_text": "Tenant will have the right, at no additional rent, to install a {{param:sign_pn_blank_5}} sign panel in the {{param:sign_pn_choose_1}} on both sides of the {{param:sign_pn_choose_2}} sign(s) to be located at {{param:sign_pn_blank_4}} . Landlord will pay for all costs associated with the fabrication, installation and maintenance of such sign(s). Tenant will pay all costs associated with the fabrication and installation of Tenant’s sign panel(s). Landlord agrees to construct the {{param:sign_pn_choose_2}} prior to delivery of the Premises to Tenant and shall install (or cause to be installed) such sign panel(s) prior to Tenant opening for business.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "sign_pn_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  top position OR __________ position from the top]",
+     "options": [
+      {
+       "option_value": "top position",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "__________ position from the top",
+       "is_free_fill": true,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "sign_pn_choose_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  monument OR pylon]",
+     "options": [
+      {
+       "option_value": "monument",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "pylon",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "sign_pn_blank_4",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "sign_pn_blank_5",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "TRASH_BASE__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "TRASH AND RECYCLING: In accordance with the attached Landlord Workletter, Landlord shall provide an appropriately sited and sized trash enclosure."
+  },
+  {
+   "ref": "PRS_CAM__ntd__v1__cam_share",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "cam_share",
+   "body_text": "Tenant’s pro-rata share of common area maintenance will be the square footage of the Premises divided by the total square feet of leasable area in the {{param:prs_cam_choose_1}}. Estimated to be {{param:prs_cam_blank_2}}%.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "prs_cam_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  Building OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "prs_cam_blank_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "PRS_TAX__ntd__v1__tax_share",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "tax_share",
+   "body_text": "Tenant’s pro-rata share of real estate taxes will be the square footage of the Premises divided by the total square feet of leasable area in the tax parcel(s) on which the Premises is located. Estimated to be {{param:prs_tax_blank_1}}%.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "prs_tax_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "PRS_INS__ntd__v1__insurance_share",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "insurance_share",
+   "body_text": "Tenant’s pro-rata share of Landlord’s insurance will be the square footage of the Premises divided by the total square feet of the insured {{param:prs_ins_choose_1}}. Estimated to be {{param:prs_ins_blank_2}}%.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "prs_ins_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  Building OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "prs_ins_blank_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "PARK_EXCLUSIVE__ntd__v1__exclusive_spaces",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "exclusive_spaces",
+   "body_text": "Tenant will have the exclusive right to {{param:park_excl_blank_3}} ({{param:park_excl_blank_2}}) parking spaces. {{param:park_excl_choose_1}} install signage identifying such parking spaces for Tenant’s exclusive use.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "park_excl_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  Tenant will have the right to OR Landlord will]",
+     "options": [
+      {
+       "option_value": "Tenant will have the right to",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Landlord will",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "park_excl_blank_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "park_excl_blank_3",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "WARRANTY__ntd__v1__binding_statement",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "binding_statement",
+   "body_text": "Notwithstanding the nonbinding nature of this letter of intent this warranty and representation shall be binding upon Landlord and constitutes a material term to Tenant’s entering into this Letter of Intent negotiation and subsequent lease negotiations with Landlord."
+  },
+  {
+   "ref": "AUDIT_RIGHT__ntd__v1__main",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "main",
+   "body_text": "AUDIT RIGHT: Tenant shall have the right to inspect and audit at any time, Landlord's books, records and other documents which relate to the acquisition of property and development and construction costs of all improvements required to be constructed or installed by Landlord pursuant to the terms of the Lease. Landlord and Tenant understand and agree that if and only if the following calculation will result in a reduction of rent from that set forth above, the amount of rent due under the Lease as referenced above shall be adjusted to reflect an {{param:audit_blank_1}} return to Landlord upon all costs verified to Tenant’s satisfaction incurred by Landlord in connection with the development of the Premises to the effect that the first years rent shall be adjusted downward and determined by multiplying said verified costs by __ to set the first year’s annual rent with the adjusted annual rent being increased by the same percentage increases at the same time intervals as set forth in the rent schedule above.",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "audit_blank_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "SHELL_DATE__ntd__v1__date",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "date",
+   "body_text": "{{param:ls_date_value}}",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "ls_date_value",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Letter shell field"
+    }
+   ]
+  },
+  {
+   "ref": "SHELL_ADDRESSEE_NAME__ntd__v1__addressee_name",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "addressee_name",
+   "body_text": "{{param:ls_name_value}}",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "ls_name_value",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Letter shell field"
+    }
+   ]
+  },
+  {
+   "ref": "SHELL_ADDRESSEE_ADDRESS__ntd__v1__addressee_address",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "addressee_address",
+   "body_text": "{{param:ls_addr_value}}",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "ls_addr_value",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Letter shell field"
+    }
+   ]
+  },
+  {
+   "ref": "SHELL_RE_LINE__ntd__v1__re_line",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "re_line",
+   "body_text": "RE:  {{param:ls_re_value}}",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "ls_re_value",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Subject line describing the deal, e.g. 'LOI for Starbucks on End-Cap Drive Through at <address>'. Powder Springs and Douglasville both use this form."
+    }
+   ]
+  },
+  {
+   "ref": "SHELL_SALUTATION__ntd__v1__salutation",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "salutation",
+   "body_text": "Dear {{param:ls_sal_value}}:",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "ls_sal_value",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Addressee salutation name"
+    }
+   ]
+  },
+  {
+   "ref": "SHELL_OPENING_PARAGRAPH__ntd__v1__opening_paragraph",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "opening_paragraph",
+   "body_text": "We are pleased to present to you this letter (“Letter of Intent”) which sets forth the terms on which Starbucks Corporation (“Starbucks” or “Tenant”) is willing to negotiate a lease for the premises located at {{param:ls_open_blank_5}} (the “Premises”) in the {{param:ls_open_choose_1}} known as {{param:ls_open_blank_4}} (the “{{param:ls_open_choose_2}}”). This Letter of Intent is not intended to be a binding contract (except as expressly stated herein in the Confidentiality provision), a lease or an offer to lease, but is intended only to provide the basis for negotiations for a lease document (the “Lease”) between {{param:ls_open_blank_3}} (“Landlord”) and Starbucks as Tenant.",
+   "parameters": [
+    {
+     "param_kind": "choose_one",
+     "param_key": "ls_open_choose_1",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  building OR shopping center]",
+     "options": [
+      {
+       "option_value": "building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "shopping center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "choose_one",
+     "param_key": "ls_open_choose_2",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Source: [CHOOSE:  Building OR Shopping Center]",
+     "options": [
+      {
+       "option_value": "Building",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 0
+      },
+      {
+       "option_value": "Shopping Center",
+       "is_free_fill": false,
+       "is_omit": false,
+       "sort_order": 1
+      }
+     ]
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "ls_open_blank_3",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "ls_open_blank_4",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "ls_open_blank_5",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Free-fill blank from template underscore run"
+    }
+   ]
+  },
+  {
+   "ref": "SHELL_TIC__ntd__v1__tenants_in_common",
+   "brace_code": null,
+   "source": "national-template-drop",
+   "version": "v1",
+   "segment_key": "tenants_in_common",
+   "body_text": "As tenants in common, Landlord agrees that the tenants in common will be jointly and severally liable. Landlord will appoint one party, {{param:ls_open_blank_6}}, to be the single point of contact on behalf of Landlord",
+   "parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "ls_open_blank_6",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Name of the single Landlord point of contact among the tenants in common"
+    }
+   ]
+  }
+ ],
+ "clauses": [
+  {
+   "clause_key": "premises",
+   "_topup": true,
+   "description": "Adds the missing replat add-on modifier.",
+   "variants": [
+    {
+     "variant_key": "premises",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 30,
+       "modifies_clause_id": "premises",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Source gate '[IF REPLAT/BOUNDARY LINE ADJUSTMENT/SUBDIVISION OR SIMILAR FUTURE MODIFICATION TO PROPERTY, ADD]'. NOTE: the template misspells 'lne' and uses a mismatched curly-open/square-close bracket; normalised to a CHOOSE list here. Mike used this language in the Douglasville deal.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PREM_REPLAT__ntd__v1__replat_add_on",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "property_modification_required",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "emit when a replat/boundary adjustment/subdivision is needed"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "rent_commencement",
+   "_topup": true,
+   "description": "Adds the two missing Alternative Rent Period paragraphs.",
+   "variants": [
+    {
+     "variant_key": "rent_commencement",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 20,
+       "modifies_clause_id": "rent_commencement",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Alternative Rent Period - Force Majeure / government restriction rent relief. Gated off for drive-through per template NOTE at para 67.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ARP_FORCE_MAJEURE__ntd__v1__force_majeure",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "is_drive_through",
+         "operator": "eq",
+         "compare_value": "false",
+         "compare_unit": null,
+         "note": "three Alternative Rent Period paragraphs may be deleted for drive-through locations"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 30,
+       "modifies_clause_id": "rent_commencement",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Alternative Rent Period - notice of election and documentation of sales decline. Same drive-through gate.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ARP_NOTICE__ntd__v1__election_notice",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "is_drive_through",
+         "operator": "eq",
+         "compare_value": "false",
+         "compare_unit": null,
+         "note": "same gate as the other Alternative Rent Period paragraphs"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "exclusive_use",
+   "_topup": true,
+   "description": "Adds four missing Exclusive Use add-ons including the always-emitting violation remedy.",
+   "variants": [
+    {
+     "variant_key": "exclusive_use",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 30,
+       "modifies_clause_id": "exclusive_use",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Carve-out for existing tenants whose leases already permit the exclusive products. Landlord must identify them in the LOI and include their use provisions.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EU_EXISTING_TENANTS__ntd__v1__existing_tenants_carveout",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "existing_tenants_not_subject_to_exclusive",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "gate from source instruction"
+        }
+       ],
+       "attachment_requirements": [
+        {
+         "requirement": "Landlord to identify each existing tenant whose lease permits sale of the exclusive products, and include use provisions for each.",
+         "exhibit_ref": null,
+         "note": "Stripped source instruction; landlord obligation."
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 40,
+       "modifies_clause_id": "exclusive_use",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Carve-out for anchor tenants of 20,000+ contiguous sf and full-line grocery of 10,000+ contiguous sf.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EU_ANCHOR__ntd__v1__anchor_grocery_carveout",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "has_qualifying_anchor_or_grocery",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "gate from source instruction"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 50,
+       "modifies_clause_id": "exclusive_use",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Carve-out permitting full-service sit-down restaurants to sell brewed coffee, tea and hot espresso with a meal, on-premises only.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EU_RESTAURANTS__ntd__v1__full_service_restaurant_carveout",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "full_service_restaurants_carveout",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "gate from source instruction"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 60,
+       "modifies_clause_id": "exclusive_use",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "VIOLATION REMEDY - marked '[FOR ALL LEASES]' so it ALWAYS emits (empty applies_when). This was the most material omission in tranche 1: exclusive use was emitting with no enforcement mechanism. Carries a termination right if the violation persists.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "EU_REMEDY__ntd__v1__violation_remedy",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [],
+       "attachment_requirements": [
+        {
+         "requirement": "Exhibit N - schedule of protected uses referenced by the exclusive-use violation remedy.",
+         "exhibit_ref": "N",
+         "note": "The remedy hangs a 50% rent abatement and a termination right on Exhibit N; it must travel with the LOI."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "early_termination",
+   "title": "Early Termination",
+   "bucket": "standing-default",
+   "description": "ETR is OMITTED on every Oculus deal by standing decision (current Starbucks field direction, notwithstanding handbook text). Bodies are seeded so the library is complete and so Phase 2 can match a landlord-proposed ETR, but the default emits the placeholder, not the clause.",
+   "guidance_note": "Handbook makes ETR exit strategy (2). Oculus never requests it. Absence of an ETR triggers director + store development VP + Real Estate Committee approval per handbook - recorded as a STANDING acknowledged deviation, not a per-deal flag. NEVER emitted.",
+   "variants": [
+    {
+     "variant_key": "early_termination",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "self-authored",
+       "approval_required": true,
+       "approval_authority": "national-handbook",
+       "firing_mode": "standing-acknowledged",
+       "director_question_key": null,
+       "internal_note": "STANDING DEFAULT: emits the placeholder text, not the clause. Douglasville and Powder Springs both render 'Intentionally Deleted'. An omitted clause and a clause marked deleted read differently to a landlord - the placeholder is deliberate.",
+       "deviation_rationale": "Handbook requires an ETR as exit strategy (2). Current Starbucks field direction is not to ask; asking causes harm. Oculus standing position is omission. Approval trigger recorded once as a standing deviation rather than firing per deal.",
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ETR_OMITTED__ntd__v1__placeholder",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      },
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 1,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "The actual ETR language. Never selected under the standing default; retained for library completeness and Phase-2 redline matching if a landlord proposes an ETR.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ETR0__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "include_early_termination",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "opt-in only; never the Oculus default"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "early_termination",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": true,
+       "approval_authority": "national-handbook",
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Negotiated termination fee. Template NOTE at para 97: if the fee exceeds unamortized TIA + broker's commission + six months' rent, approval is required - so this carries an approval flag.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "ETR_FEE__ntd__v1__termination_fee",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "include_early_termination",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "only reachable if an ETR is included at all"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "landlord_work",
+   "_topup": true,
+   "description": "Adds two missing Landlord Contribution and Work add-ons. NOTE: LCW0/LCW1/LCW2 primaries remain BLOCKED pending the column-insert/allowance contract.",
+   "variants": [
+    {
+     "variant_key": "landlord_work",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 20,
+       "modifies_clause_id": "landlord_work",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Landlord obtains drive-through permits and site plan approval. Douglasville uses this language.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "LCW_DT_PERMITS__ntd__v1__drive_through_permits",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "landlord_obtains_dt_permits",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "gate from source instruction"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 30,
+       "modifies_clause_id": "landlord_work",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Landlord provides its construction schedule 90 days before Scheduled Delivery Date. Cross-clause dependency on Scheduled Delivery Date.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "LCW_SCHEDULE__ntd__v1__construction_schedule",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "landlord_construction",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "gate from source instruction"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "_blocked": true,
+   "_comment_blocked": "Deferred by Claude: base clause landlord_work (LCW0/1/2 primaries) is blocked on the rent-schedule column-insert contract. Load these 2 add-ons together with LCW."
+  },
+  {
+   "clause_key": "signage",
+   "_topup": true,
+   "description": "Adds three missing Signage add-ons. The two pylon-panel variants are mutually exclusive - candidate for loi_clause_exclusion or a selector once that lands.",
+   "variants": [
+    {
+     "variant_key": "signage",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 20,
+       "modifies_clause_id": "signage",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Tower element with exclusive Tenant signage rights.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SIGN_TOWER__ntd__v1__tower_element",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "has_tower_element",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "gate from source instruction"
+        }
+       ],
+       "attachment_requirements": [
+        {
+         "requirement": "Attach design of the tower element, monument and/or pylon sign, if available.",
+         "exhibit_ref": null,
+         "note": "Template NOTE at para 142."
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 30,
+       "modifies_clause_id": "signage",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Panel on an EXISTING pylon/monument. Landlord pays maintenance; Tenant pays fabrication and installation.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SIGN_PANEL_EXISTING__ntd__v1__panel_existing_pylon",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "pylon_panel",
+         "operator": "eq",
+         "compare_value": "existing",
+         "compare_unit": null,
+         "note": "mutually exclusive with the to-be-constructed variant"
+        }
+       ],
+       "attachment_requirements": [
+        {
+         "requirement": "Attach design of the tower element, monument and/or pylon sign, if available.",
+         "exhibit_ref": null,
+         "note": "Template NOTE at para 142."
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 40,
+       "modifies_clause_id": "signage",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Panel on a TO-BE-CONSTRUCTED pylon/monument. Landlord pays fabrication, installation AND maintenance of the sign structure - more favourable than the existing-pylon variant.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SIGN_PANEL_NEW__ntd__v1__panel_new_pylon",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "pylon_panel",
+         "operator": "eq",
+         "compare_value": "to_be_constructed",
+         "compare_unit": null,
+         "note": "mutually exclusive with the existing-pylon variant"
+        }
+       ],
+       "attachment_requirements": [
+        {
+         "requirement": "Attach design of the tower element, monument and/or pylon sign, if available.",
+         "exhibit_ref": null,
+         "note": "Template NOTE at para 142."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "trash_recycling",
+   "_topup": true,
+   "description": "CRITICAL: adds the base Trash and Recycling clause. TR0/TR1/TR2 must be re-keyed from alternatives to modifiers riding this base, since the template presents them as ADD-ons to it.",
+   "variants": [
+    {
+     "variant_key": "trash_recycling",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "BASE CLAUSE the TR0/TR1/TR2 ladder modifies. Missing from tranche 1 - the ladder was loaded with nothing to attach to. Source para 148, above the '[PLEASE ADD ONE OF THE FOLLOWING OPTIONS:]' instruction at 150.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "TRASH_BASE__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "pro_rata_share",
+   "_topup": true,
+   "description": "Adds the three missing Pro-Rata Share breakout segments. Tranche 2 extracted only the combined paragraph.",
+   "variants": [
+    {
+     "variant_key": "pro_rata_share",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "pro_rata_share",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Separate CAM pro-rata denominator.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PRS_CAM__ntd__v1__cam_share",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "split_denominators",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "Source instruction para 176: use when calculations are based on different square footage denominators, such as single tenant buildings"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 20,
+       "modifies_clause_id": "pro_rata_share",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Separate real estate tax pro-rata denominator (tax parcel based).",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PRS_TAX__ntd__v1__tax_share",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "split_denominators",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "Source instruction para 176: use when calculations are based on different square footage denominators, such as single tenant buildings"
+        }
+       ]
+      },
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 30,
+       "modifies_clause_id": "pro_rata_share",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Separate insurance pro-rata denominator (insured building/centre).",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PRS_INS__ntd__v1__insurance_share",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "split_denominators",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "Source instruction para 176: use when calculations are based on different square footage denominators, such as single tenant buildings"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "parking",
+   "_topup": true,
+   "description": "Adds the missing exclusive-parking add-on.",
+   "variants": [
+    {
+     "variant_key": "parking",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "parking",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Exclusive parking spaces with identifying signage. Douglasville uses this (six spaces).",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "PARK_EXCLUSIVE__ntd__v1__exclusive_spaces",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "has_exclusive_parking",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "gate from source instruction"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "warranty_representation",
+   "_topup": true,
+   "description": "Adds the missing second Warranty and Representation paragraph.",
+   "variants": [
+    {
+     "variant_key": "warranty_representation",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "modifier",
+       "brace_code": null,
+       "rank": null,
+       "emit_order": 10,
+       "modifies_clause_id": "warranty_representation",
+       "selector_value": null,
+       "is_default": false,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Second paragraph: the warranty is binding notwithstanding the LOI's non-binding nature. Always emits.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "WARRANTY__ntd__v1__binding_statement",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "audit_right",
+   "_resource": true,
+   "description": "CORRECTION: Audit Right IS in the 2026 national drop at para 212, gated '[Use only for buildings of three tenants or less]'. Tranche 3 attributed it to national-template-ecdt only, because the paragraph begins with the gate rather than the heading. Re-source to national-template-drop and add the gate.",
+   "variants": [
+    {
+     "variant_key": "audit_right",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Gated to buildings of three tenants or fewer. Note the interaction with CAM: the audit right only has teeth against an actual-cost pass-through, which is why pro-rata is the preferred stormwater/CAM position and a flat rate is the concession.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "AUDIT_RIGHT__ntd__v1__main",
+         "emit_sequence": 0
+        }
+       ],
+       "applies_when": [
+        {
+         "condition_group": 0,
+         "ref_kind": "deal_field",
+         "ref_clause_key": null,
+         "ref_brace_code": null,
+         "ref_field": "building_tenant_count_max_three",
+         "operator": "eq",
+         "compare_value": "true",
+         "compare_unit": null,
+         "note": "Source gate: use only for buildings of three tenants or less"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "clause_key": "letter_shell",
+   "title": "Letter Shell",
+   "bucket": "standing-default",
+   "description": "Date, addressee, RE line, salutation and opening paragraph. Not clause language - the document frame. Never in scope before; the assembler cannot emit a document without it. Each segment is its own position so the wizard fills them independently.",
+   "variants": [
+    {
+     "variant_key": "letter_shell",
+     "deal_type_scope": [
+      "end-cap-drive-thru"
+     ],
+     "selector_field": null,
+     "selector_version": null,
+     "replaces_base": false,
+     "positions": [
+      {
+       "position_kind": "alternative",
+       "brace_code": null,
+       "rank": 0,
+       "emit_order": null,
+       "modifies_clause_id": null,
+       "selector_value": null,
+       "is_default": true,
+       "code_status": "confirmed",
+       "rule_status": "confirmed",
+       "authority": "national-handbook",
+       "approval_required": false,
+       "approval_authority": null,
+       "firing_mode": "per-deal",
+       "director_question_key": null,
+       "internal_note": "Letter shell segment 'date' (template para 6). Not a clause - the document frame. Required for the assembler to emit a complete LOI.",
+       "deviation_rationale": null,
+       "landlord_fill_prompt": null,
+       "provisional_note": null,
+       "position_bodies": [
+        {
+         "canonical_body_ref": "SHELL_DATE__ntd__v1__date",
+         "emit_sequence": 0
+        },
+        {
+         "canonical_body_ref": "SHELL_ADDRESSEE_NAME__ntd__v1__addressee_name",
+         "emit_sequence": 1
+        },
+        {
+         "canonical_body_ref": "SHELL_ADDRESSEE_ADDRESS__ntd__v1__addressee_address",
+         "emit_sequence": 2
+        },
+        {
+         "canonical_body_ref": "SHELL_RE_LINE__ntd__v1__re_line",
+         "emit_sequence": 3
+        },
+        {
+         "canonical_body_ref": "SHELL_SALUTATION__ntd__v1__salutation",
+         "emit_sequence": 4
+        },
+        {
+         "canonical_body_ref": "SHELL_OPENING_PARAGRAPH__ntd__v1__opening_paragraph",
+         "emit_sequence": 5
+        }
+       ],
+       "applies_when": [],
+       "_comment": "Letter shell = one always-emitting position with 6 segments (date->addressee name->address->RE->salutation->opening). Reshaped from 6 rank-0 alternatives by Claude (co-emitting, not pick-one); body_text unchanged."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "director_questions": []
+}

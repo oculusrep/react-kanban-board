@@ -509,6 +509,22 @@ spaces) were used in a real deal (Douglasville) — practical proof the gap matt
 
 **DECISION: no assembler, no Phase-2 on the current library. Tranche 6 re-extraction first.**
 
+**Tranche 6 LOADED** (41 clauses; landlord_work deferred — its LCW base is blocked). Loader/validator
+gained `_topup`/`_resource` (merge into an existing clause+variant) and `_blocked` (skip; deferred
+base). Structural re-keys as a replayable migration (`_tranche6_restructure`): TR0/TR1/TR2
+alternatives → modifiers riding the trash base (emit_order 10/20/30, is_default cleared),
+`trash_recycling` re-bucketed coded-position → standing-default (uncoded base primary), Audit Right
+re-sourced ecdt → national-template-drop (immutable body, so delete + reload). Claude's changes to
+Mike's file: letter_shell 6 rank-0 alternatives → 1 position/6 segments; early_termination firing_mode
+`standing` → `standing-acknowledged`; landlord_work marked `_blocked`. (Flagged: the tenants-in-common
+modifier described for letter_shell wasn't in the file.)
+
+**Auto-coverage after tranche 6** (proxy; definitive test needs Mike's sweep manifest): 9 uncovered
+non-trivial paragraphs — 6 blocked (R0/R1 + LCW), **3 candidate gaps: contaminated-sites hazmat gate
+(para 162), and the CLOSING/signature frame (paras 226/229 — "Store Development Manager", "Accepted
+and agreed…") which the opening-only letter shell doesn't cover.** Next: Mike's authoritative sweep
+manifest → commit as the permanent completeness test; check the 3 candidates.
+
 **Permanent completeness test** (`supabase/seeds/loi/completeness_test.py`): assign EVERY template
 paragraph to exactly one category — `primary_position` / `add_on_modifier` / `instruction` /
 `letter_shell` / `blocked` / `empty`. Anything unassigned is a gap BY CONSTRUCTION. The harness

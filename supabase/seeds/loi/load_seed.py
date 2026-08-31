@@ -86,14 +86,22 @@ def validate(d):
 
     dqs = {q["question_key"] for q in d.get("director_questions", [])}
 
+    # merge tranches (_topup / _resource) overlay already-loaded clauses; refs may point to loaded
+    # data not present in this file, so cross-ref failures are warnings, not errors, when present.
+    has_merge = any(c.get("_topup") or c.get("_resource") for c in d.get("clauses", []))
+    def REF(msg):  # ref-resolution problem: error on a standalone tranche, warning on a merge overlay
+        (warns.append(msg) if has_merge else errs.append(msg))
+
     clause_keys = set()
     brace_by_clause = {}   # clause_key -> {brace codes across its positions} (for position_selection resolution)
     for c in d.get("clauses", []):
+        if c.get("_blocked"): continue
         ck = c.get("clause_key")
         if not ck: E("clause missing clause_key"); continue
         if ck in clause_keys: E(f"duplicate clause_key '{ck}'")
         clause_keys.add(ck)
-        if c.get("bucket") not in BUCKETS: E(f"clause {ck}: bad bucket '{c.get('bucket')}'")
+        if not (c.get("_topup") or c.get("_resource")):
+            if c.get("bucket") not in BUCKETS: E(f"clause {ck}: bad bucket '{c.get('bucket')}'")
         bset = set()
         for v in c.get("variants", []):
             for p in v.get("positions", []):
@@ -105,6 +113,7 @@ def validate(d):
         W("no selectors declared — every variant must have selector_field null; conditional_alternative positions will error")
 
     for c in d.get("clauses", []):
+        if c.get("_blocked"): continue
         ck = c.get("clause_key")
         bucket = c.get("bucket")
         for v in c.get("variants", []):
@@ -155,7 +164,7 @@ def validate(d):
                     rank_in_variant[p["rank"]] = rank_in_variant.get(p["rank"], 0) + 1
                 # refs
                 mc = p.get("modifies_clause_id")
-                if mc and mc not in clause_keys: E(f"{loc}: modifies_clause_id '{mc}' not a clause in this seed")
+                if mc and mc not in clause_keys: REF(f"{loc}: modifies_clause_id '{mc}' not a clause in this seed")
                 dq = p.get("director_question_key")
                 if dq and dq not in dqs: E(f"{loc}: director_question_key '{dq}' not defined")
                 for at in p.get("attachment_requirements", []) or []:
@@ -172,13 +181,13 @@ def validate(d):
                         if rck or not aw.get("ref_field"): E(f"{loc}: deal_field needs ref_field, no ref_clause_key")
                     elif rk in ("clause_selection","clause_field","position_selection"):
                         if not rck: E(f"{loc}: {rk} needs ref_clause_key")
-                        elif rck not in clause_keys: E(f"{loc}: applies_when ref_clause_key '{rck}' not a clause in this seed")
+                        elif rck not in clause_keys: REF(f"{loc}: applies_when ref_clause_key '{rck}' not a clause in this seed")
                         if rk == "position_selection":
                             rbc = aw.get("ref_brace_code")
                             if not rbc:
                                 E(f"{loc}: position_selection needs ref_brace_code")
                             elif rck in clause_keys and rbc not in brace_by_clause.get(rck, set()):
-                                E(f"{loc}: position_selection ref_brace_code '{rbc}' not found in clause '{rck}'")
+                                REF(f"{loc}: position_selection ref_brace_code '{rbc}' not found in clause '{rck}'")
                         if rk == "clause_field" and not aw.get("ref_field"): E(f"{loc}: clause_field needs ref_field")
             for bc, n in brace_in_variant.items():
                 if n > 1: E(f"{ck}/{vk}: brace_code '{bc}' used {n}x in one variant")
@@ -243,19 +252,29 @@ def emit_sql(d):
         out.append(f"INSERT INTO loi_director_question (question_key,question_text,status,date_asked,date_answered,answer_text,authority) VALUES "
                    f"({q(qd['question_key'])},{q(qd['question_text'])},{q(qd.get('status','open'))},{q(qd.get('date_asked'))},{q(qd.get('date_answered'))},{q(qd.get('answer_text'))},{q(qd.get('authority'))});")
     for c in d.get("clauses", []):
+        if c.get("_blocked"): continue   # deferred (base clause blocked, e.g. LCW)
+        if c.get("_topup") or c.get("_resource"):
+            continue   # merge into an already-loaded clause; do not recreate it
         cid = str(uuid.uuid4())
         out.append(f"INSERT INTO loi_clause (id,clause_key,title,bucket,description,guidance_note) VALUES "
                    f"({q(cid)},{q(c['clause_key'])},{q(c.get('title'))},{q(c['bucket'])},{q(c.get('description'))},{q(c.get('guidance_note'))});")
     # second pass so modifies_clause_id / applies_when refs can resolve to clause ids by key
     out.append("SET CONSTRAINTS ALL DEFERRED;")
     for c in d.get("clauses", []):
+        if c.get("_blocked"): continue
+        merge = bool(c.get("_topup") or c.get("_resource"))
         for v in c.get("variants", []):
-            vid = str(uuid.uuid4())
-            dts = "ARRAY[" + ",".join(q(x) for x in v.get("deal_type_scope", ["end-cap-drive-thru"])) + "]::text[]"
-            out.append(f"INSERT INTO loi_variant (id,clause_id,variant_key,deal_type_scope,selector_field,selector_version,replaces_base) VALUES "
-                       f"({q(vid)},(SELECT id FROM loi_clause WHERE clause_key={q(c['clause_key'])}),{q(v['variant_key'])},{dts},{q(v.get('selector_field'))},{q(v.get('selector_version'))},{q(v.get('replaces_base',False))});")
-            for sval in v.get("selector_subdomain", []) or []:
-                out.append(f"INSERT INTO loi_variant_selector_value (variant_id,value) VALUES ({q(vid)},{q(sval)});")
+            if merge:
+                # resolve the EXISTING variant (variant_key matches); add positions to it
+                vid_expr = (f"(SELECT v.id FROM loi_variant v JOIN loi_clause c ON c.id=v.clause_id "
+                            f"WHERE c.clause_key={q(c['clause_key'])} AND v.variant_key={q(v['variant_key'])})")
+            else:
+                vid = str(uuid.uuid4()); vid_expr = q(vid)
+                dts = "ARRAY[" + ",".join(q(x) for x in v.get("deal_type_scope", ["end-cap-drive-thru"])) + "]::text[]"
+                out.append(f"INSERT INTO loi_variant (id,clause_id,variant_key,deal_type_scope,selector_field,selector_version,replaces_base) VALUES "
+                           f"({q(vid)},(SELECT id FROM loi_clause WHERE clause_key={q(c['clause_key'])}),{q(v['variant_key'])},{dts},{q(v.get('selector_field'))},{q(v.get('selector_version'))},{q(v.get('replaces_base',False))});")
+                for sval in v.get("selector_subdomain", []) or []:
+                    out.append(f"INSERT INTO loi_variant_selector_value (variant_id,value) VALUES ({q(vid)},{q(sval)});")
             for p in v.get("positions", []):
                 pid = str(uuid.uuid4())
                 mc = f"(SELECT id FROM loi_clause WHERE clause_key={q(p['modifies_clause_id'])})" if p.get("modifies_clause_id") else "NULL"
@@ -263,7 +282,7 @@ def emit_sql(d):
                 out.append("INSERT INTO loi_position (id,variant_id,position_kind,brace_code,rank,emit_order,modifies_clause_id,selector_value,is_default,"
                            "code_status,rule_status,authority,approval_required,approval_authority,firing_mode,director_question_id,"
                            "internal_note,deviation_rationale,landlord_fill_prompt,provisional_note) VALUES ("
-                           f"{q(pid)},{q(vid)},{q(p['position_kind'])},{q(p.get('brace_code'))},{q(p.get('rank'))},{q(p.get('emit_order'))},{mc},{q(p.get('selector_value'))},{q(p.get('is_default',False))},"
+                           f"{q(pid)},{vid_expr},{q(p['position_kind'])},{q(p.get('brace_code'))},{q(p.get('rank'))},{q(p.get('emit_order'))},{mc},{q(p.get('selector_value'))},{q(p.get('is_default',False))},"
                            f"{q(p.get('code_status','confirmed'))},{q(p.get('rule_status','confirmed'))},{q(p['authority'])},{q(p.get('approval_required',False))},{q(p.get('approval_authority'))},{q(p.get('firing_mode','per-deal'))},{dq},"
                            f"{q(p.get('internal_note'))},{q(p.get('deviation_rationale'))},{q(p.get('landlord_fill_prompt'))},{q(p.get('provisional_note'))});")
                 for pb in p.get("position_bodies", []):
