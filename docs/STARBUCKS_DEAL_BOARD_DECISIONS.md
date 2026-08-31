@@ -99,7 +99,14 @@ Your court: 3d warm / 7d hot. Their court: 10d warm / 21d hot. Ten days waiting 
 *Refined in-session:* the pre-classification default is `ball_in_court = NULL` (**unclassified**, 2.18), **not** `none`. The original draft made `none` the default that rendered as needing attention; that was superseded by 1.7 and the unclassified work — an unclassified deal is an *absence* (looks incomplete), not a hot deal. See 2.18.
 
 ### 2.11 Board membership derives from stage
-No `is_active` flag. Four columns: Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA. Lost and all terminal/paid stages are off-board — once a lease is executed, nothing on this board can help.
+No `is_active` flag. Four board deal-stages: Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA. Lost and all terminal/paid stages are off-board — once a lease is executed, nothing on this board can help. (Membership is further narrowed by 2.22.)
+
+### 2.22 Dead-site deals are off the board (regardless of deal stage)
+A deal whose linked `site_submit` is in a **declined/dead** submit-stage — **Pass, Lost / Killed, Use Declined, Use Conflict, Not Available** (`DEAD_SUBMIT_STAGES`, matching the map's declined set in `stageMarkers.ts`) — is excluded from the board **regardless of its deal stage**. The site is already passed/killed; the deal doesn't belong on a board about *live* work. A deal with **no** linked site_submit is kept (nothing declared it dead).
+
+This dropped the board from **39 → 30** (9 deals sat on a dead site while their deal stage still put them on the board). Membership is now: Starbucks client **and** deal-stage ∈ the four board stages **and** (no site_submit **or** site_submit not dead).
+
+**This is also the mechanism that makes a future "Pass" action work.** Verified: setting `site_submit → Pass` does **not** change the linked deal's stage — the bidirectional stage sync only fires for stages present in `deal_submit_stage_map`, and `Pass` is not mapped (a test flipped a site to Pass; the deal stayed Pre-Submittal). So a Pass action can just write the site_submit; this rule removes the deal from the board, and the deal record itself stays put. Because membership now depends on `site_submit`, the board subscribes to `site_submit` realtime too (a pass/kill done on the map reflects live).
 
 ### 2.12 Pre-Submittal blockers, the ready-to-submit band, and the triage counter
 `blocked_on` is a set of parallel blockers, not a sequence. **`blocked_on = awaiting_ll | site_control`** — just two (migrations `20260831130000`, `20260831140000`). The board is **five columns**: Awaiting landlord · Awaiting site control · Submitted-Reviewing · Negotiating LOI · At Lease/PSA. The first two carry a small "Pre-Submittal" super-label. This retires the "one column with subheads" design, the two-column-grid stopgap (§5), *and* the Unset/Ready columns.

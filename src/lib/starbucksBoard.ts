@@ -94,6 +94,18 @@ export type BoardStage = (typeof BOARD_STAGES)[number];
 
 export const PRE_SUBMITTAL: BoardStage = 'Pre-Submittal';
 
+// site_submit stages that mean the site is declined/dead. A deal whose linked
+// site_submit is in one of these is OFF the board regardless of its deal stage
+// (decisions §2.22) — the site is already passed/killed. Matches the map's
+// "declined" set (stageMarkers.ts) plus Not Available.
+export const DEAD_SUBMIT_STAGES = new Set<string>([
+  'Pass',
+  'Lost / Killed',
+  'Use Declined',
+  'Use Conflict',
+  'Not Available',
+]);
+
 // ---- Board columns (decisions §2.12). FIVE columns: the two Pre-Submittal
 // blocker columns + the three later stages. "Ready to submit" is NOT a column
 // (it's the top band, §4). "Unset"/unclassified is NOT a column (it's the

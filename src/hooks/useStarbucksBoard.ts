@@ -17,6 +17,7 @@ import {
   BlockedOn,
   columnKeyForDeal,
   compareDeals,
+  DEAD_SUBMIT_STAGES,
   computeHeat,
   daysSince,
   isToClassify,
@@ -66,7 +67,10 @@ interface RawRow {
   client: { id: string | null; client_name: string | null } | { id: string | null; client_name: string | null }[] | null;
   stage: { label: string | null; sort_order: number | null } | { label: string | null; sort_order: number | null }[] | null;
   property: { property_name: string | null; city: string | null } | { property_name: string | null; city: string | null }[] | null;
-  site_submit: { site_submit_name: string | null } | { site_submit_name: string | null }[] | null;
+  site_submit:
+    | { site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }
+    | { site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }[]
+    | null;
   activity_state:
     | {
         ball_in_court: BallInCourt | null;
@@ -90,6 +94,10 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
   }
   const property = embed(row.property);
   const siteSubmit = embed(row.site_submit);
+  // A deal whose linked site_submit is in a dead/declined stage is off the
+  // board regardless of deal stage (decisions §2.22). No site_submit → keep.
+  const ssStage = embed(siteSubmit?.submit_stage)?.name ?? null;
+  if (siteSubmit && ssStage && DEAD_SUBMIT_STAGES.has(ssStage)) return null;
   const st = embed(row.activity_state);
   const client = embed(row.client);
   const clientId = client?.id ?? null;
@@ -173,7 +181,7 @@ const SELECT = `
   client:client_id!inner ( id, client_name, starbucks_layer_enabled ),
   stage:stage_id ( label, sort_order ),
   property:property_id ( property_name, city ),
-  site_submit:site_submit_id ( site_submit_name ),
+  site_submit:site_submit_id ( site_submit_name, submit_stage:submit_stage_id ( name ) ),
   activity_state:deal_activity_state (
     ball_in_court, ball_in_court_party, ball_in_court_since,
     blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback
@@ -279,6 +287,9 @@ export default function useStarbucksBoard(accountFilter: string = ACCOUNT_ALL): 
       .channel('starbucks-board')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deal_activity_state' }, debouncedRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deal' }, debouncedRefresh)
+      // site_submit stage now affects board membership (dead-site exclusion,
+      // §2.22) — reflect a pass/kill done elsewhere (e.g. the map).
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'site_submit' }, debouncedRefresh)
       .subscribe();
     return () => {
       if (timer) clearTimeout(timer);
