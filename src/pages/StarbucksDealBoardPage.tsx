@@ -19,6 +19,7 @@ import {
 } from '../lib/starbucksBoard';
 import { supabase } from '../lib/supabaseClient';
 import DealSlideOver from '../components/starbucksBoard/DealSlideOver';
+import TriageQueue from '../components/starbucksBoard/TriageQueue';
 
 // A column denser than this many tiles switches to the compact tile (spec §4.1).
 const DENSE_THRESHOLD = 12;
@@ -37,9 +38,10 @@ function loadScale(): number {
 }
 
 export default function StarbucksDealBoardPage() {
-  const { columns, daily, loading, error, lastSynced, refresh } = useStarbucksBoard();
+  const { columns, ready, toClassify, daily, loading, error, lastSynced, refresh } = useStarbucksBoard();
   const [agendaOnly, setAgendaOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [triageOpen, setTriageOpen] = useState(false);
   const [scale, setScale] = useState<number>(loadScale);
 
   useEffect(() => {
@@ -64,10 +66,14 @@ export default function StarbucksDealBoardPage() {
     return columns.map((c) => filterColumn(c, (d) => d.onAgenda));
   }, [columns, agendaOnly]);
 
+  // selectable across columns AND the ready band
   const selectedDeal = useMemo(
-    () => columns.flatMap((c) => c.deals).find((d) => d.id === selectedId) ?? null,
-    [columns, selectedId]
+    () => [...columns.flatMap((c) => c.deals), ...ready].find((d) => d.id === selectedId) ?? null,
+    [columns, ready, selectedId]
   );
+
+  // Agenda filter also applies to the ready band.
+  const shownReady = useMemo(() => (agendaOnly ? ready.filter((d) => d.onAgenda) : ready), [ready, agendaOnly]);
 
   async function toggleStar(deal: BoardDeal) {
     try {
@@ -86,6 +92,8 @@ export default function StarbucksDealBoardPage() {
       >
         <Header
           daily={daily}
+          toClassifyCount={toClassify.length}
+          onOpenTriage={() => setTriageOpen(true)}
           agendaCount={agendaCount}
           agendaOnly={agendaOnly}
           onToggleAgenda={() => setAgendaOnly((v) => !v)}
@@ -99,6 +107,11 @@ export default function StarbucksDealBoardPage() {
           <div className="px-6 py-2 text-sm" style={{ color: PALETTE.hot }}>
             Board failed to load: {error}
           </div>
+        )}
+
+        {/* Ready-to-submit band — hidden entirely when empty (decisions §2.12) */}
+        {shownReady.length > 0 && (
+          <ReadyBand deals={shownReady} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
         )}
 
         <div className="flex-1 grid gap-3 px-4 pb-4 overflow-hidden" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
@@ -116,14 +129,20 @@ export default function StarbucksDealBoardPage() {
         {selectedDeal && (
           <DealSlideOver deal={selectedDeal} scale={scale} onClose={() => setSelectedId(null)} onChanged={refresh} />
         )}
+
+        {triageOpen && (
+          <TriageQueue deals={toClassify} scale={scale} onClose={() => setTriageOpen(false)} onChanged={refresh} />
+        )}
       </div>
     </ScaleCtx.Provider>
   );
 }
 
-// ---- Header: daily number + agenda + text scale + last synced --------------
+// ---- Header: to-classify counter + daily number + agenda + scale + synced ---
 function Header({
   daily,
+  toClassifyCount,
+  onOpenTriage,
   agendaCount,
   agendaOnly,
   onToggleAgenda,
@@ -133,6 +152,8 @@ function Header({
   onScale,
 }: {
   daily: { attention: number; yours: number; theirs: number; unclassified: number; noHistory: number };
+  toClassifyCount: number;
+  onOpenTriage: () => void;
   agendaCount: number;
   agendaOnly: boolean;
   onToggleAgenda: () => void;
@@ -171,16 +192,29 @@ function Header({
         </div>
       </div>
 
-      <div className="text-right leading-tight">
-        <div className="tabular-nums" style={{ fontSize: px(44), fontWeight: 600, color: daily.attention > 0 ? PALETTE.text : PALETTE.textDim }}>
-          {daily.attention} <span style={{ fontSize: px(18), color: PALETTE.textDim }}>need attention</span>
+      <div className="flex items-start gap-8">
+        {/* to-classify counter — LOUDER than the daily number when non-zero,
+            because unclassified deals corrupt every other figure. Hidden at 0. */}
+        {toClassifyCount > 0 && (
+          <button onClick={onOpenTriage} className="text-right leading-none" title="Open triage queue">
+            <div className="tabular-nums" style={{ fontSize: px(60), fontWeight: 700, color: PALETTE.hot }}>
+              {toClassifyCount}
+            </div>
+            <div style={{ fontSize: px(16), fontWeight: 600, color: PALETTE.hot }}>to classify →</div>
+          </button>
+        )}
+
+        <div className="text-right leading-tight">
+          <div className="tabular-nums" style={{ fontSize: px(44), fontWeight: 600, color: daily.attention > 0 ? PALETTE.text : PALETTE.textDim }}>
+            {daily.attention} <span style={{ fontSize: px(18), color: PALETTE.textDim }}>need attention</span>
+          </div>
+          <div style={{ fontSize: px(15), color: PALETTE.textDim }}>
+            {daily.yours} yours · {daily.theirs} theirs · {daily.unclassified} no court · {daily.noHistory} no history
+          </div>
+          <button onClick={onRefresh} className="mt-1 tabular-nums" style={{ fontSize: px(12), color: PALETTE.textDim }} title="Click to refresh">
+            {lastSynced ? `synced ${lastSynced.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'syncing…'}
+          </button>
         </div>
-        <div style={{ fontSize: px(15), color: PALETTE.textDim }}>
-          {daily.yours} yours · {daily.theirs} theirs · {daily.unclassified} to classify · {daily.noHistory} no history
-        </div>
-        <button onClick={onRefresh} className="mt-1 tabular-nums" style={{ fontSize: px(12), color: PALETTE.textDim }} title="Click to refresh">
-          {lastSynced ? `synced ${lastSynced.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'syncing…'}
-        </button>
       </div>
     </div>
   );
@@ -201,6 +235,53 @@ function ScaleBtn({ onClick, label, px }: { onClick: () => void; label: string; 
 interface TileHandlers {
   onOpen: (d: BoardDeal) => void;
   onToggleStar: (d: BoardDeal) => void;
+}
+
+// ---- Ready-to-submit band (decisions §2.12). Full-width, above the columns,
+// hot; the loudest thing on the board under the header. Rendered only when
+// non-empty (the parent guards this). Tiles flow horizontally and wrap. -------
+function ReadyBand({ deals, onOpen, onToggleStar }: { deals: BoardDeal[] } & TileHandlers) {
+  const scale = useScale();
+  const px = (n: number) => Math.round(n * scale);
+  return (
+    <div
+      className="mx-4 mb-3 rounded-lg px-3 py-2"
+      style={{ backgroundColor: 'rgba(214,69,60,0.14)', border: `1px solid ${PALETTE.hot}` }}
+    >
+      <div className="flex items-baseline gap-2 mb-2">
+        <span className="uppercase tracking-wider font-semibold" style={{ color: PALETTE.hot, fontSize: px(14) }}>
+          Ready to submit
+        </span>
+        <span className="tabular-nums" style={{ color: PALETTE.hot, fontSize: px(14) }}>{deals.length}</span>
+        <span style={{ color: PALETTE.textDim, fontSize: px(12) }}>· nothing's blocking these — submit them</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {deals.map((d) => (
+          <div
+            key={d.id}
+            onClick={() => onOpen(d)}
+            className="relative rounded-md pl-3 pr-2 py-1 flex items-center gap-2 cursor-pointer"
+            style={{ backgroundColor: 'rgba(214,69,60,0.18)', minWidth: px(180), maxWidth: px(320) }}
+            title={d.name}
+          >
+            <div className="absolute left-0 top-0 bottom-0 rounded-l-md" style={{ width: 6, backgroundColor: PALETTE.hot }} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate" style={{ fontWeight: 600, fontSize: px(16), color: PALETTE.text }}>{d.name}</div>
+              <div className="truncate" style={{ fontSize: px(11), color: PALETTE.textDim }}>{d.city ?? '—'} · {d.days}d</div>
+            </div>
+            <span className="whitespace-nowrap" style={{ fontSize: px(12), fontWeight: 600, color: PALETTE.hot }}>Submit it →</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleStar(d); }}
+              style={{ color: d.onAgenda ? PALETTE.text : PALETTE.textDim, opacity: d.onAgenda ? 1 : 0.4, fontSize: px(15) }}
+              aria-label={d.onAgenda ? 'Remove from agenda' : 'Add to agenda'}
+            >
+              {d.onAgenda ? '★' : '☆'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ---- Column (spec §4, decisions §2.12). Pre-Submittal blockers are their own

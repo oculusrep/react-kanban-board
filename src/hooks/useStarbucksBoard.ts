@@ -16,7 +16,9 @@ import {
   compareDeals,
   computeHeat,
   daysSince,
+  isToClassify,
   needsAttention,
+  readyToSubmit as computeReadyToSubmit,
 } from '../lib/starbucksBoard';
 
 export interface BoardColumn {
@@ -37,6 +39,8 @@ export interface DailyNumber {
 
 export interface BoardData {
   columns: BoardColumn[];
+  ready: BoardDeal[];        // ready-to-submit band (hot, "Submit it")
+  toClassify: BoardDeal[];   // header counter + triage queue (off-board)
   daily: DailyNumber;
   loading: boolean;
   error: string | null;
@@ -97,7 +101,8 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
   const seededFallback = st ? st.seeded_fallback ?? false : true;
 
   const days = daysSince(ballInCourtSince);
-  const partial = { seededFallback, blockedOn, ballInCourt, days };
+  const ready = computeReadyToSubmit({ stageLabel, blockedOn, ballInCourt });
+  const heat = computeHeat({ seededFallback, readyToSubmit: ready, ballInCourt, days });
 
   return {
     id: row.id,
@@ -114,7 +119,8 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     onAgenda,
     seededFallback,
     days,
-    heat: computeHeat(partial),
+    readyToSubmit: ready,
+    heat,
   };
 }
 
@@ -164,6 +170,8 @@ const SELECT = `
 
 export default function useStarbucksBoard(): BoardData {
   const [columns, setColumns] = useState<BoardColumn[]>([]);
+  const [ready, setReady] = useState<BoardDeal[]>([]);
+  const [toClassify, setToClassify] = useState<BoardDeal[]>([]);
   const [daily, setDaily] = useState<DailyNumber>({ attention: 0, yours: 0, theirs: 0, unclassified: 0, noHistory: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,8 +198,16 @@ export default function useStarbucksBoard(): BoardData {
           .map(toBoardDeal)
           .filter((d): d is BoardDeal => d !== null);
 
+        const readyDeals = deals.filter((d) => d.readyToSubmit).sort(compareDeals);
+        const toClassifyDeals = deals.filter((d) => isToClassify(d)).sort(compareDeals);
+        // "placed" = deals that land in a column; daily = placed + ready band
+        // (both are on-board and heatable). to-classify is excluded — it's the counter.
+        const placed = deals.filter((d) => columnKeyForDeal(d) !== null);
+
         setColumns(assembleColumns(deals));
-        setDaily(computeDaily(deals));
+        setReady(readyDeals);
+        setToClassify(toClassifyDeals);
+        setDaily(computeDaily([...placed, ...readyDeals]));
         setLastSynced(new Date());
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load board');
@@ -236,5 +252,5 @@ export default function useStarbucksBoard(): BoardData {
     };
   }, [refresh]);
 
-  return { columns, daily, loading, error, lastSynced, refresh };
+  return { columns, ready, toClassify, daily, loading, error, lastSynced, refresh };
 }

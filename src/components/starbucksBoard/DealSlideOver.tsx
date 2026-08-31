@@ -1,10 +1,7 @@
 // Starbucks Deal Board — slide-over panel (spec §7).
-// Click a tile → this slides in from the right over a dimmed board. Three
-// actions cool/classify a tile in under ten seconds without leaving the board:
-// Change court (+ Pre-Submittal blocker with implied-court pre-select),
-// Log a note, Set next action. Dark to match the board. All type sizes scale
-// with the board's A-/A+ control (the `scale` prop) so the panel is as legible
-// — and typable — as the board from across the room.
+// Click a tile → this slides in from the right over a dimmed board. Classify
+// (court + blocker) via the shared ClassifyControls, Log a note, Set next
+// action. Dark; type sizes scale with the board's A-/A+ control (`scale`).
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,31 +9,16 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCategoryIdByName } from '../../lib/taskCategory';
 import {
-  BallInCourt,
-  BlockedOn,
-  BLOCKED_ON_LABEL,
-  BLOCKED_ON_OPTIONS,
   BoardDeal,
-  COURT_OPTIONS,
-  courtLabel,
   CONDENSED_STACK,
-  IMPLIED_COURT,
+  courtLabel,
   instruction,
   PALETTE,
-  PRE_SUBMITTAL,
 } from '../../lib/starbucksBoard';
+import ClassifyControls from './ClassifyControls';
 
-interface NoteRow {
-  id: string;
-  title: string | null;
-  body: string | null;
-  created_at: string | null;
-}
-interface TaskRow {
-  id: string;
-  subject: string | null;
-  due_at: string | null;
-}
+interface NoteRow { id: string; title: string | null; body: string | null; created_at: string | null; }
+interface TaskRow { id: string; subject: string | null; due_at: string | null; }
 
 export default function DealSlideOver({
   deal,
@@ -51,7 +33,6 @@ export default function DealSlideOver({
 }) {
   const navigate = useNavigate();
   const { userTableId } = useAuth();
-  const isPreSubmittal = deal.stageLabel === PRE_SUBMITTAL;
   const px = (n: number) => Math.round(n * scale);
 
   const [notes, setNotes] = useState<NoteRow[]>([]);
@@ -59,36 +40,16 @@ export default function DealSlideOver({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Change-court form state (seeded from the deal)
-  const [court, setCourt] = useState<BallInCourt | null>(deal.ballInCourt);
-  const [party, setParty] = useState(deal.ballInCourtParty ?? '');
-  const [blockedOn, setBlockedOn] = useState<BlockedOn | null>(deal.blockedOn);
-  const [needsPricing, setNeedsPricing] = useState(deal.needsPricing);
-  const [needsSitePlan, setNeedsSitePlan] = useState(deal.needsSitePlan);
-
   const [noteBody, setNoteBody] = useState('');
   const [taskSubject, setTaskSubject] = useState('');
   const [taskDue, setTaskDue] = useState('');
 
   useEffect(() => {
-    setCourt(deal.ballInCourt);
-    setParty(deal.ballInCourtParty ?? '');
-    setBlockedOn(deal.blockedOn);
-    setNeedsPricing(deal.needsPricing);
-    setNeedsSitePlan(deal.needsSitePlan);
     setNoteBody('');
     setTaskSubject('');
     setTaskDue('');
     setErr(null);
-  }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Selecting a blocker pre-fills the implied court (overridable) and resets the
-  // landlord details unless the blocker is awaiting_ll (decisions §2.12).
-  function pickBlocker(b: BlockedOn) {
-    setBlockedOn(b);
-    setCourt(IMPLIED_COURT[b]);
-    if (b !== 'awaiting_ll') { setNeedsPricing(false); setNeedsSitePlan(false); }
-  }
+  }, [deal.id]);
 
   const loadDetails = useCallback(async () => {
     try {
@@ -114,38 +75,7 @@ export default function DealSlideOver({
     }
   }, [deal.id]);
 
-  useEffect(() => {
-    loadDetails();
-  }, [loadDetails]);
-
-  // ---- Writes -------------------------------------------------------------
-
-  async function saveCourt() {
-    setSaving(true);
-    setErr(null);
-    try {
-      const patch: Record<string, unknown> = {
-        deal_id: deal.id,
-        ball_in_court: court, // may be null (unclassified) if they clear it
-        ball_in_court_party: party.trim() || null,
-        ball_in_court_since: new Date().toISOString(),
-        seeded_fallback: false,
-      };
-      if (isPreSubmittal) {
-        patch.blocked_on = blockedOn;
-        // needs_* only meaningful for awaiting_ll; otherwise cleared (§2.12 invariant).
-        patch.needs_pricing = blockedOn === 'awaiting_ll' ? needsPricing : false;
-        patch.needs_site_plan = blockedOn === 'awaiting_ll' ? needsSitePlan : false;
-      }
-      const { error } = await supabase.from('deal_activity_state').upsert(patch, { onConflict: 'deal_id' });
-      if (error) throw error;
-      onChanged();
-    } catch (e: any) {
-      setErr(e?.message ?? 'Failed to save court');
-    } finally {
-      setSaving(false);
-    }
-  }
+  useEffect(() => { loadDetails(); }, [loadDetails]);
 
   async function saveNote() {
     const body = noteBody.trim();
@@ -170,7 +100,6 @@ export default function DealSlideOver({
         .select('id')
         .single();
       if (noteErr) throw noteErr;
-
       const { error: linkErr } = await supabase.from('note_object_link').insert({
         note_id: note!.id,
         sf_content_document_link_id: `${stamp}_deal`,
@@ -179,7 +108,6 @@ export default function DealSlideOver({
         deal_id: deal.id,
       });
       if (linkErr) throw linkErr;
-
       setNoteBody('');
       await loadDetails();
       onChanged();
@@ -220,25 +148,10 @@ export default function DealSlideOver({
     }
   }
 
-  const dirtyCourt =
-    court !== deal.ballInCourt ||
-    (party.trim() || null) !== (deal.ballInCourtParty ?? null) ||
-    (isPreSubmittal && (blockedOn !== deal.blockedOn ||
-      needsPricing !== deal.needsPricing ||
-      needsSitePlan !== deal.needsSitePlan));
-
-  // awaiting_ll requires at least one landlord detail (DB invariant §2.12).
-  const awaitingInvalid = isPreSubmittal && blockedOn === 'awaiting_ll' && !needsPricing && !needsSitePlan;
-  const canSaveCourt = dirtyCourt && !awaitingInvalid;
-
   const verb = instruction(deal);
-
   const inputStyle = {
-    backgroundColor: PALETTE.ground,
-    color: PALETTE.text,
-    border: `1px solid ${PALETTE.ground}`,
-    fontSize: px(15),
-    fontFamily: CONDENSED_STACK,
+    backgroundColor: PALETTE.ground, color: PALETTE.text,
+    border: `1px solid ${PALETTE.ground}`, fontSize: px(15), fontFamily: CONDENSED_STACK,
   } as const;
 
   return (
@@ -249,7 +162,6 @@ export default function DealSlideOver({
         className="fixed top-0 right-0 h-full z-[10001] flex flex-col shadow-2xl"
         style={{ width: Math.round(440 * scale), maxWidth: '92vw', backgroundColor: PALETTE.column, color: PALETTE.text, fontFamily: CONDENSED_STACK }}
       >
-        {/* header */}
         <div className="px-5 pt-4 pb-3" style={{ borderBottom: `1px solid ${PALETTE.ground}` }}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -262,10 +174,10 @@ export default function DealSlideOver({
             {deal.heat === 'no_history' ? (
               <span style={{ color: PALETTE.textDim }}>no history yet</span>
             ) : deal.heat === 'unclassified' ? (
-              <span style={{ color: PALETTE.text }}>Unclassified · {deal.days}d — set the court below</span>
+              <span style={{ color: PALETTE.text }}>Unclassified · {deal.days}d — classify below</span>
             ) : (
               <span style={{ color: deal.heat === 'hot' ? PALETTE.hot : deal.heat === 'warm' ? PALETTE.warm : PALETTE.textDim }}>
-                {courtLabel(deal)} · {deal.days}d{verb ? ` — ${verb}` : ''}
+                {deal.readyToSubmit ? 'Ready to submit' : courtLabel(deal)} · {deal.days}d{verb ? ` — ${verb}` : ''}
               </span>
             )}
           </div>
@@ -278,64 +190,8 @@ export default function DealSlideOver({
             <div style={{ color: PALETTE.textDim, fontSize: px(14), fontStyle: 'italic' }}>(Coming in phase 2 — reserved.)</div>
           </Section>
 
-          <Section title="Change court" px={px}>
-            <div className="flex flex-wrap gap-2">
-              {COURT_OPTIONS.map((o) => (
-                <Pill key={o.value} active={court === o.value} onClick={() => setCourt(o.value)} px={px}>{o.label}</Pill>
-              ))}
-              {court !== null && <Pill active={false} muted onClick={() => setCourt(null)} px={px}>clear</Pill>}
-            </div>
-            <input
-              value={party}
-              onChange={(e) => setParty(e.target.value)}
-              placeholder="Who specifically? (Landlord, GDOT, Seller…)"
-              className="mt-2 w-full rounded px-2 py-1.5"
-              style={inputStyle}
-            />
-
-            {isPreSubmittal && (
-              <div className="mt-3">
-                <div style={{ fontSize: px(13), color: PALETTE.textDim, marginBottom: 4 }}>Blocked on (Pre-Submittal)</div>
-                <div className="flex flex-wrap gap-2">
-                  {BLOCKED_ON_OPTIONS.map((b) => (
-                    <Pill key={b} active={blockedOn === b} px={px} onClick={() => pickBlocker(b)}>
-                      {BLOCKED_ON_LABEL[b]}
-                    </Pill>
-                  ))}
-                  {blockedOn !== null && <Pill active={false} muted px={px} onClick={() => setBlockedOn(null)}>clear</Pill>}
-                </div>
-
-                {blockedOn === 'awaiting_ll' && (
-                  <div className="mt-2 flex flex-col gap-1" style={{ fontSize: px(14), color: PALETTE.text }}>
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={needsPricing} onChange={(e) => setNeedsPricing(e.target.checked)} />
-                      Pricing
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={needsSitePlan} onChange={(e) => setNeedsSitePlan(e.target.checked)} />
-                      Site plan
-                    </label>
-                    {awaitingInvalid && (
-                      <span style={{ color: PALETTE.warm, fontSize: px(12) }}>Pick at least one.</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <button
-              onClick={saveCourt}
-              disabled={saving || !canSaveCourt}
-              className="mt-3 w-full rounded py-2"
-              style={{
-                backgroundColor: canSaveCourt ? PALETTE.text : 'transparent',
-                color: canSaveCourt ? PALETTE.ground : PALETTE.textDim,
-                border: `1px solid ${canSaveCourt ? PALETTE.text : PALETTE.textDim}`,
-                fontWeight: 600, fontSize: px(16), opacity: saving ? 0.6 : 1,
-              }}
-            >
-              Save court{canSaveCourt ? ' (resets clock)' : ''}
-            </button>
+          <Section title="Classify" px={px}>
+            <ClassifyControls deal={deal} px={px} saveLabel="Save court" onSaved={onChanged} />
           </Section>
 
           <Section title="Log a note" px={px}>
@@ -407,24 +263,6 @@ function Section({ title, children, px }: { title: string; children: ReactNode; 
       <div className="uppercase tracking-wider" style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 6 }}>{title}</div>
       {children}
     </div>
-  );
-}
-
-function Pill({ active, muted, onClick, children, px }: { active: boolean; muted?: boolean; onClick: () => void; children: ReactNode; px: (n: number) => number }) {
-  return (
-    <button
-      onClick={onClick}
-      className="rounded"
-      style={{
-        fontSize: px(15),
-        padding: `${px(4)}px ${px(10)}px`,
-        border: `1px solid ${active ? PALETTE.text : PALETTE.textDim}`,
-        backgroundColor: active ? PALETTE.text : 'transparent',
-        color: active ? PALETTE.ground : muted ? PALETTE.textDim : PALETTE.text,
-      }}
-    >
-      {children}
-    </button>
   );
 }
 

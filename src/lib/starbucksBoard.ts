@@ -22,9 +22,11 @@ export const CONDENSED_STACK =
 
 // ---- Domain types (mirror deal_activity_state) ----------------------------
 export type BallInCourt = 'us' | 'them' | 'none';
-// Pre-Submittal blockers, each a real board column (decisions §2.12).
-// awaiting_ll ("Awaiting landlord") is detailed by needs_pricing/needs_site_plan.
-export type BlockedOn = 'ready' | 'awaiting_ll' | 'site_control';
+// Pre-Submittal blockers, each a board column (decisions §2.12). There is NO
+// 'ready' blocker — "ready to submit" is the DERIVED absence of a blocker on a
+// classified deal (see readyToSubmit()). awaiting_ll ("Awaiting landlord") is
+// detailed by needs_pricing/needs_site_plan.
+export type BlockedOn = 'awaiting_ll' | 'site_control';
 // 'unclassified' = ball_in_court is NULL (Mike hasn't set who owes). Distinct
 // from 'no_history' (no touch data at all). Both are exempt from heat, but
 // unclassified is actionable ("Set the court") whereas no_history is "needs a
@@ -47,6 +49,7 @@ export interface BoardDeal {
   seededFallback: boolean;
   // derived
   days: number;          // whole days since ball_in_court_since (local/Eastern)
+  readyToSubmit: boolean; // Pre-Submittal, classified, no blocker → hot "Submit it"
   heat: Heat;
 }
 
@@ -61,42 +64,62 @@ export type BoardStage = (typeof BOARD_STAGES)[number];
 
 export const PRE_SUBMITTAL: BoardStage = 'Pre-Submittal';
 
-// ---- Board columns (decisions §2.12). Pre-Submittal is exploded into its
-// blockers as real columns; the other three stages are one column each.
-// Eight-ish "stages" collapse to SEVEN columns, left→right.
+// ---- Board columns (decisions §2.12). FIVE columns: the two Pre-Submittal
+// blocker columns + the three later stages. "Ready to submit" is NOT a column
+// (it's the top band, §4). "Unset"/unclassified is NOT a column (it's the
+// "to classify" header counter + triage queue). Left→right.
 export interface BoardColumnDef {
   key: string;
   label: string;
   group?: string;               // super-label, e.g. "Pre-Submittal" over the blocker columns
   kind: 'blocker' | 'stage';
-  blocker?: BlockedOn | null;   // for kind 'blocker' (null = Unset)
+  blocker?: BlockedOn;          // for kind 'blocker'
   stage?: BoardStage;           // for kind 'stage'
 }
 
 export const BOARD_COLUMNS: BoardColumnDef[] = [
-  { key: 'blk_ready', label: 'Ready', group: 'Pre-Submittal', kind: 'blocker', blocker: 'ready' },
   { key: 'blk_ll', label: 'Awaiting landlord', group: 'Pre-Submittal', kind: 'blocker', blocker: 'awaiting_ll' },
   { key: 'blk_sc', label: 'Awaiting site control', group: 'Pre-Submittal', kind: 'blocker', blocker: 'site_control' },
-  { key: 'blk_unset', label: 'Unset', group: 'Pre-Submittal', kind: 'blocker', blocker: null },
   { key: 'stg_submitted', label: 'Submitted-Reviewing', kind: 'stage', stage: 'Submitted-Reviewing' },
   { key: 'stg_loi', label: 'Negotiating LOI', kind: 'stage', stage: 'Negotiating LOI' },
   { key: 'stg_lease', label: 'At Lease/PSA', kind: 'stage', stage: 'At Lease/PSA' },
 ];
 
+// "Ready to submit": a Pre-Submittal deal, classified (court set), with NO
+// blocker — nothing is stopping it, so it should be submitted. Renders in the
+// top band (§4), hot, "Submit it". (decisions §2.12)
+export function readyToSubmit(d: {
+  stageLabel: string;
+  blockedOn: BlockedOn | null;
+  ballInCourt: BallInCourt | null;
+}): boolean {
+  return d.stageLabel === PRE_SUBMITTAL && d.blockedOn === null && d.ballInCourt !== null;
+}
+
+// "To classify": a Pre-Submittal deal with NO blocker that is NOT yet
+// classified (no court). Off-board entirely — surfaced only by the header
+// counter + triage queue (§9). New deals arrive here (~2–3/week).
+export function isToClassify(d: {
+  stageLabel: string;
+  blockedOn: BlockedOn | null;
+  ballInCourt: BallInCourt | null;
+}): boolean {
+  return d.stageLabel === PRE_SUBMITTAL && d.blockedOn === null && d.ballInCourt === null;
+}
+
 // Which column a deal belongs to. Pre-Submittal deals route by blocker;
-// everything else by stage. Returns null if off-board.
+// everything else by stage. Returns null if it belongs to the band, the
+// triage counter, or is off-board.
 export function columnKeyForDeal(d: BoardDeal): string | null {
   if (d.stageLabel === PRE_SUBMITTAL) {
-    if (d.blockedOn === 'ready') return 'blk_ready';
     if (d.blockedOn === 'awaiting_ll') return 'blk_ll';
     if (d.blockedOn === 'site_control') return 'blk_sc';
-    return 'blk_unset';
+    return null; // no blocker → band (if classified) or triage (if not)
   }
   return BOARD_COLUMNS.find((c) => c.kind === 'stage' && c.stage === d.stageLabel)?.key ?? null;
 }
 
 export const BLOCKED_ON_LABEL: Record<BlockedOn, string> = {
-  ready: 'Ready',
   awaiting_ll: 'Awaiting landlord',
   site_control: 'Awaiting site control',
 };
@@ -110,11 +133,10 @@ export function landlordTag(d: BoardDeal): string | null {
   return null;
 }
 
-// Blocker → implied ball-in-court, pre-selected when Mike sets a blocker in the
-// slide-over (overridable). ready → us (our move); awaiting_ll / site_control →
-// them (waiting on the other side).
+// Blocker → implied ball-in-court, pre-selected when Mike sets a blocker
+// (overridable). Both blockers wait on the other side → them. (No blocker with
+// court = us is "ready to submit".)
 export const IMPLIED_COURT: Record<BlockedOn, BallInCourt> = {
-  ready: 'us',
   awaiting_ll: 'them',
   site_control: 'them',
 };
@@ -127,7 +149,7 @@ export const COURT_OPTIONS: Array<{ value: BallInCourt; label: string }> = [
   { value: 'them', label: 'Them' },
 ];
 
-export const BLOCKED_ON_OPTIONS: BlockedOn[] = ['ready', 'awaiting_ll', 'site_control'];
+export const BLOCKED_ON_OPTIONS: BlockedOn[] = ['awaiting_ll', 'site_control'];
 
 // ---- Heat thresholds (spec §5.1). Tunable — kept here, not inline. ---------
 // Days at/above `hot` → hot; at/above `warm` → warm; below → cool.
@@ -151,17 +173,17 @@ export function daysSince(iso: string | null, now: Date = new Date()): number {
 
 // Heat for a deal (spec §5.1, §5.3). Precedence:
 //   seeded_fallback / no row  → no_history (exempt; no clock at all)
-//   blocked_on = 'ready'      → hot ("Submit it", regardless of clock — §3.2.1)
+//   readyToSubmit             → hot ("Submit it", regardless of clock — §4)
 //   ball_in_court IS NULL     → unclassified (exempt; NEVER default to a tolerance)
 //   otherwise                 → the ball_in_court tolerance
 export function computeHeat(d: {
   seededFallback: boolean;
-  blockedOn: BlockedOn | null;
+  readyToSubmit: boolean;
   ballInCourt: BallInCourt | null;
   days: number;
 }): Heat {
   if (d.seededFallback) return 'no_history';
-  if (d.blockedOn === 'ready') return 'hot';
+  if (d.readyToSubmit) return 'hot';
   if (d.ballInCourt === null) return 'unclassified';
   const t = HEAT_THRESHOLDS[d.ballInCourt];
   if (d.ballInCourt === 'none') return d.days >= t.hot ? 'hot' : 'warm';
@@ -194,7 +216,7 @@ export function courtLabel(d: BoardDeal): string {
 // The instruction verb (spec §5.2 + the 'ready' §5.3 and unclassified §5.1
 // cases). Null when the tile is calm enough to need no instruction.
 export function instruction(d: BoardDeal): string | null {
-  if (d.blockedOn === 'ready') return 'Submit it';
+  if (d.readyToSubmit) return 'Submit it';
   if (d.heat === 'unclassified') return 'Set the court';
   if (d.heat === 'hot' && d.ballInCourt === 'us') return 'You owe a move';
   if (d.heat === 'hot' && d.ballInCourt === 'them') return 'Chase them';
