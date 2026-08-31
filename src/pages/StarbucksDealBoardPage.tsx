@@ -116,7 +116,7 @@ export default function StarbucksDealBoardPage() {
         )}
 
         {selectedDeal && (
-          <DealSlideOver deal={selectedDeal} onClose={() => setSelectedId(null)} onChanged={refresh} />
+          <DealSlideOver deal={selectedDeal} scale={scale} onClose={() => setSelectedId(null)} onChanged={refresh} />
         )}
       </div>
     </ScaleCtx.Provider>
