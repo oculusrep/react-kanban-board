@@ -10,7 +10,9 @@ import {
   BlockedOn,
   BLOCKED_ON_LABEL,
   BLOCKED_ON_OPTIONS,
+  BOARD_STAGES,
   BoardDeal,
+  BoardStage,
   COURT_OPTIONS,
   IMPLIED_COURT,
   PALETTE,
@@ -30,7 +32,8 @@ export default function ClassifyControls({
   requireCourt?: boolean; // triage: can't save until classified (court set)
   onSaved?: () => void;
 }) {
-  const isPre = deal.stageLabel === PRE_SUBMITTAL;
+  const [stage, setStage] = useState<BoardStage>((deal.stageLabel as BoardStage));
+  const isPre = stage === PRE_SUBMITTAL; // based on the SELECTED stage, not the deal's current one
 
   const [court, setCourt] = useState<BallInCourt | null>(deal.ballInCourt);
   const [party, setParty] = useState(deal.ballInCourtParty ?? '');
@@ -41,6 +44,7 @@ export default function ClassifyControls({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    setStage(deal.stageLabel as BoardStage);
     setCourt(deal.ballInCourt);
     setParty(deal.ballInCourtParty ?? '');
     setBlockedOn(deal.blockedOn);
@@ -48,6 +52,12 @@ export default function ClassifyControls({
     setNeedsSitePlan(deal.needsSitePlan);
     setErr(null);
   }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Changing stage away from Pre-Submittal drops the blocker (Pre-only, §2.12).
+  function pickStage(s: BoardStage) {
+    setStage(s);
+    if (s !== PRE_SUBMITTAL) { setBlockedOn(null); setNeedsPricing(false); setNeedsSitePlan(false); }
+  }
 
   // Pick a blocker → pre-fill implied court (overridable); reset landlord
   // details unless it's awaiting_ll (§2.12).
@@ -64,6 +74,7 @@ export default function ClassifyControls({
   }
 
   const dirty =
+    stage !== deal.stageLabel ||
     court !== deal.ballInCourt ||
     (party.trim() || null) !== (deal.ballInCourtParty ?? null) ||
     (isPre && (blockedOn !== deal.blockedOn ||
@@ -78,18 +89,27 @@ export default function ClassifyControls({
     setSaving(true);
     setErr(null);
     try {
+      // Stage change is a SHARED-pipeline write (decisions §2.17): deal.stage_id
+      // propagates to site_submit via the sync trigger, and leaving Pre-Submittal
+      // clears blocked_on via trg_clear_blocked_on_stage_change. Do it first.
+      if (stage !== deal.stageLabel) {
+        const { data: sd, error: sErr } = await supabase.from('deal_stage').select('id').eq('label', stage).single();
+        if (sErr) throw sErr;
+        const { error: dErr } = await supabase.from('deal').update({ stage_id: sd!.id }).eq('id', deal.id);
+        if (dErr) throw dErr;
+      }
+
       const patch: Record<string, unknown> = {
         deal_id: deal.id,
         ball_in_court: court, // null = unclassified
         ball_in_court_party: party.trim() || null,
         ball_in_court_since: new Date().toISOString(),
         seeded_fallback: false,
+        // blocked_on is Pre-only; on non-Pre it's cleared (consistent with the trigger)
+        blocked_on: isPre ? blockedOn : null,
+        needs_pricing: isPre && blockedOn === 'awaiting_ll' ? needsPricing : false,
+        needs_site_plan: isPre && blockedOn === 'awaiting_ll' ? needsSitePlan : false,
       };
-      if (isPre) {
-        patch.blocked_on = blockedOn;
-        patch.needs_pricing = blockedOn === 'awaiting_ll' ? needsPricing : false;
-        patch.needs_site_plan = blockedOn === 'awaiting_ll' ? needsSitePlan : false;
-      }
       const { error } = await supabase.from('deal_activity_state').upsert(patch, { onConflict: 'deal_id' });
       if (error) throw error;
       onSaved?.();
@@ -110,6 +130,18 @@ export default function ClassifyControls({
   return (
     <div>
       {err && <div style={{ color: PALETTE.hot, fontSize: px(13), marginBottom: 6 }}>{err}</div>}
+
+      <div style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 4 }}>Stage</div>
+      <select
+        value={stage}
+        onChange={(e) => pickStage(e.target.value as BoardStage)}
+        className="w-full rounded px-2 py-1.5 mb-3"
+        style={inputStyle}
+      >
+        {BOARD_STAGES.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
 
       <div style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 4 }}>Ball in court</div>
       <div className="flex flex-wrap gap-2">

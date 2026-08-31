@@ -128,6 +128,15 @@ A required reason is enforced in the same step (not a second modal). Both paths 
 - **Header item "Parking lot (n)"** next to the to-classify counter, but **quiet** (dim, never hot — parking must not burn). Click → a full-height list (same pattern as triage; Escape exits) showing each parked deal's **site name, the stage it's parked at, and the review date**; click a row → slide-over (to un-park or act).
 - **Park is available from both the slide-over and the triage queue** (`ParkControl`, shared). Un-park (from the slide-over / parking lot) clears `parked_until` and starts the clock now.
 
+### 2.26 Stage change lives in the classify controls (between-board-stage move)
+The deferred general stage-change (D1 / §2.17) is **built** — as a **Stage dropdown in `ClassifyControls`**, so it's in both the slide-over and the triage queue. It offers the four **board** stages (Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA) and writes `deal.stage_id`. **Lost is not here** — killing a deal is the separate Pass/Mark-lost action (§2.23), which carries the required reason.
+
+Why it was needed: a deal miscategorized at Pre-Submittal (e.g. actually submitted, waiting on the Starbucks RE) couldn't be moved from triage, and with no blocker + a court it wrongly read "ready to submit" instead of a submitted deal with the clock running. Fixing the stage there, alongside court, is the natural place.
+
+- **Shared-pipeline write** (the first between-stage one). `deal.stage_id` → `site_submit.submit_stage` via `trigger_sync_deal_stage_to_site_submit`, and leaving Pre-Submittal clears `blocked_on` via `trg_clear_blocked_on_stage_change`. Verified: one write moved deal + site_submit to Submitted-Reviewing and cleared the blocker.
+- **No confirm** — moving *between* the four board stages keeps the deal on the board (unlike →Lost, §2.17 L2, which removes it and is handled by the kill action with its confirm/reason).
+- Changing to a non-Pre-Submittal stage hides the blocker UI and clears `blocked_on`/`needs_*` (Pre-only, §2.12).
+
 ### 2.25 Manual priority ("urgent") — a separate channel from heat, auto-expiring
 Manual "this matters most" priority, independent of heat.
 
