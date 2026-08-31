@@ -522,6 +522,39 @@ salutation, opening paragraph) — not clauses, but the assembler can't emit a d
 Modeled as **deal fields feeding a fixed frame** (answers the payload-contract top-block question).
 Must exist before the Powder Springs acceptance test can run end-to-end.
 
+## Clause supersession + loi_clause_exclusion (SCOPED — build after tranche 6)
+
+**Standing decision: Transfer of the Property SUPERSEDES Sale of Property.** Verbatim comparison —
+Transfer (2026 national para 196, national-template-drop) is strictly stronger than Sale (Southeast
+para 301): later trigger (Rent Commencement follows delivery+acceptance), three conditions vs two, a
+30-day tail Sale lacks, and broader conduct ("sell, transfer, or assign the property" vs "transfer
+its interest in this lease"). **Carrying both is a liability, not extra coverage** — two clauses
+governing the same conduct under different triggers hands landlord's counsel a conflict to argue.
+Powder Springs contains both; treat as a historical artifact, not a pattern.
+
+**Required end-state (executed with the loi_clause_exclusion build, post-tranche-6; assembler is
+halted so no interim harm):**
+- `transfer_of_property` stays the active standing default (already loaded, tranche 2).
+- `sale_of_property` → **de-activated**: no emitting position; its canonical body **retained as an
+  orphan** for provenance + Phase-2 redline matching (Phase 2 must recognize it if a landlord proposes
+  it); `deviation_rationale` = "superseded by Transfer of the Property." **Not** in freestanding either
+  — the supersession is deal-type independent.
+
+**Modeling gap: clause-level mutual exclusion has no representation.** The schema expresses
+"modifier requires position" (`position_selection`) and "alternatives mutually exclusive within a
+variant" (rank / selector partition), but NOT "these two separate clauses are substitutes and must
+not both emit." Nothing stops a future deal selecting both Transfer and Sale — exactly what Powder
+Springs did.
+
+**Scope `loi_clause_exclusion`:** clause A excludes clause B, with a **reason** and a **direction**
+(which supersedes which), **enforced at assembly**. Known/candidate members:
+- `transfer_of_property` ⊃ `sale_of_property` (confirmed).
+- **ROFR vs ROFO** — Southeast doc carries both a Right of First Refusal (para 294) and a Continuing
+  Right of First Offer (para 298); likely alternatives, not companions. **Verify during tranche 6.**
+
+**Do NOT build until the tranche-6 completeness re-extraction is done** — that sweep may surface more
+exclusion pairs. Recorded now so it isn't discovered during assembly.
+
 ## Payload contract (proposed — pending confirmation, on hold until after tranche 6)
 
 Self-contained, text-in, triple-version-pinned, persisted verbatim as the operation log. Proposed
