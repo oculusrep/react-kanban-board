@@ -89,6 +89,10 @@ export default function StarbucksDealBoardPage() {
   // Agenda filter also applies to the ready band.
   const shownReady = useMemo(() => (agendaOnly ? ready.filter((d) => d.onAgenda) : ready), [ready, agendaOnly]);
 
+  // Account token on tiles only carries information in the "All" view with >1
+  // account; hide it when a single account is in view (confirmed) — no noise.
+  const showToken = accountFilter === ACCOUNT_ALL && accounts.length > 1;
+
   async function toggleStar(deal: BoardDeal) {
     try {
       await supabase.from('deal_activity_state').update({ on_agenda: !deal.onAgenda }).eq('deal_id', deal.id);
@@ -128,12 +132,12 @@ export default function StarbucksDealBoardPage() {
 
         {/* Ready-to-submit band — hidden entirely when empty (decisions §2.12) */}
         {shownReady.length > 0 && (
-          <ReadyBand deals={shownReady} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
+          <ReadyBand deals={shownReady} showToken={showToken} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
         )}
 
         <div className="flex-1 grid gap-3 px-4 pb-4 overflow-hidden" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
           {shown.map((col) => (
-            <Column key={col.key} col={col} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
+            <Column key={col.key} col={col} showToken={showToken} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
           ))}
         </div>
 
@@ -293,7 +297,7 @@ interface TileHandlers {
 // ---- Ready-to-submit band (decisions §2.12). Full-width, above the columns,
 // hot; the loudest thing on the board under the header. Rendered only when
 // non-empty (the parent guards this). Tiles flow horizontally and wrap. -------
-function ReadyBand({ deals, onOpen, onToggleStar }: { deals: BoardDeal[] } & TileHandlers) {
+function ReadyBand({ deals, showToken, onOpen, onToggleStar }: { deals: BoardDeal[]; showToken: boolean } & TileHandlers) {
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
   return (
@@ -320,7 +324,7 @@ function ReadyBand({ deals, onOpen, onToggleStar }: { deals: BoardDeal[] } & Til
             <div className="absolute left-0 top-0 bottom-0 rounded-l-md" style={{ width: 6, backgroundColor: PALETTE.hot }} />
             <div className="min-w-0 flex-1">
               <div className="truncate" style={{ fontWeight: 600, fontSize: px(16), color: PALETTE.text }}>{d.name}</div>
-              <div className="truncate" style={{ fontSize: px(11), color: PALETTE.textDim }}>{d.city ?? '—'} · {d.accountToken} · {d.days}d</div>
+              <div className="truncate" style={{ fontSize: px(11), color: PALETTE.textDim }}>{d.city ?? '—'}{showToken ? ` · ${d.accountToken}` : ''} · {d.days}d</div>
             </div>
             <span className="whitespace-nowrap" style={{ fontSize: px(12), fontWeight: 600, color: PALETTE.hot }}>Submit it →</span>
             <button
@@ -341,7 +345,7 @@ function ReadyBand({ deals, onOpen, onToggleStar }: { deals: BoardDeal[] } & Til
 // columns; a small group super-label ties the four back to one stage. Columns
 // over the dense threshold (transiently, e.g. Unset before classification) use
 // compact tiles. Empty columns render dim. ------------------------------------
-function Column({ col, onOpen, onToggleStar }: { col: BoardColumn } & TileHandlers) {
+function Column({ col, showToken, onOpen, onToggleStar }: { col: BoardColumn; showToken: boolean } & TileHandlers) {
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
   const empty = col.count === 0;
@@ -362,7 +366,7 @@ function Column({ col, onOpen, onToggleStar }: { col: BoardColumn } & TileHandle
 
       <div className={`flex-1 overflow-y-auto px-2 pb-2 flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
         {col.deals.map((d) => (
-          <Tile key={d.id} deal={d} dense={dense} onOpen={onOpen} onToggleStar={onToggleStar} />
+          <Tile key={d.id} deal={d} dense={dense} showToken={showToken} onOpen={onOpen} onToggleStar={onToggleStar} />
         ))}
       </div>
     </div>
@@ -370,7 +374,7 @@ function Column({ col, onOpen, onToggleStar }: { col: BoardColumn } & TileHandle
 }
 
 // ---- Tile (spec §6.4). Dense variant keeps fat columns compact. -----------
-function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: boolean } & TileHandlers) {
+function Tile({ deal, dense, showToken, onOpen, onToggleStar }: { deal: BoardDeal; dense: boolean; showToken: boolean } & TileHandlers) {
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
   const hs = heatStyle(deal.heat);
@@ -418,7 +422,7 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
         <span className="truncate flex-1 min-w-0" style={{ fontWeight: 600, fontSize: px(17), letterSpacing: '-0.01em', color: PALETTE.text }}>
           {deal.name}
         </span>
-        <span className="whitespace-nowrap" style={{ fontSize: px(10), color: PALETTE.textDim }}>{deal.accountToken}</span>
+        {showToken && <span className="whitespace-nowrap" style={{ fontSize: px(10), color: PALETTE.textDim }}>{deal.accountToken}</span>}
         {tagChip}
         <span className="tabular-nums whitespace-nowrap" style={{ fontSize: px(12), color: denseRightColor(deal) }}>
           {denseRightText(deal)}
@@ -444,7 +448,7 @@ function Tile({ deal, dense, onOpen, onToggleStar }: { deal: BoardDeal; dense: b
         </div>
         <div className="flex items-center gap-2" style={{ fontSize: px(13), color: PALETTE.textDim }}>
           <span className="truncate">{deal.city ?? '—'}</span>
-          <span style={{ fontSize: px(11) }}>· {deal.accountToken}</span>
+          {showToken && <span style={{ fontSize: px(11) }}>· {deal.accountToken}</span>}
           {tagChip}
         </div>
 
