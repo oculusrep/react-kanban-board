@@ -5,6 +5,9 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { parseISO, format } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCategoryIdByName } from '../../lib/taskCategory';
@@ -203,8 +206,31 @@ export default function DealSlideOver({
               </div>
             )}
             <input value={taskSubject} onChange={(e) => setTaskSubject(e.target.value)} placeholder="Next action…" className="w-full rounded px-2 py-1.5" style={inputStyle} />
-            <div className="mt-2 flex items-center gap-2">
-              <input type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} className="rounded px-2 py-1.5" style={inputStyle} />
+            <div className="mt-2 flex flex-wrap items-center gap-2" style={{ fontSize: px(15) }}>
+              {/* OVIS-standard react-datepicker calendar; input styled for the dark panel */}
+              <DatePicker
+                selected={taskDue ? parseISO(taskDue) : null}
+                onChange={(d) => setTaskDue(d ? format(d, 'yyyy-MM-dd') : '')}
+                dateFormat="MM/dd/yyyy"
+                placeholderText="Pick a date"
+                isClearable
+                popperProps={{ strategy: 'fixed' }}
+                className="rounded px-2 py-1.5 bg-[#12161C] text-[#E8EDF3] border border-[#12161C] w-[130px]"
+              />
+              {[3, 7, 10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setTaskDue(addDaysLocal(n))}
+                  className="rounded px-2 py-1"
+                  style={{
+                    fontSize: px(13),
+                    border: `1px solid ${taskDue === addDaysLocal(n) ? PALETTE.text : PALETTE.textDim}`,
+                    color: taskDue === addDaysLocal(n) ? PALETTE.text : PALETTE.textDim,
+                  }}
+                >
+                  +{n}d
+                </button>
+              ))}
               <button
                 onClick={saveTask}
                 disabled={saving || !taskSubject.trim()}
@@ -262,4 +288,11 @@ function Section({ title, children, px }: { title: string; children: ReactNode; 
 function stripHtml(s: string | null): string {
   if (!s) return '(empty note)';
   return s.replace(/<[^>]*>/g, '').slice(0, 80);
+}
+
+// today + n days as a local YYYY-MM-DD (CLAUDE.md: local date, not UTC)
+function addDaysLocal(n: number): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
