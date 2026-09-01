@@ -7354,6 +7354,9 @@ export type Database = {
           phase_label: string
           project_name: string | null
           raw_stages: Json
+          reject_reason: string | null
+          rejected_at: string | null
+          rejected_by_id: string | null
           research_run_id: string
           single_family_lots: number | null
           source: string
@@ -7389,6 +7392,9 @@ export type Database = {
           phase_label?: string
           project_name?: string | null
           raw_stages?: Json
+          reject_reason?: string | null
+          rejected_at?: string | null
+          rejected_by_id?: string | null
           research_run_id: string
           single_family_lots?: number | null
           source: string
@@ -7424,6 +7430,9 @@ export type Database = {
           phase_label?: string
           project_name?: string | null
           raw_stages?: Json
+          reject_reason?: string | null
+          rejected_at?: string | null
+          rejected_by_id?: string | null
           research_run_id?: string
           single_family_lots?: number | null
           source?: string
@@ -18035,6 +18044,7 @@ export type Database = {
           permit_application_date: string
           permit_url: string
           project_name: string
+          reject_reason: string
           research_run_id: string
           source: string
           sweep_chunk_index: number

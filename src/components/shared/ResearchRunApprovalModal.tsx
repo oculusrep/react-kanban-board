@@ -80,6 +80,9 @@ interface StagingRow {
   // server coerced it to 'other'. Surfaced so the reviewer can reclassify it
   // knowingly instead of seeing an unexplained 'Other'.
   discovery_source_raw: string | null;
+  // Why this row was rejected. Optional on single-row rejects, required on
+  // bulk ones. Null on anything rejected before 2026-09-01.
+  reject_reason: string | null;
   notes: string | null;
   muni_name: string | null;
   muni_kind: string | null;
@@ -317,6 +320,7 @@ export default function ResearchRunApprovalModal({
             source: r.source,
             discovery_source: r.discovery_source ?? null,
             discovery_source_raw: r.discovery_source_raw ?? null,
+            reject_reason: r.reject_reason ?? null,
             notes: r.notes,
             muni_name: r.muni_name,
             muni_kind: r.muni_kind,
@@ -346,7 +350,8 @@ export default function ResearchRunApprovalModal({
               id, research_run_id, boundary_municipality_id, matched_existing_id, approval_state,
               project_name, address, location_description, parcel_boundary_notes,
               total_housing_units, builder_developer, permit_url,
-              permit_application_date, source, discovery_source, discovery_source_raw, notes,
+              permit_application_date, source, discovery_source, discovery_source_raw,
+              reject_reason, notes,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -737,11 +742,18 @@ export default function ResearchRunApprovalModal({
 
   const handleReject = async (rowId: string) => {
     setError(null);
+    // Optional by design: a reviewer dismissing one bad dedupe row shouldn't
+    // have to write prose. Cancel still rejects, with no reason.
+    const reason = window.prompt('Reason for rejecting this row? (optional)') ?? null;
     try {
-      const { data, error: rpcErr } = await supabase.rpc('reject_research_staging_row', { p_staging_id: rowId });
+      const { data, error: rpcErr } = await supabase.rpc('reject_research_staging_row', {
+        p_staging_id: rowId,
+        p_reason: reason,
+      });
       if (rpcErr) throw rpcErr;
       // Mark as rejected locally
-      setStaging((rows) => rows.map((r) => r.id === rowId ? { ...r, approval_state: 'rejected' } : r));
+      setStaging((rows) => rows.map((r) => r.id === rowId
+        ? { ...r, approval_state: 'rejected', reject_reason: reason?.trim() || null } : r));
       setSelected((prev) => { const next = new Set(prev); next.delete(rowId); return next; });
       // If that was the last pending row, the RPC auto-closed the run as reviewed.
       if ((data as { run_reviewed?: boolean } | null)?.run_reviewed) {
@@ -761,7 +773,8 @@ export default function ResearchRunApprovalModal({
       const { data, error: rpcErr } = await supabase.rpc('unreject_research_staging_row', { p_staging_id: rowId });
       if (rpcErr) throw rpcErr;
       if (!(data as { unrejected?: boolean } | null)?.unrejected) return;
-      setStaging((rows) => rows.map((r) => r.id === rowId ? { ...r, approval_state: 'pending' } : r));
+      setStaging((rows) => rows.map((r) => r.id === rowId
+        ? { ...r, approval_state: 'pending', reject_reason: null } : r));
       // Re-select unless it hard-matches an existing record (those default off).
       const row = staging.find((s) => s.id === rowId);
       if (!row?.matched_existing_id) {
@@ -782,16 +795,25 @@ export default function ResearchRunApprovalModal({
   const handleKeepOne = async (keepId: string, siblingIds: string[]) => {
     setError(null);
     const targets = siblingIds.filter((id) => stagingById.get(id)?.approval_state === 'pending');
+    if (targets.length === 0) return;
+    // Bulk RPC: the reason is stated once for the batch rather than retyped per
+    // row, and it is REQUIRED — a batch reject with no recorded reason is the
+    // silent hole the reason field exists to close.
+    const keptName = stagingById.get(keepId)?.project_name ?? 'the kept record';
+    const reason = `Duplicate — resolved in favour of "${keptName}"`;
     try {
-      for (const id of targets) {
-        const { data, error: rpcErr } = await supabase.rpc('reject_research_staging_row', { p_staging_id: id });
-        if (rpcErr) throw rpcErr;
-        setStaging((rows) => rows.map((r) => r.id === id ? { ...r, approval_state: 'rejected' } : r));
-        setSelected((prev) => { const next = new Set(prev); next.delete(id); return next; });
-        if ((data as { run_reviewed?: boolean } | null)?.run_reviewed) {
-          setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
-          onReviewed?.();
-        }
+      const { data, error: rpcErr } = await supabase.rpc('reject_research_staging_rows', {
+        p_staging_ids: targets,
+        p_reason: reason,
+      });
+      if (rpcErr) throw rpcErr;
+      const closed = ((data as { runs_closed?: string[] } | null)?.runs_closed ?? []).length > 0;
+      setStaging((rows) => rows.map((r) => targets.includes(r.id)
+        ? { ...r, approval_state: 'rejected', reject_reason: reason } : r));
+      setSelected((prev) => { const next = new Set(prev); targets.forEach((id) => next.delete(id)); return next; });
+      if (closed) {
+        setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
+        onReviewed?.();
       }
       // Make sure the kept row is selected for commit.
       if (stagingById.get(keepId)?.approval_state === 'pending') {
@@ -1180,6 +1202,13 @@ export default function ResearchRunApprovalModal({
                     title="Undo — restore this row to pending">↩ Undo</button>
           )}
         </div>
+        {/* Why it was killed, on the row itself. A rejected row with no visible
+            reason is indistinguishable from a mistake six months later. */}
+        {r.approval_state === 'rejected' && r.reject_reason && (
+          <div className="pl-6 text-xs mt-0.5" style={{ color: '#A27B5C' }}>
+            Rejected: {r.reject_reason}
+          </div>
+        )}
         {/* Conflicting record(s) always visible — that's the point of the row. */}
         <div className="pl-6">{conflictPanels(r)}</div>
         {isExpanded && (<div className="pl-6">{fieldEditor(r)}</div>)}
