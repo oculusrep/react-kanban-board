@@ -46,6 +46,18 @@ const BRAND = {
   terracotta: '#A27B5C',
 };
 
+// Display labels for municipal_project.discovery_source. Unknown keys fall
+// through to the raw value rather than rendering blank.
+const DISCOVERY_SOURCE_LABELS: Record<string, string> = {
+  pz_agenda: 'P&Z / commission agenda',
+  news: 'News / press',
+  permit_portal: 'Permit portal',
+  activity_pdf: 'Permit activity PDF',
+  builder_site: 'Builder / developer site',
+  econ_dev: 'Econ dev / open records',
+  other: 'Other',
+};
+
 // Supabase/PostgREST errors are plain objects, not Error instances — String(e) would
 // render "[object Object]". Pull out a real message.
 function errMessage(e: unknown): string {
@@ -615,6 +627,14 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                   <>
                     <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Origin</span>
                     <span style={{ color: BRAND.midnight }}>{project.source}</span>
+                  </>
+                )}
+                {project.discovery_source && (
+                  <>
+                    <span className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>Found via</span>
+                    <span style={{ color: BRAND.midnight }}>
+                      {DISCOVERY_SOURCE_LABELS[project.discovery_source] ?? project.discovery_source}
+                    </span>
                   </>
                 )}
               </div>

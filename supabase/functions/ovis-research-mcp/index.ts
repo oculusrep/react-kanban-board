@@ -163,7 +163,12 @@ const TOOLS = [
               builder_developer: { type: ['string', 'null'] },
               permit_url: { type: ['string', 'null'] },
               permit_application_date: { type: ['string', 'null'], format: 'date' },
-              source: { type: 'string', description: 'REQUIRED. Where this record came from (Citizens Portal permit #, news article, builder website, econ-dev email attachment, etc.).' },
+              source: { type: 'string', description: 'REQUIRED. Where this record came from (Citizens Portal permit #, news article, builder website, econ-dev email attachment, etc.). Free text; may cite several sources at once.' },
+              discovery_source: {
+                type: ['string', 'null'],
+                enum: ['pz_agenda', 'news', 'permit_portal', 'activity_pdf', 'builder_site', 'econ_dev', 'other', null],
+                description: 'OPTIONAL. Which research phase actually FOUND this record — a single value, unlike the free-text `source` citation which often lists several. Used to measure which phases are worth keeping. pz_agenda = P&Z/planning commission/BOC/council agendas or minutes; news = news articles or press; permit_portal = Citizens Portal / Accela / EnerGov permit lookups; activity_pdf = monthly permit-activity report PDFs; builder_site = builder or developer websites and listings; econ_dev = econ-dev pages or open-records attachments; other = none of these. Omit or null if unsure — do NOT guess. Unrecognized values are coerced to "other".',
+              },
               notes: { type: ['string', 'null'], description: 'Any extra detail not covered by the schema.' },
               status_name: {
                 type: ['string', 'null'],
@@ -186,6 +191,24 @@ const TOOLS = [
         alt_avenues: {
           type: 'string',
           description: 'Free-text notes about alternative research avenues taken (developer association, county news outlet, builder forum, etc.).',
+        },
+        // Usage accounting. OVIS cannot derive these — the token counts live in
+        // the agent's own LLM responses. Omitting them leaves the run's cost
+        // columns NULL ("not measured"), which is safe.
+        estimated_cost_cents: {
+          type: ['integer', 'null'],
+          minimum: 0,
+          description: 'OPTIONAL. Estimated total cost of this run in INTEGER CENTS (e.g. 1843 = $18.43), not dollars. Omit if unknown.',
+        },
+        input_tokens: {
+          type: ['integer', 'null'],
+          minimum: 0,
+          description: 'OPTIONAL. Total input/prompt tokens consumed across this run.',
+        },
+        output_tokens: {
+          type: ['integer', 'null'],
+          minimum: 0,
+          description: 'OPTIONAL. Total output/completion tokens produced across this run.',
         },
       },
       required: ['research_run_id', 'candidate_records'],
@@ -275,9 +298,21 @@ async function toolUpdateChecklistStatus(args: any) {
 }
 
 async function toolSubmitResearchReport(args: any) {
-  const { research_run_id, candidate_records, needs_review, alt_avenues } = args ?? {};
+  const {
+    research_run_id, candidate_records, needs_review, alt_avenues,
+    estimated_cost_cents, input_tokens, output_tokens,
+  } = args ?? {};
   if (typeof research_run_id !== 'string') throw new ToolError('research_run_id is required');
   if (!Array.isArray(candidate_records)) throw new ToolError('candidate_records must be an array');
+
+  // Usage figures are optional and advisory. Coerce to a non-negative integer or
+  // null — a malformed value must never cost us the whole staged batch, which is
+  // the one write of the run.
+  const usageInt = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+  };
 
   const supabase = getSupabase();
   const { data, error } = await supabase.rpc('submit_research_report', {
@@ -285,6 +320,9 @@ async function toolSubmitResearchReport(args: any) {
     p_candidates: candidate_records,
     p_needs_review: needs_review ?? null,
     p_alt_avenues: alt_avenues ?? null,
+    p_estimated_cost_cents: usageInt(estimated_cost_cents),
+    p_input_tokens: usageInt(input_tokens),
+    p_output_tokens: usageInt(output_tokens),
   });
   if (error) throw new ToolError(`submit_research_report failed: ${error.message}`);
   return { staged_count: data, research_run_id };

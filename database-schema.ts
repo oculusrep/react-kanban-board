@@ -7133,6 +7133,8 @@ export type Database = {
           cottage_units: number | null
           created_at: string
           created_by_id: string | null
+          discovery_source: string | null
+          discovery_source_raw: string | null
           duplex_units: number | null
           geocoded_address: string | null
           geometry: unknown
@@ -7172,6 +7174,8 @@ export type Database = {
           cottage_units?: number | null
           created_at?: string
           created_by_id?: string | null
+          discovery_source?: string | null
+          discovery_source_raw?: string | null
           duplex_units?: number | null
           geocoded_address?: string | null
           geometry?: unknown
@@ -7211,6 +7215,8 @@ export type Database = {
           cottage_units?: number | null
           created_at?: string
           created_by_id?: string | null
+          discovery_source?: string | null
+          discovery_source_raw?: string | null
           duplex_units?: number | null
           geocoded_address?: string | null
           geometry?: unknown
@@ -7333,6 +7339,8 @@ export type Database = {
           builder_developer: string | null
           cottage_units: number | null
           created_at: string
+          discovery_source: string | null
+          discovery_source_raw: string | null
           duplex_units: number | null
           id: string
           location_description: string | null
@@ -7366,6 +7374,8 @@ export type Database = {
           builder_developer?: string | null
           cottage_units?: number | null
           created_at?: string
+          discovery_source?: string | null
+          discovery_source_raw?: string | null
           duplex_units?: number | null
           id?: string
           location_description?: string | null
@@ -7399,6 +7409,8 @@ export type Database = {
           builder_developer?: string | null
           cottage_units?: number | null
           created_at?: string
+          discovery_source?: string | null
+          discovery_source_raw?: string | null
           duplex_units?: number | null
           id?: string
           location_description?: string | null
@@ -11288,9 +11300,12 @@ export type Database = {
           alt_avenues: string | null
           completed_at: string | null
           created_at: string
+          estimated_cost_cents: number | null
           id: string
+          input_tokens: number | null
           needs_review: string | null
           openclaw_run_id: string | null
+          output_tokens: number | null
           permit_window_end: string | null
           permit_window_start: string | null
           pz_window_end: string | null
@@ -11309,9 +11324,12 @@ export type Database = {
           alt_avenues?: string | null
           completed_at?: string | null
           created_at?: string
+          estimated_cost_cents?: number | null
           id?: string
+          input_tokens?: number | null
           needs_review?: string | null
           openclaw_run_id?: string | null
+          output_tokens?: number | null
           permit_window_end?: string | null
           permit_window_start?: string | null
           pz_window_end?: string | null
@@ -11330,9 +11348,12 @@ export type Database = {
           alt_avenues?: string | null
           completed_at?: string | null
           created_at?: string
+          estimated_cost_cents?: number | null
           id?: string
+          input_tokens?: number | null
           needs_review?: string | null
           openclaw_run_id?: string | null
+          output_tokens?: number | null
           permit_window_end?: string | null
           permit_window_start?: string | null
           pz_window_end?: string | null
@@ -16249,6 +16270,8 @@ export type Database = {
           cottage_units: number | null
           created_at: string | null
           created_by_id: string | null
+          discovery_source: string | null
+          discovery_source_raw: string | null
           duplex_units: number | null
           effective_stage_color: string | null
           effective_stage_id: string | null
@@ -18000,6 +18023,8 @@ export type Database = {
           approval_state: string
           boundary_municipality_id: string
           builder_developer: string
+          discovery_source: string
+          discovery_source_raw: string
           id: string
           location_description: string
           matched_existing_id: string

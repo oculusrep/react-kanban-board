@@ -72,6 +72,14 @@ interface StagingRow {
   permit_url: string | null;
   permit_application_date: string | null;
   source: string | null;
+  // Single-valued companion to `source`: which research phase actually found
+  // this record. `source` is a free-text citation that often lists several, so
+  // it can't answer "which phase is earning its keep?" — this can.
+  discovery_source: string | null;
+  // Set only when the agent sent a discovery_source we don't recognize and the
+  // server coerced it to 'other'. Surfaced so the reviewer can reclassify it
+  // knowingly instead of seeing an unexplained 'Other'.
+  discovery_source_raw: string | null;
   notes: string | null;
   muni_name: string | null;
   muni_kind: string | null;
@@ -182,9 +190,24 @@ function diceCoefficient(a: string, b: string): number {
 type Edits = Partial<Pick<StagingRow,
   'project_name' | 'address' | 'location_description' | 'parcel_boundary_notes'
   | 'total_housing_units' | 'builder_developer'
-  | 'permit_url' | 'permit_application_date' | 'source' | 'notes'>>;
+  | 'permit_url' | 'permit_application_date' | 'source' | 'discovery_source' | 'notes'>>;
 
-const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url'; full?: boolean }[] = [
+// Closed set mirrored from the municipal_project_staging_discovery_source_check
+// constraint. '' renders as "— not reported —" and submits as NULL; the reviewer
+// should leave it blank rather than guess, since a guessed value is exactly the
+// unreliable attribution this column was added to replace.
+const DISCOVERY_SOURCE_OPTIONS: { value: string; label: string }[] = [
+  { value: '',              label: '— not reported —' },
+  { value: 'pz_agenda',     label: 'P&Z / commission agenda' },
+  { value: 'news',          label: 'News / press' },
+  { value: 'permit_portal', label: 'Permit portal (Accela / EnerGov)' },
+  { value: 'activity_pdf',  label: 'Permit activity PDF' },
+  { value: 'builder_site',  label: 'Builder / developer site' },
+  { value: 'econ_dev',      label: 'Econ dev / open records' },
+  { value: 'other',         label: 'Other' },
+];
+
+const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url' | 'select'; full?: boolean; options?: { value: string; label: string }[] }[] = [
   { key: 'project_name',            label: 'Project name',     type: 'text', full: true },
   { key: 'address',                 label: 'Address (geocoded)', type: 'text', full: true },
   // Location-precision fields the agent captures from sources; reviewer reads these
@@ -195,7 +218,8 @@ const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number
   { key: 'builder_developer',       label: 'Builder',          type: 'text' },
   { key: 'permit_url',              label: 'Permit URL',       type: 'url', full: true },
   { key: 'permit_application_date', label: 'Permit app. date', type: 'date' },
-  { key: 'source',                  label: 'Source',           type: 'text', full: true },
+  { key: 'source',                  label: 'Source (full citation)', type: 'text', full: true },
+  { key: 'discovery_source',        label: 'Discovery source (which phase found it)', type: 'select', options: DISCOVERY_SOURCE_OPTIONS },
   { key: 'notes',                   label: 'Notes',            type: 'text', full: true },
 ];
 
@@ -291,6 +315,8 @@ export default function ResearchRunApprovalModal({
             permit_url: r.permit_url,
             permit_application_date: r.permit_application_date,
             source: r.source,
+            discovery_source: r.discovery_source ?? null,
+            discovery_source_raw: r.discovery_source_raw ?? null,
             notes: r.notes,
             muni_name: r.muni_name,
             muni_kind: r.muni_kind,
@@ -320,7 +346,7 @@ export default function ResearchRunApprovalModal({
               id, research_run_id, boundary_municipality_id, matched_existing_id, approval_state,
               project_name, address, location_description, parcel_boundary_notes,
               total_housing_units, builder_developer, permit_url,
-              permit_application_date, source, notes,
+              permit_application_date, source, discovery_source, discovery_source_raw, notes,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -857,6 +883,8 @@ export default function ResearchRunApprovalModal({
             ...(e.permit_url          !== undefined ? { permit_url:              e.permit_url          } : {}),
             ...(e.permit_application_date !== undefined ? { permit_application_date: e.permit_application_date } : {}),
             ...(e.source              !== undefined ? { source:                  e.source              } : {}),
+            // '' from the select means "not reported" -> NULL, not 'other'.
+            ...(e.discovery_source    !== undefined ? { discovery_source:        e.discovery_source || null } : {}),
             ...(e.notes               !== undefined ? { notes:                   e.notes               } : {}),
             ...(lat !== null && lng !== null ? { latitude: lat, longitude: lng } : {}),
             ...(formatted ? { geocoded_address: formatted } : {}),
@@ -1084,14 +1112,36 @@ export default function ResearchRunApprovalModal({
         {EDITABLE_FIELDS.map((f) => (
           <div key={f.key} className={f.full ? 'col-span-2' : ''}>
             <label className="block text-xs mb-0.5" style={{ color: '#4A6B94' }}>{f.label}</label>
-            <input
-              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-              value={value(f.key)}
-              disabled={!isPending || isReadOnlyRun}
-              onChange={(e) => setEdit(r.id, f.key, e.target.value)}
-              className="w-full px-2 py-1 text-sm border rounded"
-              style={{ borderColor: '#8FA9C8', color: '#002147' }}
-            />
+            {f.type === 'select' ? (
+              <select
+                value={value(f.key)}
+                disabled={!isPending || isReadOnlyRun}
+                onChange={(e) => setEdit(r.id, f.key, e.target.value)}
+                className="w-full px-2 py-1 text-sm border rounded bg-white"
+                style={{ borderColor: '#8FA9C8', color: '#002147' }}
+              >
+                {(f.options ?? []).map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                value={value(f.key)}
+                disabled={!isPending || isReadOnlyRun}
+                onChange={(e) => setEdit(r.id, f.key, e.target.value)}
+                className="w-full px-2 py-1 text-sm border rounded"
+                style={{ borderColor: '#8FA9C8', color: '#002147' }}
+              />
+            )}
+            {/* Explains an otherwise mysterious "Other": the agent reported a
+                value outside our taxonomy and the server coerced it. Showing the
+                original lets the reviewer reclassify it deliberately. */}
+            {f.key === 'discovery_source' && r.discovery_source_raw && (
+              <div className="text-xs mt-0.5" style={{ color: '#A27B5C' }}>
+                Agent reported: “{r.discovery_source_raw}” — not in our list, filed as Other.
+              </div>
+            )}
           </div>
         ))}
       </div>

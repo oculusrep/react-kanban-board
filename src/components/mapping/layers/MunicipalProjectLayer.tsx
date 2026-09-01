@@ -55,6 +55,10 @@ export interface MunicipalProjectMapRow {
   // the project polygon.
   location_description: string | null;
   parcel_boundary_notes: string | null;
+  // Which research phase found this record (single value), vs `source` which is
+  // a free-text citation that often names several. NULL for anything committed
+  // before 2026-09-01.
+  discovery_source: string | null;
   // Screen-pixel offset applied to the on-map units label. NULL = default (0,0),
   // which sits just below the pin tip. User can drag the label to override.
   label_offset_x_px: number | null;
