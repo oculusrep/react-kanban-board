@@ -24,7 +24,7 @@
 >
 > `--single-transaction` matters: without it a mid-file failure leaves the schema half-migrated.
 >
-> The three migrations of 2026-09-01 (`20260901120000`, `20260901120100`, `20260901140000`) were applied this way.
+> The four migrations of 2026-09-01 (`20260901120000`, `20260901120100`, `20260901140000`, `20260901160000`) were applied this way.
 
 ---
 
@@ -191,7 +191,9 @@ Cost: low. End state: `db push` works, but 40 inert files clutter the directory 
 
 The drift is structural: **one production database is shared by six worktrees**, and three different tools can write the history table with three different versioning behaviors. Reconciling without changing that guarantees a repeat.
 
-Proposed single path — **file first, psql apply, explicit record**:
+**ADOPTED 2026-09-01.** Recorded in `CLAUDE.md` so it binds future sessions, and used for every migration since (`20260901120000` … `20260901160000`).
+
+Single path — **file first, psql apply, explicit record**:
 
 1. Every schema change starts as a file in `supabase/migrations/` with a `date +%Y%m%d%H%M%S` version. No exceptions — not for a one-line fix, not from the dashboard.
 2. Apply with `psql -v ON_ERROR_STOP=1 --single-transaction -f <file>`.
@@ -203,7 +205,7 @@ This keeps version numbers under our control and makes history match the files b
 
 The real fix is a non-shared dev database: with a Supabase branch environment, branches would stop writing to production history at all and the root cause disappears. Currently unstarted.
 
-Steps 1–5 are a proposal; nothing enforces them yet.
+Steps 1–5 are in effect. `CLAUDE.md` is the enforcement point — it is loaded into every session's context, so the rule is visible before anyone writes a migration rather than after.
 
 ---
 

@@ -8,6 +8,36 @@ Notes:
 - The Vercel build runs `vite build` (no `tsc` typecheck), so type errors don't block deploys but will still ship broken code — typecheck locally before pushing.
 - A manual `vercel --prod` is also possible from a clean checkout if you need to redeploy a specific commit without pushing again.
 
+## Database Migrations
+
+**`supabase db push` does not work in this repo. Use the psql fallback, and always record the migration explicitly.**
+
+The migration history has drifted (40 remote-only versions). Full diagnosis, options, and the reconciliation plan: [docs/SUPABASE_MIGRATION_DRIFT.md](docs/SUPABASE_MIGRATION_DRIFT.md).
+
+Single application path — file first, psql apply, explicit record:
+
+1. Write the change as a file in `supabase/migrations/` with a `date +%Y%m%d%H%M%S` version. No exceptions, including one-line fixes.
+2. Apply it:
+   ```bash
+   set -a && . ./.env && set +a
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction \
+     -f supabase/migrations/<version>_<name>.sql
+   ```
+   `--single-transaction` matters — without it a mid-file failure leaves the schema half-migrated.
+3. Record it in the same session:
+   ```bash
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+     "INSERT INTO supabase_migrations.schema_migrations (version, name)
+      VALUES ('<version>','<name>') ON CONFLICT (version) DO NOTHING;"
+   ```
+   Skipping this step is how part of the current drift was created.
+4. **Never use the MCP `apply_migration` tool or the Supabase dashboard SQL editor for schema changes.** Both stamp their own version number and are the source of most of the drift. Use them for read-only queries only.
+5. Branch worktrees follow the same rule and note in the PR which migrations they applied to the shared production database — one prod DB is shared across all worktrees, so any branch that migrates puts `main` out of sync until it merges.
+
+**Never rebuild an RPC or view from an older migration file.** Pull the current definition from the live database first (`pg_get_functiondef` / `pg_get_viewdef`); later migrations routinely add things the old file doesn't have, and rebuilding from it silently drops them. Views created with `SELECT t.*` expand to a fixed column list at creation time, so a new table column requires recreating the view.
+
+Verify round-trip before calling a migration done — run it inside a transaction and `ROLLBACK`, so nothing test-related persists.
+
 ## Timezone
 
 **Always use Eastern Time (EST/EDT) for all date and time operations in OVIS.**

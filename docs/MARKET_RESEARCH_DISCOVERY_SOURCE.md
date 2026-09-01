@@ -130,6 +130,46 @@ If you add another field where a reviewer needs to be able to clear a value, use
 
 ---
 
+## Two findings that revise the attribution picture
+
+Both surfaced while triaging runs `a14c3e7b` / `ee1be095` on 2026-09-01. Recorded here because they change how the next cut decision should be read.
+
+### `permit_portal`'s 645 units may never have been permit-derived
+
+The [attribution analysis](MARKET_RESEARCH_SOURCE_ATTRIBUTION_2026_09_01.md) credited `permit_portal` with 3 records / 645 units — its entire measured yield. On inspection that credit is weaker than it looked:
+
+- **All three records have `permit_url = NULL`.** The Accela permit numbers (`HSUB23-0007`, `HSUB23-0008`, `HSUB24-0001`) appear only inside the free-text `source`; no URL was ever captured.
+- **The unit counts came from elsewhere.** Clark Farms' 365 lots came from a Trulia listing for an adjacent property; Ponderosa Farms' 156 from a Chafin Communities site map; Union Heights' 124 from Century Communities' close-out inventory. The permit records are Subdivision Final Plats — they establish that a plat was filed, not how many units it covers.
+
+So the permit portal plausibly contributed *existence and timing* while builder sites contributed the *numbers* the yield figure is built from. **`permit_portal`'s apparent 645-unit yield is probably overstated, and `builder_site`'s understated.**
+
+This revises the phase-yield picture **downward** for the one phase that looked like a plausible cut candidate on volume grounds. It does not make the cut decision easier — it makes the old numbers less trustworthy in a second, independent way, on top of the ordering artifact. Do not cut `permit_portal` on yield until `discovery_source` has produced real data.
+
+A cheap improvement while we're here: the agent should populate `permit_url` for permit-portal records, not just cite the permit number in prose. Without a URL these records cannot be re-verified without a manual portal search. *(Agent-prompt change — not made here.)*
+
+### Same-window re-runs are a dedupe gap
+
+Runs `a14c3e7b` (20:39) and `ee1be095` (20:45) — six minutes apart, same evening, same Hall County scope — independently staged **the same four BOC agenda items**:
+
+| Agenda item | `a14c3e7b` | `ee1be095` |
+|---|---|---|
+| `item/2730` | 1731 Friendship Rd Mixed-Use (Denied), 185 | 1731 Friendship Road Multi-Family, 185 |
+| `item/2468` | Haselton On Lanier Phase 1, 216 | Haselton on Lanier Phase 2, 216 |
+| `item/2512` | Buffington Farm Road New PRD, 121 | Haselton on Lanier Phase 3, 121 |
+| `item/2579` | Avilla Friendship Trails, **129** | Thompsons Mill Road Rental, **133** |
+
+**None of it was caught.** `matched_existing_id` was false on all 14 rows, and the soft proximity dedupe did not flag them either. The reasons are structural:
+
+1. **The dup probes only look at committed `municipal_project` rows** — never at other *staging* rows. Two runs staged concurrently are invisible to each other by construction.
+2. The `(project_name, address)` probe fails because the agent named the same project differently across runs, and the addresses differ in formatting and in which parcel of a multi-parcel item they cite.
+3. The `permit_url` probe — which *would* have matched, since all four share a URL — also only queries committed rows.
+
+Approving both would have created four duplicate `municipal_project` rows, and the `ON CONFLICT (municipality_id, address, project_name, phase_label)` key would not have stopped them, because both name and address differ.
+
+**Proposed fix (not built):** extend the duplicate probe in `submit_research_report` to also match *pending staging rows from other runs*, keyed on `permit_url` first. That is the strongest available signal and it is exact — it would have caught all four here. Worth doing before the next multi-run window, since sweeps make overlapping runs normal rather than exceptional.
+
+---
+
 ## Agent contract (MCP)
 
 `submit_research_report` — `candidate_records[].discovery_source`, optional:
