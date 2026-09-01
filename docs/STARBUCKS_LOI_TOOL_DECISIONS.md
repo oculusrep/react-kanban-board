@@ -591,12 +591,42 @@ fragment is its own modifier position carrying:
 }]
 ```
 `lease` L0 is the default alternative (rank 0), so the sentence emits by default and drops only when
-L1 is explicitly selected — the correct DELETE-when-not-standard-form semantics. **Assembler
-consequence to note:** all three fragments compose ONE template paragraph (218), so the assembler must
-concatenate same-paragraph fragments in document order across the two positions rather than emit them
-as separate paragraphs (otherwise the formatting acceptance test fails). Chosen over an inline
+L1 is explicitly selected — the correct DELETE-when-not-standard-form semantics. Chosen over an inline
 `choose_one`-with-omit param because the L0/L1 dependency is a **cross-clause** condition, which the
 locked design (§C/§F) requires to live in `applies_when`, not in OVIS-side param resolution.
+
+**ARCHITECTURE RULE — same-paragraph fragment concatenation (Mike, accepted 2026-09-01).** When two
+or more positions/segments compose ONE template paragraph (as the three closing-statement fragments
+compose para 218), the assembler MUST concatenate them in document order into a single paragraph — NOT
+emit them as separate paragraphs. This is a standing assembler architecture rule, not a one-off note:
+gating a mid-paragraph fragment on `applies_when` (which is position-level) is the general mechanism,
+so the assembler needs first-class support for "these positions belong to one paragraph, join them in
+order." Emitting separate paragraphs would fail the formatting acceptance test. Mike owes the three
+re-split closing-statement canonical bodies (blocked until he has the template in front of him again);
+do not load the closing-statement split until they land.
+
+**Signature block — RESOLVED (Mike, 2026-09-01); does NOT block the acceptance test.** There is no
+Oculus standing default. `sig_tenant_title` is a **required deal-level parameter with NO default** —
+the wizard asks on every deal. Two values, NEITHER a deviation (no approval trigger either way):
+`Broker` → "Representative Name / Title: Broker" with the Store Development Manager cc'd; and
+`Store Development Manager` → the template's own block. For the **Powder Springs acceptance test** the
+value comes from the deal record (= `Broker`), supplied as a required param — not from a default.
+- **Open modeling note for the re-key (flagged, Mike owns the body):** the current tranche-7 shape is a
+  single `fill` on the title line. "Required param, two enumerated values" reads more like a
+  `choose_one` (two options, no preferred/fallback) than a free `fill`. And the `Broker` rendering adds
+  a **cc line** (SDM cc'd), which a title-line fill can't produce — if that cc is a separate line, the
+  signature body needs a small conditional segment, not just a title string. The acceptance test needs
+  the `Broker` rendering (cc included) to match Powder Springs, so this belongs in the owed body work.
+  The stale note on `sig_tenant_title` ("confirm which form is the Oculus standing default") is now
+  answered — left for Mike's re-send rather than patched under him.
+
+**Manifest granularity — clause-level now, per-body upgrade PLANNED (Mike, 2026-09-01).** Rule 2
+(every `primary`/`addon` maps to a loaded canonical body) is checked at **clause level** because the
+manifest carries only `clause`. Mike will add `brace_code` (and `segment_key` where the paragraph maps
+to one) to the `assignments` entries and re-send; then rule 2 tightens to "this EXACT body is loaded"
+(catches a clause loaded with the wrong brace_code or a missing segment, which clause-level passes).
+**Do NOT build the tightened rule yet** — Mike will flag when the re-send lands, at which point
+`completeness_test.py` upgrades to per-body resolution against the tranches.
 
 ## Clause supersession + loi_clause_exclusion (SCOPED — build after tranche 6)
 
