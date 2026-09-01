@@ -1,0 +1,1113 @@
+{
+ "template": "LOI_US__7_30_2026_.docx",
+ "template_paragraphs": 236,
+ "_README": [
+  "Authoritative paragraph->category manifest for LOI_US__7_30_2026_.docx.",
+  "Categories: primary (a position body) | addon (a modifier body) | instruction (stripped, never emitted)",
+  "| letter_shell (document frame) | blocked (deferred: R0/R1 rent schedules, LCW primaries) | empty.",
+  "The completeness harness asserts every non-empty paragraph carries a category, that every",
+  "'primary' and 'addon' paragraph maps to a loaded canonical body, and that NO paragraph is",
+  "'unassigned'. Re-run against any future template drop: new or moved paragraphs surface as",
+  "unassigned and fail the harness, which is also the template-transition detector."
+ ],
+ "assignments": {
+  "0": {
+   "category": "instruction",
+   "clause": null,
+   "note": "Document title and handbook pointer",
+   "text_head": "STARBUCKS LETTER OF INTENT"
+  },
+  "1": {
+   "category": "empty"
+  },
+  "2": {
+   "category": "instruction",
+   "clause": null,
+   "note": "Master rule: bracketed instructional text must be deleted and blanks completed",
+   "text_head": "NOTE:  BRACKETED INSTRUCTIONAL TEXT, NOTES, AND OPTIONAL BOLDED LANGUAGE THAT DO NOT APPLY"
+  },
+  "3": {
+   "category": "empty"
+  },
+  "4": {
+   "category": "instruction",
+   "clause": null,
+   "note": "Document title and handbook pointer",
+   "text_head": "PLEASE REFER TO LOI HANDBOOK AND FORM LEASE FOR OTHER STARBUCKS STANDARDS."
+  },
+  "5": {
+   "category": "empty"
+  },
+  "6": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Opening frame",
+   "text_head": "[Date]"
+  },
+  "7": {
+   "category": "empty"
+  },
+  "8": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Opening frame",
+   "text_head": "<Insert Name>"
+  },
+  "9": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Opening frame",
+   "text_head": "<Insert Address>"
+  },
+  "10": {
+   "category": "empty"
+  },
+  "11": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Opening frame",
+   "text_head": "RE:"
+  },
+  "12": {
+   "category": "empty"
+  },
+  "13": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Opening frame",
+   "text_head": "Dear <Insert Name>:"
+  },
+  "14": {
+   "category": "empty"
+  },
+  "15": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Opening frame",
+   "text_head": "We are pleased to present to you this letter (“Letter of Intent”) which sets forth the ter"
+  },
+  "16": {
+   "category": "empty"
+  },
+  "17": {
+   "category": "primary",
+   "clause": "premises",
+   "note": null,
+   "text_head": "PREMISES:\tApproximately _______ square feet of [CHOOSE:  in-line, end-cap, multi-tenant pa"
+  },
+  "18": {
+   "category": "empty"
+  },
+  "19": {
+   "category": "addon",
+   "clause": "premises",
+   "note": "NNN premises segment",
+   "text_head": "[{NNN} FALLBACK FOR SINGLE TENANT BUILDINGS/SINGLE TENANT PARCEL, ADD:  Landlord shall pro"
+  },
+  "20": {
+   "category": "empty"
+  },
+  "21": {
+   "category": "addon",
+   "clause": "premises",
+   "note": "replat/boundary/subdivision",
+   "text_head": "[IF REPLAT/BOUNDARY LINE ADJUSTMENT/SUBDIVISION OR SIMILAR FUTURE MODIFICATION TO PROPERTY"
+  },
+  "22": {
+   "category": "empty"
+  },
+  "23": {
+   "category": "addon",
+   "clause": "premises",
+   "note": "drive-through configuration",
+   "text_head": "[FOR DRIVE-THROUGH LOCATIONS, ADD:]\t Tenant will have the right to configure the Premises "
+  },
+  "24": {
+   "category": "empty"
+  },
+  "25": {
+   "category": "primary",
+   "clause": "landlord_property_interest",
+   "note": null,
+   "text_head": "LANDLORD PROPERTY INTEREST:\t[Fee/Ground Lease/Under Contract to Purchase]"
+  },
+  "26": {
+   "category": "empty"
+  },
+  "27": {
+   "category": "primary",
+   "clause": "lease",
+   "note": "L0 at 27, L1 heading 29 + body 30",
+   "text_head": "LEASE:\tStarbucks standard lease [TO THE EXTENT CONFORMING TO A PRIOR DEAL, ADD SPECIFIC CO"
+  },
+  "28": {
+   "category": "empty"
+  },
+  "29": {
+   "category": "primary",
+   "clause": "lease",
+   "note": "L0 at 27, L1 heading 29 + body 30",
+   "text_head": "LEASE:  [L1 – FALLBACK IF LANDLORD INSISTS ON USING ITS FORM]"
+  },
+  "30": {
+   "category": "primary",
+   "clause": "lease",
+   "note": "L0 at 27, L1 heading 29 + body 30",
+   "text_head": "Landlord and Tenant will use Landlord’s form lease as a basis for negotiation.  The terms "
+  },
+  "31": {
+   "category": "empty"
+  },
+  "32": {
+   "category": "primary",
+   "clause": "term",
+   "note": "two segments",
+   "text_head": "TERM:\tTen (10) years plus four (4) consecutive five (5)-year unconditional options to exte"
+  },
+  "33": {
+   "category": "empty"
+  },
+  "34": {
+   "category": "primary",
+   "clause": "term",
+   "note": "two segments",
+   "text_head": "RENT:\t The rent schedule below is inclusive of all charges other than taxes, insurance and"
+  },
+  "35": {
+   "category": "empty"
+  },
+  "36": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 marker",
+   "text_head": "[{R0} – TO BE USED WITH IF THE RENT IS A SET ANNUAL AMOUNT]"
+  },
+  "37": {
+   "category": "empty"
+  },
+  "38": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "Years\t\tMonthly\t\tYearly"
+  },
+  "39": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "1-5\t\t$\t\t\t$"
+  },
+  "40": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "6-10\t\t$\t\t\t$"
+  },
+  "41": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": ""
+  },
+  "42": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "Extension Options:"
+  },
+  "43": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "11-15              \t$                     \t\t$"
+  },
+  "44": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "16-20             \t$                     \t\t$"
+  },
+  "45": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "21-25             \t$                     \t\t$"
+  },
+  "46": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": "26-30             \t$                      \t\t$"
+  },
+  "47": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R0 schedule rows",
+   "text_head": ""
+  },
+  "48": {
+   "category": "empty"
+  },
+  "49": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 marker",
+   "text_head": "[{R1} – TO BE USED IF THE RENT IS TIED TO SQUARE FOOTAGE]"
+  },
+  "50": {
+   "category": "empty"
+  },
+  "51": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "Years\t\tMonthly\t\tYearly\t\t[{R1}Per Square Foot]"
+  },
+  "52": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "1-5\t\t$\t\t\t$\t\t[{R1}$\t\t]"
+  },
+  "53": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "6-10\t\t$\t\t\t$\t\t[{R1}$\t\t]"
+  },
+  "54": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": ""
+  },
+  "55": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "Extension Options:"
+  },
+  "56": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "11-15              \t$                     \t\t$ \t\t[{R1}$\t\t]"
+  },
+  "57": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "16-20             \t$                     \t\t$ \t\t[{R1}$\t\t]"
+  },
+  "58": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "21-25             \t$                     \t\t$   \t\t[{R1}$\t\t]"
+  },
+  "59": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 schedule rows",
+   "text_head": "26-30             \t$                      \t\t$\t\t[{R1}$\t\t]"
+  },
+  "60": {
+   "category": "empty"
+  },
+  "61": {
+   "category": "blocked",
+   "clause": "rent",
+   "note": "R1 remeasurement paragraph",
+   "text_head": "[{R1} The rent schedule is based on Landlord's estimate of the ground floor area of the Pr"
+  },
+  "62": {
+   "category": "empty"
+  },
+  "63": {
+   "category": "primary",
+   "clause": "percentage_rent",
+   "note": null,
+   "text_head": "PERCENTAGE RENT:  None."
+  },
+  "64": {
+   "category": "empty"
+  },
+  "65": {
+   "category": "primary",
+   "clause": "rent_commencement",
+   "note": null,
+   "text_head": "RENT COMMENCEMENT:\tTenant will not commence payment of rent (nor charges for common area m"
+  },
+  "66": {
+   "category": "empty"
+  },
+  "67": {
+   "category": "instruction",
+   "clause": "rent_commencement",
+   "note": "three ARP paragraphs may be deleted for drive-through",
+   "text_head": "[NOTE: THE FOLLOWING THREE PARAGRAPHS MAY BE DELETED FOR ANY DRIVE THROUGH LOCATION]"
+  },
+  "68": {
+   "category": "empty"
+  },
+  "69": {
+   "category": "addon",
+   "clause": "rent_commencement",
+   "note": "Alternative Rent Period",
+   "text_head": "In the event any Force Majeure Event, act by Landlord or act of any governmental authority"
+  },
+  "70": {
+   "category": "empty"
+  },
+  "71": {
+   "category": "addon",
+   "clause": "rent_commencement",
+   "note": "Alternative Rent Period",
+   "text_head": "Tenant shall provide Landlord notice of its election to apply the foregoing rent adjustmen"
+  },
+  "72": {
+   "category": "empty"
+  },
+  "73": {
+   "category": "addon",
+   "clause": "rent_commencement",
+   "note": "Alternative Rent Period",
+   "text_head": "In the event the Alternative Rent Period continues for more than one hundred twenty (120) "
+  },
+  "74": {
+   "category": "empty"
+  },
+  "75": {
+   "category": "primary",
+   "clause": "use",
+   "note": "U0 / U1",
+   "text_head": "USE:\t [{U0}]  Any lawful retail or restaurant use, including the sale of beer and wine."
+  },
+  "76": {
+   "category": "empty"
+  },
+  "77": {
+   "category": "primary",
+   "clause": "use",
+   "note": "U0 / U1",
+   "text_head": "USE:\t [{U1} FALLBACK]  A coffee store or any other lawful retail or restaurant use, includ"
+  },
+  "78": {
+   "category": "empty"
+  },
+  "79": {
+   "category": "primary",
+   "clause": "exclusive_use",
+   "note": "EU0",
+   "text_head": "EXCLUSIVE USE:\t[{EU0}]  Landlord will not sell or permit any party, other than Tenant, to "
+  },
+  "80": {
+   "category": "empty"
+  },
+  "81": {
+   "category": "addon",
+   "clause": "exclusive_use",
+   "note": "EU1 + EU2 + definitions",
+   "text_head": "[{EU1}.; Notwithstanding the foregoing, other tenants on the Property may sell brewed coff"
+  },
+  "82": {
+   "category": "empty"
+  },
+  "83": {
+   "category": "addon",
+   "clause": "exclusive_use",
+   "note": "existing tenants carve-out",
+   "text_head": "[IF EXISTING TENANTS ARE NOT SUBJECT TO STARBUCKS EXCLUSIVE, ADD]:  Any existing tenant as"
+  },
+  "84": {
+   "category": "empty"
+  },
+  "85": {
+   "category": "instruction",
+   "clause": "exclusive_use",
+   "note": "all future tenants must be subject",
+   "text_head": "[ALL FUTURE TENANTS MUST BE SUBJECT TO STARBUCKS EXCLUSIVE]"
+  },
+  "86": {
+   "category": "empty"
+  },
+  "87": {
+   "category": "addon",
+   "clause": "exclusive_use",
+   "note": "anchor/grocery carve-out",
+   "text_head": "[IF 20,000 SQUARE FOOT OR GREATER ANCHOR TENANT OR 10,000 SQUARE FOOT OR GREATER FULL-LINE"
+  },
+  "88": {
+   "category": "empty"
+  },
+  "89": {
+   "category": "addon",
+   "clause": "exclusive_use",
+   "note": "full-service restaurant carve-out",
+   "text_head": "[IF FULL SERVICE RESTAURANTS CAN SELL COFFEE AND ESPRESSO DRINKS, ADD]:\tFull service, sit-"
+  },
+  "90": {
+   "category": "empty"
+  },
+  "91": {
+   "category": "addon",
+   "clause": "exclusive_use",
+   "note": "violation remedy - FOR ALL LEASES, always emits",
+   "text_head": "[FOR ALL LEASES]:  In the event of a violation of Tenant’s exclusive use or use identified"
+  },
+  "92": {
+   "category": "empty"
+  },
+  "93": {
+   "category": "primary",
+   "clause": "early_termination",
+   "note": null,
+   "text_head": "EARLY TERMINATION:\tUpon giving Landlord at least one hundred-twenty (120) days prior writt"
+  },
+  "94": {
+   "category": "empty"
+  },
+  "95": {
+   "category": "addon",
+   "clause": "early_termination",
+   "note": "termination fee",
+   "text_head": "[IF NEGOTIATED, ADD:]  Tenant will pay Landlord a termination fee of $___________ [AGREE O"
+  },
+  "96": {
+   "category": "empty"
+  },
+  "97": {
+   "category": "instruction",
+   "clause": "early_termination",
+   "note": "fee above threshold requires approval",
+   "text_head": "NOTE:  IF THE TERMINATION FEE EXCEEDS AN AMOUNT EQUAL TO THE UNAMORTIZED TIA AND BROKER’S "
+  },
+  "98": {
+   "category": "empty"
+  },
+  "99": {
+   "category": "primary",
+   "clause": "continuous_operation",
+   "note": "CO0 / CO1",
+   "text_head": "CONTINUOUS OPERATION:\t[{CO0}]\tNone."
+  },
+  "100": {
+   "category": "empty"
+  },
+  "101": {
+   "category": "primary",
+   "clause": "continuous_operation",
+   "note": "CO0 / CO1",
+   "text_head": "CONTINUOUS OPERATION:\t[{CO1 FALLBACK} If Tenant ceases operations in the Premises for a pe"
+  },
+  "102": {
+   "category": "empty"
+  },
+  "103": {
+   "category": "primary",
+   "clause": "scheduled_delivery_date",
+   "note": null,
+   "text_head": "SCHEDULED DELIVERY DATE:\tLandlord will deliver possession of the Premises (with Landlord’s"
+  },
+  "104": {
+   "category": "empty"
+  },
+  "105": {
+   "category": "primary",
+   "clause": "delivery_date_delays",
+   "note": null,
+   "text_head": "DELIVERY DATE DELAYS:\t\tIn the event that Landlord fails to deliver the Premises with Landl"
+  },
+  "106": {
+   "category": "empty"
+  },
+  "107": {
+   "category": "blocked",
+   "clause": "landlord_work",
+   "note": "LCW0/LCW1/allowance/LCW2",
+   "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW0} - IF LANDLORD IS PAYING ALLOWANCE IN ADDITION TO L"
+  },
+  "108": {
+   "category": "empty"
+  },
+  "109": {
+   "category": "blocked",
+   "clause": "landlord_work",
+   "note": "LCW0/LCW1/allowance/LCW2",
+   "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW1} FALLBACK – IF LANDLORD IS PAYING ALLOWANCE AS A SU"
+  },
+  "110": {
+   "category": "blocked",
+   "clause": "landlord_work",
+   "note": "LCW0/LCW1/allowance/LCW2",
+   "text_head": "Landlord will provide Tenant an improvement allowance of $__________ toward the cost of Te"
+  },
+  "111": {
+   "category": "empty"
+  },
+  "112": {
+   "category": "blocked",
+   "clause": "landlord_work",
+   "note": "LCW0/LCW1/allowance/LCW2",
+   "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW2} ALTERNATIVE – IF LANDLORD IS DELIVERING PREMISES I"
+  },
+  "113": {
+   "category": "empty"
+  },
+  "114": {
+   "category": "addon",
+   "clause": "landlord_work",
+   "note": "drive-through permits / construction schedule",
+   "text_head": "[IF LANDLORD IS RESPONSIBLE FOR OBTAINING PERMITS AND SITE PLAN APPROVAL FOR THE DRIVE-THR"
+  },
+  "115": {
+   "category": "empty"
+  },
+  "116": {
+   "category": "addon",
+   "clause": "landlord_work",
+   "note": "drive-through permits / construction schedule",
+   "text_head": "[FOR LANDLORD CONSTRUCTION, ADD]  Landlord will provide Tenant a copy of Landlord’s constr"
+  },
+  "117": {
+   "category": "empty"
+  },
+  "118": {
+   "category": "primary",
+   "clause": "construction_contingency",
+   "note": null,
+   "text_head": "CONSTRUCTION CONTINGENCY:  Tenant will not be obligated to pay rent, common area maintenan"
+  },
+  "119": {
+   "category": "empty"
+  },
+  "120": {
+   "category": "primary",
+   "clause": "initial_cotenancy",
+   "note": null,
+   "text_head": "INITIAL CO-TENANCY CONTINGENCY:\t Tenant will not be obligated to pay rent, common area mai"
+  },
+  "121": {
+   "category": "empty"
+  },
+  "122": {
+   "category": "primary",
+   "clause": "ongoing_cotenancy",
+   "note": null,
+   "text_head": "ONGOING CO-TENANCY CONTINGENCY:  In the event that at any time during the term of the Leas"
+  },
+  "123": {
+   "category": "empty"
+  },
+  "124": {
+   "category": "primary",
+   "clause": "tenant_improvements",
+   "note": "TI0/TI1/TI2",
+   "text_head": "TENANT IMPROVEMENTS\t:\t[{TI0}]\tTenant may install such tenant improvements, fixtures, finis"
+  },
+  "125": {
+   "category": "empty"
+  },
+  "126": {
+   "category": "primary",
+   "clause": "tenant_improvements",
+   "note": "TI0/TI1/TI2",
+   "text_head": "TENANT IMPROVEMENTS: [{TI1} FALLBACK - ADDITIONAL LANGUAGE REGARDING BUILD-OUT AND SIGNAGE"
+  },
+  "127": {
+   "category": "empty"
+  },
+  "128": {
+   "category": "primary",
+   "clause": "tenant_improvements",
+   "note": "TI0/TI1/TI2",
+   "text_head": "TENANT IMPROVEMENTS:\t[{TI2} FALLBACK – LANGUAGE TO BE INCLUDED IF LANDLORD WANTS APPROVAL "
+  },
+  "129": {
+   "category": "empty"
+  },
+  "130": {
+   "category": "primary",
+   "clause": "signage",
+   "note": "SIGN0/SIGN1",
+   "text_head": "SIGNAGE:\t[{SIGN0}]\t Tenant may install signs in, on and about the Premises to the maximum "
+  },
+  "131": {
+   "category": "empty"
+  },
+  "132": {
+   "category": "primary",
+   "clause": "signage",
+   "note": "SIGN0/SIGN1",
+   "text_head": "SIGNAGE:\t[{SIGN1} FALLBACK – IF LANDLORD SIGN CRITERIA]\t Tenant may install signs in, on a"
+  },
+  "133": {
+   "category": "empty"
+  },
+  "134": {
+   "category": "addon",
+   "clause": "signage",
+   "note": "tower element",
+   "text_head": "[IF TOWER ELEMENT, ADD:]  Landlord’s design and construction of the Premises will include "
+  },
+  "135": {
+   "category": "empty"
+  },
+  "136": {
+   "category": "addon",
+   "clause": "signage",
+   "note": "pylon panel existing / to-be-constructed",
+   "text_head": "[If expectATION OF PANEL ON EXISTING pylon or monument, add:]  Tenant will have the right,"
+  },
+  "137": {
+   "category": "empty"
+  },
+  "138": {
+   "category": "addon",
+   "clause": "signage",
+   "note": "pylon panel existing / to-be-constructed",
+   "text_head": "[If expectATION OF PANEL ON to-be-constructed pylon or monument, add:] \tTenant will have t"
+  },
+  "139": {
+   "category": "empty"
+  },
+  "140": {
+   "category": "addon",
+   "clause": "signage",
+   "note": "master sign program",
+   "text_head": "[OPTIONAL MASTER SIGN PROGRAM LANGUAGE THAT MAY BE ADDED TO {SIGN0} – {SIGN1}]  Landlord w"
+  },
+  "141": {
+   "category": "empty"
+  },
+  "142": {
+   "category": "instruction",
+   "clause": "signage",
+   "note": "attach design of tower/monument/pylon",
+   "text_head": "NOTE:  ATTACH DESIGN OF THE TOWER ELEMENT, MONUMENT AND/OR PYLON SIGN, IF AVAILABLE."
+  },
+  "143": {
+   "category": "empty"
+  },
+  "144": {
+   "category": "primary",
+   "clause": "condition_of_premises",
+   "note": null,
+   "text_head": "CONDITION OF PREMISES AND BUILDING/SHOPPING CENTER:  \tThe Premises will be in sound condit"
+  },
+  "145": {
+   "category": "empty"
+  },
+  "146": {
+   "category": "primary",
+   "clause": "utilities",
+   "note": null,
+   "text_head": "UTILITIES:  Landlord will be responsible for all water connection, sewer connection, traff"
+  },
+  "147": {
+   "category": "empty"
+  },
+  "148": {
+   "category": "primary",
+   "clause": "trash_recycling",
+   "note": "BASE clause the TR ladder modifies",
+   "text_head": "TRASH AND RECYCLING:  In accordance with the attached Landlord Workletter, Landlord shall "
+  },
+  "149": {
+   "category": "empty"
+  },
+  "150": {
+   "category": "instruction",
+   "clause": "trash_recycling",
+   "note": "PLEASE ADD ONE OF THE FOLLOWING OPTIONS",
+   "text_head": "[PLEASE ADD ONE OF THE FOLLOWING OPTIONS:]"
+  },
+  "151": {
+   "category": "empty"
+  },
+  "152": {
+   "category": "instruction",
+   "clause": "trash_recycling",
+   "note": "negotiate in order of preference",
+   "text_head": "[NOTE: STARBUCKS SHALL NEGOTIATE ONE OF THE FOLLOWING POSITIONS IN ORDER OF PREFERENCE]"
+  },
+  "153": {
+   "category": "empty"
+  },
+  "154": {
+   "category": "addon",
+   "clause": "trash_recycling",
+   "note": "TR0/TR1/TR2 riding the base",
+   "text_head": "[{TR0}]\t[IF EXCLUSIVE TRASH AREA AND TENANT PROVIDES HAULER & SERVICES, ADD:] Tenant shall"
+  },
+  "155": {
+   "category": "empty"
+  },
+  "156": {
+   "category": "addon",
+   "clause": "trash_recycling",
+   "note": "TR0/TR1/TR2 riding the base",
+   "text_head": "[{TR1}]\t[IF LANDLORD PROVIDES EXCLUSIVE HAULER & SERVICES, ADD:] Landlord will arrange for"
+  },
+  "157": {
+   "category": "empty"
+  },
+  "158": {
+   "category": "addon",
+   "clause": "trash_recycling",
+   "note": "TR0/TR1/TR2 riding the base",
+   "text_head": "[{TR2}]\t[IF SHARED TRASH AREA AND LANDLORD PROVIDES COMMON HAULER & SERVICES, ADD:]  Landl"
+  },
+  "159": {
+   "category": "empty"
+  },
+  "160": {
+   "category": "primary",
+   "clause": "hazardous_materials",
+   "note": null,
+   "text_head": "HAZARDOUS MATERIALS\t:\t[EXCEPT AS NOTED BELOW, YOU MAY NOT DEVIATE FROM THIS LANGUAGE WITHO"
+  },
+  "161": {
+   "category": "empty"
+  },
+  "162": {
+   "category": "instruction",
+   "clause": "hazardous_materials",
+   "note": "contaminated sites - due-diligence escalation, task not text",
+   "text_head": "FOR CONTAMINATED OR POTENTIALLY CONTAMINATED SITES (SUCH AS FORMER GAS STATIONS OR DRY CLE"
+  },
+  "163": {
+   "category": "empty"
+  },
+  "164": {
+   "category": "primary",
+   "clause": "cam",
+   "note": "CAM0 + breakdown",
+   "text_head": "COMMON AREA MAINTENANCE, TAXES AND INSURANCE:\t\t[{CAM0}] Landlord will insure the [Building"
+  },
+  "165": {
+   "category": "empty"
+  },
+  "166": {
+   "category": "primary",
+   "clause": "cam",
+   "note": "CAM0 + breakdown",
+   "text_head": "Upon execution of this Letter of Intent, Landlord will provide Tenant with a detailed brea"
+  },
+  "167": {
+   "category": "empty"
+  },
+  "168": {
+   "category": "primary",
+   "clause": "cam",
+   "note": "CAM1 - freestanding variant, unreferenced in ECDT",
+   "text_head": "COMMON AREA MAINTENANCE, TAXES AND INSURANCE:\t [{CAM1} FALLBACK FOR SINGLE TENANT BUILDING"
+  },
+  "169": {
+   "category": "empty"
+  },
+  "170": {
+   "category": "primary",
+   "clause": "cam",
+   "note": "NNN cam block - freestanding variant",
+   "text_head": "[{NNN} FALLBACK FOR SINGLE TENANT BUILDINGS/SINGLE TENANT PARCEL] Tenant will maintain lia"
+  },
+  "171": {
+   "category": "empty"
+  },
+  "172": {
+   "category": "addon",
+   "clause": "cam",
+   "note": "tax increase on transfer, rides selected CAM",
+   "text_head": "[ADD TO THE ABOVE SELECTED CAM PROVISION]  Tenant will not be obligated to pay any portion"
+  },
+  "173": {
+   "category": "empty"
+  },
+  "174": {
+   "category": "primary",
+   "clause": "pro_rata_share",
+   "note": null,
+   "text_head": "PRO-RATA SHARE:\t Tenant's Pro-Rata Share of common area maintenance, real estate taxes and"
+  },
+  "175": {
+   "category": "empty"
+  },
+  "176": {
+   "category": "instruction",
+   "clause": "pro_rata_share",
+   "note": "different denominators for single-tenant",
+   "text_head": "[IF CALCULATIONS ARE BASED ON DIFFERENT SQUARE FOOTAGE DENOMINATORS, SUCH AS IN THE CASE O"
+  },
+  "177": {
+   "category": "empty"
+  },
+  "178": {
+   "category": "addon",
+   "clause": "pro_rata_share",
+   "note": "CAM / tax / insurance breakouts",
+   "text_head": "Tenant’s pro-rata share of common area maintenance will be the square footage of the Premi"
+  },
+  "179": {
+   "category": "empty"
+  },
+  "180": {
+   "category": "addon",
+   "clause": "pro_rata_share",
+   "note": "CAM / tax / insurance breakouts",
+   "text_head": "Tenant’s pro-rata share of real estate taxes will be the square footage of the Premises di"
+  },
+  "181": {
+   "category": "empty"
+  },
+  "182": {
+   "category": "addon",
+   "clause": "pro_rata_share",
+   "note": "CAM / tax / insurance breakouts",
+   "text_head": "Tenant’s pro-rata share of Landlord’s insurance will be the square footage of the Premises"
+  },
+  "183": {
+   "category": "empty"
+  },
+  "184": {
+   "category": "primary",
+   "clause": "outdoor_seating",
+   "note": "OS0/OS1/OS2",
+   "text_head": "OUTDOOR SEATING:\t[{OS0}] Tenant may set up outdoor seating at no additional rent.  In acco"
+  },
+  "185": {
+   "category": "empty"
+  },
+  "186": {
+   "category": "primary",
+   "clause": "outdoor_seating",
+   "note": "OS0/OS1/OS2",
+   "text_head": "OUTDOOR SEATING:\t[{OS1} FALLBACK]\tTenant may set up outdoor seating of a design mutually a"
+  },
+  "187": {
+   "category": "empty"
+  },
+  "188": {
+   "category": "primary",
+   "clause": "outdoor_seating",
+   "note": "OS0/OS1/OS2",
+   "text_head": "OUTDOOR SEATING:\t[{OS2} FALLBACK] If permitted by applicable law, Tenant may set up outdoo"
+  },
+  "189": {
+   "category": "empty"
+  },
+  "190": {
+   "category": "primary",
+   "clause": "parking",
+   "note": null,
+   "text_head": "PARKING:\tAt no expense to Tenant, its employees or customers, Landlord will provide all ne"
+  },
+  "191": {
+   "category": "empty"
+  },
+  "192": {
+   "category": "addon",
+   "clause": "parking",
+   "note": "exclusive spaces",
+   "text_head": "[IF exclusive parking rights, ADD]  Tenant will have the exclusive right to ___ (_____) pa"
+  },
+  "193": {
+   "category": "empty"
+  },
+  "194": {
+   "category": "primary",
+   "clause": "permit_contingency",
+   "note": null,
+   "text_head": "PERMIT CONTINGENCY:\tTenant will have the right to terminate the Lease if it is unable to o"
+  },
+  "195": {
+   "category": "empty"
+  },
+  "196": {
+   "category": "primary",
+   "clause": "transfer_of_property",
+   "note": null,
+   "text_head": "TRANSFER OF THE PROPERTY: Landlord agrees not to sell, transfer, or assign the property un"
+  },
+  "197": {
+   "category": "empty"
+  },
+  "198": {
+   "category": "primary",
+   "clause": "assignment_subletting",
+   "note": "AS0 + stock transfer + AS1",
+   "text_head": "ASSIGNMENT AND SUBLETTING\t: [{AS0}]\t Tenant may sublease the Premises or any portion of th"
+  },
+  "199": {
+   "category": "empty"
+  },
+  "200": {
+   "category": "primary",
+   "clause": "assignment_subletting",
+   "note": "AS0 + stock transfer + AS1",
+   "text_head": "ASSIGNMENT AND SUBLETTING:\t [{AS1} FALLBACK]   Tenant may, without Landlord’s consent, sub"
+  },
+  "201": {
+   "category": "empty"
+  },
+  "202": {
+   "category": "primary",
+   "clause": "assignment_subletting",
+   "note": "AS0 + stock transfer + AS1",
+   "text_head": "For purposes of the Lease, any sale or transfer of capital stock, including redemption or "
+  },
+  "203": {
+   "category": "empty"
+  },
+  "204": {
+   "category": "instruction",
+   "clause": "assignment_subletting",
+   "note": "transfer restrictions require approvals",
+   "text_head": "NOTE:  Restrictions of any kind on (A) or (b) transfers will require appropriate approvals"
+  },
+  "205": {
+   "category": "empty"
+  },
+  "206": {
+   "category": "primary",
+   "clause": "alternative_energy",
+   "note": null,
+   "text_head": "ALTERNATIVE ENERGY SYSTEMS:  Tenant will have the right to install, utilize, maintain and "
+  },
+  "207": {
+   "category": "empty"
+  },
+  "208": {
+   "category": "primary",
+   "clause": "ev_charging",
+   "note": null,
+   "text_head": "ELECTRIC VEHICLE CHARGING STATION SYSTEM:  Tenant will have the right, but not the obligat"
+  },
+  "209": {
+   "category": "empty"
+  },
+  "210": {
+   "category": "primary",
+   "clause": "brokers_commission",
+   "note": null,
+   "text_head": "BROKER’S COMMISSION:\t\tLandlord agrees to pay a brokerage commission to ___________________"
+  },
+  "211": {
+   "category": "empty"
+  },
+  "212": {
+   "category": "primary",
+   "clause": "audit_right",
+   "note": "gated to <=3 tenants",
+   "text_head": "[Use only for buildings of three tenants or less] AUDIT RIGHT:  Tenant shall have the righ"
+  },
+  "213": {
+   "category": "empty"
+  },
+  "214": {
+   "category": "primary",
+   "clause": "warranty_representation",
+   "note": null,
+   "text_head": "WARRANTY AND REPRESENTATION:  Landlord hereby confirms to Tenant that none of its principl"
+  },
+  "215": {
+   "category": "addon",
+   "clause": "warranty_representation",
+   "note": "binding statement",
+   "text_head": "Notwithstanding the nonbinding nature of this letter of intent this warranty and represent"
+  },
+  "216": {
+   "category": "primary",
+   "clause": "confidentiality",
+   "note": null,
+   "text_head": "CONFIDENTIALITY:\tLandlord and Tenant will maintain in confidence all information relating "
+  },
+  "217": {
+   "category": "empty"
+  },
+  "218": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "Please sign below if the terms described in this Letter of Intent are acceptable to you.  "
+  },
+  "219": {
+   "category": "empty"
+  },
+  "220": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "STARBUCKS CORPORATION"
+  },
+  "221": {
+   "category": "empty"
+  },
+  "222": {
+   "category": "empty"
+  },
+  "223": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "______________________________"
+  },
+  "224": {
+   "category": "empty"
+  },
+  "225": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "Name:  _______________________"
+  },
+  "226": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "Store Development Manager"
+  },
+  "227": {
+   "category": "empty"
+  },
+  "228": {
+   "category": "empty"
+  },
+  "229": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "Accepted and agreed to this ______ day of _______________, 20_______."
+  },
+  "230": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "LANDLORD:"
+  },
+  "231": {
+   "category": "empty"
+  },
+  "232": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "______________________________"
+  },
+  "233": {
+   "category": "empty"
+  },
+  "234": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "Name:  _______________________"
+  },
+  "235": {
+   "category": "letter_shell",
+   "clause": "letter_shell",
+   "note": "Closing frame",
+   "text_head": "Title:  _______________________"
+  }
+ }
+}
