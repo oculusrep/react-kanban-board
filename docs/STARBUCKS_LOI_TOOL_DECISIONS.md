@@ -628,7 +628,7 @@ to one) to the `assignments` entries and re-send; then rule 2 tightens to "this 
 **Do NOT build the tightened rule yet** — Mike will flag when the re-send lands, at which point
 `completeness_test.py` upgrades to per-body resolution against the tranches.
 
-## Clause supersession + loi_clause_exclusion (SCOPED — build after tranche 6)
+## Clause supersession + loi_clause_exclusion (BUILT — 2026-09-01)
 
 **Standing decision: Transfer of the Property SUPERSEDES Sale of Property.** Verbatim comparison —
 Transfer (2026 national para 196, national-template-drop) is strictly stronger than Sale (Southeast
@@ -638,28 +638,77 @@ its interest in this lease"). **Carrying both is a liability, not extra coverage
 governing the same conduct under different triggers hands landlord's counsel a conflict to argue.
 Powder Springs contains both; treat as a historical artifact, not a pattern.
 
-**Required end-state (executed with the loi_clause_exclusion build, post-tranche-6; assembler is
-halted so no interim harm):**
-- `transfer_of_property` stays the active standing default (already loaded, tranche 2).
-- `sale_of_property` → **de-activated**: no emitting position; its canonical body **retained as an
-  orphan** for provenance + Phase-2 redline matching (Phase 2 must recognize it if a landlord proposes
-  it); `deviation_rationale` = "superseded by Transfer of the Property." **Not** in freestanding either
-  — the supersession is deal-type independent.
+**Modeling gap now closed.** The schema expressed "modifier requires position" (`position_selection`)
+and "alternatives mutually exclusive within a variant" (rank / selector partition), but NOT "these two
+independently selectable things are substitutes and must not both emit."
 
-**Modeling gap: clause-level mutual exclusion has no representation.** The schema expresses
-"modifier requires position" (`position_selection`) and "alternatives mutually exclusive within a
-variant" (rank / selector partition), but NOT "these two separate clauses are substitutes and must
-not both emit." Nothing stops a future deal selecting both Transfer and Sale — exactly what Powder
-Springs did.
+### What shipped — `20260901120000_loi_tool_clause_exclusion.sql`
 
-**Scope `loi_clause_exclusion`:** clause A excludes clause B, with a **reason** and a **direction**
-(which supersedes which), **enforced at assembly**. Known/candidate members:
-- `transfer_of_property` ⊃ `sale_of_property` (confirmed).
-- **ROFR vs ROFO** — Southeast doc carries both a Right of First Refusal (para 294) and a Continuing
-  Right of First Offer (para 298); likely alternatives, not companions. **Verify during tranche 6.**
+**`loi_clause_exclusion`** — a pairwise exclusion between two clauses OR two positions.
+- Members are **homogeneous** (clause-vs-clause or position-vs-position, never mixed): the pylon pair
+  is two *positions inside one clause*, so a clause-only table could not have expressed it. A mixed
+  pair has no coherent meaning — "this clause excludes one position of itself" is an `applies_when`
+  gate, not an exclusion. Typed nullable FK columns + a shape CHECK, the same pattern
+  `loi_negotiable_item` uses; no polymorphic id, no JSONB.
+- Direction rides the A/B ordering plus `exclusion_kind`:
+  - `supersedes` — A wins; if both are selected, **B is dropped** deterministically.
+  - `mutually-exclusive` — no winner; a **deal fact** decides, so the assembler **halts** and asks.
+- Guards: no self-exclusion; **no reversed duplicate** — a unique index on
+  `(LEAST(a,b), GREATEST(a,b))` stops `(A,B)` and `(B,A)` coexisting and silently disagreeing about
+  the winner.
 
-**Do NOT build until the tranche-6 completeness re-extraction is done** — that sweep may surface more
-exclusion pairs. Recorded now so it isn't discovered during assembly.
+**`is_active` / `inactive_reason` on `loi_clause` AND `loi_position`** — retire content without
+deleting it. Canonical bodies are immutable and must be **retained**: Phase 2 has to recognise a
+superseded clause if a landlord proposes it. A CHECK forces a reason on every de-activation (audit
+record, not a feature flag). Two levels because retirement happens at both — a whole clause, or one
+position inside a live clause.
+
+**Enforcement is at ASSEMBLY, not in a DB constraint** — the library is legal; a particular
+*selection* is what can be illegal. `loi_exclusion_violations(uuid[])` takes the selected position
+ids and returns each violated exclusion with `resolution` = `drop-b` (+ `drop_position_id`) or
+`halt`. Clause-level exclusions resolve down to the exact positions in play, so the caller is never
+told merely "some clause conflicts."
+
+**`loi_selectable_position`** — the assembler's selectable set, applying BOTH levels of `is_active` in
+one place so no caller re-derives that join. **Assembler contract: select from this view, never from
+`loi_position` directly.**
+
+### The two members (Mike, 2026-09-01 — TWO, not three)
+
+1. **`transfer_supersedes_sale`** (clause, `supersedes`). `sale_of_property` **de-activated**: clause
+   and its one position inactive, `deviation_rationale` = "Superseded by Transfer of the Property.",
+   body retained as an orphan. Deal-type independent — not in freestanding either. Corroborated by the
+   sweep manifest: para 196 is `transfer_of_property`; **`sale_of_property` has no manifest paragraph
+   at all**, i.e. the national template carries TRANSFER only. Douglasville emits TRANSFER; Powder
+   Springs emits SALE OF PROPERTY.
+2. **`pylon_panel_existing_xor_new`** (position, `mutually-exclusive`). The two signage add-ons —
+   "PANEL ON EXISTING pylon or monument" vs "PANEL ON to-be-constructed pylon or monument" — differ on
+   who pays fabrication/installation, and the second adds a Landlord construction obligation. A pylon
+   either exists or it doesn't. Both are uncoded modifiers riding `signage`, keyed by their bodies'
+   `segment_key` (`panel_existing_pylon` / `panel_new_pylon`). Powder Springs used to-be-constructed.
+
+### ROFR / ROFO — DROPPED, not built (Mike, 2026-09-01)
+
+No exclusion exists between them. **ROFO appears nowhere** in the template or either send. **ROFR
+appears only in Douglasville, sitting ADJACENT TO Transfer of the Property with BOTH emitted** — they
+are companions, not alternatives. The earlier "likely alternatives, verify during tranche 6" guess is
+withdrawn. Test P5 asserts exactly two exclusions exist, so this stays deliberate rather than drifting
+back in.
+
+**FLAGGED for the library (not this build): Douglasville's RIGHT OF FIRST REFUSAL is not in the
+national template.** Bucket 1 (custom-owned) is supposed to be empty — every clause traces to a
+Starbucks source. Either ROFR traces to the Southeast doc / handbook, or **Bucket 1 is not actually
+empty**. Needs provenance before ROFR gets a clause key.
+
+### Validation
+
+`supabase/dev-only/loi_negative_tests_v9.sql` — **13/13 pass**. P1 transfer+sale → one `drop-b`
+naming the sale position; P2 both pylon panels → `halt` with no drop target; P3 legal selection →
+zero violations; P4 sale retired but body retained; P5 exactly two exclusions (ROFR/ROFO absent);
+N1 mixed member kind; N2 one-sided pair; N3 self-exclusion; N4 reversed duplicate; N5/N6 de-activation
+without a reason; P6/P7 well-formed pair + inactive clause hides its positions. Migration applied to
+`loi-tool-dev` and **replayed clean** (second run: 0 inserts, 0 updates, load guard green).
+`completeness_test.py` still PASSES unchanged (74 covered / 2 deferred).
 
 ## Payload contract (proposed — pending confirmation, on hold until after tranche 6)
 

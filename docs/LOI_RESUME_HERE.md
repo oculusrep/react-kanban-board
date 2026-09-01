@@ -56,16 +56,29 @@ Two files were received but NOT yet loaded/committed:
      have a body; model it as a `modifier` (brace optional) with 0 `position_bodies` + 3
      `attachment_requirements`, `firing_mode: on-deviation`. It emits nothing; OVIS raises the tasks.
      No need to invent a body or downgrade to guidance+director-question.
-4. **After the library is fully closed:** build `loi_clause_exclusion` (members: transfer_of_property
-   ⊃ sale_of_property, the pylon-panel signage pair, plus de-activate `sale_of_property`) → confirm
-   payload contract A–E (in the decisions doc) → build the assembler → minimal wizard → **Powder
-   Springs acceptance test** (regenerate end-to-end from deal terms, diff vs `fixtures/`, every
-   difference explainable).
+4. ~~Build `loi_clause_exclusion`~~ **DONE (2026-09-01)** — `loi_clause_exclusion` + `is_active` on
+   clause/position + `loi_exclusion_violations()` + `loi_selectable_position`. TWO exclusions
+   (`transfer_supersedes_sale`, `pylon_panel_existing_xor_new`); `sale_of_property` de-activated;
+   ROFR/ROFO deliberately NOT built. 13/13 tests in `loi_negative_tests_v9.sql`. See the decisions doc.
+5. **Next:** confirm payload contract A–E (in the decisions doc) → build the assembler → minimal
+   wizard → **Powder Springs acceptance test** (regenerate end-to-end from deal terms, diff vs
+   `fixtures/`, every difference explainable).
+   **Assembler contract reminders now in force:** select positions from `loi_selectable_position`
+   (never `loi_position` directly); run `loi_exclusion_violations()` over the selection before
+   emitting — `drop-b` resolves silently, `halt` stops the run; and join same-template-paragraph
+   fragments across positions into ONE paragraph (standing rule from the closing-statement split).
 
-## OPEN QUESTIONS FOR MIKE (flagged, need his answer)
-- **Signature block: "Store Development Manager" vs "Representative Name / Title: Broker" (SDM cc'd).**
-  Powder Springs + Douglasville use the Broker form. Which is the Oculus standing default? Blocks the
-  acceptance test.
+## OPEN — OWED BY MIKE (not blocking the exclusion build; blocking the acceptance test)
+- **Closing statement:** the THREE re-split canonical bodies (always / L0-gated / always). Mike has
+  the template — bodies coming. **Do not load the split until they land.**
+- **Signature block: the earlier Broker-vs-SDM `choose_one` spec is WRONG** (Mike, 2026-09-01). It is
+  **THREE blocks, not two.** The correction + addendum had not been received when this note was
+  written — **do not act on the old spec, and do not re-key `sig_tenant_title` until the corrected
+  spec is in hand.**
+- **Manifest granularity re-send** (adds `brace_code` + `segment_key`). Do NOT build the tightened
+  completeness rule until Mike flags that it landed.
+- **ROFR provenance** (see the decisions doc): Douglasville's Right of First Refusal is not in the
+  national template. Either it traces to a Starbucks source, or Bucket 1 is not empty.
 - CAM0 cap already resolved (3% standing default). ETR omitted by design.
 
 ## GOTCHAS
