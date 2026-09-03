@@ -158,6 +158,8 @@ interface MerchantLayerProps {
   onLocationVerified?: (locationId: string, lat: number, lng: number) => void;
   /** Right-click handler — typically opens MerchantContextMenu with screen coords. */
   onMerchantRightClick?: (location: MerchantLocationWithBrand, x: number, y: number) => void;
+  /** Bump to force a re-fetch — e.g. after a pin is removed globally. */
+  refreshToken?: number;
 }
 
 /** Verified coords take precedence over Places coords. */
@@ -291,6 +293,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
   verifyingLocationId = null,
   onLocationVerified,
   onMerchantRightClick,
+  refreshToken = 0,
 }) => {
   const [locations, setLocations] = useState<MerchantLocationWithBrand[]>([]);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
@@ -427,6 +430,9 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
               'id, brand_id, google_place_id, name, latitude, longitude, verified_latitude, verified_longitude, verified_at, formatted_address, phone, website, business_status, last_verified_at, brand:merchant_brand(id, name, logo_url, custom_logo_url, places_display_name, places_name_exclude, category_id)',
             )
             .or(orFilter)
+            // Pins a user flagged as wrong (merchant_location_exclude) are
+            // hidden for everyone — see 20260903110422_merchant_location_exclusion.
+            .is('excluded_at', null)
             .range(offset, offset + PAGE - 1);
 
           if (!showAllInViewport) {
@@ -495,13 +501,26 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
     };
   }, [map, isVisible, fetchLocations]);
 
+  // Force a re-fetch when the parent bumps refreshToken (pin removed, etc.).
+  useEffect(() => {
+    if (!refreshToken || !map || !isVisible) return;
+    closeOpenPopup();
+    lastFetchKeyRef.current = null;
+    fetchLocations(true);
+    // fetchLocations/closeOpenPopup are stable per their own deps; keying this
+    // effect on refreshToken alone keeps it a one-shot per bump.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
+
   // Render / clear markers
   useEffect(() => {
     if (!map) return;
 
     // Tear down previous markers & clusterer
     if (clustererRef.current) {
-      clustererRef.current.clearMarkers();
+      // setMap(null), not clearMarkers() — clearMarkers()'s re-render is
+      // projection-guarded and leaves stale cluster glyphs on the map.
+      clustererRef.current.setMap(null);
       clustererRef.current = null;
     }
     markersRef.current.forEach((m) => (m.map = null));
@@ -629,7 +648,7 @@ const MerchantLayer: React.FC<MerchantLayerProps> = ({
     return () => {
       closeOpenPopup();
       if (clustererRef.current) {
-        clustererRef.current.clearMarkers();
+        clustererRef.current.setMap(null);
         clustererRef.current = null;
       }
       markersRef.current.forEach((m) => (m.map = null));

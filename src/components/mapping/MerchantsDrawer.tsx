@@ -8,6 +8,7 @@ import MerchantCategoryTree, {
   type MerchantCategoryTreeCategory,
 } from './MerchantCategoryTree';
 import NewMerchantFavoriteModal from './NewMerchantFavoriteModal';
+import ShareMerchantFavoriteModal from './ShareMerchantFavoriteModal';
 
 interface MerchantsDrawerProps {
   isOpen: boolean;
@@ -25,7 +26,13 @@ interface FavoriteRow {
   id: string;
   name: string;
   is_default: boolean;
+  owner_user_id: string;
   brand_ids: Set<string>;
+  /** Recipients of this favorite. RLS only returns rows the viewer may see —
+   *  the full list for the owner, just their own row for a recipient. */
+  share_user_ids: string[];
+  /** What the current user may do with it. Mirrors the RLS rules. */
+  access: 'owner' | 'edit' | 'view';
 }
 
 // Dark-mode palette for the drawer. Colors picked to stay legible on dark
@@ -141,6 +148,7 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
   // drawer's current selection; for "Edit" this is the favorite's own brand set.
   const [modalInitialBrandIds, setModalInitialBrandIds] = useState<Set<string>>(new Set());
   const [openMenuFavoriteId, setOpenMenuFavoriteId] = useState<string | null>(null);
+  const [sharingFavorite, setSharingFavorite] = useState<{ id: string; name: string } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Guards the "apply the org default on first open" behavior so it runs at
@@ -156,15 +164,30 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
       // Supabase RLS filters to own + shared favorites automatically.
       const { data, error: qerr } = await supabase
         .from('merchant_favorite')
-        .select('id, name, is_default, brands:merchant_favorite_brand(brand_id)')
+        .select(
+          'id, name, is_default, owner_user_id, brands:merchant_favorite_brand(brand_id), shares:merchant_favorite_share(user_id, permission)',
+        )
         .order('name', { ascending: true });
       if (qerr) throw qerr;
-      const rows: FavoriteRow[] = (data || []).map((f: any) => ({
-        id: f.id,
-        name: f.name,
-        is_default: !!f.is_default,
-        brand_ids: new Set<string>((f.brands || []).map((b: any) => b.brand_id)),
-      }));
+      const rows: FavoriteRow[] = (data || []).map((f: any) => {
+        const shares = (f.shares || []) as { user_id: string; permission: string }[];
+        const mine = shares.find((sh) => sh.user_id === userTableId);
+        const access: FavoriteRow['access'] =
+          f.owner_user_id === userTableId
+            ? 'owner'
+            : mine?.permission === 'edit'
+              ? 'edit'
+              : 'view';
+        return {
+          id: f.id,
+          name: f.name,
+          is_default: !!f.is_default,
+          owner_user_id: f.owner_user_id,
+          brand_ids: new Set<string>((f.brands || []).map((b: any) => b.brand_id)),
+          share_user_ids: shares.map((sh) => sh.user_id),
+          access,
+        };
+      });
       setFavorites(rows);
     } catch (e: any) {
       console.error('loadFavorites failed:', e);
@@ -173,7 +196,7 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
       setFavoritesLoading(false);
       setFavoritesLoaded(true);
     }
-  }, []);
+  }, [userTableId]);
 
   // Load categories + brands on first open
   useEffect(() => {
@@ -776,6 +799,23 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
                 <span style={{ fontSize: 11, color: DARK.textMuted }}>
                   ({fav.brand_ids.size})
                 </span>
+                {fav.access !== 'owner' && (
+                  <span
+                    style={{ fontSize: 10, color: DARK.accent }}
+                    title={`Shared with you (${fav.access === 'edit' ? 'can edit' : 'view only'})`}
+                  >
+                    shared
+                  </span>
+                )}
+                {fav.access === 'owner' && fav.share_user_ids.length > 0 && (
+                  <span
+                    style={{ fontSize: 10, color: DARK.accent }}
+                    title={`Shared with ${fav.share_user_ids.length} user${fav.share_user_ids.length === 1 ? '' : 's'}`}
+                  >
+                    ↗{fav.share_user_ids.length}
+                  </span>
+                )}
+                {fav.access !== 'view' && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -794,6 +834,7 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
                 >
                   ⋯
                 </button>
+                )}
                 {menuOpen && (
                   <div
                     ref={menuRef}
@@ -810,20 +851,37 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
                       minWidth: 140,
                     }}
                   >
-                    <button
-                      onClick={() => {
-                        setOpenMenuFavoriteId(null);
-                        setEditingFavorite({ id: fav.id, name: fav.name });
-                        setModalInitialBrandIds(new Set(fav.brand_ids));
-                        setNewFavoriteOpen(true);
-                      }}
-                      style={menuItemStyle()}
-                    >
-                      Edit / rename
-                    </button>
-                    <button onClick={() => deleteFavorite(fav)} style={menuItemStyle(true)}>
-                      Delete
-                    </button>
+                    {/* Menu mirrors the RLS rules: only the owner can share or
+                        delete; 'edit' recipients can change the brand set. */}
+                    {(fav.access === 'owner' || fav.access === 'edit') && (
+                      <button
+                        onClick={() => {
+                          setOpenMenuFavoriteId(null);
+                          setEditingFavorite({ id: fav.id, name: fav.name });
+                          setModalInitialBrandIds(new Set(fav.brand_ids));
+                          setNewFavoriteOpen(true);
+                        }}
+                        style={menuItemStyle()}
+                      >
+                        Edit / rename
+                      </button>
+                    )}
+                    {fav.access === 'owner' && (
+                      <button
+                        onClick={() => {
+                          setOpenMenuFavoriteId(null);
+                          setSharingFavorite({ id: fav.id, name: fav.name });
+                        }}
+                        style={menuItemStyle()}
+                      >
+                        Share…
+                      </button>
+                    )}
+                    {fav.access === 'owner' && (
+                      <button onClick={() => deleteFavorite(fav)} style={menuItemStyle(true)}>
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -931,6 +989,14 @@ const MerchantsDrawer: React.FC<MerchantsDrawerProps> = ({ isOpen, onClose, map 
         initialSelectedBrandIds={modalInitialBrandIds}
         editing={editingFavorite}
         onSave={editingFavorite ? saveEditedFavorite : saveNewFavorite}
+      />
+
+      <ShareMerchantFavoriteModal
+        isOpen={!!sharingFavorite}
+        onClose={() => setSharingFavorite(null)}
+        favorite={sharingFavorite}
+        ownerUserId={userTableId ?? null}
+        onSaved={loadFavorites}
       />
     </div>
   );

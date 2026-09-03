@@ -424,6 +424,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   } = useLayerManager();
   const [showMerchantsDrawer, setShowMerchantsDrawer] = useState(false);
   const [verifyingMerchantLocationId, setVerifyingMerchantLocationId] = useState<string | null>(null);
+  // Bumped after a merchant pin is removed so MerchantLayer re-fetches.
+  const [merchantRefreshToken, setMerchantRefreshToken] = useState(0);
   const [merchantContextMenu, setMerchantContextMenu] = useState<{
     isVisible: boolean;
     x: number;
@@ -2276,6 +2278,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     setVerifyingMerchantLocationId(locationId);
   };
 
+  // Remove a bogus merchant pin (Places listing at the wrong storefront) for
+  // every user. Soft-delete via RPC so the next Places ingest can't resurrect
+  // it — see 20260903110422_merchant_location_exclusion.sql.
+  const handleMerchantRemoveLocation = async (locationId: string, reason: string | null) => {
+    const { error } = await supabase.rpc('merchant_location_exclude', {
+      p_location_id: locationId,
+      p_reason: reason,
+    });
+    if (error) throw new Error(error.message);
+    setMerchantRefreshToken((t) => t + 1);
+  };
+
   // ESC cancels merchant verify mode (no other obvious "back out" affordance
   // since the visual is just a draggable pin).
   useEffect(() => {
@@ -3583,7 +3597,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               showAllInViewport={merchantShowAllInViewport}
               verifyingLocationId={verifyingMerchantLocationId}
               onLocationVerified={canVerifyRestaurantLocations ? handleMerchantLocationVerified : undefined}
-              onMerchantRightClick={canVerifyRestaurantLocations ? handleMerchantRightClick : undefined}
+              // Right-click is open to everyone: verifying a pin stays
+              // permission-gated inside the menu, but flagging a wrong pin is
+              // a data-quality action any user should be able to take.
+              onMerchantRightClick={handleMerchantRightClick}
+              refreshToken={merchantRefreshToken}
             />
             <MerchantsDrawer
               isOpen={showMerchantsDrawer && !presentationMode}
@@ -3887,7 +3905,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               y={merchantContextMenu.y}
               isVisible={merchantContextMenu.isVisible}
               location={merchantContextMenu.location}
+              canVerify={canVerifyRestaurantLocations}
               onVerifyLocation={handleMerchantVerifyLocation}
+              onRemoveLocation={handleMerchantRemoveLocation}
               onClose={() => setMerchantContextMenu({ isVisible: false, x: 0, y: 0, location: null })}
             />
 
