@@ -65,9 +65,55 @@ All against the production database inside `BEGIN … ROLLBACK`:
 | Admin deletes themselves | "You cannot delete your own account." |
 | Non-admin (VA role) deletes anyone | "Only administrators can delete user records" |
 
-## Related bug, not fixed here
+## "+ Create User" was broken the same way — also fixed
 
-`createUser` in the same hook calls `supabase.auth.admin.createUser()`, which
-fails for the same key reason as the old delete path. **"+ Create User" cannot
-work from the browser as written** — it needs an edge function with the
-service_role key, or an invite flow. Out of scope for this fix.
+`createUser` in the same hook called `supabase.auth.admin.createUser()` from the
+browser, which fails for exactly the reason the old delete path failed: no
+service_role key. Creating a user has never worked from this screen.
+
+The whole operation moved server-side to a new edge function,
+[`admin-create-user`](../supabase/functions/admin-create-user/index.ts), which:
+
+- validates the caller's JWT and requires `admin` / `broker_full` on their
+  `public.user` row. This check is not optional: the function runs with
+  service_role, so without it any signed-in user could mint an admin account.
+  (`verify_jwt` only proves *someone* is signed in.)
+- validates email / password length / name / role before creating anything, and
+  rejects a duplicate email with 409 rather than creating a login it would have
+  to roll back;
+- creates the `auth.users` login, then the `public.user` row — and **deletes the
+  login again if the row insert fails**, so a failed attempt doesn't leave a
+  half-created account blocking the retry.
+
+One deployment detail worth knowing: this project has its **legacy anon /
+service_role API keys disabled** (as of 2025-10-23), so the usual
+"build a second client from `SUPABASE_ANON_KEY` to identify the caller" pattern
+is dead on arrival here — that client is rejected before it can check anything.
+The function instead validates the token directly on the service client with
+`admin.auth.getUser(token)`.
+
+The hook now calls the function and unwraps the server's message: supabase-js
+reports a non-2xx edge response as `FunctionsHttpError` whose `.message` is only
+"Edge Function returned a non-2xx status code", with the real text in the
+attached `Response`.
+
+### Verified end-to-end against production
+
+A throwaway admin and a throwaway user were created, exercised, and deleted
+(nothing left behind — confirmed by a follow-up query):
+
+| Case | Result |
+|---|---|
+| Admin creates a user | 200, auth login + user row created |
+| Duplicate email | 409 "A user with email … already exists" |
+| Password under 6 chars | 400 |
+| Nonexistent role | 400 FK error, and the auth login was rolled back (verified absent) |
+| Non-admin (VA) caller | 403 "Only administrators can create users" |
+| No / non-user token | 401 |
+
+The `admin_delete_user` RPC was also exercised for real (not just in a rolled-back
+transaction) to remove the throwaway user: `auth_action: deleted`, no blockers.
+
+**Deployment:** the function is already deployed to the production project
+(`npx supabase functions deploy admin-create-user`). It is additive — nothing on
+`main` calls it until this branch merges.

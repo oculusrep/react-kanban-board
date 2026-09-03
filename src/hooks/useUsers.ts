@@ -49,35 +49,54 @@ export function useUsers() {
     fetchUsers();
   }, []);
 
+  /**
+   * Pull the server's error message out of a failed functions.invoke().
+   *
+   * supabase-js surfaces a non-2xx edge response as FunctionsHttpError whose
+   * .message is just "Edge Function returned a non-2xx status code" — the
+   * useful text is in the attached Response body.
+   */
+  const edgeErrorMessage = async (err: unknown, fallback: string): Promise<string> => {
+    const context = (err as { context?: Response })?.context;
+    if (context && typeof context.json === 'function') {
+      try {
+        const body = await context.json();
+        if (body?.error) return body.error as string;
+      } catch {
+        // Body wasn't JSON — fall through to the generic message.
+      }
+    }
+    return err instanceof Error ? err.message : fallback;
+  };
+
+  /**
+   * Create a user through the admin-create-user edge function.
+   *
+   * Not supabase.auth.admin.createUser(): that namespace requires a
+   * service_role key and this client is built with the publishable key, so the
+   * old in-browser version could never succeed. The edge function holds the
+   * service_role key, re-checks that the caller is an admin, and creates the
+   * auth login and the public.user row together — rolling the login back if
+   * the user row fails.
+   */
   const createUser = async (
     email: string,
     password: string,
     userData: Omit<UserInsert, 'auth_user_id'>
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      // 1. Create auth user via Supabase Auth Admin API
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: email,
-        password: password,
-        email_confirm: true, // Auto-confirm email
+      const { data, error: invokeError } = await supabase.functions.invoke('admin-create-user', {
+        body: { email, password, userData },
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error('Failed to create auth user');
-
-      // 2. Create corresponding record in public.user table
-      const { error: userError } = await supabase
-        .from('user')
-        .insert([{
-          ...userData,
-          auth_user_id: authData.user.id,
-          email: email,
-        }]);
-
-      if (userError) {
-        // Rollback: delete auth user if user table insert fails
-        await supabase.auth.admin.deleteUser(authData.user.id);
-        throw userError;
+      if (invokeError) {
+        return {
+          success: false,
+          error: await edgeErrorMessage(invokeError, 'Failed to create user'),
+        };
+      }
+      if (!data?.success) {
+        return { success: false, error: data?.error || 'Failed to create user' };
       }
 
       // Refresh users list
