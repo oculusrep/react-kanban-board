@@ -135,28 +135,46 @@ export function useUsers() {
     return updateUser(userId, { active: true });
   };
 
-  const deleteUser = async (userId: string, authUserId: string | null): Promise<{ success: boolean; error?: string }> => {
+  /**
+   * Delete a user via the admin_delete_user RPC.
+   *
+   * Not a direct `.delete()` on the user table: public.user has RLS with no
+   * DELETE policy, so that statement matched zero rows and returned no error —
+   * the UI reported success while the user stayed on the list. And the auth
+   * half never worked either, because supabase.auth.admin.* needs a
+   * service_role key while this client is built with the publishable key.
+   *
+   * The RPC removes the user row and revokes the login in one transaction, and
+   * refuses (listing the tables) when records still reference the user.
+   */
+  const deleteUser = async (
+    userId: string,
+    _authUserId?: string | null,
+  ): Promise<{ success: boolean; error?: string; authAction?: string; authBlockers?: string[] }> => {
     try {
-      // 1. Delete from user table
-      const { error: userDeleteError } = await supabase
-        .from('user')
-        .delete()
-        .eq('id', userId);
+      const { data, error: rpcError } = await supabase.rpc('admin_delete_user', {
+        p_user_id: userId,
+      });
 
-      if (userDeleteError) throw userDeleteError;
+      if (rpcError) throw rpcError;
 
-      // 2. Delete from auth.users if auth_user_id exists
-      if (authUserId) {
-        const { error: authDeleteError } = await supabase.auth.admin.deleteUser(authUserId);
-        if (authDeleteError) {
-          console.warn('Failed to delete auth user, but user table record was deleted:', authDeleteError);
-        }
+      const result = (data || {}) as {
+        deleted?: boolean;
+        auth_action?: string;
+        auth_blockers?: string[];
+      };
+      if (!result.deleted) {
+        throw new Error('Delete did not complete — the user was not removed.');
       }
 
       // Refresh users list
       await fetchUsers();
 
-      return { success: true };
+      return {
+        success: true,
+        authAction: result.auth_action,
+        authBlockers: result.auth_blockers || [],
+      };
     } catch (err) {
       console.error('Error deleting user:', err);
       return {

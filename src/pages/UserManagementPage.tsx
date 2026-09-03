@@ -53,13 +53,20 @@ export default function UserManagementPage() {
   };
 
   const handleDeleteUser = async (user: typeof users[0]) => {
-    const confirmMessage = `Are you sure you want to delete user "${user.name || user.email}"?\n\nThis will:\n- Remove their user account\n- Delete their authentication access\n- This action cannot be undone`;
+    const confirmMessage = `Are you sure you want to delete user "${user.name || user.email}"?\n\nThis will:\n- Remove their user account\n- Revoke their ability to sign in\n- This action cannot be undone`;
 
     if (!confirm(confirmMessage)) return;
 
-    const result = await deleteUser(user.id, user.auth_user_id);
+    const result = await deleteUser(user.id);
     if (result.success) {
-      alert('User deleted successfully');
+      // The auth record can't always be removed — something else may reference
+      // it — in which case it's banned instead. Say which happened rather than
+      // implying a clean delete.
+      alert(
+        result.authAction === 'disabled'
+          ? `User deleted. Their login is disabled, but the auth record was kept because it is still referenced by: ${(result.authBlockers || []).join(', ')}.`
+          : 'User deleted successfully',
+      );
     } else {
       alert(`Failed to delete user: ${result.error}`);
     }
