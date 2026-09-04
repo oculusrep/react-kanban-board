@@ -24,7 +24,7 @@
 >
 > `--single-transaction` matters: without it a mid-file failure leaves the schema half-migrated.
 >
-> The four migrations of 2026-09-01 (`20260901120000`, `20260901120100`, `20260901140000`, `20260901160000`) were applied this way.
+> The 2026-09-01 migrations (`20260901120000`, `20260901120100`, `20260901140000`, `20260901160000`) and `20260904120000` were applied this way.
 
 ---
 
@@ -166,7 +166,37 @@ Two different local migrations share the version `20260702210000`:
 
 Both contents are applied in production and both are recorded remotely, under their own out-of-band versions (`20260702210346` and `20260702210617`) — so nothing is missing. But the history table can only ever hold one row for `20260702210000`, so the two files are indistinguishable to the CLI.
 
-Left alone deliberately: renaming a committed migration file is a repo change beyond the agreed scope, and it is not on the critical path. **Fix it as part of whichever option below is chosen** — rename one to `20260702210001_…` and record that version.
+### Proposed fix — and yes, it can wait for the deal-board merge
+
+**Rename the later of the two, and record its version:**
+
+```bash
+git mv supabase/migrations/20260702210000_merchant_favorite_relax_insert_policy.sql \
+       supabase/migrations/20260702210001_merchant_favorite_relax_insert_policy.sql
+
+psql "$DATABASE_URL" -c \
+  "INSERT INTO supabase_migrations.schema_migrations (version, name)
+   VALUES ('20260702210001','merchant_favorite_relax_insert_policy')
+   ON CONFLICT (version) DO NOTHING;"
+```
+
+Which one to rename is not arbitrary — pick `merchant_favorite_relax_insert_policy`, because production applied it *second* (`…210617` vs `…210346` for the target-area filter). Bumping it to `…210001` preserves the real execution order. Renaming the other one would invert it, and while these two are unrelated, a replay from a fresh baseline should still run in the order production did.
+
+**No SQL re-runs.** Both files' contents are already applied; this is a filename and one history row.
+
+**Risk: low, with one caveat.** A `git mv` rewrites nothing and breaks no reference — nothing in the codebase imports migration files by name. The caveat is that any *other* worktree with this file checked out will see it as a delete-plus-add on its next rebase. Harmless, but it will show up in a diff and should not be mistaken for a lost migration.
+
+#### Can it wait for the deal-board merge? Yes — and it should
+
+Three reasons:
+
+1. **It is causing no harm today.** Both migrations are applied; both are recorded (under out-of-band versions); the collision only means the `…210000` history row is ambiguous about which file it refers to. Nothing reads that row.
+2. **It only matters when `db push` works**, and `db push` is blocked by the 40 remote-only rows regardless. Fixing the collision first changes nothing observable.
+3. **Path A touches the same rows.** Step 1 of Path A deletes the 30 category-A duplicates — which includes `…210346` and `…210617`, the very rows this collision's two files map to. Doing the rename separately means reasoning about those rows twice.
+
+**Recommendation: fold it into Path A as a step 0**, at deal-board merge time. Bundle it with the rename, the 30 deletions, and the deal-board reconciliation in one reviewed change, rather than three separate touches of the history table.
+
+The one thing that would change this: if a *new* migration ever needs the `20260702210000` version specifically, or if someone runs `db reset`/creates a Supabase branch before the merge. Neither is on the horizon.
 
 ## What actually restores `db push`
 

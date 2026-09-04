@@ -4,13 +4,15 @@ Companion to the free-text `source` citation on market-research records. Records
 
 Motivated by [MARKET_RESEARCH_SOURCE_ATTRIBUTION_2026_09_01.md](MARKET_RESEARCH_SOURCE_ATTRIBUTION_2026_09_01.md), which established that `source` cannot answer that question — 46% of records cite two or more source types in one string, so any bucketing of it is an artifact of citation ordering.
 
-Added 2026-09-01 across three migrations:
+Added across five migrations:
 
 | Migration | What |
 |---|---|
 | [`20260901120000_research_run_cost_tracking.sql`](../supabase/migrations/20260901120000_research_run_cost_tracking.sql) | `research_run` cost/token columns |
 | [`20260901120100_discovery_source.sql`](../supabase/migrations/20260901120100_discovery_source.sql) | the column, constraint, normalizer, RPC + UI threading |
 | [`20260901140000_discovery_source_raw.sql`](../supabase/migrations/20260901140000_discovery_source_raw.sql) | `discovery_source_raw` + taxonomy-gap view |
+| [`20260901160000_reject_reason.sql`](../supabase/migrations/20260901160000_reject_reason.sql) | reject reason / who / when; bulk reject requiring a reason |
+| [`20260904120000_staging_cross_run_dedupe.sql`](../supabase/migrations/20260904120000_staging_cross_run_dedupe.sql) | cross-run staging duplicate probe |
 
 `source` is **unchanged and still required**. All of this is additive.
 
@@ -166,7 +168,20 @@ Runs `a14c3e7b` (20:39) and `ee1be095` (20:45) — six minutes apart, same eveni
 
 Approving both would have created four duplicate `municipal_project` rows, and the `ON CONFLICT (municipality_id, address, project_name, phase_label)` key would not have stopped them, because both name and address differ.
 
-**Proposed fix (not built):** extend the duplicate probe in `submit_research_report` to also match *pending staging rows from other runs*, keyed on `permit_url` first. That is the strongest available signal and it is exact — it would have caught all four here. Worth doing before the next multi-run window, since sweeps make overlapping runs normal rather than exceptional.
+**FIXED 2026-09-04** — [`20260904120000_staging_cross_run_dedupe.sql`](../supabase/migrations/20260904120000_staging_cross_run_dedupe.sql).
+
+`submit_research_report` now runs a second duplicate probe against **other runs' pending staging rows**, using the same two signals in the same order (`permit_url`, then municipality + name + address). It writes `municipal_project_staging.duplicate_of_staging_id`.
+
+Design points worth knowing before changing it:
+
+- **A new column, not a reuse of `matched_existing_id`.** That column suppresses the commit at approval; overloading it would make cross-run duplicates silently vanish instead of reaching a human. The new flag is **advisory** — it changes nothing about approval and only surfaces the collision. The reviewer resolves it with the existing keep-one control.
+- **`ON DELETE SET NULL` is required, not tidiness.** `submit_research_report` deletes a run's pending rows on resubmit; under the default `RESTRICT`, another run's pointer would block that delete and break every agent retry on an overlapping window.
+- **Scoped on resolved municipality OR boundary municipality.** Scoping on `municipality_id` alone silently disables the name/address probe, because that column stays NULL until a municipality row is created at approval — i.e. it would have been dead in exactly the new-territory sweep it protects. Including `boundary_municipality_id` also catches the city-inside-county case (a Grovetown row against a Columbia County row for the same project).
+- Oldest pending match wins, so the first-staged row reads as the keeper.
+
+Surfaced as a **⚠ DUP ACROSS RUNS** badge (with the other row's sweep chunk) in the approval modal, and as a standing `staging_cross_run_duplicate` view for checking a sweep without opening the UI. Verified by replaying the actual 2026-08-10 incident: the `permit_url` probe catches the differing-name/address case that previously slipped through.
+
+Rows staged before 2026-09-04 have `duplicate_of_staging_id` NULL and will not appear — the probe runs at staging time and is not retroactive.
 
 ---
 
