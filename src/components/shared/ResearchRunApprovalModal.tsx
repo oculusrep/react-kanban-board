@@ -83,6 +83,12 @@ interface StagingRow {
   // Why this row was rejected. Optional on single-row rejects, required on
   // bulk ones. Null on anything rejected before 2026-09-01.
   reject_reason: string | null;
+  // Another run's pending staging row this appears to duplicate. Advisory —
+  // it does not affect approval, it just surfaces the collision. Concurrent
+  // runs (a six-chunk Deep Sweep) can't see each other any other way.
+  duplicate_of_staging_id: string | null;
+  duplicate_of_project_name: string | null;
+  duplicate_of_chunk_index: number | null;
   notes: string | null;
   muni_name: string | null;
   muni_kind: string | null;
@@ -321,6 +327,9 @@ export default function ResearchRunApprovalModal({
             discovery_source: r.discovery_source ?? null,
             discovery_source_raw: r.discovery_source_raw ?? null,
             reject_reason: r.reject_reason ?? null,
+            duplicate_of_staging_id: r.duplicate_of_staging_id ?? null,
+            duplicate_of_project_name: r.duplicate_of_project_name ?? null,
+            duplicate_of_chunk_index: r.duplicate_of_chunk_index ?? null,
             notes: r.notes,
             muni_name: r.muni_name,
             muni_kind: r.muni_kind,
@@ -351,7 +360,7 @@ export default function ResearchRunApprovalModal({
               project_name, address, location_description, parcel_boundary_notes,
               total_housing_units, builder_developer, permit_url,
               permit_application_date, source, discovery_source, discovery_source_raw,
-              reject_reason, notes,
+              reject_reason, duplicate_of_staging_id, notes,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -375,6 +384,10 @@ export default function ResearchRunApprovalModal({
           ...r,
           muni_name: r.boundary_municipality?.name ?? null,
           muni_kind: r.boundary_municipality?.kind ?? null,
+          // Single-run view has no sibling run to join against; the pointer is
+          // still shown as a badge, just without the other row's name.
+          duplicate_of_project_name: null,
+          duplicate_of_chunk_index: null,
         }));
         setStaging(stagingNorm);
         // Default: select all pending rows that don't match an existing record.
@@ -1014,6 +1027,13 @@ export default function ResearchRunApprovalModal({
           <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
                 style={{ borderColor: '#8FA9C8', color: '#8FA9C8' }} title="Address only geocoded to a street/area centroid — dup-check skipped. Compare by hand.">
             ℹ APPROX. LOCATION
+          </span>
+        )}
+        {r.approval_state === 'pending' && r.duplicate_of_staging_id && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                title={`Also staged by another run in this sweep${r.duplicate_of_project_name ? ` as "${r.duplicate_of_project_name}"` : ''}. Nothing is committed yet, so the committed-record dup check cannot see it. Resolve before approving both.`}>
+            ⚠ DUP ACROSS RUNS{r.duplicate_of_chunk_index != null ? ` · chunk ${r.duplicate_of_chunk_index}` : ''}
           </span>
         )}
         {r.approval_state === 'approved' && (

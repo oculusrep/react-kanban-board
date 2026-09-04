@@ -7342,6 +7342,7 @@ export type Database = {
           discovery_source: string | null
           discovery_source_raw: string | null
           duplex_units: number | null
+          duplicate_of_staging_id: string | null
           id: string
           location_description: string | null
           matched_existing_id: string | null
@@ -7380,6 +7381,7 @@ export type Database = {
           discovery_source?: string | null
           discovery_source_raw?: string | null
           duplex_units?: number | null
+          duplicate_of_staging_id?: string | null
           id?: string
           location_description?: string | null
           matched_existing_id?: string | null
@@ -7418,6 +7420,7 @@ export type Database = {
           discovery_source?: string | null
           discovery_source_raw?: string | null
           duplex_units?: number | null
+          duplicate_of_staging_id?: string | null
           id?: string
           location_description?: string | null
           matched_existing_id?: string | null
@@ -18034,6 +18037,10 @@ export type Database = {
           builder_developer: string
           discovery_source: string
           discovery_source_raw: string
+          duplicate_of_chunk_index: number
+          duplicate_of_project_name: string
+          duplicate_of_run_id: string
+          duplicate_of_staging_id: string
           id: string
           location_description: string
           matched_existing_id: string
