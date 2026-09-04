@@ -24,6 +24,8 @@ interface SweepRow {
   done: number;
   failed: number;
   running: number;
+  /** Chunks quarantined by the stall guard: idle past the timeout, sweep held. */
+  stalled: number;
   staged: number;
 }
 
@@ -114,6 +116,7 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
           done: cs.filter((c) => c.state === 'done').length,
           failed: cs.filter((c) => c.state === 'failed').length,
           running: cs.filter((c) => c.state === 'running' || c.state === 'firing').length,
+          stalled: cs.filter((c) => c.state === 'orphaned').length,
           staged: sweepStagingCounts.get(s.id) ?? 0,
         } as SweepRow;
       }));
@@ -201,6 +204,12 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
             <div className="mt-1 text-xs" style={{ color: '#4A6B94' }}>
               {s.radius_miles}-mile radius · {s.done}/{s.total_chunks} chunks done
               {s.running > 0 && <> · {s.running} running</>}
+              {/* A held sweep looks idle otherwise — say why nothing is firing. */}
+              {s.stalled > 0 && (
+                <span style={{ color: '#A27B5C' }} title="This chunk stopped reporting. The sweep is held — the next chunk will not start until the run comes back or is confirmed dead.">
+                  {' '}· {s.stalled} stalled (sweep held)
+                </span>
+              )}
               {s.failed > 0 && <span style={{ color: '#A27B5C' }}> · {s.failed} failed (gap)</span>}
               {s.staged > 0 && <> · {s.staged} staged records</>}
             </div>

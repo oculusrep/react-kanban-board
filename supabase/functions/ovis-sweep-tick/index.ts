@@ -1,12 +1,26 @@
 /**
  * OVIS Deep-Sweep Tick — Engine
  *
- * Invoked once/minute by a pg_cron job. Drives every running research_sweep one
- * step: fires the next pending chunk (only when the current chunk is terminal —
- * strictly sequential), detects the per-chunk orphan timeout, and Telegrams
- * failures. All sequencing/idempotency lives in the transactional advance_sweep
- * RPC (per-sweep advisory lock); this function only performs the side-effects a
- * DB transaction cannot: the internal OpenClaw-trigger call and Telegram.
+ * Invoked once/minute by a pg_cron job. Two jobs per tick:
+ *
+ *   1. Reap orphaned research_runs — runs whose agent was killed (a gateway
+ *      restart drains in-flight runs) and which would otherwise sit at
+ *      state='running' forever with nobody left to terminalize them. Runs owned
+ *      by a live sweep are skipped; advance_sweep owns those.
+ *   2. Drive every running research_sweep one step: fire the next pending chunk
+ *      (only when the current chunk is terminal — strictly sequential), detect a
+ *      stalled chunk, and Telegram failures.
+ *
+ * All sequencing/idempotency lives in the transactional advance_sweep RPC
+ * (per-sweep advisory lock); this function only performs the side-effects a DB
+ * transaction cannot: the internal OpenClaw-trigger call and Telegram.
+ *
+ * STALL HANDLING. A chunk that goes idle past the sweep's timeout is NOT
+ * terminalized on the spot — that is what let a still-alive agent overlap with
+ * the next chunk (sweep f4b86098, Aug 10). advance_sweep quarantines it and the
+ * sweep HOLDS. We get 'stalled' once when that happens, and 'orphan' later only
+ * if the run stayed silent through the cooldown, which is the point at which it
+ * is safe to mark the run failed and let the sweep move on.
  *
  * Auth: internal-only. verify_jwt is OFF; we compare the caller's bearer against
  * SUPABASE_SERVICE_ROLE_KEY ourselves. The cron sends that key.
@@ -66,6 +80,22 @@ serve(async (req) => {
     return json({ error: 'unauthorized' }, 401);
   }
 
+  // ---- 1) Reap orphaned runs. Independent of any sweep: a standalone run
+  // killed mid-flight is the common case (gateway restart). Never fatal to the
+  // tick — a reaper failure must not stop sweeps from advancing.
+  const { data: reaped, error: reapErr } = await service.rpc('reap_orphaned_research_runs');
+  if (reapErr) {
+    console.warn('reap_orphaned_research_runs failed:', reapErr.message);
+  } else {
+    const r = reaped as { reaped_count?: number; chunks_closed?: number } | null;
+    if ((r?.reaped_count ?? 0) > 0) {
+      await notifyTelegram(
+        `🧹 Reaped ${r!.reaped_count} orphaned research run(s) stuck at 'running' (no activity for 90+ min) — marked failed. They now show as coverage gaps.`,
+      );
+    }
+  }
+
+  // ---- 2) Advance every running sweep by one step.
   const { data: sweeps, error: sweepErr } = await service
     .from('research_sweep').select('id').eq('state', 'running');
   if (sweepErr) return json({ error: 'sweep_query_failed', detail: sweepErr.message }, 500);
@@ -120,17 +150,30 @@ serve(async (req) => {
         await service.rpc('mark_chunk_failed', { p_chunk_id: a.chunk_id });
         await notifyTelegram(`⚠️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) fire threw: ${String(e).slice(0, 150)}`);
       }
+    } else if (action === 'stalled') {
+      const a = act as {
+        chunk_index: number; window_start: string; window_end: string;
+        idle_minutes: number; cooldown_minutes: number;
+      };
+      // Quarantined, NOT terminalized. Deliberately no write to research_run:
+      // the agent may still be alive, and marking it failed here would be us
+      // manufacturing the very "confirmation of death" the cooldown exists to
+      // wait for. The sweep is held until it resurrects or the cooldown expires.
+      await notifyTelegram(
+        `⏸️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) STALLED — silent ${a.idle_minutes} min. Sweep HELD (no next chunk) for up to ${a.cooldown_minutes} min in case it's alive.`,
+      );
     } else if (action === 'orphan') {
       const a = act as { chunk_index: number; window_start: string; window_end: string; research_run_id: string | null };
-      // The chunk's agent died without submitting. Mark the orphaned run failed
-      // (so it's a coverage gap, not a phantom-covered window) and alert.
+      // Silent through the whole cooldown: as dead as we can establish from this
+      // side. Mark the run failed (so the window reads as a coverage gap, not a
+      // phantom-covered one) and alert; the next tick fires the next chunk.
       if (a.research_run_id) {
         await service.from('research_run')
           .update({ state: 'failed', completed_at: new Date().toISOString() })
           .eq('id', a.research_run_id);
       }
       await notifyTelegram(
-        `⚠️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) TIMED OUT — no submit_research_report. Marked failed; sweep advancing.`,
+        `⚠️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) ORPHANED — no activity through the cooldown. Marked failed; sweep advancing. Re-run it from the sweep approval view.`,
       );
     } else if (action === 'terminal') {
       const a = act as { sweep_state: string };
