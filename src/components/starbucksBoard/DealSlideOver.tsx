@@ -5,13 +5,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
-import { parseISO, format } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
-import { useAuth } from '../../contexts/AuthContext';
-import { getCategoryIdByName } from '../../lib/taskCategory';
-import { insertDealNote } from '../../lib/boardWrites';
 import {
   BoardDeal,
   CONDENSED_STACK,
@@ -22,10 +16,10 @@ import {
 import ClassifyControls from './ClassifyControls';
 import KillPassAction from './KillPassAction';
 import ParkControl from './ParkControl';
+import TouchControls from './TouchControls';
 import UrgentToggle from './UrgentToggle';
 
 interface NoteRow { id: string; title: string | null; body: string | null; created_at: string | null; }
-interface TaskRow { id: string; subject: string | null; due_at: string | null; }
 
 export default function DealSlideOver({
   deal,
@@ -39,44 +33,19 @@ export default function DealSlideOver({
   onChanged: () => void;
 }) {
   const navigate = useNavigate();
-  const { userTableId } = useAuth();
   const px = (n: number) => Math.round(n * scale);
 
   const [notes, setNotes] = useState<NoteRow[]>([]);
-  const [openTask, setOpenTask] = useState<TaskRow | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const [noteBody, setNoteBody] = useState('');
-  const [taskSubject, setTaskSubject] = useState('');
-  const [taskDue, setTaskDue] = useState('');
-
-  useEffect(() => {
-    setNoteBody('');
-    setTaskSubject('');
-    setTaskDue('');
-    setErr(null);
-  }, [deal.id]);
 
   const loadDetails = useCallback(async () => {
     try {
-      const [{ data: noteData }, { data: taskData }] = await Promise.all([
-        supabase
-          .from('note')
-          .select('id, title, body, created_at, note_object_link!inner(deal_id)')
-          .eq('note_object_link.deal_id', deal.id)
-          .order('created_at', { ascending: false })
-          .limit(3),
-        supabase
-          .from('task')
-          .select('id, subject, due_at')
-          .eq('deal_id', deal.id)
-          .in('status', ['open', 'in_progress'])
-          .order('due_at', { ascending: true, nullsFirst: false })
-          .limit(1),
-      ]);
+      const { data: noteData } = await supabase
+        .from('note')
+        .select('id, title, body, created_at, note_object_link!inner(deal_id)')
+        .eq('note_object_link.deal_id', deal.id)
+        .order('created_at', { ascending: false })
+        .limit(3);
       setNotes((noteData as NoteRow[]) ?? []);
-      setOpenTask(((taskData as TaskRow[]) ?? [])[0] ?? null);
     } catch (e) {
       console.error('DealSlideOver.loadDetails', e);
     }
@@ -84,58 +53,7 @@ export default function DealSlideOver({
 
   useEffect(() => { loadDetails(); }, [loadDetails]);
 
-  async function saveNote() {
-    const body = noteBody.trim();
-    if (!body) return;
-    setSaving(true);
-    setErr(null);
-    try {
-      await insertDealNote(deal.id, body);
-      setNoteBody('');
-      await loadDetails();
-      onChanged();
-    } catch (e: any) {
-      setErr(e?.message ?? 'Failed to log note');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveTask() {
-    const subject = taskSubject.trim();
-    if (!subject) return;
-    setSaving(true);
-    setErr(null);
-    try {
-      const categoryId = await getCategoryIdByName('other');
-      const { error } = await supabase.from('task').insert({
-        subject,
-        category: 'other',
-        category_id: categoryId,
-        owner_id: userTableId,
-        created_by_id: userTableId,
-        deal_id: deal.id,
-        status: 'open',
-        is_inbox: true,
-        due_at: taskDue ? new Date(`${taskDue}T00:00:00`).toISOString() : null,
-      });
-      if (error) throw error;
-      setTaskSubject('');
-      setTaskDue('');
-      await loadDetails();
-      onChanged();
-    } catch (e: any) {
-      setErr(e?.message ?? 'Failed to set next action');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const verb = instruction(deal);
-  const inputStyle = {
-    backgroundColor: PALETTE.ground, color: PALETTE.text,
-    border: `1px solid ${PALETTE.ground}`, fontSize: px(15), fontFamily: CONDENSED_STACK,
-  } as const;
 
   return (
     <>
@@ -170,8 +88,6 @@ export default function DealSlideOver({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
-          {err && <div style={{ color: PALETTE.hot, fontSize: px(14) }}>{err}</div>}
-
           <Section title="Rolling summary" px={px}>
             <div style={{ color: PALETTE.textDim, fontSize: px(14), fontStyle: 'italic' }}>(Coming in phase 2 — reserved.)</div>
           </Section>
@@ -180,67 +96,8 @@ export default function DealSlideOver({
             <ClassifyControls deal={deal} px={px} saveLabel="Save court" onSaved={onChanged} />
           </Section>
 
-          <Section title="Log a note" px={px}>
-            <textarea
-              value={noteBody}
-              onChange={(e) => setNoteBody(e.target.value)}
-              placeholder="What happened? (cools the tile)"
-              rows={3}
-              className="w-full rounded px-2 py-1.5"
-              style={{ ...inputStyle, resize: 'vertical' }}
-            />
-            <button
-              onClick={saveNote}
-              disabled={saving || !noteBody.trim()}
-              className="mt-2 rounded px-3 py-1.5"
-              style={{ border: `1px solid ${PALETTE.textDim}`, color: PALETTE.text, fontSize: px(14), opacity: saving || !noteBody.trim() ? 0.5 : 1 }}
-            >
-              Log note
-            </button>
-          </Section>
-
-          <Section title="Set next action" px={px}>
-            {openTask && (
-              <div style={{ fontSize: px(13), color: PALETTE.textDim, marginBottom: 6 }}>
-                Current: {openTask.subject}{openTask.due_at ? ` · due ${new Date(openTask.due_at).toLocaleDateString()}` : ''}
-              </div>
-            )}
-            <input value={taskSubject} onChange={(e) => setTaskSubject(e.target.value)} placeholder="Next action…" className="w-full rounded px-2 py-1.5" style={inputStyle} />
-            <div className="mt-2 flex flex-wrap items-center gap-2" style={{ fontSize: px(15) }}>
-              {/* OVIS-standard react-datepicker calendar; input styled for the dark panel */}
-              <DatePicker
-                selected={taskDue ? parseISO(taskDue) : null}
-                onChange={(d) => setTaskDue(d ? format(d, 'yyyy-MM-dd') : '')}
-                dateFormat="MM/dd/yyyy"
-                placeholderText="Pick a date"
-                isClearable
-                popperProps={{ strategy: 'fixed' }}
-                className="rounded px-2 py-1.5 bg-[#12161C] text-[#E8EDF3] border border-[#12161C] w-[130px]"
-              />
-              {[3, 7, 10].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setTaskDue(addDaysLocal(n))}
-                  className="rounded px-2 py-1"
-                  style={{
-                    fontSize: px(13),
-                    border: `1px solid ${taskDue === addDaysLocal(n) ? PALETTE.text : PALETTE.textDim}`,
-                    color: taskDue === addDaysLocal(n) ? PALETTE.text : PALETTE.textDim,
-                  }}
-                >
-                  +{n}d
-                </button>
-              ))}
-              <button
-                onClick={saveTask}
-                disabled={saving || !taskSubject.trim()}
-                className="rounded px-3 py-1.5"
-                style={{ border: `1px solid ${PALETTE.textDim}`, color: PALETTE.text, fontSize: px(14), opacity: saving || !taskSubject.trim() ? 0.5 : 1 }}
-              >
-                Set action
-              </button>
-            </div>
-          </Section>
+          {/* Log a note · Set next action — shared with the triage queue (TouchControls) */}
+          <TouchControls deal={deal} px={px} onSaved={() => { loadDetails(); onChanged(); }} />
 
           <Section title="Recent notes" px={px}>
             {notes.length === 0 ? (
@@ -288,11 +145,4 @@ function Section({ title, children, px }: { title: string; children: ReactNode; 
 function stripHtml(s: string | null): string {
   if (!s) return '(empty note)';
   return s.replace(/<[^>]*>/g, '').slice(0, 80);
-}
-
-// today + n days as a local YYYY-MM-DD (CLAUDE.md: local date, not UTC)
-function addDaysLocal(n: number): string {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
