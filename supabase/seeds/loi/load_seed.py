@@ -14,7 +14,8 @@ Usage:
 """
 import sys, json, re, uuid
 
-SOURCES = {"national-template-drop", "national-handbook", "southeast-doc", "oculus-authored", "national-template-ecdt"}
+SOURCES = {"national-template-drop", "national-handbook", "southeast-doc", "oculus-authored", "national-template-ecdt",
+           "completed-loi-powder-springs", "completed-loi-douglasville"}
 BUCKETS = {"custom-owned", "coded-position", "standing-default"}
 KINDS = {"alternative", "conditional_alternative", "modifier"}
 CODE_STATUS = {"confirmed", "provisional"}
@@ -52,6 +53,12 @@ def validate(d):
         bodies[ref] = b
         if b.get("source") not in SOURCES: E(f"body {ref}: bad source '{b.get('source')}'")
         if not b.get("segment_key"): E(f"body {ref}: missing segment_key")
+        if b.get("_existing"):
+            # a body loaded by an EARLIER tranche, re-referenced here; resolved by identity, never
+            # re-inserted (canonical bodies are immutable and key on brace_code+source+version).
+            if b.get("body_text") or b.get("parameters"):
+                E(f"body {ref}: _existing must carry identity only (no body_text/parameters)")
+            continue
         bt = b.get("body_text", "")
         for m in stray_braces(bt):
             E(f"body {ref}: stray '{m}' in body_text (only {{{{param:key}}}} tokens allowed; codes/markers must be stripped)")
@@ -160,6 +167,8 @@ def validate(d):
                 # brace/rank uniqueness within variant
                 if bc is not None:
                     brace_in_variant[bc] = brace_in_variant.get(bc, 0) + 1
+                if kind == "alternative" and p.get("emit_order") is not None:
+                    E(f"{loc}: alternative must not have emit_order")
                 if kind == "alternative" and p.get("rank") is not None:
                     rank_in_variant[p["rank"]] = rank_in_variant.get(p["rank"], 0) + 1
                 # refs
@@ -171,7 +180,7 @@ def validate(d):
                     if not at.get("requirement"): E(f"{loc}: attachment_requirement missing 'requirement'")
                 for pb in p.get("position_bodies", []):
                     r = pb.get("canonical_body_ref")
-                    if r not in bodies: E(f"{loc}: position_bodies ref '{r}' not a declared canonical_body")
+                    if r not in bodies: REF(f"{loc}: position_bodies ref '{r}' not a declared canonical_body")
                 for aw in p.get("applies_when", []):
                     rk = aw.get("ref_kind")
                     if rk not in REF_KINDS: E(f"{loc}: applies_when bad ref_kind '{rk}'")
@@ -233,8 +242,18 @@ def q(s):
 def emit_sql(d):
     out = ["BEGIN;"]
     body_id = {}
+    body_expr = {}   # ref -> SQL expression yielding the body id (literal for new, subselect for _existing)
     for b in d.get("canonical_bodies", []):
-        bid = str(uuid.uuid4()); body_id[b["ref"]] = bid
+        if b.get("_existing"):
+            # Resolve an already-loaded body by its immutable identity (brace_code, source, version)
+            # plus segment_key. NOT re-inserted.
+            bc = b.get("brace_code")
+            body_expr[b["ref"]] = ("(SELECT id FROM loi_canonical_body WHERE "
+                                   + (f"brace_code={q(bc)}" if bc else "brace_code IS NULL")
+                                   + f" AND source={q(b['source'])} AND version={q(b.get('version','v1'))}"
+                                   + f" AND segment_key={q(b['segment_key'])})")
+            continue
+        bid = str(uuid.uuid4()); body_id[b["ref"]] = bid; body_expr[b["ref"]] = q(bid)
         out.append(f"INSERT INTO loi_canonical_body (id,brace_code,source,version,segment_key,body_text) VALUES "
                    f"({q(bid)},{q(b.get('brace_code'))},{q(b['source'])},{q(b.get('version','v1'))},{q(b['segment_key'])},{q(b['body_text'])});")
         for p in b.get("parameters", []) or []:
@@ -279,14 +298,14 @@ def emit_sql(d):
                 pid = str(uuid.uuid4())
                 mc = f"(SELECT id FROM loi_clause WHERE clause_key={q(p['modifies_clause_id'])})" if p.get("modifies_clause_id") else "NULL"
                 dq = f"(SELECT id FROM loi_director_question WHERE question_key={q(p['director_question_key'])})" if p.get("director_question_key") else "NULL"
-                out.append("INSERT INTO loi_position (id,variant_id,position_kind,brace_code,rank,emit_order,modifies_clause_id,selector_value,is_default,"
+                out.append("INSERT INTO loi_position (id,variant_id,position_kind,brace_code,rank,emit_order,template_paragraph,modifies_clause_id,selector_value,is_default,"
                            "code_status,rule_status,authority,approval_required,approval_authority,firing_mode,director_question_id,"
                            "internal_note,deviation_rationale,landlord_fill_prompt,provisional_note) VALUES ("
-                           f"{q(pid)},{vid_expr},{q(p['position_kind'])},{q(p.get('brace_code'))},{q(p.get('rank'))},{q(p.get('emit_order'))},{mc},{q(p.get('selector_value'))},{q(p.get('is_default',False))},"
+                           f"{q(pid)},{vid_expr},{q(p['position_kind'])},{q(p.get('brace_code'))},{q(p.get('rank'))},{q(p.get('emit_order'))},{q(p.get('template_paragraph'))},{mc},{q(p.get('selector_value'))},{q(p.get('is_default',False))},"
                            f"{q(p.get('code_status','confirmed'))},{q(p.get('rule_status','confirmed'))},{q(p['authority'])},{q(p.get('approval_required',False))},{q(p.get('approval_authority'))},{q(p.get('firing_mode','per-deal'))},{dq},"
                            f"{q(p.get('internal_note'))},{q(p.get('deviation_rationale'))},{q(p.get('landlord_fill_prompt'))},{q(p.get('provisional_note'))});")
                 for pb in p.get("position_bodies", []):
-                    out.append(f"INSERT INTO loi_position_body (position_id,canonical_body_id,emit_sequence) VALUES ({q(pid)},{q(body_id[pb['canonical_body_ref']])},{q(pb.get('emit_sequence',0))});")
+                    out.append(f"INSERT INTO loi_position_body (position_id,canonical_body_id,emit_sequence) VALUES ({q(pid)},{body_expr[pb['canonical_body_ref']]},{q(pb.get('emit_sequence',0))});")
                 for aw in p.get("applies_when", []):
                     out.append("INSERT INTO loi_applies_when_condition (position_id,condition_group,ref_kind,ref_clause_key,ref_brace_code,ref_field,operator,compare_value,compare_unit,note) VALUES ("
                                f"{q(pid)},{q(aw.get('condition_group',0))},{q(aw['ref_kind'])},{q(aw.get('ref_clause_key'))},{q(aw.get('ref_brace_code'))},{q(aw.get('ref_field'))},{q(aw['operator'])},{q(aw.get('compare_value'))},{q(aw.get('compare_unit'))},{q(aw.get('note'))});")

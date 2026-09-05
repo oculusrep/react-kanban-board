@@ -60,7 +60,8 @@ Two files were received but NOT yet loaded/committed:
    clause/position + `loi_exclusion_violations()` + `loi_selectable_position`. TWO exclusions
    (`transfer_supersedes_sale`, `pylon_panel_existing_xor_new`); `sale_of_property` de-activated;
    ROFR/ROFO deliberately NOT built. 13/13 tests in `loi_negative_tests_v9.sql`. See the decisions doc.
-5. **Next:** confirm payload contract A–E (in the decisions doc) → build the assembler → minimal
+5. **Next:** payload contract A–E is now **written out in full** in the decisions doc (it had only
+   ever existed as a one-line summary). Mike reads and signs off → build the assembler → minimal
    wizard → **Powder Springs acceptance test** (regenerate end-to-end from deal terms, diff vs
    `fixtures/`, every difference explainable).
    **Assembler contract reminders now in force:** select positions from `loi_selectable_position`
@@ -69,12 +70,13 @@ Two files were received but NOT yet loaded/committed:
    fragments across positions into ONE paragraph (standing rule from the closing-statement split).
 
 ## OPEN — OWED BY MIKE (not blocking the exclusion build; blocking the acceptance test)
-- **Closing statement:** the THREE re-split canonical bodies (always / L0-gated / always). Mike has
-  the template — bodies coming. **Do not load the split until they land.**
-- **Signature block: the earlier Broker-vs-SDM `choose_one` spec is WRONG** (Mike, 2026-09-01). It is
-  **THREE blocks, not two.** The correction + addendum had not been received when this note was
-  written — **do not act on the old spec, and do not re-key `sig_tenant_title` until the corrected
-  spec is in hand.**
+- ~~Closing statement / signature block~~ **RESOLVED — tranche 8 loaded 2026-09-05.** Para 218 split
+  three ways with the middle fragment gated on lease/L0; the tenant signature block is a three-way
+  ranked ladder (SIG0 template / SIG1 Powder Springs / SIG2 Douglasville), re-homed into its own
+  clause `tenant_signature_block`. **Powder Springs acceptance test resolves to SIG1.**
+- **VETO WINDOW:** three changes were made to Mike's tranche-8 file — SIG re-homed to its own clause
+  (forced: six constraint violations on the original shape), `authority` values remapped, and the
+  landlord body declared `_existing`. All recorded in the decisions doc; say so if any is wrong.
 - **Manifest granularity re-send** (adds `brace_code` + `segment_key`). Do NOT build the tightened
   completeness rule until Mike flags that it landed.
 - **ROFR provenance** (see the decisions doc): Douglasville's Right of First Refusal is not in the

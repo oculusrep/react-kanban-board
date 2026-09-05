@@ -710,14 +710,175 @@ without a reason; P6/P7 well-formed pair + inactive clause hides its positions. 
 `loi-tool-dev` and **replayed clean** (second run: 0 inserts, 0 updates, load guard green).
 `completeness_test.py` still PASSES unchanged (74 covered / 2 deferred).
 
-## Payload contract (proposed — pending confirmation, on hold until after tranche 6)
+## Tranche 8 — closing-frame restructure (LOADED 2026-09-05)
 
-Self-contained, text-in, triple-version-pinned, persisted verbatim as the operation log. Proposed
-decisions: (A) tokens stay in body_text + explicit param values ride alongside, assembler fills them
-mechanically; (B) skeleton mapping by the template's own `[{CODE}]` markers / section headings / R1
-instruction anchor; (C) assembler emits what's in the payload and strips everything else; (D)
-`modified` is OVIS-computed metadata, `body_text` authoritative; (E) rent rows precomputed, assembler
-renders the table with zero math. Confirm A–E when the library is complete.
+Tranche 8 supersedes the tranche-7 closing frame: template para 218 splits three ways (one fragment
+gated on the Starbucks standard lease), and the tenant signature block becomes a three-way alternative
+set. Mike flagged two decisions as Claude Code's. Both are answered here, plus a third the schema
+forced.
+
+### (a) Paragraph grouping — `template_paragraph` ACCEPTED as proposed
+
+Mike's proposal (a nullable integer on the position) is the right mechanism and is built.
+
+**Why a field is needed at all:** `applies_when` is position-level, so the one mid-paragraph sentence
+governed by "[DELETE PRECEDING SENTENCE IF NOT USING STARBUCKS STANDARD FORM LEASE]" *has* to be its
+own position. That leaves three positions composing one paragraph and nothing in the schema saying so.
+
+**Why not emit_order adjacency** (Mike's own objection, and it is correct): adjacency is a derived
+signal that silently breaks the first time a fourth fragment or a following block lands between them.
+Grouping must be stated, not inferred.
+
+**GROUPING RULE (assembler contract):** positions sharing a non-null `(clause_id, template_paragraph)`
+are concatenated, in `emit_order`, into ONE emitted paragraph. A group of one emits normally. NULL
+means "not paragraph-anchored" and never groups — not even with other NULLs.
+
+**One wrinkle worth naming.** The field does two related jobs. For para 218 it *groups* three
+fragments into one paragraph. For the signature blocks it *anchors* a block whose single body already
+spans several template paragraphs (220–226; the breaks live inside `body_text`). Both reduce to the
+same rule — an anchor is just a group of one — so one field covers both, and a second `paragraph_group`
+field would be redundant. Flagged so the double duty is a decision rather than a surprise.
+
+**Versioning:** the value is an index into the template version pinned in `loi_config`, taken straight
+from the sweep manifest. A template transition renumbers it; `completeness_test.py` already detects
+transitions, which is what makes it safe to key on.
+
+### (b) SIG0/SIG1/SIG2 provisional brace codes — KEPT as minted
+
+Three reasons:
+1. **Precedent already exists.** `brace_code='L1'` is carried with `code_status='provisional'` for the
+   same class of anomaly (a code out of convention with the template). This is what the `code_status`
+   axis is for — identity we assert but have not confirmed against Starbucks.
+2. **Without codes the three are indistinguishable.** All three bodies share `segment_key`
+   `tenant_signature_block` and differ only by `source`. `loi_position_label()` falls back to
+   `segment_key`, so all three would render as the same string in exclusion output, the audit record,
+   and the wizard.
+3. **The docx-marking objection is now covered.** The worry with a minted code is that the assembler's
+   skeleton mapping has no `{SIG0}` marker to anchor to — but `template_paragraph` 220 supplies the
+   anchor directly, so the code never has to carry that load.
+
+`code_status='provisional'` + Mike's `provisional_note` keep the "we minted this" fact queryable, and
+confirmation stays a field update rather than a re-seed.
+
+### (c) SIG re-homed into its own clause — CLAUDE CODE CHANGE, forced by the schema
+
+Tranche 8 encoded SIG0/1/2 as `position_kind='alternative'` riding `letter_shell` with `emit_order`,
+`modifies_clause_id` and `selector_value` set. **That shape cannot load** — six separate violations:
+- `loi_position_kind_shape` forbids an `alternative` carrying `emit_order`, `modifies_clause_id`, or
+  `selector_value` (those three are the modifier / conditional-alternative axes).
+- `loi_position_variant_rank_uk` — `letter_shell`'s variant already holds a rank-0 alternative (the
+  six-segment letter frame), so SIG0 at rank 0 collides.
+- `loi_position_default_uk` — that same letter frame already holds the variant's single `is_default`.
+
+A ranked ladder needs its own variant; a variant is deal-type scoping and two variants with identical
+`deal_type_scope` would be ambiguous at selection time. So the set needs its own clause:
+**`tenant_signature_block`** (bucket `coded-position`, one variant, SIG0/1/2 at ranks 0/1/2, SIG0
+default). Emission placement is preserved by `template_paragraph` 220, not by clause membership, which
+is precisely what that field buys.
+
+The considered alternative — keeping them on `letter_shell` as modifiers with mutually-exclusive
+`applies_when` gates, the TR0/1/2 pattern from tranche 6 — was rejected: it enforces "exactly one" by
+gate rather than by rank, and gives no default. Mike called this a three-way *alternative set*, and a
+ranked ladder is the shape that actually means that.
+
+Manifest note: paras 220–226 are categorised `letter_shell` in the sweep manifest. Category
+`letter_shell` is not checked against loaded bodies, so the completeness test is unaffected — but the
+`clause` field on those entries is now stale and should say `tenant_signature_block` in the re-send.
+
+### Other changes made to Mike's tranche-8 file (all reported)
+
+- **`authority` values.** `national-template-drop` (SIG0) is a *source*, not an authority; set to
+  `national-handbook`. `oculus-practice` (SIG1/SIG2) is not in the authority CHECK; set to
+  `self-authored`, which is the existing bucket for Oculus-originated governance. `source` still
+  carries the real provenance, so nothing is lost.
+- **Two new `source` values added** (migration): `completed-loi-powder-springs`,
+  `completed-loi-douglasville`. An executed LOI is a genuine document-of-origin — it is how we know
+  what Oculus actually sent, as against what the template drafts.
+- **The re-referenced landlord body** is declared `_existing` so the loader resolves it by identity
+  instead of re-inserting it (canonical bodies are immutable). New loader mechanism.
+- **Loader gap closed:** it did not reject an `alternative` carrying `emit_order`, so tranche 8
+  validated four of the six violations above and would have failed at the DB. Now caught up front.
+
+### Validation
+
+`supabase/dev-only/loi_negative_tests_v10.sql` — **8/8 pass**: para 218 is three positions at
+emit_order 100/101/102 with exactly one gated; the gate is `lease`/`L0` `is_selected`; the tranche-7
+frame and its two superseded bodies are gone (deleted, not orphaned); the landlord body survived with
+exactly one body and one reference; the SIG ladder is three ranked alternatives over three distinct
+sources with SIG0 default; **Powder Springs resolves to SIG1**. Negatives: a negative
+`template_paragraph` and an `alternative` carrying `emit_order` are both rejected. v9 still 13/13;
+`completeness_test.py` still green (74 covered / 2 deferred).
+
+## Payload contract A–E (expanded in full — 2026-09-05, awaiting Mike's sign-off)
+
+Previously recorded only as a one-line summary per item, which is not something anyone can approve.
+Written out here in full. **Nothing below is agreed yet.**
+
+The payload is the single object OVIS hands the assembler service. It is **self-contained** (the
+assembler reads no database), **text-in** (it carries resolved body text, not ids to look up),
+**triple-version-pinned** (library version, template version, assembler version), and **persisted
+verbatim** as the operation log — the audit answer to "why does this LOI say that" is the payload,
+not a re-derivation.
+
+### A — Tokens stay in `body_text`; param values ride alongside
+
+`body_text` arrives exactly as stored, `{{param:key}}` tokens intact. Alongside it the payload carries
+an explicit map of `param_key → value` for every token in that body. The assembler substitutes
+mechanically: find token, replace with value, no lookups and no defaulting.
+
+- Every token MUST have an entry. A missing key is a payload error, not an empty string — silently
+  emitting a blank is how a document goes out with a hole in it.
+- Which value won (preferred vs fallback vs free fill) is decided in OVIS, where the concession record
+  lives. The assembler is not told there was a choice.
+- `is_omit` options resolve to the empty string, and OVIS marks them so the surrounding whitespace is
+  the assembler's problem, not a stray double space.
+
+*Rejected alternative:* pre-substituting in OVIS and shipping finished text. That would make the
+emitted text unattributable to a canonical body, breaking Phase-2 redline matching.
+
+### B — Skeleton mapping by the template's own markers
+
+The assembler places content into the versioned template by, in priority order: (1) the template's own
+`[{CODE}]` markers, which are separate runs and are stripped after use; (2) section headings for
+uncoded content; (3) the R1 instruction anchor for the rent table; and now (4) `template_paragraph`
+for paragraph-anchored positions such as the closing frame and the signature blocks.
+
+- Brace codes are NEVER emitted. Stripping the marker run is part of placement.
+- An anchor that cannot be found is a hard failure. The assembler never guesses a location.
+
+### C — The assembler emits what is in the payload and strips everything else
+
+Anything in the template not claimed by a payload entry is REMOVED: unfired instructions, unselected
+alternatives, leftover bracketed guidance. The default is deletion, not retention.
+
+- This is what makes the acceptance test meaningful: emitted output with **zero brackets and zero
+  codes**, or fail.
+- It also means an omission bug produces a visibly missing clause rather than a template artifact
+  quietly shipping to a landlord.
+
+### D — `modified` is OVIS-computed metadata; `body_text` is authoritative
+
+Each payload entry may carry a `modified` flag and a rationale, for the audit record and the Starbucks
+deviation story. The assembler ignores both for emission — it renders `body_text` and nothing else.
+
+- Prevents two sources of truth. If `modified` said one thing and the text another, the text wins,
+  because the text is what the landlord reads.
+- `deviation_rationale` and approval flags travel for the audit record; they never alter output.
+
+### E — Rent rows arrive precomputed; the assembler does zero math
+
+OVIS runs the rent engine and puts finished rows in the payload — period labels, per-SF, yearly,
+monthly, already rounded per the locked convention (compound unrounded $/SF; yearly = unrounded × sqft
+rounded to cents; monthly = yearly / 12). The assembler renders the table per
+`docs/LOI_RENT_TABLE_RENDER_CONTRACT.md` and computes nothing.
+
+- One rent engine, in OVIS, shared with the commission engine — two consumers, one implementation.
+- A rounding change is an OVIS change and cannot drift between the LOI and the commission record.
+- The assembler cannot produce a number that OVIS has not already stored and shown.
+
+**Open question on E:** the `$/SF` final-period drop rule is deferred by choice (Mike strips that
+column by hand pre-execution). If the payload carries a per-SF column at all, the assembler renders
+what it is given — the protective rule stays out of scope until Mike asks for it.
 
 ## Validation status (pass one)
 
