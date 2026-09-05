@@ -137,6 +137,14 @@ serve(async (req) => {
 
         if (resp.ok && b.research_run_id) {
           await service.rpc('mark_chunk_fired', { p_chunk_id: a.chunk_id, p_run_id: b.research_run_id });
+        } else if (resp.status === 409) {
+          // Blocked by the one-live-run-per-site guard. Transient by nature —
+          // something is still live on this site and will terminalize (the
+          // reaper is the 90-min backstop). Leave the chunk in 'firing' with no
+          // run: advance_sweep re-fires it after 3 minutes. Marking it failed
+          // here would turn a wait into a spurious coverage gap. No Telegram —
+          // it would repeat every 3 min for as long as the block lasts.
+          console.warn('sweep chunk blocked by live-run guard, will retry:', a.chunk_index, b.detail);
         } else {
           // Trigger errored, or created a run but OpenClaw rejected (run already
           // marked failed inside the trigger). Isolate: mark chunk failed, alert,

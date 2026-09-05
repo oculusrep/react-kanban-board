@@ -183,6 +183,14 @@ Surfaced as a **⚠ DUP ACROSS RUNS** badge (with the other row's sweep chunk) i
 
 Rows staged before 2026-09-04 have `duplicate_of_staging_id` NULL and will not appear — the probe runs at staging time and is not retroactive.
 
+**PREVENTED 2026-09-05** — [`20260905120000_one_live_run_per_site.sql`](../supabase/migrations/20260905120000_one_live_run_per_site.sql).
+
+The probe above *detects* the collision after both runs have staged. This stops the second run from starting at all: `create_research_run_with_checklist` now refuses to create a run for a site that already has a non-terminal one, under a per-site advisory lock, and `ovis-research-trigger` returns HTTP 409 so the UI says "already running" rather than "server error".
+
+The two layers are complementary, not redundant — the guard cannot help rows already staged, and it is per-site, so a genuine cross-site collision still needs the probe.
+
+A run is only a live claim if nothing has already declared it dead: a run whose sweep chunk has reached `done`/`failed` is treated as disowned and does not block. Without that carve-out, a sweep whose orphan cleanup half-completed would block its own next chunk and turn a wait into a spurious coverage gap.
+
 ---
 
 ## Agent contract (MCP)

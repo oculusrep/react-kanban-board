@@ -389,7 +389,14 @@ serve(async (req) => {
       p_research_mode: researchMode,
     },
   );
-  if (createErr) return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
+  if (createErr) {
+    // 55006 (object_in_use) = the one-live-run-per-site guard. Not a server
+    // fault: the site already has an agent working. 409 so the UI can say so.
+    if ((createErr as { code?: string }).code === '55006') {
+      return jsonResponse({ error: 'run_already_active', detail: createErr.message }, 409);
+    }
+    return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
+  }
   const researchRunId = runId as string;
 
   // Build a human-readable site label used in Telegram notifications below.
