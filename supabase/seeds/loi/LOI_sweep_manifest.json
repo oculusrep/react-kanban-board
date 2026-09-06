@@ -1832,56 +1832,28 @@
     }
   ],
   "_unjoined_bodies": {
-    "_note": "Loaded canonical bodies with no paragraph in the 236-paragraph national template. Two are expected. FIVE ARE NOT - see below.",
-    "expected": {
-      "sale_of_property/main": "retired by transfer_supersedes_sale; para 196 is transfer_of_property. Correctly unjoined - if it ever matches a paragraph, investigate.",
-      "early_termination/placeholder": "the 'Intentionally Deleted' substitute emitted in place of para 93 when ETR is not requested. Substitute text has no template paragraph of its own."
-    },
-    "NOT_EXPECTED": {
-      "_finding": "These five have no paragraph anywhere in LOI_US__7_30_2026_.docx. They are not deferred, not retired, and not orphaned by a missing position - the national template simply does not contain them. This is the same signal as Douglasville's RIGHT OF FIRST REFUSAL: either they trace to the Southeast doc / handbook, or Bucket 1 is not actually empty. Needs provenance before the assembler is built.",
-      "future_construction/main": "Appears in the Powder Springs send as a FUTURE CONSTRUCTION clause between Construction Contingency and Initial Co-Tenancy. Not in the national template.",
-      "title_contingency/main": "Contingency Addendum clause.",
-      "recorded_documents/main": "Contingency Addendum clause.",
-      "third_party_approvals/main": "Contingency Addendum clause.",
-      "other_contingency/main": "Contingency Addendum clause.",
-      "_assembler_consequence": "The four Contingency Addendum clauses sit under a 'STARBUCKS LETTER OF INTENT - CONTINGENCY ADDENDUM' heading that follows the signature block in both completed LOIs and does NOT exist in the template. Payload contract B places content by template markers, headings, the R1 anchor, or template_paragraph - none of which can anchor a clause whose paragraph is absent. Under B an anchor that cannot be found is a hard failure, so as things stand the assembler cannot emit these five at all. Decide before building: does the addendum become a second skeleton appended after the template, or does the template get re-ingested from a drop that includes it?"
-    },
-    "rows": [
-      [
-        "early_termination",
-        "",
-        "placeholder"
-      ],
-      [
-        "future_construction",
-        "",
-        "main"
-      ],
-      [
-        "other_contingency",
-        "",
-        "main"
-      ],
-      [
-        "recorded_documents",
-        "",
-        "main"
-      ],
-      [
-        "sale_of_property",
-        "",
-        "main"
-      ],
-      [
-        "third_party_approvals",
-        "",
-        "main"
-      ],
-      [
-        "title_contingency",
-        "",
-        "main"
-      ]
-    ]
+    "_note": "Loaded canonical bodies claimed by NO paragraph in ANY skeleton. LIBRARY-WIDE registry — declared here, in the letter manifest, and nowhere else. kind='permanent' is correct forever; kind='pending' is expected to leave once its source lands, and is printed on every run so it cannot rot unnoticed.",
+    "entries": {
+      "sale_of_property/main": {
+        "kind": "permanent",
+        "reason": "Retired by transfer_supersedes_sale; the national template has no Sale of Property paragraph (para 196 is transfer_of_property). Body retained for provenance and Phase-2 redline matching. If a paragraph ever claims it, investigate."
+      },
+      "early_termination/placeholder": {
+        "kind": "permanent",
+        "reason": "The 'Intentionally Deleted' substitute emitted in place of para 93 when ETR is not requested. Substitute text has no template paragraph of its own."
+      },
+      "other_contingency/main": {
+        "kind": "pending",
+        "since": "2026-09-06",
+        "awaiting": "a send that actually uses Other Contingency",
+        "reason": "Opt-in, wizard-offered clause whose whole body is one free-text param. The addendum carries the OTHER CONTINGENCY heading (idx 16) but no body paragraph — Powder Springs left it unused, and headings are template-owned so the heading claims no body. Joins as soon as a source uses it."
+      },
+      "future_construction/main": {
+        "kind": "pending",
+        "since": "2026-09-06",
+        "awaiting": "its paragraph in the LETTER skeleton",
+        "reason": "Southeast additional clause, not part of the national template; sits mid-letter in the Powder Springs send between Construction Contingency and Initial Co-Tenancy. Leaves this list when the letter manifest gains its paragraph."
+      }
+    }
   }
 }

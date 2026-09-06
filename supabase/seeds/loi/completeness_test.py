@@ -49,7 +49,12 @@ Usage:
 import sys, json, glob, os
 import docx
 
-CATS = {"primary", "addon", "instruction", "letter_shell", "blocked", "empty"}
+# `heading` = emitted structural text belonging to the named clause, carrying NO canonical body.
+# Headings are TEMPLATE-OWNED (contract B rule 4): the assembler preserves the template's heading
+# run and replaces only the content after it, so no body supplies a heading. The letter template
+# fuses headings into the clause paragraph; the addendum has them as separate paragraphs, which is
+# why the category exists. Exempt from the body rules, exactly as `letter_shell` is.
+CATS = {"primary", "addon", "instruction", "letter_shell", "heading", "blocked", "empty"}
 CONTENT = {"primary", "addon"}                       # categories that must map to a loaded body
 SEED_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -111,8 +116,19 @@ def seed_inventory():
 
 
 def find_template(manifest):
-    """Best-effort locate the template .docx for the transition-detector cross-check."""
+    """Best-effort locate this skeleton's template .docx for the transition-detector cross-check.
+
+    A manifest whose `template` is null has no authoritative source (the addendum skeleton is
+    reconstructed from an executed LOI), so nothing is looked up — pointing the detector at the
+    document a manifest was derived FROM would be a tautology, not a check.
+    """
+    named = manifest.get("template")
+    if not named:
+        return None
     cands = sorted(glob.glob(os.path.join(SEED_DIR, "templates", "*.docx")))
+    exact = [c for c in cands if os.path.basename(c) == named]
+    if exact:
+        return exact[0]
     return cands[0] if len(cands) == 1 else None
 
 
@@ -140,175 +156,218 @@ def draft(template):
     return {"template": os.path.basename(template), "template_paragraphs": len(texts), "assignments": assignments}
 
 
-def run(manifest_path, template_path):
-    manifest = json.load(open(manifest_path))
+def check_manifest(manifest, manifest_path, template_path, inv):
+    """Rules 1-3 for ONE skeleton. Returns (problems, claimed, stats)."""
+    loaded_clauses, deferred_clauses, clause_has_body, reachable, unreachable = inv
+    name = manifest.get("skeleton") or os.path.basename(manifest_path)
     n = manifest.get("template_paragraphs")
     assignments = manifest.get("assignments") or {}
+    problems, deferred, per_body, claimed = [], [], [], set()
+    n_body_refs = 0
+
     if not isinstance(n, int):
-        print("manifest missing integer 'template_paragraphs'"); sys.exit(2)
+        return ([f"{name}: manifest missing integer 'template_paragraphs'"], claimed, None)
     if not isinstance(assignments, dict):
-        print("manifest 'assignments' must be a dict keyed by paragraph index"); sys.exit(2)
+        return ([f"{name}: 'assignments' must be a dict keyed by paragraph index"], claimed, None)
 
-    loaded_clauses, deferred_clauses, clause_has_body, reachable, unreachable = seed_inventory()
-
-    problems = []    # hard failures (gaps)
-    deferred = []    # primary/addon on a deliberately-deferred clause (visible, not a failure)
-    per_body = []    # content paragraphs eligible for the exact-body rule
-    n_body_refs = [0]
-
-    # (1)+(3): every paragraph index 0..n-1 present with a valid category
     for i in range(n):
         e = assignments.get(str(i))
         if e is None:
-            problems.append(f"para {i}: NO assignment (unassigned gap)")
-            continue
+            problems.append(f"{name} para {i}: NO assignment (unassigned gap)"); continue
         cat = e.get("category")
         if cat not in CATS:
-            problems.append(f"para {i}: unassigned/invalid category {cat!r} (gap)")
-            continue
-        # (2): primary/addon must map to a loaded canonical body.
-        # CLAUSE level first, then — when the manifest carries a `bodies` array (patch v2 onward) —
-        # EXACT-BODY level. The tighter rule is what catches a clause loaded with the wrong
-        # brace_code or a missing segment, which the clause-level check passes.
+            problems.append(f"{name} para {i}: unassigned/invalid category {cat!r} (gap)"); continue
+
+        # (2) primary/addon must map to a loaded canonical body — clause level, then exact-body.
         if cat in CONTENT:
             ck = e.get("clause")
             if not ck:
-                problems.append(f"para {i}: {cat} has no 'clause' ref")
+                problems.append(f"{name} para {i}: {cat} has no 'clause' ref")
             elif ck in deferred_clauses:
                 deferred.append((i, cat, ck))
             elif ck not in loaded_clauses:
-                problems.append(f"para {i}: {cat} references clause {ck!r} not loaded in any tranche")
+                problems.append(f"{name} para {i}: {cat} references clause {ck!r} not loaded in any tranche")
             elif not clause_has_body.get(ck):
-                problems.append(f"para {i}: {cat} references clause {ck!r} which has no loaded canonical body")
+                problems.append(f"{name} para {i}: {cat} references clause {ck!r} which has no loaded canonical body")
             else:
                 per_body.append(i)
 
-        # Exact-body resolution, for ANY category that declares bodies (letter_shell paragraphs carry
-        # them too). `bodies` lists what MAY occupy the paragraph — alternatives included — so this
-        # asserts every listed body RESOLVES, never that they all emit.
+        # A heading carries no body — that is the whole point of the category.
+        if cat == "heading" and e.get("bodies"):
+            problems.append(f"{name} para {i}: heading must not claim a body — headings are "
+                            f"template-owned and no canonical body supplies one")
+
+        # (3) exact-body resolution for any category that declares bodies.
         bodies = e.get("bodies")
         if bodies is not None:
             if not isinstance(bodies, list) or not bodies:
-                problems.append(f"para {i}: 'bodies' must be a non-empty array")
+                problems.append(f"{name} para {i}: 'bodies' must be a non-empty array")
             else:
                 for b in bodies:
                     if not isinstance(b, dict) or not b.get("segment_key"):
-                        problems.append(f"para {i}: body entry missing segment_key: {b!r}")
-                        continue
+                        problems.append(f"{name} para {i}: body entry missing segment_key: {b!r}"); continue
                     bck, bc, sk = b.get("clause_key"), b.get("brace_code"), b["segment_key"]
                     if bck:
                         if (bck, bc, sk) not in reachable:
-                            problems.append(
-                                f"para {i}: no loaded body {bck}/{bc or '-'}/{sk} "
-                                f"(clause+brace_code+segment_key must all match a loaded body)")
+                            problems.append(f"{name} para {i}: no loaded body {bck}/{bc or '-'}/{sk} "
+                                            f"(clause+brace_code+segment_key must all match a loaded body)")
                     elif (bc, sk) not in unreachable:
-                        problems.append(
-                            f"para {i}: body {bc or '-'}/{sk} has a null clause_key but is not a "
-                            f"declared position-less body")
-                    n_body_refs[0] += 1
+                        problems.append(f"{name} para {i}: body {bc or '-'}/{sk} has a null clause_key "
+                                        f"but is not a declared position-less body")
+                    claimed.add((bck, bc, sk))
+                    n_body_refs += 1
 
-    # (4) REVERSE COVERAGE: every loaded, position-reachable body must be CLAIMED by at least one
-    # paragraph. Rule 2 only proves a listed body exists; it cannot notice a body the manifest forgot
-    # to list, because a shorter `bodies` array still resolves. This is the direction that catches a
-    # dropped fragment or a body silently re-pointed to a sibling.
-    # NOTE what neither rule can catch: a PERMUTATION. Swapping two bodies of the same clause between
-    # two paragraphs leaves every reference resolving and every body claimed. Only reading body_text
-    # against the template settles that — as was done by hand for paras 69/71/73.
-    claimed = set()
-    for e in assignments.values():
-        for b in e.get("bodies") or []:
-            if isinstance(b, dict) and b.get("segment_key"):
-                claimed.add((b.get("clause_key"), b.get("brace_code"), b["segment_key"]))
-    unjoined_doc = manifest.get("_unjoined_bodies") or {}
-    allowed = {k for grp in ("expected", "NOT_EXPECTED")
-                 for k in (unjoined_doc.get(grp) or {}) if not k.startswith("_")}
-    if any(e.get("bodies") for e in assignments.values()):
-        unclaimed = sorted(f"{ck}/{sk}" if not bc else f"{ck}/{bc}/{sk}"
-                           for (ck, bc, sk) in reachable if (ck, bc, sk) not in claimed)
-        for u in unclaimed:
-            short = "/".join([u.split("/")[0], u.split("/")[-1]])
-            if short not in allowed and u not in allowed:
-                problems.append(f"loaded body {u} is claimed by NO manifest paragraph "
-                                f"(add it, or list it under _unjoined_bodies with a reason)")
-        stale = sorted(a for a in allowed
-                       if any(f"{ck}/{sk}" == a for (ck, bc, sk) in claimed if ck))
-        for a in stale:
-            problems.append(f"_unjoined_bodies lists {a} but a paragraph now claims it — stale entry")
-
-    # stray manifest entries beyond the declared paragraph range
     for k in assignments:
         try:
             ki = int(k)
         except (TypeError, ValueError):
-            problems.append(f"assignment key {k!r} is not an integer paragraph index")
-            continue
+            problems.append(f"{name}: assignment key {k!r} is not an integer paragraph index"); continue
         if ki < 0 or ki >= n:
-            problems.append(f"assignment key {ki} outside paragraph range 0..{n-1}")
+            problems.append(f"{name}: assignment key {ki} outside paragraph range 0..{n-1}")
 
-    # transition detector: cross-check against the real template docx if we can find it
-    docx_note = "manifest-only (template .docx not provided/found — transition detector SKIPPED)"
-    if template_path and os.path.exists(template_path):
+    # ---- transition detector -------------------------------------------------------------------
+    det = manifest.get("transition_detector") or {}
+    enabled = det.get("enabled", True)
+    if not enabled:
+        # Disabled is legitimate ONLY while no authoritative source exists. The moment one does, the
+        # flag must come off — otherwise "temporarily disabled" quietly becomes permanent.
+        docx_note = f"DISABLED for skeleton {name!r} — {det.get('reason','no reason recorded')}"
+        if manifest.get("template"):
+            problems.append(f"{name}: transition detector is disabled but the manifest names an "
+                            f"authoritative template ({manifest['template']!r}) — re-enable it")
+        elif template_path and os.path.exists(template_path):
+            problems.append(f"{name}: transition detector is disabled but an authoritative template "
+                            f"exists at {template_path} — re-enable it")
+    elif template_path and os.path.exists(template_path):
         texts = [p.text for p in docx.Document(template_path).paragraphs]
         docx_note = f"cross-checked against {os.path.basename(template_path)} ({len(texts)} paragraphs)"
         if len(texts) != n:
-            problems.append(f"template drift: docx has {len(texts)} paragraphs, manifest declares {n}")
+            problems.append(f"{name}: template drift — docx has {len(texts)} paragraphs, manifest declares {n}")
         for i in range(min(n, len(texts))):
-            e = assignments.get(str(i)) or {}
-            head = e.get("text_head")
+            head = (assignments.get(str(i)) or {}).get("text_head")
             if head:
-                # text_head is a human-recorded prefix with leading indentation stripped; ignore
-                # leading whitespace on both sides so pure indentation isn't flagged as drift.
                 actual = texts[i].replace("\r", "").lstrip()
                 if not actual.startswith(head.lstrip()):
-                    problems.append(f"para {i}: template text drift — docx {actual[:50]!r} does not start with manifest head {head.lstrip()[:50]!r}")
+                    problems.append(f"{name} para {i}: template text drift — docx {actual[:50]!r} "
+                                    f"does not start with manifest head {head.lstrip()[:50]!r}")
+    else:
+        docx_note = "manifest-only (template .docx not provided/found — transition detector SKIPPED)"
 
     from collections import Counter
     hist = Counter(e.get("category") for e in assignments.values())
-    content_total = hist.get("primary", 0) + hist.get("addon", 0)
-    print(f"template: {manifest.get('template')} | paragraphs: {n} | assignments: {len(assignments)}")
-    print(f"transition check: {docx_note}")
-    print("category histogram:", dict(hist))
-    print(f"content paragraphs (primary+addon): {content_total} — covered: {content_total - len(deferred)}, deferred: {len(deferred)}")
-    n_with_bodies = sum(1 for i in per_body if assignments[str(i)].get("bodies"))
-    if n_body_refs[0]:
-        print(f"exact-body rule: {n_body_refs[0]} body references resolved across "
-              f"{sum(1 for e in assignments.values() if e.get('bodies'))} paragraphs "
-              f"({n_with_bodies}/{len(per_body)} content paragraphs body-resolved)")
-        missing = [i for i in per_body if not assignments[str(i)].get("bodies")]
-        if missing:
-            print(f"  content paragraphs still CLAUSE-level only: {missing}")
-        n_reachable = len(reachable)
-        print(f"reverse coverage: {n_reachable - len([1 for t in reachable if t not in claimed])}"
-              f"/{n_reachable} loaded bodies claimed by a paragraph; "
-              f"{len(allowed)} documented as unjoined")
-    else:
-        print("exact-body rule: manifest carries no 'bodies' arrays — CLAUSE-level check only")
-    if deferred:
-        print("\nDEFERRED (clause base blocked; will cover when it loads):")
-        for i, cat, ck in deferred:
-            print(f"  - para {i}: {cat} on deferred clause {ck!r}")
-    if problems:
-        print(f"\nCOMPLETENESS FAILED — {len(problems)} problem(s):")
-        for pr in problems[:80]:
+    stats = {"name": name, "n": n, "assignments": len(assignments), "hist": dict(hist),
+             "docx_note": docx_note, "deferred": deferred, "per_body": per_body,
+             "n_body_refs": n_body_refs, "provisional": bool(manifest.get("provisional")),
+             "with_bodies": sum(1 for e in assignments.values() if e.get("bodies")),
+             "body_resolved": sum(1 for i in per_body if (assignments.get(str(i)) or {}).get("bodies"))}
+    return (problems, claimed, stats)
+
+
+def unjoined_registry(manifests):
+    """_unjoined_bodies is LIBRARY-WIDE: exactly one manifest may declare it."""
+    decls = [(mp, m["_unjoined_bodies"]) for mp, m, _ in manifests if m.get("_unjoined_bodies")]
+    if not decls:
+        return {}, ["no manifest declares '_unjoined_bodies' (the library-wide unjoined registry)"]
+    if len(decls) > 1:
+        return {}, [f"'_unjoined_bodies' declared by {len(decls)} manifests "
+                    f"({', '.join(os.path.basename(mp) for mp, _ in decls)}) — it is library-wide, "
+                    f"exactly one must declare it"]
+    doc = decls[0][1]
+    if "entries" in doc:
+        return {k: v for k, v in doc["entries"].items() if not k.startswith("_")}, []
+    # legacy shape: expected / NOT_EXPECTED maps of key -> reason string
+    out = {}
+    for grp in ("expected", "NOT_EXPECTED"):
+        for k, v in (doc.get(grp) or {}).items():
+            if not k.startswith("_"):
+                out[k] = {"kind": "permanent" if grp == "expected" else "pending", "reason": v}
+    return out, []
+
+
+def run(manifest_paths):
+    inv = seed_inventory()
+    reachable = inv[3]
+    manifests = []
+    for mp in manifest_paths:
+        m = json.load(open(mp))
+        manifests.append((mp, m, find_template(m)))
+
+    all_problems, claimed, all_stats = [], set(), []
+    for mp, m, tpl in manifests:
+        probs, cl, st = check_manifest(m, mp, tpl, inv)
+        all_problems += probs
+        claimed |= cl
+        if st: all_stats.append(st)
+
+    # ---- (4) REVERSE COVERAGE — ONCE, ACROSS THE UNION OF ALL SKELETONS ------------------------
+    # Every loaded, position-reachable body must be CLAIMED by some paragraph in SOME skeleton.
+    # Per-manifest this would be nonsense: every addendum body would read as unclaimed by the letter
+    # and vice versa. Reverse coverage is a library-wide question, so it is asked library-wide.
+    # Rule 2 only proves a listed body EXISTS; a shorter `bodies` array still resolves. This is the
+    # direction that catches a dropped fragment or a body re-pointed to a sibling.
+    # Neither rule catches a PERMUTATION: swapping two bodies of one clause between two paragraphs
+    # leaves every reference resolving and every body claimed. Only reading body_text settles that.
+    allowed, reg_problems = unjoined_registry(manifests)
+    all_problems += reg_problems
+    pending = []
+    if claimed:
+        def short(t): ck, bc, sk = t; return f"{ck}/{sk}"
+        def long(t):  ck, bc, sk = t; return f"{ck}/{sk}" if not bc else f"{ck}/{bc}/{sk}"
+        for t in sorted(reachable, key=long):
+            if t in claimed: continue
+            if short(t) not in allowed and long(t) not in allowed:
+                all_problems.append(f"loaded body {long(t)} is claimed by NO paragraph in any "
+                                    f"skeleton (add it, or list it under _unjoined_bodies)")
+        claimed_short = {f"{ck}/{sk}" for (ck, bc, sk) in claimed if ck}
+        for a, meta in sorted(allowed.items()):
+            if a in claimed_short:
+                all_problems.append(f"_unjoined_bodies lists {a} but a paragraph now claims it — stale entry")
+            elif (meta or {}).get("kind") == "pending":
+                pending.append((a, meta))
+
+    # ---- report --------------------------------------------------------------------------------
+    for st in all_stats:
+        flag = " [PROVISIONAL]" if st["provisional"] else ""
+        print(f"\n=== skeleton: {st['name']}{flag} | paragraphs: {st['n']} | assignments: {st['assignments']}")
+        print(f"    transition check: {st['docx_note']}")
+        print(f"    categories: {st['hist']}")
+        content = st["hist"].get("primary", 0) + st["hist"].get("addon", 0)
+        print(f"    content paragraphs: {content} — covered: {content - len(st['deferred'])}, "
+              f"deferred: {len(st['deferred'])}")
+        if st["n_body_refs"]:
+            print(f"    exact-body rule: {st['n_body_refs']} references across {st['with_bodies']} "
+                  f"paragraphs ({st['body_resolved']}/{len(st['per_body'])} content paragraphs body-resolved)")
+        for i, cat, ck in st["deferred"]:
+            print(f"    DEFERRED para {i}: {cat} on deferred clause {ck!r}")
+
+    print(f"\nreverse coverage (all skeletons): {len(reachable & claimed)}/{len(reachable)} loaded "
+          f"bodies claimed; {len(allowed)} documented as unjoined")
+    if pending:
+        # Printed EVERY run so a pending entry cannot rot unnoticed — the deferred half of the
+        # stale-allowlist risk rule 4 exists to catch.
+        print("    PENDING unjoined entries (expected to leave this list — check they still apply):")
+        for a, meta in pending:
+            since = f" since {meta['since']}" if meta.get("since") else ""
+            print(f"      - {a}{since} — awaiting {meta.get('awaiting','(unstated)')}")
+
+    if all_problems:
+        print(f"\nCOMPLETENESS FAILED — {len(all_problems)} problem(s):")
+        for pr in all_problems[:80]:
             print("  -", pr)
-        if len(problems) > 80:
-            print(f"  … and {len(problems)-80} more")
+        if len(all_problems) > 80:
+            print(f"  … and {len(all_problems)-80} more")
         sys.exit(1)
-    print("\nCOMPLETENESS PASSED — every paragraph assigned; every primary/addon maps to a loaded "
-          "canonical body (or a tracked deferred clause); nothing unassigned; every declared "
-          "body reference resolves to an exact loaded body.")
+    print("\nCOMPLETENESS PASSED — every paragraph of every skeleton assigned; every primary/addon "
+          "maps to a loaded canonical body (or a tracked deferred clause); every declared body "
+          "reference resolves to an exact loaded body; every loaded body is claimed or documented.")
 
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:]]
-    if not args:
-        print("usage: completeness_test.py <manifest.json> [template.docx]   |   --draft <template.docx>")
-        sys.exit(2)
-    if args[0] == "--draft":
-        if len(args) < 2:
-            print("usage: completeness_test.py --draft <template.docx>"); sys.exit(2)
-        print(json.dumps(draft(args[1]), indent=1, ensure_ascii=False))
-    else:
-        manifest_path = args[0]
-        template_path = args[1] if len(args) > 1 else find_template(manifest_path)
-        run(manifest_path, template_path)
+    if args and args[0] == "--draft":
+        print(json.dumps(draft(args[1]), indent=2)); sys.exit(0)
+    mans = [a for a in args if a.lower().endswith(".json")]
+    if not mans:
+        print("usage: completeness_test.py <manifest.json> [more-manifests.json ...]   |   "
+              "--draft <template.docx>"); sys.exit(2)
+    run(mans)

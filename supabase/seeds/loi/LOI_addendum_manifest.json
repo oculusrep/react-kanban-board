@@ -1,0 +1,174 @@
+{
+ "skeleton": "contingency_addendum",
+ "template": null,
+ "template_source": "1_SBUX LOI - Powder Springs Rd + EWC.docx (addendum section)",
+ "template_paragraphs": 17,
+ "manifest_version": "v2",
+ "transition_detector": {
+  "enabled": false,
+  "reason": "No authoritative addendum .docx exists. This skeleton is RECONSTRUCTED from an executed LOI, so there is nothing byte-exact to cross-check against. Pointing the detector at Powder Springs would validate the manifest against the document it was derived from - a tautology, not a check.",
+  "exit_condition": "Per Claude Code: print the disabled state visibly on every run, and FAIL if a skeleton has the detector disabled while an authoritative template file for it exists. Disabled must not quietly become permanent."
+ },
+ "provisional": true,
+ "_README": [
+  "PROVISIONAL addendum skeleton for the Starbucks Contingency Addendum. Second skeleton,",
+  "appended after the letter skeleton, ALWAYS-EMITTING - no gating, no applies_when.",
+  "Its own index space, 0-based, independent of the letter manifest.",
+  "",
+  "v2 CHANGES after Claude Code's review of v1:",
+  "  - Headings re-keyed from `primary` to the new `heading` category. The loaded bodies do NOT",
+  "    include their headings, so heading paragraphs have nothing behind them. The letter",
+  "    paras 229-235 pattern does not transfer - that is ONE body whose body_text spans several",
+  "    paragraphs, not two paragraphs sharing a body.",
+  "  - idx 0 re-keyed from `instruction` to `heading`. As `instruction` it would never emit and",
+  "    the addendum would ship with no title, though both sends carry one. Caught by Claude Code.",
+  "  - other_contingency/main is now claimed by NOTHING and must stay in _unjoined_bodies.",
+  "",
+  "NEW CATEGORY `heading`: emitted, carries no canonical body, rule-2 exempt exactly as",
+  "`letter_shell` is. Headings are TEMPLATE-OWNED - they never vary by deal and are supplied by",
+  "the skeleton, not by a body. This matches the letter convention where ~90 of 98 bodies",
+  "exclude their heading.",
+  "",
+  "WHY PROVISIONAL: there is no addendum .docx. Built from Powder Springs, the less-edited of",
+  "the two sends. Douglasville is an edited copy and diverges in four places (below), so neither",
+  "send is authoritative and Powder Springs is only the better reconstruction base.",
+  "",
+  "DIVERGENCES between the two sends, all resolved in favour of Powder Springs:",
+  "  1. Preamble (idx 2)    - present in Powder Springs, DELETED in Douglasville.",
+  "  2. Recorded Documents  - PS: '...Document to Starbucks approval to be recorded on ___.'",
+  "                           DGV: '...Document subject to Starbucks approval.' (no date at all)",
+  "  3. Third-party approv. - PS keeps the '[from _________]' bracket; DGV removes it.",
+  "  4. Exhibit C           - PS uses an en dash, DGV a hyphen. (Outside this skeleton's range.)",
+  "Divergence 1 is informative rather than a conflict: the preamble is a sample-language",
+  "INSTRUCTION, so a dealmaker deleting it is correct behaviour.",
+  "",
+  "SCOPE ends at idx 16 - Claude Code reviewed and did not veto. The exhibit block that follows",
+  "(A/B/C/G/L/N/R/S plus the Landlord Workletter) is ATTACHMENT machinery, already modelled by",
+  "loi_attachment_requirement. Modelling it as skeleton paragraphs would add ~40 paragraphs that",
+  "rule 2 cannot check and rule 4 does not touch.",
+  "",
+  "UNJOINED - companion change required, do not land this alone:",
+  "  OUT of _unjoined_bodies (they now have paragraphs):",
+  "    title_contingency/main, recorded_documents/main, third_party_approvals/main",
+  "  STAYS OUT of any manifest, so STAYS IN _unjoined_bodies:",
+  "    other_contingency/main - opt-in single free-text param; Powder Springs did not use it, so",
+  "    no content paragraph exists in the reconstruction to claim it. Revisit when a send that",
+  "    DOES use Other Contingency becomes available.",
+  "  ALSO OUT when it gets its letter-skeleton paragraph:",
+  "    future_construction/main - rides with this work without being part of it, easy to forget.",
+  "  Final allowlist should be THREE entries, not two:",
+  "    sale_of_property/main, early_termination/placeholder, other_contingency/main",
+  "",
+  "ALLOWLIST ENTRIES ARE NOT ALL THE SAME KIND - worth distinguishing in the schema so a later",
+  "reader does not treat them alike:",
+  "  sale_of_property/main         - retired. Correctly never joins. Permanent.",
+  "  early_termination/placeholder - substitute text with no template paragraph of its own.",
+  "                                  Permanent.",
+  "  other_contingency/main        - NOT YET OBSERVED in any source. Expected to join once a",
+  "                                  send using it appears. TEMPORARY, and nothing currently",
+  "                                  prompts anyone to revisit it - the same stale-allowlist",
+  "                                  risk rule 4 exists to catch, just deferred. Suggest a",
+  "                                  `reason` field with a permanent/pending distinction."
+ ],
+ "assignments": {
+  "0": {
+   "category": "heading",
+   "clause": null,
+   "note": "Addendum document title. EMITTED - both sends carry it. Was wrongly `instruction` in v1, which would have emitted the addendum with no title.",
+   "text_head": "STARBUCKS LETTER OF INTENT – CONTINGENCY ADDENDUM"
+  },
+  "1": {
+   "category": "empty"
+  },
+  "2": {
+   "category": "instruction",
+   "clause": null,
+   "note": "Addendum preamble - sample-language instruction, NEVER emitted. Douglasville deleted it, which is the confirmation.",
+   "text_head": "The following examples of sample language should be used and modified as appropriate durin"
+  },
+  "3": {
+   "category": "empty"
+  },
+  "4": {
+   "category": "heading",
+   "clause": "title_contingency",
+   "note": "Section heading. Template-owned, no canonical body.",
+   "text_head": "TITLE CONTINGENCY:"
+  },
+  "5": {
+   "category": "empty"
+  },
+  "6": {
+   "category": "primary",
+   "clause": "title_contingency",
+   "note": "Body. Trailing tab run is a landlord-fill date.",
+   "text_head": "Landlord shall become the fee simple owner of the property on or before\t\t.",
+   "bodies": [
+    {
+     "clause_key": "title_contingency",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "7": {
+   "category": "empty"
+  },
+  "8": {
+   "category": "heading",
+   "clause": "recorded_documents",
+   "note": "Section heading. Template-owned, no canonical body.",
+   "text_head": "RECORDED DOCUMENTS:"
+  },
+  "9": {
+   "category": "empty"
+  },
+  "10": {
+   "category": "primary",
+   "clause": "recorded_documents",
+   "note": "Body. Trailing tab run is a landlord-fill date. DIVERGENCE: Douglasville drops 'to be recorded on' and the date entirely.",
+   "text_head": "The Lease will be subject to a Declaration or Recorded Document to Starbucks approval to b",
+   "bodies": [
+    {
+     "clause_key": "recorded_documents",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "11": {
+   "category": "empty"
+  },
+  "12": {
+   "category": "heading",
+   "clause": "third_party_approvals",
+   "note": "Section heading. Template-owned, no canonical body.",
+   "text_head": "THIRD-PARTY USE AND DEVELOPMENT APPROVALS, WAIVERS, OR CONSENTS:"
+  },
+  "13": {
+   "category": "empty"
+  },
+  "14": {
+   "category": "primary",
+   "clause": "third_party_approvals",
+   "note": "Body. DIVERGENCE: Douglasville drops the '[from _________]' bracket. Trailing tab run is a landlord-fill date.",
+   "text_head": "Landlord shall deliver all appropriate approvals, waivers, or consents [from _________] fo",
+   "bodies": [
+    {
+     "clause_key": "third_party_approvals",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "15": {
+   "category": "empty"
+  },
+  "16": {
+   "category": "heading",
+   "clause": "other_contingency",
+   "note": "Section heading with NO body paragraph in either send. other_contingency/main is a single free-text param the dealmaker fills; Powder Springs did not use it, so no content paragraph exists to claim it. See UNJOINED note.",
+   "text_head": "OTHER CONTINGENCY:"
+  }
+ }
+}

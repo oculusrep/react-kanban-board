@@ -965,77 +965,74 @@ not rediscovered from the handbook a third time.
 **Freestanding is down to two blockers:** (1) Contingency Addendum provenance, (2) the R0 annual
 schedule shape, which rides the column-insert contract.
 
-## Addendum manifest v1 — REVIEWED, NOT LANDED (2026-09-06)
+## Addendum skeleton LANDED + heading rule (contract B rule 4) — 2026-09-06
 
-Held at `supabase/seeds/loi/LOI_addendum_manifest.PROPOSED.json` pending a re-key. Shape, index space,
-`skeleton` key, provisional marking and divergence record are all correct as sent. Three checks were
-asked for; two need changes.
+`LOI_addendum_manifest.json` landed with its companion change. 17 paragraphs, own 0-based index space,
+`skeleton: contingency_addendum`, provisional throughout, always-emitting. Headings re-keyed:
+idx 0/4/8/12/16 `heading`, idx 6/10/14 `primary` with 3 bodies claimed.
 
-### 1. HEADINGS — the bodies EXCLUDE their headings. Re-key required.
+### HEADINGS ARE TEMPLATE-OWNED — contract B gains a fourth placement/strip rule
 
-Checked the loaded `body_text` directly:
-- `title_contingency/main` → "Landlord shall become the fee simple owner of the property on or before
-  {{param:title_contingency_blank_1}} ." — **no heading.**
-- `recorded_documents/main`, `third_party_approvals/main` → same, body text only.
-- `other_contingency/main` → `{{param:other_contingency_text}}`, a bare param.
+**Mike's finding, and Powder Springs settles it.** Powder Springs emits
+**"EARLY TERMINATION:  Intentionally Deleted"** — the heading SURVIVES when the body is replaced by
+the placeholder, so the heading cannot be body-owned.
 
-So mapping heading + body to the same canonical body is wrong here: idx 4/8/12/16 are heading
-paragraphs with nothing behind them. The 229–235 pattern does not apply — that is one BODY whose own
-`body_text` spans several paragraphs, not two paragraphs sharing one body.
+> **B4. The heading run is TEMPLATE-OWNED.** The assembler preserves the template's heading run and
+> replaces only the content after it, exactly as it strips the `[{CODE}]` marker run. A heading is
+> never emitted from a canonical body, and never duplicated.
 
-**Also idx 0.** "STARBUCKS LETTER OF INTENT – CONTINGENCY ADDENDUM" is categorised `instruction`,
-which by this manifest's own semantics means never emitted — so the addendum would emit **with no
-title**, though both completed LOIs carry it. Idx 2 (the sample-language preamble) is correctly
-`instruction`; Mike's reasoning there is right and Douglasville deleting it confirms it.
+This inverts my sweep's conclusion in the right direction: `audit_right/main`,
+`early_termination/main` and `trash_recycling` (the **uncoded base** body only — TR0/TR1/TR2 are
+clean) are the wrong three; the other ~90 are correct. Right ratio, right semantics.
 
-**Recommended fix: a new category `heading`** — emitted structural text belonging to the named clause,
-carrying no canonical body, exempt from rule 2 exactly as `letter_shell` is. Then idx 0 and idx
-4/8/12/16 are `heading`, and the content paragraphs are 6/10/14. The alternative — extending the four
-bodies to include their headings — is rejected: it would change Mike's body text and contradict the
-letter convention, where ~90 bodies exclude their heading.
+**`early_termination/placeholder` is CLEAN** — its body is exactly `Intentionally Deleted`, no
+embedded heading. Mike was right to ask, since it emits on every deal under the ETR standing default,
+but it needs no fix. The four texts were sent for a heading-stripped patch tranche with a
+`_supersedes` block; three need stripping, one does not.
 
-### 2. CONSEQUENCE: the allowlist ends at THREE entries, not two
+New manifest category **`heading`** — emitted structural text belonging to the named clause, carrying
+no canonical body, exempt from the body rules exactly as `letter_shell` is. The letter template fuses
+headings into the clause paragraph; the addendum has them separate, which is why the category exists.
+The test now FAILS if a `heading` paragraph claims a body.
 
-Verified against the Powder Springs source: `OTHER CONTINGENCY:` (idx 16) is a **heading with no body
-paragraph** — idx 17/18 are empty and the exhibit block starts at 19. That is consistent with
-`other_contingency` being an opt-in, wizard-offered clause whose entire body is one free-text param;
-Powder Springs simply did not use it.
+### `_unjoined_bodies` — permanent vs pending (Mike's suggestion, schema mine)
 
-So once headings stop claiming bodies, `other_contingency/main` is claimed by **no** paragraph and must
-STAY in `_unjoined_bodies` with a reason. Final state after the companion change:
-`sale_of_property/main`, `early_termination/placeholder`, **and `other_contingency/main`** — not the
-two Mike expected. Rule 4 will say so if it is dropped.
+Restructured to a flat `entries` map, each with a `kind`:
+- **`permanent`** — correct forever: `sale_of_property/main` (retired), `early_termination/placeholder`
+  (the substitute text has no paragraph of its own).
+- **`pending`** — expected to leave, with `since` and `awaiting`: `other_contingency/main` (awaiting a
+  send that uses Other Contingency) and `future_construction/main` (awaiting its LETTER paragraph).
 
-### 3. SCOPE — agreed, no veto
+**Pending entries print on EVERY run**, so the deferred half of the stale-allowlist risk is visible
+rather than invisible. No age threshold — a timer would be an assertion with no fixture behind it, and
+that is the mistake this project keeps not making. Visibility every run is the check.
 
-Ending at idx 16 is right. The exhibit block is attachment machinery and `loi_attachment_requirement` /
-`loi_attachment_task` already model it. Categorising ~40 paragraphs with nothing behind them would
-create manifest surface rule 2 cannot check and rule 4 does not touch — liability with no assertion
-attached. (When the Starbucks source file turns up, `template_paragraphs` grows past 17; expected.)
+Legacy `expected` / `NOT_EXPECTED` shape still parses, mapped to permanent / pending.
 
-### 4. TRANSITION DETECTOR — agreed disabled, with one addition
+### completeness_test.py — multi-skeleton
 
-Mike's reasoning holds: validating a reconstruction against the document it was reconstructed from is a
-tautology, and a loud failure every run trains people to ignore failures. Disabled-with-a-stated-reason
-is the right call.
+Rules 1–3 run **per manifest** (each has its own paragraph range and its own template). Rule 4 runs
+**ONCE across the UNION of claims from all skeletons** — per-manifest it would report every addendum
+body as unclaimed by the letter and vice versa. `_unjoined_bodies` is library-wide: exactly one
+manifest may declare it, and the test fails if none or two do.
 
-**Addition, so "disabled" cannot quietly become permanent:** the test should print the disabled state
-visibly every run (a notice, not a failure), and **FAIL if a skeleton has the detector disabled while
-an authoritative template file for it exists.** That turns a standing hole into a tracked state with an
-exit condition — the moment the Starbucks addendum file lands, the flag cannot be left off by accident.
+**Transition detector** is per-skeleton. Disabled is legitimate only while no authoritative source
+exists: the disabled state prints visibly every run, and the test **FAILS if a skeleton has the
+detector disabled while an authoritative template exists** — so "temporarily disabled" cannot quietly
+become permanent.
 
-### SEPARATE FINDING (letter skeleton, not the addendum): three bodies embed their headings
+### Mutation-tested, five for five
 
-Sweeping all 98 loaded bodies for a leading ALL-CAPS heading turned up exactly three that include it —
-`audit_right/main` ("AUDIT RIGHT: Tenant shall have…"), `early_termination/main` ("EARLY TERMINATION:
-Upon giving Landlord…"), `trash_recycling/main` ("TRASH AND RECYCLING: In accordance with…"). The other
-~90 exclude it.
+| mutation | result |
+|---|---|
+| detector disabled while the manifest names a template | **FAILS** — "re-enable it" |
+| a `heading` paragraph claims a body | **FAILS** |
+| two manifests declare `_unjoined_bodies` | **FAILS** — "exactly one must declare it" |
+| `other_contingency/main` dropped from the allowlist | **FAILS** — claimed by no paragraph |
+| letter manifest run ALONE | **FAILS** — addendum bodies unclaimed, proving the union is load-bearing |
 
-This is an assembler-correctness bug in waiting. Contract B strips the `[{CODE}]` marker run as part of
-placement but says nothing about the heading run. If placement preserves the template's heading, those
-three emit their heading **twice**; if it strips the heading, the other ~90 lose theirs. It would
-surface at the acceptance test as an unexplained diff. **Body text is Mike's** — reported, not patched.
-Decide the heading rule before the assembler, and make it explicit in contract B.
+Green state: letter 105 references / 92 paragraphs / 74 of 74 content body-resolved; addendum 3 / 3 /
+3 of 3; reverse coverage 90 of 94 claimed, 4 documented unjoined (2 permanent, 2 pending).
 
 ## Standing rule: a ranked ladder is exclusive BY CONSTRUCTION (2026-09-06)
 
