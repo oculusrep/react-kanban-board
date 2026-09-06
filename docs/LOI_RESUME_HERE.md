@@ -60,11 +60,15 @@ Two files were received but NOT yet loaded/committed:
    clause/position + `loi_exclusion_violations()` + `loi_selectable_position`. TWO exclusions
    (`transfer_supersedes_sale`, `pylon_panel_existing_xor_new`); `sale_of_property` de-activated;
    ROFR/ROFO deliberately NOT built. 13/13 tests in `loi_negative_tests_v9.sql`. See the decisions doc.
-5. **Next:** payload contract A–E is now **written out in full** in the decisions doc (it had only
-   ever existed as a one-line summary). Mike reads and signs off → build the assembler → minimal
+5. ~~Payload contract~~ **SIGNED OFF 2026-09-06 as A–F.** B/D/E as written; A amended with the
+   landlord-fill sentinel; C amended to HALT (not strip) on deferred/blocked/unloaded clauses; F added
+   — OVIS enforces exclusions and the assembler does not re-check. Library support for A and C is
+   built (migration 20260906120000, 10/10 in loi_negative_tests_v11.sql). **Next:** build the assembler → build the assembler → minimal
    wizard → **Powder Springs acceptance test** (regenerate end-to-end from deal terms, diff vs
    `fixtures/`, every difference explainable).
-   **Assembler contract reminders now in force:** select positions from `loi_selectable_position`
+   **Assembler contract reminders now in force (full text: payload contract A–F):**
+   OVIS owns exclusion enforcement and the deferred-clause halt — the assembler re-checks neither;
+   param entries are typed `{kind: value|landlord_fill|omit}` and absence is a hard error; select positions from `loi_selectable_position`
    (never `loi_position` directly); run `loi_exclusion_violations()` over the selection before
    emitting — `drop-b` resolves silently, `halt` stops the run; and join same-template-paragraph
    fragments across positions into ONE paragraph (standing rule from the closing-statement split).

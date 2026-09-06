@@ -158,7 +158,8 @@ BEGIN
 EXCEPTION WHEN others THEN RAISE NOTICE 'TEST N6 position-inactive-no-reason: PASS (rejected: %)', SQLERRM; END $$;
 
 -- P7 — an inactive CLAUSE hides its still-active positions from loi_selectable_position
-UPDATE loi_clause SET is_active = false, inactive_reason = 'test' WHERE clause_key='x_excl_a';
+-- retired/deferred split (migration 20260906120000) requires a kind on every de-activation.
+UPDATE loi_clause SET is_active = false, inactive_reason = 'test', unavailable_kind = 'retired' WHERE clause_key='x_excl_a';
 DO $$
 DECLARE n INT;
 BEGIN

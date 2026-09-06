@@ -809,10 +809,11 @@ sources with SIG0 default; **Powder Springs resolves to SIG1**. Negatives: a neg
 `template_paragraph` and an `alternative` carrying `emit_order` are both rejected. v9 still 13/13;
 `completeness_test.py` still green (74 covered / 2 deferred).
 
-## Payload contract A–E (expanded in full — 2026-09-05, awaiting Mike's sign-off)
+## Payload contract A–F (SIGNED OFF 2026-09-06)
 
-Previously recorded only as a one-line summary per item, which is not something anyone can approve.
-Written out here in full. **Nothing below is agreed yet.**
+Mike signed off on **B, D, E as written**; **A and C carry amendments**; and **F was missing entirely**.
+All six are now agreed. Previously this section existed only as a one-line summary per item, which is
+not something anyone can approve.
 
 The payload is the single object OVIS hands the assembler service. It is **self-contained** (the
 assembler reads no database), **text-in** (it carries resolved body text, not ids to look up),
@@ -820,18 +821,60 @@ assembler reads no database), **text-in** (it carries resolved body text, not id
 verbatim** as the operation log — the audit answer to "why does this LOI say that" is the payload,
 not a re-derivation.
 
-### A — Tokens stay in `body_text`; param values ride alongside
+### A — Tokens stay in `body_text`; param values ride alongside (AMENDED)
 
 `body_text` arrives exactly as stored, `{{param:key}}` tokens intact. Alongside it the payload carries
-an explicit map of `param_key → value` for every token in that body. The assembler substitutes
-mechanically: find token, replace with value, no lookups and no defaulting.
+an explicit map of `param_key → entry` for every token in that body. The assembler substitutes
+mechanically: find token, replace, no lookups and no defaulting.
 
-- Every token MUST have an entry. A missing key is a payload error, not an empty string — silently
+- Every token MUST have an entry. **Absence is a hard error**, never an empty string — silently
   emitting a blank is how a document goes out with a hole in it.
 - Which value won (preferred vs fallback vs free fill) is decided in OVIS, where the concession record
   lives. The assembler is not told there was a choice.
-- `is_omit` options resolve to the empty string, and OVIS marks them so the surrounding whitespace is
-  the assembler's problem, not a stray double space.
+
+**AMENDMENT (Mike, 2026-09-06) — the landlord-fill sentinel.** A flat `key → string` map contradicted
+the acceptance test, which allows *zero unresolved brackets EXCEPT declared landlord-fill*. Several
+params are deliberately completed by the landlord after we send — `sig_day`, `sig_month`, `sig_year`,
+`sig_ll_line`, `sig_ll_name`, `sig_ll_title`, `tic_point_of_contact` — and those must emit as the blank
+rule, not fail the run. **Empty string is not the sentinel: it is indistinguishable from a bug.**
+
+So a payload param entry is a TYPED OBJECT with exactly three kinds:
+
+```json
+"sig_tenant_name":      {"kind": "value",         "value": "Jane Doe"}
+"sig_ll_name":          {"kind": "landlord_fill", "render": "_______________________"}
+"some_optional_phrase": {"kind": "omit"}
+```
+
+- `value` — substitute `value`. It MUST be non-empty; a deliberate blank is `omit`, never `""`.
+- `landlord_fill` — emit `render` verbatim, and the token **counts as RESOLVED** for the acceptance
+  test. This is the sentinel, and it is explicit by construction: no string value can be mistaken for
+  it, and no absence can be mistaken for it either.
+- `omit` — the library's `is_omit` option was chosen; emits the empty string DELIBERATELY. OVIS marks
+  it so surrounding whitespace is OVIS's problem, not a stray double space.
+- Absence of the key entirely — hard error, unchanged.
+
+**Library support built** (migration `20260906120000`): `param_kind` gains a fourth value
+`landlord_fill`, plus `landlord_fill_render TEXT`, present iff the kind is `landlord_fill` and never
+empty. A fourth *kind* rather than a boolean beside `fill`, because `param_kind` already answers "how
+does this resolve" and these resolve by a rule nobody supplies a value for — a boolean would make two
+fields answer one question and force every consumer to check both.
+
+The seven params Mike named are re-keyed. Their `note` fields already said "LANDLORD COMPLETES" in
+prose; this promotes that prose to the rigid spine, so the acceptance-test exception finally has a
+*declaration* to point at instead of a naming convention. Renders are the template's own underscore
+runs, verbatim and per-param (`______` vs `_______________` vs `______________________________`),
+verified against `LOI_US_7_30_2026.docx` paras 15 and 229–235 — the widths differ and are not
+guessable.
+
+**OPEN — needs Mike:** the eighth item on his list, "the CAM/tax/insurance blanks", is ambiguous and
+was deliberately NOT re-keyed. Two candidate sets exist and they mean different things:
+- `cam0_cam_psf` / `cam0_tax_psf` / `cam0_insurance_psf` — notes read "Annual cap, …", i.e. NEGOTIATED
+  caps we supply, which would make them ordinary `fill`, not landlord-fill.
+- `prs_cam_blank_2` / `prs_ins_blank_2` / `prs_tax_blank_1` — notes read "Free-fill blank from template
+  underscore run", which looks much more like landlord-completed pro-rata shares.
+
+Guessing here would put a blank rule where a negotiated number belongs, so the call is Mike's.
 
 *Rejected alternative:* pre-substituting in OVIS and shipping finished text. That would make the
 emitted text unattributable to a canonical body, breaking Phase-2 redline matching.
@@ -846,15 +889,54 @@ for paragraph-anchored positions such as the closing frame and the signature blo
 - Brace codes are NEVER emitted. Stripping the marker run is part of placement.
 - An anchor that cannot be found is a hard failure. The assembler never guesses a location.
 
-### C — The assembler emits what is in the payload and strips everything else
+**RECORDED DEPENDENCY (Mike, 2026-09-06).** Tier (2), section-heading matching for uncoded content, is
+the fragile tier: a template drop that merely REWORDS a heading breaks it **silently** — the anchor is
+simply not found, and the failure looks like a placement bug rather than a template change. What
+catches that is the docx cross-check in `completeness_test.py` (the template-transition detector,
+which compares `text_head` after `lstrip` for every paragraph). **That cross-check is load-bearing for
+tier 2. Do not "simplify" or drop the heading matcher, and do not weaken the transition detector,
+without replacing the guard first.**
+
+### C — Strip by default, but HALT on absence (AMENDED)
 
 Anything in the template not claimed by a payload entry is REMOVED: unfired instructions, unselected
 alternatives, leftover bracketed guidance. The default is deletion, not retention.
 
 - This is what makes the acceptance test meaningful: emitted output with **zero brackets and zero
-  codes**, or fail.
+  codes** (landlord-fill renders excepted, per A), or fail.
 - It also means an omission bug produces a visibly missing clause rather than a template artifact
   quietly shipping to a landlord.
+
+**AMENDMENT (Mike, 2026-09-06).** Strip-by-default is right; the failure mode as originally written
+was not. "Anything not claimed is removed" does not distinguish content the payload **deliberately did
+not claim** from content it **could not claim because the library does not have it yet**. Today
+`landlord_work` (LCW0/1/2) and R0/R1 are deferred and unloaded. Under C as first written, a deal
+needing an allowance clause would emit a document with the Landlord Contribution section silently
+deleted — and it would reach a landlord looking clean.
+
+> **If a deal's facts require a clause that is deferred, blocked, or not loaded, the run HALTS. It
+> does not strip. Deletion is legal only for content the payload CHOSE not to claim; never for content
+> the library cannot yet supply.**
+
+This is the same principle as the exclusion `halt`: the assembler stops rather than guessing, applied
+to **absence** instead of **conflict**.
+
+**Library support built** (migration `20260906120000`). `is_active = false` previously meant one thing;
+it now has to mean two opposite things, so the flag is split by `unavailable_kind`:
+- `retired` — decided; never emits again (`sale_of_property`, superseded by Transfer). A deal that
+  would have used it is fine; strip and continue.
+- `deferred` — a known library gap (`landlord_work`). A deal whose facts require it **halts**.
+
+A CHECK ties the two together: an inactive clause must declare which kind, an active one must carry
+neither. `landlord_work` is now REGISTERED as a deferred clause with no positions and no bodies —
+the point is precisely that it is absent, but **OVIS cannot halt on a clause it has never heard of**,
+and "not loaded" is unrepresentable as silence. View `loi_deferred_clause` is the assembler's
+"may I proceed" question in one place: OVIS intersects it with the deal's required clauses and halts
+on any overlap.
+
+R0/R1 sit inside clauses that ARE loaded, so they are a position-level gap rather than a clause-level
+one. Registering them the same way is deferred until the rent-schedule column-insert contract is
+built, since that is the work that resolves them.
 
 ### D — `modified` is OVIS-computed metadata; `body_text` is authoritative
 
@@ -879,6 +961,26 @@ rounded to cents; monthly = yearly / 12). The assembler renders the table per
 **Open question on E:** the `$/SF` final-period drop rule is deferred by choice (Mike strips that
 column by hand pre-execution). If the payload carries a per-SF column at all, the assembler renders
 what it is given — the protective rule stays out of scope until Mike asks for it.
+
+### F — OVIS enforces exclusions; the assembler does NOT re-check (ADDED)
+
+**Mike, 2026-09-06: this was missing from all five and is now explicit.** The selection contract built
+with `loi_clause_exclusion` — select from `loi_selectable_position`, run `loi_exclusion_violations()`
+before emitting — never said WHERE it runs. Left unsaid it would be done twice or done nowhere.
+
+> **OVIS runs the exclusion check and builds the payload from an already-legal selection. The
+> assembler does not re-check.**
+
+- It could not do it properly anyway: A–E make the assembler self-contained and database-free, and
+  `loi_exclusion_violations()` is a database function over the library.
+- So the payload is a *post-validation artifact*. By the time it exists, `supersedes` has already been
+  resolved (the superseded position dropped) and `mutually-exclusive` has already halted the run in
+  OVIS, where a human can answer the deal-fact question.
+- Same ownership for the C halt: OVIS checks `loi_deferred_clause` against the deal's required clauses
+  and refuses to build a payload at all. The assembler never sees a run it should have stopped.
+- Consequence for the operation log: because the payload is persisted verbatim, it records a selection
+  that was legal at assembly time. A later library change cannot retroactively make a shipped LOI look
+  invalid — the exclusions that applied are the ones the payload was built under.
 
 ## Validation status (pass one)
 

@@ -22,7 +22,7 @@ CODE_STATUS = {"confirmed", "provisional"}
 RULE_STATUS = {"confirmed", "provisional-pending-director"}
 AUTHORITY = {"national-handbook", "southeast-regional", "self-authored"}
 FIRING = {"per-deal", "standing-acknowledged", "on-deviation"}
-PARAM_KINDS = {"concession", "choose_one", "fill"}
+PARAM_KINDS = {"concession", "choose_one", "fill", "landlord_fill"}
 REF_KINDS = {"deal_field", "clause_selection", "clause_field", "position_selection"}
 OPERATORS = {"eq","neq","lt","lte","gt","gte","within_days_of","is_selected","not_selected","exists","not_exists"}
 PARAM_TOKEN = re.compile(r"\{\{param:[^}]+\}\}")   # valid token; removed before scanning for strays
@@ -90,6 +90,16 @@ def validate(d):
                 if p.get("preferred_value") or p.get("fallback_value"):
                     E(f"body {ref} param {p.get('param_key')}: fill must not have preferred/fallback")
                 if p.get("options"): E(f"body {ref} param {p.get('param_key')}: fill must not carry options")
+                if p.get("landlord_fill_render"):
+                    E(f"body {ref} param {p.get('param_key')}: only landlord_fill carries landlord_fill_render")
+            elif pk == "landlord_fill":
+                # The landlord completes this by hand after we send. Nobody on our side supplies a
+                # value, so it emits the template's blank rule and still counts as RESOLVED.
+                if p.get("preferred_value") or p.get("fallback_value"):
+                    E(f"body {ref} param {p.get('param_key')}: landlord_fill must not have preferred/fallback")
+                if p.get("options"): E(f"body {ref} param {p.get('param_key')}: landlord_fill must not carry options")
+                if not p.get("landlord_fill_render"):
+                    E(f"body {ref} param {p.get('param_key')}: landlord_fill needs landlord_fill_render (the exact blank rule; an empty one is indistinguishable from a bug)")
 
     dqs = {q["question_key"] for q in d.get("director_questions", [])}
 
@@ -258,8 +268,8 @@ def emit_sql(d):
                    f"({q(bid)},{q(b.get('brace_code'))},{q(b['source'])},{q(b.get('version','v1'))},{q(b['segment_key'])},{q(b['body_text'])});")
         for p in b.get("parameters", []) or []:
             pid = str(uuid.uuid4())
-            out.append(f"INSERT INTO loi_body_parameter (id,canonical_body_id,param_kind,param_key,preferred_value,fallback_value,value_unit,code_status,note) VALUES "
-                       f"({q(pid)},{q(bid)},{q(p['param_kind'])},{q(p['param_key'])},{q(p.get('preferred_value'))},{q(p.get('fallback_value'))},{q(p.get('value_unit'))},{q(p.get('code_status','confirmed'))},{q(p.get('note'))});")
+            out.append(f"INSERT INTO loi_body_parameter (id,canonical_body_id,param_kind,param_key,preferred_value,fallback_value,value_unit,code_status,note,landlord_fill_render) VALUES "
+                       f"({q(pid)},{q(bid)},{q(p['param_kind'])},{q(p['param_key'])},{q(p.get('preferred_value'))},{q(p.get('fallback_value'))},{q(p.get('value_unit'))},{q(p.get('code_status','confirmed'))},{q(p.get('note'))},{q(p.get('landlord_fill_render'))});")
             for i, o in enumerate(p.get("options", []) or []):
                 out.append(f"INSERT INTO loi_body_parameter_option (body_parameter_id,option_value,is_free_fill,is_omit,sort_order) VALUES "
                            f"({q(pid)},{q(o.get('option_value'))},{q(o.get('is_free_fill',False))},{q(o.get('is_omit',False))},{q(o.get('sort_order',i))});")
