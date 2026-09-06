@@ -74,10 +74,24 @@ BEGIN
   SELECT unavailable_kind INTO r   FROM loi_clause WHERE clause_key = 'sale_of_property';
   SELECT unavailable_kind INTO dfr FROM loi_clause WHERE clause_key = 'landlord_work';
   SELECT count(*) INTO n_def FROM loi_deferred_clause;
-  IF r = 'retired' AND dfr = 'deferred' AND n_def = 1
+  -- 2 deferred: landlord_work and rent (both known library gaps). A retired clause must NOT appear.
+  IF r = 'retired' AND dfr = 'deferred' AND n_def = 2
      AND NOT EXISTS (SELECT 1 FROM loi_deferred_clause WHERE clause_key = 'sale_of_property') THEN
     RAISE NOTICE 'TEST P3 retired-vs-deferred: PASS (sale=retired strips; landlord_work=deferred halts)';
   ELSE RAISE WARNING 'TEST P3 retired-vs-deferred: FAIL (sale=%, lw=%, deferred_view=%)', r, dfr, n_def; END IF;
+END $$;
+
+-- P3b — the deferred registry covers BOTH known library gaps. Powder Springs needs R1 (its rent
+--       table carries the Per Square Foot column) and LCW0 (workletter + $75,000 allowance), so the
+--       acceptance test must halt on both, not strip either.
+DO $$
+DECLARE missing TEXT;
+BEGIN
+  SELECT string_agg(k, ', ') INTO missing
+    FROM (VALUES ('rent'), ('landlord_work')) AS want(k)
+   WHERE NOT EXISTS (SELECT 1 FROM loi_deferred_clause d WHERE d.clause_key = want.k);
+  IF missing IS NULL THEN RAISE NOTICE 'TEST P3b deferred-registry-complete: PASS (rent + landlord_work)';
+  ELSE RAISE WARNING 'TEST P3b deferred-registry-complete: FAIL (missing: %)', missing; END IF;
 END $$;
 
 -- P4 — a deferred clause is NOT selectable (it has nothing to select) but IS discoverable, which is

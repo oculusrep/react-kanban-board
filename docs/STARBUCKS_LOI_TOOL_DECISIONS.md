@@ -895,6 +895,38 @@ traces to a Starbucks source" claim needs retiring. Same call outstanding for Do
 FIRST REFUSAL. Needed before the assembler is built, since the second-skeleton work depends on knowing
 what the addendum actually is.
 
+## Powder Springs acceptance test is GATED — and registering `rent` closed a live C failure (2026-09-06)
+
+Mike asked whether regenerating Powder Springs today hits the deferred halt. It does, and checking
+turned up something worse than the answer.
+
+**Verified against `fixtures/1_SBUX LOI - Powder Springs Rd + EWC.docx`:**
+- Table 0 is 11x4 with a **Per Square Foot** column → the deal needs **R1**, not R0.
+- Para 49: "Landlord will, at its expense, perform the work described on the attached Landlord
+  Workletter. Landlord will also provide Tenant an improvement allowance of $75,000" → **LCW0**.
+
+Both are deferred, so a faithful run HALTS. **The acceptance test is gated on the rent-table
+column-insert / allowance contract, not on the assembler.** The assembler can be built and unit-tested;
+it just cannot be acceptance-tested end-to-end on Powder Springs until R0/R1 + LCW0/1/2 load.
+`LOI_RESUME_HERE.md` said "nothing blocks it", which implied the test was reachable. Corrected.
+
+**THE LIVE FAILURE.** The halt only worked for one of the two. `landlord_work` was registered as a
+deferred clause; the RENT SCHEDULE was registered **nowhere** — there was no `rent` row in `loi_clause`
+at all. The sweep manifest assigns paras 36–47 and 49–61 to clause `rent`, but nothing in the library
+ever declared it, so `loi_deferred_clause` did not list it and OVIS could not halt on it. Under C the
+assembler would have **stripped the entire rent schedule and shipped a clean-looking LOI with no rent
+table** — precisely the "reaches a landlord looking clean" failure C was amended to prevent, one clause
+away from being live.
+
+Registered in migration `20260906140000`. **My earlier sequencing note was wrong**: I wrote that R0/R1
+were "a position-level gap, register them with the column-insert contract." The halt has to exist
+BEFORE the assembler, not alongside the work that lifts it. Registering costs nothing and is undone by
+the same field update that will un-defer it. Test P3b asserts both gaps stay discoverable.
+
+**Expected, explainable diff:** Powder Springs carries SALE OF PROPERTY at its own para 95. That clause
+is `retired`, so it strips silently and correctly — a historical artifact, not a regression, and the
+acceptance test should show it as a deliberate difference.
+
 ## Payload contract A–F (SIGNED OFF 2026-09-06)
 
 Mike signed off on **B, D, E as written**; **A and C carry amendments**; and **F was missing entirely**.

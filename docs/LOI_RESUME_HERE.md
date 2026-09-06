@@ -66,6 +66,15 @@ Two files were received but NOT yet loaded/committed:
    built (migration 20260906120000, 10/10 in loi_negative_tests_v11.sql). **Next:** build the assembler → build the assembler → minimal
    wizard → **Powder Springs acceptance test** (regenerate end-to-end from deal terms, diff vs
    `fixtures/`, every difference explainable).
+   **THE POWDER SPRINGS ACCEPTANCE TEST IS NOT REACHABLE YET.** Verified 2026-09-06 against the
+   fixture: its rent table is 11x4 WITH a Per Square Foot column (= R1), and its Landlord
+   Contribution is workletter + $75,000 allowance (= LCW0). Both `rent` and `landlord_work` are
+   registered DEFERRED, so a faithful run HALTS under payload contract C rather than emitting.
+   **The test is gated on the rent-table column-insert / allowance contract, not on the assembler.**
+   Build the assembler now if you like — it just cannot be acceptance-tested end-to-end on Powder
+   Springs until R0/R1 + LCW0/1/2 load. (Powder Springs also carries SALE OF PROPERTY at its para 95,
+   which is retired: that one strips correctly and is an expected, explainable diff.)
+
    **Assembler contract reminders now in force (full text: payload contract A–F):**
    OVIS owns exclusion enforcement and the deferred-clause halt — the assembler re-checks neither;
    param entries are typed `{kind: value|landlord_fill|omit}` and absence is a hard error; select positions from `loi_selectable_position`
