@@ -965,6 +965,74 @@ not rediscovered from the handbook a third time.
 **Freestanding is down to two blockers:** (1) Contingency Addendum provenance, (2) the R0 annual
 schedule shape, which rides the column-insert contract.
 
+## Standing rule: a ranked ladder is exclusive BY CONSTRUCTION (2026-09-06)
+
+**Never add a `loi_clause_exclusion` row between two rungs of the same ladder.** Two positions on one
+variant are already mutually exclusive by schema guarantee:
+- `loi_position_variant_rank_uk` — `UNIQUE (variant_id, rank) WHERE position_kind = 'alternative'`.
+  One rung per rank; the ladder is an ordered partition, not a set of independent options.
+- `loi_position_default_uk` — `UNIQUE (variant_id) WHERE is_default`. At most one preloaded default.
+- Selection is "pick a rung", so exactly one is chosen per deal.
+
+An exclusion row on top of that is machinery guarding a guarantee the schema already makes, and it
+would rot independently: nothing keeps the row in step with the ladder if a rung is added or re-ranked.
+
+**Use `loi_clause_exclusion` only where no ladder relates the two things** — across separate clauses
+(`transfer_supersedes_sale`), or between positions that ride a clause as modifiers rather than
+occupying ranks on its ladder (`pylon_panel_existing_xor_new`, two uncoded modifiers on `signage`).
+
+Applies to the cases already in flight: **ROFR/ROFO** (one clause, two rungs — not two clauses and an
+exclusion), the **CO ladder**, and the **SIG0/1/2 set**, which is why `tenant_signature_block` needed
+its own clause rather than an exclusion trio. Test **P5 (exactly two exclusions) is the guard** — if a
+third appears, check first whether a ladder already covers it.
+
+## Addendum manifest shape — SEPARATE FILE PER SKELETON (2026-09-06)
+
+Mike's call to make before building the Contingency Addendum sweep. **Recommendation: a separate
+manifest file per skeleton**, not one file with a skeleton key per paragraph.
+
+**Why not one file.** `assignments` is a flat dict keyed by paragraph index. Two skeletons means two
+independent index spaces, so `"218"` becomes ambiguous — letter para 218 or addendum para 218. Fixing
+that means namespaced keys (`"letter:218"`), which rewrites all 236 existing entries. The entire
+reason patch v2 was a merge rather than a replacement was to avoid disturbing the byte-exact
+`text_head` values the transition detector depends on; re-keying every entry spends exactly what that
+care was protecting. `template_paragraphs` is also a single integer and the transition detector
+cross-checks one `.docx` — both are per-skeleton facts.
+
+**The shape.**
+- `LOI_sweep_manifest.json` — the letter. Unchanged, keeps its identity and its byte-exact content.
+- `LOI_addendum_manifest.json` — same schema, its own `template`, `template_paragraphs`, and
+  `assignments` indexed from 0.
+- Each declares a top-level `"skeleton"` — `"letter"` / `"contingency_addendum"` — so a file is
+  self-identifying and the test cannot silently treat one as the other.
+- Version pins stay honest: the addendum is a separate document with its own version, and coupling
+  them would put one pin over two documents.
+- Patch workflow is preserved: an addendum patch can never touch the letter manifest's protected
+  content.
+
+**What this requires of `completeness_test.py`** (to build when the addendum manifest lands):
+- Accept N manifests. Run rules 1–3 (assignment, category, exact-body resolution) **per manifest**,
+  since each has its own paragraph range and its own template to cross-check.
+- Run rule 4 (reverse coverage) **ONCE, across the UNION of claims from all manifests.** This is the
+  part that must not be got wrong: computing it per-manifest would report every addendum body as
+  unclaimed by the letter and every letter body as unclaimed by the addendum. Reverse coverage is a
+  library-wide question and has to be asked library-wide.
+- `_unjoined_bodies` is a library-wide fact, not a per-manifest one. Keep it in the letter manifest as
+  the canonical registry and have the test assert that **exactly one** manifest declares it.
+
+**The staleness Mike flagged is already enforced — and now verified, not assumed.** Rule 4 fails when
+`_unjoined_bodies` lists a body some paragraph claims. Mutation-tested by adding a
+`title_contingency/main` claim to the letter manifest:
+
+> `COMPLETENESS FAILED — _unjoined_bodies lists title_contingency/main but a paragraph now claims it —
+> stale entry`
+
+So when the addendum manifest lands, the four addendum bodies **must** be removed from
+`_unjoined_bodies` in the same change, and the test refuses to go green until they are.
+`future_construction/main` leaves the allowlist too, once it gets its paragraph in the LETTER skeleton.
+That leaves `sale_of_property/main` and `early_termination/placeholder` as the only legitimate
+entries — both genuinely unjoinable, for reasons already recorded.
+
 ## Provenance CLOSED — Bucket 1 is empty, and the claim holds (Mike, 2026-09-06)
 
 Mike settled the provenance question from the Southeast doc and the handbooks. Recorded here in short

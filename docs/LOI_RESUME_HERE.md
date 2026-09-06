@@ -96,6 +96,11 @@ Two files were received but NOT yet loaded/committed:
   Aug 2026 handbook drops LCW1; body text comes from the template. LCW1's `provisional_note` text is
   owed at extraction and written verbatim in the decisions doc. Revisit only if a future template drop
   ALSO drops it — one source dropping it is not the signal.
+- **Addendum manifest = SEPARATE FILE per skeleton** (`LOI_addendum_manifest.json`), decided
+  2026-09-06 — see the decisions doc. When it lands: `completeness_test.py` takes N manifests, runs
+  rules 1-3 per manifest but rule 4 ONCE across the UNION of claims, and the four addendum bodies +
+  `future_construction/main` come OUT of `_unjoined_bodies` in the same change (rule 4's stale-entry
+  check is verified and will fail until they do).
 - **OWED, not yet buildable:** forbidden-substring check for "NNN"/"Triple Net" in emitted text. Build
   when freestanding is scoped and a fixture exists, not before.
 - ~~ROFR / five-bodies provenance~~ **CLOSED 2026-09-06 by Mike: BUCKET 1 IS EMPTY, claim holds.**
