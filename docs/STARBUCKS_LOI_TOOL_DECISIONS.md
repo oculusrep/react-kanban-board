@@ -927,6 +927,77 @@ the same field update that will un-defer it. Test P3b asserts both gaps stay dis
 is `retired`, so it strips silently and correctly — a historical artifact, not a regression, and the
 acceptance test should show it as a deliberate difference.
 
+## cam_basis CLOSED — axis challenged, checked against source, confirmed as keyed (2026-09-06)
+
+**No migration. Enum unchanged.** `nn_multi_tenant` / `nn_single_tenant_building` / `nnn` stay exactly
+as loaded.
+
+The axis was challenged on the Marietta pad: if CAM0 vs CAM1 turned on whether a shared denominator
+exists, a single-tenant pad with no pool looked mis-keyed. Checked against the **Aug 2026 handbook**,
+and the discriminator is **who maintains**, not whether a denominator exists:
+- **CAM0** — all sites except single-tenant buildings.
+- **CAM1** — single-tenant buildings, which **retain a pro-rata share by design**.
+- **NNN** — only where Starbucks gets a rent reduction for self-maintaining the Parcel.
+
+Mike confirmed the **Landlord** maintains the Marietta pad, so Marietta is **CAM0** — consistent with
+it having been keyed CAM0 verbatim. The proposed `shared_cam_pool` / `sole_cam_burden` replacement axis
+is **WITHDRAWN and must not be built.**
+
+Recorded because the challenge was worth making and the answer is worth not re-deriving: a pro-rata
+share surviving on a single-tenant building is not an anomaly, it is the CAM1 design.
+
+## Freestanding — NNN drafting standards from the Aug 2026 handbook (2026-09-06)
+
+These are **standards, not bodies.** The CAM1 / NNN body text still comes from the template; these
+constrain what the assembled document may say and do:
+1. **Never use "NNN" or "Triple Net" in LOI text.** (Testable — see below.)
+2. **Starbucks cannot accept direct payment of Real Property Taxes.** Bills stay in Landlord's name;
+   Starbucks reimburses.
+3. **Starbucks cannot assign insurance proceeds.**
+4. **Landlord keeps latent defects and reconstruction.**
+
+Standard 1 is an emitted-text assertion of the same shape as the existing "zero brackets, zero codes"
+rule, and belongs in the acceptance test as a forbidden-substring check when freestanding is scoped.
+**Not built now** — freestanding is not scoped, and a rule with nothing to run against is unverified
+by construction. Recorded so it is not rediscovered from the handbook a third time.
+
+**Freestanding is down to two blockers:** (1) Contingency Addendum provenance, (2) the R0 annual
+schedule shape, which rides the column-insert contract.
+
+## LCW1 — OPEN, and it must be settled BEFORE the LCW bodies are extracted
+
+The Aug 2026 handbook **deletes LCW1**; the template still carries it. If it was retired, the ladder is
+**two rungs, not three**, and that changes what gets keyed. Nothing is at risk meanwhile — `rent` and
+`landlord_work` are both registered deferred, so any deal needing an allowance clause halts.
+
+**What the template actually says** (paras 107 / 109–110 / 112) — the three rungs partition cleanly on
+*what the Landlord provides*:
+| Rung | Landlord Work | Allowance |
+|---|---|---|
+| **LCW0** | yes | yes — "IF LANDLORD IS PAYING ALLOWANCE **IN ADDITION TO** LANDLORD WORK" |
+| **LCW1** | **no** | yes — "FALLBACK – IF LANDLORD IS PAYING ALLOWANCE **AS A SUBSTITUTE FOR** LANDLORD'S WORK" |
+| **LCW2** | no | no — "ALTERNATIVE – IF LANDLORD IS DELIVERING PREMISES IN CURRENT CONDITION AND NOT PROVIDING WORK" |
+
+That is exhaustive and non-overlapping: work+money / money only / neither. **Deleting LCW1 leaves a
+real hole** — "Landlord pays an allowance but performs no work" has no other rung, since LCW0 requires
+work and LCW2 forbids both. That is structural support for "dropped in error", though not proof: a
+deliberate retirement would be Starbucks saying it no longer accepts an allowance-only deal.
+
+**THE DECISIVE TEST, and it is one lookup in the handbook.** LCW1's body (para 110) is the **only**
+place in the template carrying the ≥$200,000 security language — *"Landlord, at its sole cost and
+expense, shall secure its obligation to pay the Allowance by way of an irrevocable standby letter of
+credit or other security as approved by Tenant"*, for allowances of $200,000+ that cannot be offset
+within 24 months or where Tenant has no offset rights. **LCW0 does not contain it.** So:
+- **If the Aug 2026 handbook still carries that letter-of-credit / security language somewhere** →
+  LCW1's substance was relocated, and the deletion is a deliberate reorganization. Ladder is two rungs.
+- **If that language is gone entirely** → deleting LCW1 also deleted Starbucks' own protection on large
+  allowances. That is too substantive to happen silently, so it points at an error in the drop — or a
+  real policy change Mike would recognize as one. Ladder stays three rungs, LCW1 keyed from the
+  template with the discrepancy recorded in `provisional_note`.
+
+Cheap to settle now: `landlord_work` is `_blocked` and unextracted, so there is no re-key cost yet —
+which is exactly why Mike is right that it comes before extraction, not after.
+
 ## Payload contract A–F (SIGNED OFF 2026-09-06)
 
 Mike signed off on **B, D, E as written**; **A and C carry amendments**; and **F was missing entirely**.
