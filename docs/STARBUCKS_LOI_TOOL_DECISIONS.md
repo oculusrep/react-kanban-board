@@ -965,6 +965,41 @@ not rediscovered from the handbook a third time.
 **Freestanding is down to two blockers:** (1) Contingency Addendum provenance, (2) the R0 annual
 schedule shape, which rides the column-insert contract.
 
+## Provenance CLOSED — Bucket 1 is empty, and the claim holds (Mike, 2026-09-06)
+
+Mike settled the provenance question from the Southeast doc and the handbooks. Recorded here in short
+form so it is not re-derived; **his full writeup, including the second-skeleton instructions, is still
+to come and supersedes this summary if they differ.**
+
+- **ROFR and ROFO both trace to the SOUTHEAST DOC**, and they are a **ranked ladder** — ROFO is the
+  "last resort fallback".
+- **`future_construction` traces to the Southeast doc**, under "Southeast additional clause — not part
+  of national template". That is why it has no template paragraph, and it is not an anomaly.
+- **The four Contingency Addendum clauses are STARBUCKS-ISSUED**, confirmed by Mike.
+- **BUCKET 1 IS EMPTY and the claim holds.** Every clause traces to a Starbucks source. The standing
+  flag raised twice — first on Douglasville's ROFR, then on the five no-paragraph bodies — is
+  withdrawn. Nothing needs retiring.
+
+### Correction to the exclusion section, and why P5 still stands
+
+The `loi_clause_exclusion` writeup says ROFR "appears only in Douglasville" and that ROFR and ROFO
+"are companions, not alternatives." **The first half is wrong** — ROFO does exist, in the Southeast
+doc — and the second half is right about ROFR-vs-TRANSFER but wrong about ROFR-vs-ROFO.
+
+The decision not to build a ROFR/ROFO exclusion is **unchanged, for a better reason**: a ranked ladder
+already expresses mutual exclusivity. Two positions on one variant, ROFR at rank 0 and ROFO at rank 1,
+are exclusive by construction — `loi_position_variant_rank_uk` and the single-`is_default` guard do
+the work, and exactly one rung is selected per deal. An exclusion row would be redundant machinery on
+top of a ladder.
+
+What remains true and separate: **ROFR sits adjacent to Transfer of the Property with BOTH emitted in
+Douglasville**, so there is no exclusion there either. Test **P5 (exactly two exclusions) still holds
+and stays** — `transfer_supersedes_sale` and `pylon_panel_existing_xor_new`. Nothing to change in the
+schema or the tests; only this record needed correcting.
+
+Neither clause is keyed yet. When the Southeast tranche is extracted, ROFR/ROFO go in as one clause
+with a two-rung ladder, not as two clauses with an exclusion between them.
+
 ## LCW1 — CLOSED: key all three rungs (2026-09-06)
 
 **Decision: the LCW ladder is THREE rungs. Key LCW0 / LCW1 / LCW2 when `landlord_work` is extracted.**

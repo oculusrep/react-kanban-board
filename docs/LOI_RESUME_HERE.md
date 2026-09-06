@@ -98,8 +98,11 @@ Two files were received but NOT yet loaded/committed:
   ALSO drops it — one source dropping it is not the signal.
 - **OWED, not yet buildable:** forbidden-substring check for "NNN"/"Triple Net" in emitted text. Build
   when freestanding is scoped and a fixture exists, not before.
-- **ROFR provenance** (see the decisions doc): Douglasville's Right of First Refusal is not in the
-  national template. Either it traces to a Starbucks source, or Bucket 1 is not empty.
+- ~~ROFR / five-bodies provenance~~ **CLOSED 2026-09-06 by Mike: BUCKET 1 IS EMPTY, claim holds.**
+  ROFR + ROFO both trace to the Southeast doc and are a RANKED LADDER (ROFO = last-resort fallback),
+  so they need one clause with two rungs, NOT an exclusion. future_construction is a Southeast
+  "additional clause - not part of national template". The four Contingency Addendum clauses are
+  Starbucks-issued. Mike's full writeup with the second-skeleton instructions is still to come.
 - CAM0 cap already resolved (3% standing default). ETR omitted by design.
 
 ## GOTCHAS
