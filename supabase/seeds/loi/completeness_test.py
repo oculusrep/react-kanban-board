@@ -65,12 +65,15 @@ def seed_inventory():
     """
     loaded_clauses, deferred_clauses = set(), set()
     body_refs = {}     # clause_key -> set of canonical_body refs reached via positions
-    declared = set()   # every canonical_body ref declared anywhere
-    for f in glob.glob(os.path.join(SEED_DIR, "loi_seed_tranche*.json")):
+    declared = {}      # ref -> (brace_code, segment_key) for every canonical_body declared anywhere
+    superseded = set() # refs a later tranche DELETED (not merely unreferenced)
+    for f in sorted(glob.glob(os.path.join(SEED_DIR, "loi_seed_tranche*.json"))):
         d = json.load(open(f))
+        for r in (d.get("_supersedes") or {}).get("canonical_bodies", []) or []:
+            superseded.add(r)
         for b in d.get("canonical_bodies", []):
             if b.get("ref"):
-                declared.add(b["ref"])
+                declared[b["ref"]] = (b.get("brace_code"), b.get("segment_key"))
         for c in d.get("clauses", []):
             ck = c.get("clause_key")
             if not ck:
@@ -86,11 +89,25 @@ def seed_inventory():
                         r = pb.get("canonical_body_ref")
                         if r:
                             refs.add(r)
+    # A superseded body was DELETED by a later tranche; it must not satisfy a manifest reference.
+    for r in superseded:
+        declared.pop(r, None)
+    for refs in body_refs.values():
+        refs -= superseded
+
     # a clause "has a loaded body" iff it reaches >=1 canonical body ref that was actually declared
-    clause_has_body = {ck: bool(refs & declared) for ck, refs in body_refs.items()}
+    clause_has_body = {ck: bool(refs & set(declared)) for ck, refs in body_refs.items()}
     # a clause deferred-only (blocked in every tranche, never loaded) stays out of loaded_clauses
     deferred_clauses -= loaded_clauses
-    return loaded_clauses, deferred_clauses, clause_has_body
+
+    # (clause_key, brace_code, segment_key) reachable through a position — the normal case.
+    reachable = {(ck, *declared[r]) for ck, refs in body_refs.items() for r in refs if r in declared}
+    # (brace_code, segment_key) declared but reached by NO position: bodies staged for a deal type
+    # (CAM1, NNN) or orphaned by a deferred clause (landlord_work's add-ons). They are loaded, so a
+    # manifest entry with a null clause_key may legitimately point at one.
+    unreachable = {bs for r, bs in declared.items()
+                   if not any(r in refs for refs in body_refs.values())}
+    return loaded_clauses, deferred_clauses, clause_has_body, reachable, unreachable
 
 
 def find_template(manifest):
@@ -132,10 +149,12 @@ def run(manifest_path, template_path):
     if not isinstance(assignments, dict):
         print("manifest 'assignments' must be a dict keyed by paragraph index"); sys.exit(2)
 
-    loaded_clauses, deferred_clauses, clause_has_body = seed_inventory()
+    loaded_clauses, deferred_clauses, clause_has_body, reachable, unreachable = seed_inventory()
 
     problems = []    # hard failures (gaps)
     deferred = []    # primary/addon on a deliberately-deferred clause (visible, not a failure)
+    per_body = []    # content paragraphs eligible for the exact-body rule
+    n_body_refs = [0]
 
     # (1)+(3): every paragraph index 0..n-1 present with a valid category
     for i in range(n):
@@ -147,7 +166,10 @@ def run(manifest_path, template_path):
         if cat not in CATS:
             problems.append(f"para {i}: unassigned/invalid category {cat!r} (gap)")
             continue
-        # (2): primary/addon must map to a loaded canonical body (clause level)
+        # (2): primary/addon must map to a loaded canonical body.
+        # CLAUSE level first, then — when the manifest carries a `bodies` array (patch v2 onward) —
+        # EXACT-BODY level. The tighter rule is what catches a clause loaded with the wrong
+        # brace_code or a missing segment, which the clause-level check passes.
         if cat in CONTENT:
             ck = e.get("clause")
             if not ck:
@@ -158,6 +180,60 @@ def run(manifest_path, template_path):
                 problems.append(f"para {i}: {cat} references clause {ck!r} not loaded in any tranche")
             elif not clause_has_body.get(ck):
                 problems.append(f"para {i}: {cat} references clause {ck!r} which has no loaded canonical body")
+            else:
+                per_body.append(i)
+
+        # Exact-body resolution, for ANY category that declares bodies (letter_shell paragraphs carry
+        # them too). `bodies` lists what MAY occupy the paragraph — alternatives included — so this
+        # asserts every listed body RESOLVES, never that they all emit.
+        bodies = e.get("bodies")
+        if bodies is not None:
+            if not isinstance(bodies, list) or not bodies:
+                problems.append(f"para {i}: 'bodies' must be a non-empty array")
+            else:
+                for b in bodies:
+                    if not isinstance(b, dict) or not b.get("segment_key"):
+                        problems.append(f"para {i}: body entry missing segment_key: {b!r}")
+                        continue
+                    bck, bc, sk = b.get("clause_key"), b.get("brace_code"), b["segment_key"]
+                    if bck:
+                        if (bck, bc, sk) not in reachable:
+                            problems.append(
+                                f"para {i}: no loaded body {bck}/{bc or '-'}/{sk} "
+                                f"(clause+brace_code+segment_key must all match a loaded body)")
+                    elif (bc, sk) not in unreachable:
+                        problems.append(
+                            f"para {i}: body {bc or '-'}/{sk} has a null clause_key but is not a "
+                            f"declared position-less body")
+                    n_body_refs[0] += 1
+
+    # (4) REVERSE COVERAGE: every loaded, position-reachable body must be CLAIMED by at least one
+    # paragraph. Rule 2 only proves a listed body exists; it cannot notice a body the manifest forgot
+    # to list, because a shorter `bodies` array still resolves. This is the direction that catches a
+    # dropped fragment or a body silently re-pointed to a sibling.
+    # NOTE what neither rule can catch: a PERMUTATION. Swapping two bodies of the same clause between
+    # two paragraphs leaves every reference resolving and every body claimed. Only reading body_text
+    # against the template settles that — as was done by hand for paras 69/71/73.
+    claimed = set()
+    for e in assignments.values():
+        for b in e.get("bodies") or []:
+            if isinstance(b, dict) and b.get("segment_key"):
+                claimed.add((b.get("clause_key"), b.get("brace_code"), b["segment_key"]))
+    unjoined_doc = manifest.get("_unjoined_bodies") or {}
+    allowed = {k for grp in ("expected", "NOT_EXPECTED")
+                 for k in (unjoined_doc.get(grp) or {}) if not k.startswith("_")}
+    if any(e.get("bodies") for e in assignments.values()):
+        unclaimed = sorted(f"{ck}/{sk}" if not bc else f"{ck}/{bc}/{sk}"
+                           for (ck, bc, sk) in reachable if (ck, bc, sk) not in claimed)
+        for u in unclaimed:
+            short = "/".join([u.split("/")[0], u.split("/")[-1]])
+            if short not in allowed and u not in allowed:
+                problems.append(f"loaded body {u} is claimed by NO manifest paragraph "
+                                f"(add it, or list it under _unjoined_bodies with a reason)")
+        stale = sorted(a for a in allowed
+                       if any(f"{ck}/{sk}" == a for (ck, bc, sk) in claimed if ck))
+        for a in stale:
+            problems.append(f"_unjoined_bodies lists {a} but a paragraph now claims it — stale entry")
 
     # stray manifest entries beyond the declared paragraph range
     for k in assignments:
@@ -193,6 +269,20 @@ def run(manifest_path, template_path):
     print(f"transition check: {docx_note}")
     print("category histogram:", dict(hist))
     print(f"content paragraphs (primary+addon): {content_total} — covered: {content_total - len(deferred)}, deferred: {len(deferred)}")
+    n_with_bodies = sum(1 for i in per_body if assignments[str(i)].get("bodies"))
+    if n_body_refs[0]:
+        print(f"exact-body rule: {n_body_refs[0]} body references resolved across "
+              f"{sum(1 for e in assignments.values() if e.get('bodies'))} paragraphs "
+              f"({n_with_bodies}/{len(per_body)} content paragraphs body-resolved)")
+        missing = [i for i in per_body if not assignments[str(i)].get("bodies")]
+        if missing:
+            print(f"  content paragraphs still CLAUSE-level only: {missing}")
+        n_reachable = len(reachable)
+        print(f"reverse coverage: {n_reachable - len([1 for t in reachable if t not in claimed])}"
+              f"/{n_reachable} loaded bodies claimed by a paragraph; "
+              f"{len(allowed)} documented as unjoined")
+    else:
+        print("exact-body rule: manifest carries no 'bodies' arrays — CLAUSE-level check only")
     if deferred:
         print("\nDEFERRED (clause base blocked; will cover when it loads):")
         for i, cat, ck in deferred:
@@ -205,7 +295,8 @@ def run(manifest_path, template_path):
             print(f"  … and {len(problems)-80} more")
         sys.exit(1)
     print("\nCOMPLETENESS PASSED — every paragraph assigned; every primary/addon maps to a loaded "
-          "canonical body (or a tracked deferred clause); nothing unassigned.")
+          "canonical body (or a tracked deferred clause); nothing unassigned; every declared "
+          "body reference resolves to an exact loaded body.")
 
 
 if __name__ == "__main__":

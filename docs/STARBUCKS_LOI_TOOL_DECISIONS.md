@@ -809,6 +809,92 @@ sources with SIG0 default; **Powder Springs resolves to SIG1**. Negatives: a neg
 `template_paragraph` and an `alternative` carrying `emit_order` are both rejected. v9 still 13/13;
 `completeness_test.py` still green (74 covered / 2 deferred).
 
+## Manifest patch v2 merged + rule 2 tightened (2026-09-06)
+
+Mike's `LOI_manifest_patch_v2.json` MERGED onto the repo's `LOI_sweep_manifest.json` — merged, not
+replaced. The patch deliberately omits `text_head` and `template_paragraphs`; retyping 236 `text_head`
+values would risk the template-transition detector, which must stay byte-exact. Verified after the
+merge: **0 `text_head` changed, 0 `category` changed**, 4 `clause` + 4 `note` changed (the repoint),
+92 `bodies` arrays added, and no other key introduced anywhere.
+
+**`bodies` is an ARRAY — accepted as sent, no re-key.** Seven paragraphs carry more than one canonical
+body (15, 81, 218, 220, 223, 225, 226), so a scalar `brace_code` + `segment_key` pair would drop bodies
+silently, which is the exact failure the tightened rule exists to catch. A one-element array is the
+common case and costs nothing.
+
+**Rule 2 semantics, as Mike specified:** the array is what MAY occupy the paragraph, not what a deal
+selects. Alternatives (SIG0/1/2, EU1/EU2, L0/L1) are all listed; exactly one emits. The rule asserts
+every listed body RESOLVES to a loaded canonical body — never that they all emit.
+
+### Paras 69 / 71 / 73 — CONFIRMED, Mike's mapping is correct
+
+He flagged that 69 and 73 were inferred from names and could be reversed. Read both `body_text` values
+against the template rather than reasoning from the names:
+- **69 → `force_majeure`** — template para 69 opens "In the event any Force Majeure Event, act by
+  Landlord or act of any governmental authority…", matching the `force_majeure` body verbatim. It also
+  defines the Alternative Rent Period term, which is what made the name ambiguous.
+- **71 → `election_notice`** — "Tenant shall provide Landlord notice of its election…". Verbatim.
+- **73 → `alternative_rent_period`** — "In the event the Alternative Rent Period continues for more
+  than one hundred twenty (120) [Fallback: ninety (90)] days…", matching the `arp_days` body.
+
+Not reversed. Verified by text, not by name.
+
+### Rule 2 tightened — and a SECOND rule added, because rule 2 alone was weaker than it looked
+
+`completeness_test.py` now resolves each `bodies` entry to an EXACT loaded body on
+(clause_key, brace_code, segment_key). A null `clause_key` resolves against declared-but-unreachable
+bodies (`CAM1`, `NNN`, and landlord_work's two add-ons — loaded, but no position reaches them). The
+seed inventory now also honours a tranche's `_supersedes.canonical_bodies`, so a body a later tranche
+DELETED can no longer satisfy a reference.
+
+**Mutation-tested, and rule 2 failed two of three mutations.** Deliberately corrupting the merged
+manifest:
+| mutation | rule 2 alone | with rule 4 |
+|---|---|---|
+| swap paras 69 ↔ 73 (the reversal Mike feared) | PASSES | PASSES |
+| repoint 81's EU1/main to EU0/main | PASSES | **FAILS** |
+| drop 2 of para 218's 3 closing fragments | PASSES | **FAILS** |
+
+Rule 2 only proves a listed body *exists*. A shorter array still resolves, and a sibling body of the
+same clause resolves too. So **rule 4 — reverse coverage** was added: every loaded, position-reachable
+body must be CLAIMED by at least one paragraph, with `_unjoined_bodies` (carried into the manifest from
+the patch) as the documented allowlist. A stale allowlist entry — one that a paragraph later claims —
+is also a failure.
+
+**What neither rule can catch: a PERMUTATION.** Swapping two bodies of the same clause between two
+paragraphs leaves every reference resolving and every body claimed. Only reading `body_text` against
+the template settles it — which is why the 69/71/73 check had to be done by hand, and why Mike was
+right to ask rather than let the rule "confirm" it.
+
+Current run: 105 body references resolved across 92 paragraphs, 74/74 content paragraphs body-resolved,
+87/94 loaded bodies claimed, 7 documented as unjoined, 2 deferred (114/116 on `landlord_work`).
+
+### FIVE BODIES WITH NO TEMPLATE PARAGRAPH — Mike's finding, and it blocks nothing yet but the assembler
+
+`future_construction/main`, `title_contingency/main`, `recorded_documents/main`,
+`third_party_approvals/main`, `other_contingency/main` have no paragraph anywhere in
+`LOI_US__7_30_2026_.docx`. They are not deferred, not retired, and not orphaned by a missing position —
+the national template simply does not contain them. Payload contract B places content by template
+marker, heading, the R1 anchor, or `template_paragraph`, and makes a missing anchor a HARD FAILURE. So
+**the assembler as specified cannot emit these five.**
+
+**Recommendation — a SECOND SKELETON, not a template re-ingest.** Re-ingesting cannot help: the four
+Contingency Addendum clauses sit under a "STARBUCKS LETTER OF INTENT — CONTINGENCY ADDENDUM" heading
+that follows the signature block in both completed LOIs, and that heading is not in the national
+template because the addendum is not part of it. A newer Starbucks drop would not contain it either.
+The addendum is a genuinely separate document section, so it should get its own versioned skeleton,
+appended after the letter, with its own paragraph indices — which keeps B's hard-failure rule intact
+rather than weakening it to tolerate anchorless content. `future_construction` is a different case: it
+sits mid-letter in the Powder Springs send (between Construction Contingency and Initial Co-Tenancy),
+so it needs a paragraph in the LETTER skeleton, not the addendum.
+
+**OPEN — Mike owns the provenance, and it is the ROFR question again.** If these five trace to the
+Southeast doc or the handbook, they are ordinary Starbucks-sourced clauses that the national template
+happens to omit. If they are Oculus-authored, then **Bucket 1 is not empty** and the "every clause
+traces to a Starbucks source" claim needs retiring. Same call outstanding for Douglasville's RIGHT OF
+FIRST REFUSAL. Needed before the assembler is built, since the second-skeleton work depends on knowing
+what the addendum actually is.
+
 ## Payload contract A–F (SIGNED OFF 2026-09-06)
 
 Mike signed off on **B, D, E as written**; **A and C carry amendments**; and **F was missing entirely**.
