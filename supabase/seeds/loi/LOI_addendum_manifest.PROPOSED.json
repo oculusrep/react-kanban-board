@@ -1,0 +1,192 @@
+{
+ "skeleton": "contingency_addendum",
+ "template": null,
+ "template_source": "1_SBUX LOI - Powder Springs Rd + EWC.docx (addendum section)",
+ "template_paragraphs": 17,
+ "transition_detector": {
+  "enabled": false,
+  "reason": "No authoritative addendum .docx exists. This skeleton is RECONSTRUCTED from an executed LOI, so there is nothing byte-exact to cross-check against. Pointing the detector at Powder Springs would validate the manifest against the document it was derived from - a tautology, not a check. Re-enable the moment the Starbucks-issued addendum file is obtained."
+ },
+ "provisional": true,
+ "_README": [
+  "PROVISIONAL addendum skeleton for the Starbucks Contingency Addendum. Second skeleton,",
+  "appended after the letter skeleton, ALWAYS-EMITTING - no gating, no applies_when.",
+  "Its own index space, 0-based, independent of the letter manifest.",
+  "",
+  "WHY PROVISIONAL: there is no addendum .docx. Built from Powder Springs, the less-edited of",
+  "the two sends. Douglasville is an edited copy and diverges in four places (see below), so",
+  "neither send is authoritative and Powder Springs is only the better reconstruction base.",
+  "Every paragraph here should be treated as provisional until the Starbucks-issued source",
+  "file is obtained.",
+  "",
+  "DIVERGENCES between the two sends, all resolved in favour of Powder Springs:",
+  "  1. Preamble (idx 2)    - present in Powder Springs, DELETED in Douglasville.",
+  "  2. Recorded Documents  - PS: '...Document to Starbucks approval to be recorded on ___.'",
+  "                           DGV: '...Document subject to Starbucks approval.' (no date at all)",
+  "  3. Third-party approv. - PS keeps the '[from _________]' bracket; DGV removes it.",
+  "  4. Exhibit C           - PS uses an en dash, DGV a hyphen. (Outside this skeleton's range.)",
+  "Divergence 1 is the informative one: the preamble is a sample-language INSTRUCTION, so a",
+  "dealmaker deleting it is correct behaviour. Categorised `instruction`, never emitted.",
+  "",
+  "HEADING QUESTION - needs checking against the loaded bodies before this is trusted:",
+  "In the LETTER template, section headings are FUSED into the clause paragraph",
+  "('PREMISES:\\tApproximately _______ square feet of...'). In the ADDENDUM they are their own",
+  "paragraphs, separated from the body by a blank line. I have mapped heading and body to the",
+  "SAME canonical body (the pattern already used at letter paras 229-235, where five paragraphs",
+  "share landlord_signature_block). That is correct ONLY IF each loaded body_text contains its",
+  "heading. If the bodies exclude the headings, the four heading paragraphs need their own",
+  "treatment and I will re-key. Please check title_contingency/main's body_text and tell me.",
+  "",
+  "SCOPE - deliberately ends at idx 16, and this is a judgement call worth your veto:",
+  "In both sends the addendum is followed by an exhibit block (Exhibit A Site Plan, B Signage,",
+  "C Parking, G Seven Pack + its bulleted contents, L Landscaping + two links, N Prohibited",
+  "Uses list, R Senior Documents, S Schedule of Critical Dates table) and then the Landlord",
+  "Workletter. NONE of that maps to a loaded canonical body, and the exhibits look like",
+  "ATTACHMENT machinery rather than body text - the schema already has attachment_requirements",
+  "for exactly this (used by contaminated sites). I have therefore scoped this skeleton to the",
+  "addendum proper. If you would rather the exhibit block be modelled as skeleton paragraphs,",
+  "say so and I will extend - but that is ~40 more paragraphs with no bodies behind them, which",
+  "under rule 1 means categorising every one of them with nothing to resolve against.",
+  "",
+  "OTHER CONTINGENCY (idx 16) is a heading with NO body text in either send. Modelled as one",
+  "paragraph claiming other_contingency/main on the assumption the loaded body is the heading",
+  "plus an open per-deal fill. Confirm against the loaded body.",
+  "",
+  "COMPANION CHANGE REQUIRED - do not land this alone:",
+  "The four addendum bodies must come OUT of _unjoined_bodies in the letter manifest in the",
+  "same change, or rule 4 fails on stale allowlist entries (which is exactly what it is for).",
+  "future_construction/main must come out too when it gets its letter-skeleton paragraph - it",
+  "rides with this work without being part of it, and is the easy one to forget. After both,",
+  "_unjoined_bodies should contain exactly sale_of_property/main and",
+  "early_termination/placeholder."
+ ],
+ "assignments": {
+  "0": {
+   "category": "instruction",
+   "clause": null,
+   "note": "Addendum document title",
+   "text_head": "STARBUCKS LETTER OF INTENT – CONTINGENCY ADDENDUM"
+  },
+  "1": {
+   "category": "empty"
+  },
+  "2": {
+   "category": "instruction",
+   "clause": null,
+   "note": "Addendum preamble - sample-language instruction, NEVER emitted. Douglasville deleted it, which is the confirmation.",
+   "text_head": "The following examples of sample language should be used and modified as appropriate durin"
+  },
+  "3": {
+   "category": "empty"
+  },
+  "4": {
+   "category": "primary",
+   "clause": "title_contingency",
+   "note": "Section heading - see HEADING QUESTION in _README",
+   "text_head": "TITLE CONTINGENCY:",
+   "bodies": [
+    {
+     "clause_key": "title_contingency",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "5": {
+   "category": "empty"
+  },
+  "6": {
+   "category": "primary",
+   "clause": "title_contingency",
+   "note": "Body. Trailing tab run is a landlord-fill date.",
+   "text_head": "Landlord shall become the fee simple owner of the property on or before\t\t.",
+   "bodies": [
+    {
+     "clause_key": "title_contingency",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "7": {
+   "category": "empty"
+  },
+  "8": {
+   "category": "primary",
+   "clause": "recorded_documents",
+   "note": "Section heading - see HEADING QUESTION in _README",
+   "text_head": "RECORDED DOCUMENTS:",
+   "bodies": [
+    {
+     "clause_key": "recorded_documents",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "9": {
+   "category": "empty"
+  },
+  "10": {
+   "category": "primary",
+   "clause": "recorded_documents",
+   "note": "Body. Trailing tab run is a landlord-fill date. DIVERGENCE: Douglasville drops 'to be recorded on' and the date entirely.",
+   "text_head": "The Lease will be subject to a Declaration or Recorded Document to Starbucks approval to b",
+   "bodies": [
+    {
+     "clause_key": "recorded_documents",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "11": {
+   "category": "empty"
+  },
+  "12": {
+   "category": "primary",
+   "clause": "third_party_approvals",
+   "note": "Section heading - see HEADING QUESTION in _README",
+   "text_head": "THIRD-PARTY USE AND DEVELOPMENT APPROVALS, WAIVERS, OR CONSENTS:",
+   "bodies": [
+    {
+     "clause_key": "third_party_approvals",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "13": {
+   "category": "empty"
+  },
+  "14": {
+   "category": "primary",
+   "clause": "third_party_approvals",
+   "note": "Body. DIVERGENCE: Douglasville drops the '[from _________]' bracket. Trailing tab run is a landlord-fill date.",
+   "text_head": "Landlord shall deliver all appropriate approvals, waivers, or consents [from _________] fo",
+   "bodies": [
+    {
+     "clause_key": "third_party_approvals",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  },
+  "15": {
+   "category": "empty"
+  },
+  "16": {
+   "category": "primary",
+   "clause": "other_contingency",
+   "note": "Heading only - no body text in EITHER send. The clause is an open slot the dealmaker fills per deal.",
+   "text_head": "OTHER CONTINGENCY:",
+   "bodies": [
+    {
+     "clause_key": "other_contingency",
+     "brace_code": null,
+     "segment_key": "main"
+    }
+   ]
+  }
+ }
+}
