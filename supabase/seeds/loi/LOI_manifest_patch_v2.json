@@ -1,0 +1,833 @@
+{
+ "_patch_target": "LOI_sweep_manifest.json",
+ "_patch_version": "v2",
+ "_generated": "2026-09-01",
+ "_README": [
+  "MERGE PATCH, not a replacement manifest. Apply onto the authoritative",
+  "LOI_sweep_manifest.json in the repo. Deliberately does NOT restate text_head or",
+  "template_paragraphs - retyping 236 text_head values risks corrupting the",
+  "template-transition detector, which is the one thing in that file that must stay byte-exact.",
+  "",
+  "TWO OPERATIONS:",
+  "  1. set_bodies  - add a `bodies` array to the named paragraphs.",
+  "  2. repoint     - change `clause` (and `note`) on paras 220/223/225/226 from",
+  "                   letter_shell to tenant_signature_block.",
+  "",
+  "WHY `bodies` IS AN ARRAY AND NOT TWO SCALAR FIELDS:",
+  "some template paragraphs carry more than one canonical body, so scalar",
+  "brace_code+segment_key cannot represent them without silently dropping bodies - which is",
+  "exactly the failure the tightened rule 2 exists to catch. Multi-body paragraphs:",
+  "  15  - opening_paragraph + tenants_in_common (TIC is a gated modifier inside the paragraph)",
+  "  81  - EU1/main + EU2/main + EU1/definitions, fused inside one bracket",
+  "  218 - the three closing-statement fragments",
+  "  220/223/225/226 - all three SIG alternatives may occupy the paragraph",
+  "A one-element array is the common case. If you want a different shape, say so and I re-key.",
+  "",
+  "WHAT `bodies` MEANS: the set of canonical bodies that MAY occupy that paragraph, not what a",
+  "given deal selects. Alternatives (SIG0/1/2, EU1/EU2, L0/L1) are all listed; exactly one",
+  "emits per deal. Rule 2 should assert every listed body resolves to a loaded canonical body,",
+  "NOT that they all emit.",
+  "",
+  "NOT PATCHED: blocked paragraphs (rent R0/R1 at 36-47 and 49-61, landlord_work primaries at",
+  "107/109/110/112) get no `bodies` - none are loaded. instruction and empty paragraphs get",
+  "none by definition.",
+  "",
+  "THREE MAPPINGS I COULD NOT VERIFY - CONFIRM AGAINST body_text BEFORE LOADING:",
+  "paras 69 / 71 / 73 are the three Alternative Rent Period paragraphs, and the three",
+  "rent_commencement bodies are force_majeure / election_notice / alternative_rent_period.",
+  "I matched 69->force_majeure (the FM and government-restriction trigger), 71->election_notice",
+  "(Tenant's notice of election), 73->alternative_rent_period (the >120-day termination right).",
+  "71 is certain from its text. 69 and 73 are inferred from names alone and could be swapped -",
+  "para 69 also defines the Alternative Rent Period term. Check the two body_texts and correct",
+  "me if they are reversed. A wrong pair here PASSES rule 2 by matching the wrong body, which is",
+  "worse than the clause-level check you have now.",
+  "",
+  "CORRECTION to your dump notes: `construction_schedule` and `drive_through_permits` DO have",
+  "manifest paragraphs - 116 and 114 respectively, the two landlord_work add-ons in the DEFERRED",
+  "bucket. They are orphans because landlord_work has no positions, not because they belong to",
+  "no paragraph. They will join. Same for CAM1/main (para 168) and NNN/cam_block (para 170),",
+  "which are staged for freestanding and carry no clause_key in the dump but do have paragraphs."
+ ],
+ "repoint": {
+  "220": {
+   "clause": "tenant_signature_block",
+   "note": "Tenant signature block - SIG0/SIG1/SIG2 alternative set (was clause letter_shell)"
+  },
+  "223": {
+   "clause": "tenant_signature_block",
+   "note": "Tenant signature block - SIG0/SIG1/SIG2 alternative set (was clause letter_shell)"
+  },
+  "225": {
+   "clause": "tenant_signature_block",
+   "note": "Tenant signature block - SIG0/SIG1/SIG2 alternative set (was clause letter_shell)"
+  },
+  "226": {
+   "clause": "tenant_signature_block",
+   "note": "Tenant signature block - SIG0/SIG1/SIG2 alternative set (was clause letter_shell)"
+  }
+ },
+ "set_bodies": {
+  "6": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "date"
+   }
+  ],
+  "8": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "addressee_name"
+   }
+  ],
+  "9": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "addressee_address"
+   }
+  ],
+  "11": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "re_line"
+   }
+  ],
+  "13": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "salutation"
+   }
+  ],
+  "15": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "opening_paragraph"
+   },
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "tenants_in_common"
+   }
+  ],
+  "17": [
+   {
+    "clause_key": "premises",
+    "brace_code": "PREM0",
+    "segment_key": "main"
+   }
+  ],
+  "19": [
+   {
+    "clause_key": "premises",
+    "brace_code": "NNN",
+    "segment_key": "premises_block"
+   }
+  ],
+  "21": [
+   {
+    "clause_key": "premises",
+    "brace_code": null,
+    "segment_key": "replat_add_on"
+   }
+  ],
+  "23": [
+   {
+    "clause_key": "premises",
+    "brace_code": null,
+    "segment_key": "drive_through_add_on"
+   }
+  ],
+  "25": [
+   {
+    "clause_key": "landlord_property_interest",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "27": [
+   {
+    "clause_key": "lease",
+    "brace_code": "L0",
+    "segment_key": "main"
+   }
+  ],
+  "29": [
+   {
+    "clause_key": "lease",
+    "brace_code": "L1",
+    "segment_key": "main"
+   }
+  ],
+  "30": [
+   {
+    "clause_key": "lease",
+    "brace_code": "L1",
+    "segment_key": "main"
+   }
+  ],
+  "32": [
+   {
+    "clause_key": "term",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "34": [
+   {
+    "clause_key": "term",
+    "brace_code": null,
+    "segment_key": "cont_1"
+   }
+  ],
+  "63": [
+   {
+    "clause_key": "percentage_rent",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "65": [
+   {
+    "clause_key": "rent_commencement",
+    "brace_code": "RCD0",
+    "segment_key": "main"
+   }
+  ],
+  "69": [
+   {
+    "clause_key": "rent_commencement",
+    "brace_code": null,
+    "segment_key": "force_majeure"
+   }
+  ],
+  "71": [
+   {
+    "clause_key": "rent_commencement",
+    "brace_code": null,
+    "segment_key": "election_notice"
+   }
+  ],
+  "73": [
+   {
+    "clause_key": "rent_commencement",
+    "brace_code": null,
+    "segment_key": "alternative_rent_period"
+   }
+  ],
+  "75": [
+   {
+    "clause_key": "use",
+    "brace_code": "U0",
+    "segment_key": "main"
+   }
+  ],
+  "77": [
+   {
+    "clause_key": "use",
+    "brace_code": "U1",
+    "segment_key": "main"
+   }
+  ],
+  "79": [
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": "EU0",
+    "segment_key": "main"
+   }
+  ],
+  "81": [
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": "EU1",
+    "segment_key": "main"
+   },
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": "EU2",
+    "segment_key": "main"
+   },
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": "EU1",
+    "segment_key": "definitions"
+   }
+  ],
+  "83": [
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": null,
+    "segment_key": "existing_tenants_carveout"
+   }
+  ],
+  "87": [
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": null,
+    "segment_key": "anchor_grocery_carveout"
+   }
+  ],
+  "89": [
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": null,
+    "segment_key": "full_service_restaurant_carveout"
+   }
+  ],
+  "91": [
+   {
+    "clause_key": "exclusive_use",
+    "brace_code": null,
+    "segment_key": "violation_remedy"
+   }
+  ],
+  "93": [
+   {
+    "clause_key": "early_termination",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "95": [
+   {
+    "clause_key": "early_termination",
+    "brace_code": null,
+    "segment_key": "termination_fee"
+   }
+  ],
+  "99": [
+   {
+    "clause_key": "continuous_operation",
+    "brace_code": "CO0",
+    "segment_key": "main"
+   }
+  ],
+  "101": [
+   {
+    "clause_key": "continuous_operation",
+    "brace_code": "CO1",
+    "segment_key": "main"
+   }
+  ],
+  "103": [
+   {
+    "clause_key": "scheduled_delivery_date",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "105": [
+   {
+    "clause_key": "delivery_date_delays",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "114": [
+   {
+    "clause_key": null,
+    "brace_code": null,
+    "segment_key": "drive_through_permits"
+   }
+  ],
+  "116": [
+   {
+    "clause_key": null,
+    "brace_code": null,
+    "segment_key": "construction_schedule"
+   }
+  ],
+  "118": [
+   {
+    "clause_key": "construction_contingency",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "120": [
+   {
+    "clause_key": "initial_cotenancy",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "122": [
+   {
+    "clause_key": "ongoing_cotenancy",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "124": [
+   {
+    "clause_key": "tenant_improvements",
+    "brace_code": "TI0",
+    "segment_key": "main"
+   }
+  ],
+  "126": [
+   {
+    "clause_key": "tenant_improvements",
+    "brace_code": "TI1",
+    "segment_key": "main"
+   }
+  ],
+  "128": [
+   {
+    "clause_key": "tenant_improvements",
+    "brace_code": "TI2",
+    "segment_key": "main"
+   }
+  ],
+  "130": [
+   {
+    "clause_key": "signage",
+    "brace_code": "SIGN0",
+    "segment_key": "main"
+   }
+  ],
+  "132": [
+   {
+    "clause_key": "signage",
+    "brace_code": "SIGN1",
+    "segment_key": "main"
+   }
+  ],
+  "134": [
+   {
+    "clause_key": "signage",
+    "brace_code": null,
+    "segment_key": "tower_element"
+   }
+  ],
+  "136": [
+   {
+    "clause_key": "signage",
+    "brace_code": null,
+    "segment_key": "panel_existing_pylon"
+   }
+  ],
+  "138": [
+   {
+    "clause_key": "signage",
+    "brace_code": null,
+    "segment_key": "panel_new_pylon"
+   }
+  ],
+  "140": [
+   {
+    "clause_key": "signage",
+    "brace_code": null,
+    "segment_key": "master_sign_program"
+   }
+  ],
+  "144": [
+   {
+    "clause_key": "condition_of_premises",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "146": [
+   {
+    "clause_key": "utilities",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "148": [
+   {
+    "clause_key": "trash_recycling",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "154": [
+   {
+    "clause_key": "trash_recycling",
+    "brace_code": "TR0",
+    "segment_key": "main"
+   }
+  ],
+  "156": [
+   {
+    "clause_key": "trash_recycling",
+    "brace_code": "TR1",
+    "segment_key": "main"
+   }
+  ],
+  "158": [
+   {
+    "clause_key": "trash_recycling",
+    "brace_code": "TR2",
+    "segment_key": "main"
+   }
+  ],
+  "160": [
+   {
+    "clause_key": "hazardous_materials",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "164": [
+   {
+    "clause_key": "cam",
+    "brace_code": "CAM0",
+    "segment_key": "main"
+   }
+  ],
+  "166": [
+   {
+    "clause_key": "cam",
+    "brace_code": "CAM0",
+    "segment_key": "breakdown"
+   }
+  ],
+  "168": [
+   {
+    "clause_key": null,
+    "brace_code": "CAM1",
+    "segment_key": "main"
+   }
+  ],
+  "170": [
+   {
+    "clause_key": null,
+    "brace_code": "NNN",
+    "segment_key": "cam_block"
+   }
+  ],
+  "172": [
+   {
+    "clause_key": "cam",
+    "brace_code": null,
+    "segment_key": "tax_increase_on_transfer"
+   }
+  ],
+  "174": [
+   {
+    "clause_key": "pro_rata_share",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "178": [
+   {
+    "clause_key": "pro_rata_share",
+    "brace_code": null,
+    "segment_key": "cam_share"
+   }
+  ],
+  "180": [
+   {
+    "clause_key": "pro_rata_share",
+    "brace_code": null,
+    "segment_key": "tax_share"
+   }
+  ],
+  "182": [
+   {
+    "clause_key": "pro_rata_share",
+    "brace_code": null,
+    "segment_key": "insurance_share"
+   }
+  ],
+  "184": [
+   {
+    "clause_key": "outdoor_seating",
+    "brace_code": "OS0",
+    "segment_key": "main"
+   }
+  ],
+  "186": [
+   {
+    "clause_key": "outdoor_seating",
+    "brace_code": "OS1",
+    "segment_key": "main"
+   }
+  ],
+  "188": [
+   {
+    "clause_key": "outdoor_seating",
+    "brace_code": "OS2",
+    "segment_key": "main"
+   }
+  ],
+  "190": [
+   {
+    "clause_key": "parking",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "192": [
+   {
+    "clause_key": "parking",
+    "brace_code": null,
+    "segment_key": "exclusive_spaces"
+   }
+  ],
+  "194": [
+   {
+    "clause_key": "permit_contingency",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "196": [
+   {
+    "clause_key": "transfer_of_property",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "198": [
+   {
+    "clause_key": "assignment_subletting",
+    "brace_code": "AS0",
+    "segment_key": "main"
+   }
+  ],
+  "200": [
+   {
+    "clause_key": "assignment_subletting",
+    "brace_code": "AS1",
+    "segment_key": "main"
+   }
+  ],
+  "202": [
+   {
+    "clause_key": "assignment_subletting",
+    "brace_code": "AS0",
+    "segment_key": "stock_transfer"
+   }
+  ],
+  "206": [
+   {
+    "clause_key": "alternative_energy",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "208": [
+   {
+    "clause_key": "ev_charging",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "210": [
+   {
+    "clause_key": "brokers_commission",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "212": [
+   {
+    "clause_key": "audit_right",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "214": [
+   {
+    "clause_key": "warranty_representation",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "215": [
+   {
+    "clause_key": "warranty_representation",
+    "brace_code": null,
+    "segment_key": "binding_statement"
+   }
+  ],
+  "216": [
+   {
+    "clause_key": "confidentiality",
+    "brace_code": null,
+    "segment_key": "main"
+   }
+  ],
+  "218": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "closing_statement_open"
+   },
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "closing_statement_sbux_lease_gate"
+   },
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "closing_statement_nonbinding"
+   }
+  ],
+  "220": [
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG0",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG1",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG2",
+    "segment_key": "tenant_signature_block"
+   }
+  ],
+  "223": [
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG0",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG1",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG2",
+    "segment_key": "tenant_signature_block"
+   }
+  ],
+  "225": [
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG0",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG1",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG2",
+    "segment_key": "tenant_signature_block"
+   }
+  ],
+  "226": [
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG0",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG1",
+    "segment_key": "tenant_signature_block"
+   },
+   {
+    "clause_key": "tenant_signature_block",
+    "brace_code": "SIG2",
+    "segment_key": "tenant_signature_block"
+   }
+  ],
+  "229": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "landlord_signature_block"
+   }
+  ],
+  "230": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "landlord_signature_block"
+   }
+  ],
+  "232": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "landlord_signature_block"
+   }
+  ],
+  "234": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "landlord_signature_block"
+   }
+  ],
+  "235": [
+   {
+    "clause_key": "letter_shell",
+    "brace_code": null,
+    "segment_key": "landlord_signature_block"
+   }
+  ]
+ },
+ "_unjoined_bodies": {
+  "_note": "Loaded canonical bodies with no paragraph in the 236-paragraph national template. Two are expected. FIVE ARE NOT - see below.",
+  "expected": {
+   "sale_of_property/main": "retired by transfer_supersedes_sale; para 196 is transfer_of_property. Correctly unjoined - if it ever matches a paragraph, investigate.",
+   "early_termination/placeholder": "the 'Intentionally Deleted' substitute emitted in place of para 93 when ETR is not requested. Substitute text has no template paragraph of its own."
+  },
+  "NOT_EXPECTED": {
+   "_finding": "These five have no paragraph anywhere in LOI_US__7_30_2026_.docx. They are not deferred, not retired, and not orphaned by a missing position - the national template simply does not contain them. This is the same signal as Douglasville's RIGHT OF FIRST REFUSAL: either they trace to the Southeast doc / handbook, or Bucket 1 is not actually empty. Needs provenance before the assembler is built.",
+   "future_construction/main": "Appears in the Powder Springs send as a FUTURE CONSTRUCTION clause between Construction Contingency and Initial Co-Tenancy. Not in the national template.",
+   "title_contingency/main": "Contingency Addendum clause.",
+   "recorded_documents/main": "Contingency Addendum clause.",
+   "third_party_approvals/main": "Contingency Addendum clause.",
+   "other_contingency/main": "Contingency Addendum clause.",
+   "_assembler_consequence": "The four Contingency Addendum clauses sit under a 'STARBUCKS LETTER OF INTENT - CONTINGENCY ADDENDUM' heading that follows the signature block in both completed LOIs and does NOT exist in the template. Payload contract B places content by template markers, headings, the R1 anchor, or template_paragraph - none of which can anchor a clause whose paragraph is absent. Under B an anchor that cannot be found is a hard failure, so as things stand the assembler cannot emit these five at all. Decide before building: does the addendum become a second skeleton appended after the template, or does the template get re-ingested from a drop that includes it?"
+  },
+  "rows": [
+   [
+    "early_termination",
+    "",
+    "placeholder"
+   ],
+   [
+    "future_construction",
+    "",
+    "main"
+   ],
+   [
+    "other_contingency",
+    "",
+    "main"
+   ],
+   [
+    "recorded_documents",
+    "",
+    "main"
+   ],
+   [
+    "sale_of_property",
+    "",
+    "main"
+   ],
+   [
+    "third_party_approvals",
+    "",
+    "main"
+   ],
+   [
+    "title_contingency",
+    "",
+    "main"
+   ]
+  ]
+ }
+}
