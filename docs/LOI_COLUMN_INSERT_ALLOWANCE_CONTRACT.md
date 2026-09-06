@@ -1,7 +1,7 @@
-# Column-Insert / Allowance Contract — DRAFT FOR REVIEW
+# Column-Insert / Allowance Contract
 
-**STATUS: DRAFT. Nothing keyed, nothing loaded, no migration written.** Mike reviews first; anything
-that turns out to be body text is his.
+**STATUS (2026-09-06): reviewed. Q1, Q2, Q5, Q6 RESOLVED by Mike; Q2's mechanism is BUILT. Q3, Q4, Q7
+remain.** Body text is still Mike's; schema and assembler are mine.
 
 This is the critical path. `rent` (R0/R1) and `landlord_work` (LCW0/1/2) are both registered DEFERRED,
 so regenerating Powder Springs HALTS under payload contract C. The acceptance test cannot run until
@@ -41,7 +41,7 @@ table; the two-blank gap after the table is what the ECDT shows and is preserved
 insertion point.** Stated explicitly because it is a byte-diff-affecting decision that no rule
 currently covers.
 
-### 1.2 OPEN — the R1 remeasurement note (para 61) is absent from ALL THREE worked examples
+### 1.2 RESOLVED — the R1 remeasurement note EMITS on every R1 deal
 
 > *"[{R1} The rent schedule is based on Landlord's estimate of the ground floor area of the Premises,
 > excluding mezzanine, basement and storage space, if any, and the rent will be adjusted if the actual
@@ -59,15 +59,19 @@ Structurally it is strippable without loss: the runs separate cleanly — run 0 
 closing `]`, and the body text sits in runs 2–4 — so the assembler CAN emit the sentence with markers
 removed, exactly as it does for `EXCLUSIVE USE`.
 
-**Mike's ruling needed, and it is not a formatting question:**
-- **(a)** The note is real R1 content and SHOULD emit. Then all three worked examples dropped it in
-  error, and the acceptance test gains a second expected diff (a deliberate one — we would be emitting
-  something Powder Springs omitted).
-- **(b)** The note is genuinely optional / never used in practice. Then it is keyed as a non-default
-  position or omitted from the library, and the sends are correct.
+**RESOLVED BY HANDBOOK (Mike, 2026-09-06): it EMITS.** The paragraph appears verbatim in the
+"Provision in LOI" block of **both** handbook editions — standard provision text, not commentary — and
+the Negotiation Tips reinforce it: *"make sure that the rent adjustment will only be made if the actual
+number of square feet is lower than what appears in the Letter of Intent."*
 
-I recommend NOT deciding this from the three sends alone: they may share one origin. The Aug 2026
-handbook is the tiebreaker and only Mike can read it.
+So **all three worked examples dropped a tenant-protective clause**, and they did share one origin: the
+bracket-wrapped paragraph went out with the brackets. Mike has been told, because that is a live
+negotiating point rather than a build detail. Strippable as `[{R1}` / body / `]`, exactly as EXCLUSIVE
+USE. **Emit on every R1 deal.**
+
+**Acceptance-test consequence:** a SECOND expected diff, and a deliberate one — we will emit a sentence
+Powder Springs omitted. Expected diffs are now: SALE OF PROPERTY strips, and the R1 remeasurement note
+appears.
 
 ### 1.3 Row count is VARIABLE — the template understates it
 
@@ -129,9 +133,25 @@ inference. It needs a worked or executed freestanding LOI with a filled rent sch
 should stay deferred even after R1 loads** — which is fine, because Powder Springs and the acceptance
 test need only R1.
 
-**Recommendation: split the deferral.** Load R1 now and keep R0 deferred, rather than treating `rent`
-as one all-or-nothing gap. That unblocks the acceptance test without inventing an R0 shape. Requires a
-position-level rather than clause-level deferral — see §3.
+**RESOLVED (Mike): split the deferral. Load R1, keep R0 deferred. MECHANISM BUILT** — migration
+`20260906210000`.
+
+`loi_clause.unavailable_kind` is clause-level, and `rent` is one clause holding two positions. Once R1
+loads the clause must go active or R1 can never be selected — at which point R0 would become
+**silently absent**, the exact failure contract C was amended to prevent. Position-level `is_active`
+cannot help either: R0 has no row to deactivate. **A gap has to be declarable before the thing
+exists.**
+
+So `loi_deferred_position (clause_key, brace_code, reason, blocked_on)`, mirroring
+`loi_deferred_clause`, with a trigger that REFUSES to register a position that is actually loaded — a
+stale registry would halt a deal on something that works, the mirror image of the stale-allowlist
+failure rule 4 catches. `loi_deferred_item` unions both granularities into one "may I proceed?" query,
+because a caller who must remember to check two places will eventually check one.
+
+**R0 is registered NOW**, while `rent` is still clause-deferred, so the later tranche that loads R1 and
+flips the clause active cannot leave R0 silently absent — the declaration is already there and does not
+depend on anyone remembering. Test P3 in `loi_negative_tests_v12.sql` simulates exactly that flip and
+asserts R0 survives it.
 
 ---
 
@@ -178,7 +198,7 @@ inline doc values.*
 exactly as `a`/`an` was value-dependent on the following sound. Mike is right that catching it now is
 cheap and catching it after keying is not.
 
-**Proposed shape — but the body text is Mike's.** A `choose_one` derived by OVIS from the allowance
+**KEYED BY MIKE (2026-09-06), as proposed.** A `choose_one` derived by OVIS from the allowance
 count, like `audit_article`. **The spacing needs care, and the article incident is the reason.** Folding
 grammar into a value broke the second position last time; here there is only one position, but the
 hazard is different — an omit branch would leave `( the "Allowance")` with a stray space, and a
@@ -192,8 +212,8 @@ options: "collectively the"   |   "the"
 ```
 
 Both branches render correctly with ordinary single spaces, nothing depends on invisible whitespace,
-and the `>= 2 options` rule is satisfied without an `is_omit` row. **Mike owns the body text** — this is
-a proposal, not a change.
+and the `>= 2 options` rule is satisfied without an `is_omit` row. **Powder Springs is the fixture for
+the one-allowance branch** — a single $75,000 allowance emitting `(the "Allowance")`.
 
 ### 2.3 Instructions and attachments in the same sentence
 
@@ -208,14 +228,14 @@ list and OS0's site plan. No new machinery.
 
 | # | Question | Owner | Blocks |
 |---|---|---|---|
-| 1 | **Does the R1 remeasurement note emit?** Absent from all three worked examples, but it is substantive tenant-protective language. Handbook is the tiebreaker. | Mike | R1 keying |
-| 2 | **Split the `rent` deferral?** Load R1, keep R0 deferred. Needs position-level deferral, since `loi_clause.unavailable_kind` is clause-level today. | Mike (call), me (mechanism) | acceptance test |
+| 1 | ~~R1 remeasurement note~~ **RESOLVED: it EMITS.** Verbatim in both handbook editions' "Provision in LOI" block. | — | — |
+| 2 | ~~Split the `rent` deferral~~ **RESOLVED and BUILT** (`loi_deferred_position`, migration 20260906210000). | — | — |
 | 3 | **R0 render shape** — table or tab-delimited paragraphs? No artifact shows a filled R0. | needs a worked/executed freestanding LOI | freestanding only |
 | 4 | **`P = 0` (no extension options)** — omit the blank + label rows? | Mike | edge case |
-| 5 | **Allowance modelling (b)** — OVIS composes the phrase, amounts tracked as economic terms. | Mike | LCW keying |
-| 6 | **`lcw_allowance_ref` wording** — `"collectively the"` / `"the"`. Body text. | Mike | LCW keying |
+| 5 | ~~Allowance modelling~~ **RESOLVED: (b)** — OVIS composes the phrase, amounts tracked as economic terms upstream. | — | — |
+| 6 | ~~`lcw_allowance_ref` wording~~ **RESOLVED and keyed by Mike:** `"collectively the"` / `"the"`. | — | — |
 | 7 | **3-column table widths** for R0, if R0 turns out to be a table at all. | falls out of #3 | freestanding only |
 
-**Nothing in this draft is keyed.** Question 2 is the one that decides whether the acceptance test can
-run soon: R1 is fully specified by the spike and §1.1–1.5, while R0 is not specified at all, and today
-they share one deferral.
+**Remaining: Q3 (R0 render shape — needs an artifact, freestanding only), Q4 (`P = 0` edge case), Q7
+(3-column widths, falls out of Q3).** None blocks the acceptance test. What blocks it now is body text:
+see `docs/LOI_BODY_TEXT_OWED.md`.
