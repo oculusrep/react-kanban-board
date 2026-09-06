@@ -9,7 +9,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { BoardDeal, CONDENSED_STACK, PALETTE } from '../../lib/starbucksBoard';
 import ClassifyControls from './ClassifyControls';
+import KillPassAction from './KillPassAction';
 import ParkControl from './ParkControl';
+import TouchControls from './TouchControls';
 import UrgentToggle from './UrgentToggle';
 
 interface HistoryRow { id: string; kind: 'activity' | 'note'; text: string; date: string | null; }
@@ -129,6 +131,18 @@ export default function TriageQueue({
             <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${PALETTE.ground}` }}>
               <ParkControl deal={current} px={px} onDone={advance} />
             </div>
+          </div>
+
+          {/* Log a note / next action — a touch cools the tile but does NOT
+              classify, so stay on this deal (refresh history) rather than advance. */}
+          <div className="rounded-lg p-4 mt-4" style={{ backgroundColor: PALETTE.column }}>
+            <TouchControls deal={current} px={px} onSaved={() => { loadHistory(current.id); onChanged(); }} />
+          </div>
+
+          {/* Pass / Mark lost — removes the deal from the board, so advance (§2.23). */}
+          <div className="rounded-lg p-4 mt-4" style={{ backgroundColor: PALETTE.column }}>
+            <div className="uppercase tracking-wider" style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 8 }}>Remove from board</div>
+            <KillPassAction deal={current} px={px} onDone={advance} />
           </div>
 
           <div style={{ height: px(40) }} />
