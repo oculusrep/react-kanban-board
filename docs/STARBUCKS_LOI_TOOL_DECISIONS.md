@@ -991,6 +991,82 @@ RECOMM chain IS handbook-defined, and the audit record must show it **answered, 
 `firing_mode` is what says "not per deal". A load guard asserts all four fields together, since a
 silent miss would put the approval chain back in the per-deal path.
 
+## Tranche 11 APPLIED — and a correction: items A and B rested on a bug in MY dump (2026-09-06)
+
+The last three raw blanks in the library are keyed. **Library-wide raw-blank surfaces: NONE.**
+
+### THE CORRECTION — there was never a single-option choose_one
+
+Mike deferred two questions to me — (A) amend the ">= 2 options" rule to exempt `[OPTIONAL: …]`
+constructs, and (B) why `eu_remedy` sits at `sort_order 1` with no option 0. **Both premises came from
+a faulty dump I sent him.** All three params have had **two options all along**, the text branch and an
+`is_omit` branch, at sort_order 0 and 1:
+
+| param | sort 0 | sort 1 |
+|---|---|---|
+| `eu_remedy` | **omit branch** | the percentage-rent text |
+| `initial_cotenancy_optional_2` | the "and/or …" text | **omit branch** |
+| `utilities_optional_1` | the "in excess of …" text | **omit branch** |
+
+**Cause:** my dump aggregated with `string_agg(o.option_value || CASE … END, …)`. An `is_omit` option
+has `option_value` NULL by constraint, `NULL || anything` is NULL, and `string_agg` skips NULLs — so
+every omit branch vanished from the output without a trace. The query reported one option where there
+were two.
+
+**Consequences, both avoided:**
+- **(A) No rule change. Do not amend it.** The ">= 2 options" guard is correct and unviolated;
+  weakening it would have removed a working constraint to accommodate a reporting bug. The `omit`
+  sentinel in contract A and the library's `is_omit` option are the *same fact at two layers* — the
+  payload's `{"kind":"omit"}` records that the `is_omit` OPTION was chosen. The option row still has to
+  exist for there to be anything to choose.
+- **(B) `eu_remedy`'s option 0 exists** — it is the omit branch. Nothing downstream assumes sort_order
+  starts at 0; the loader only defaults `sort_order` to the array index. All nine omit-carrying params
+  run 0..1.
+
+**And it changed how tranche 11 had to be applied.** The patch listed `options` as a one-element array.
+Applied as an option-set *replacement* it would have **deleted the omit branch**, silently removing the
+ability to leave the phrase out — the whole meaning of an `[OPTIONAL: …]` construct. Migration
+`20260906180000` therefore does a targeted UPDATE of the non-omit option's text and asserts afterwards
+that each param still has exactly 2 options including exactly 1 omit.
+
+**Third instance of one failure class in three days**, after `LIKE '%_%'` and body-text-only scanning:
+*a reporting or checking surface that silently omits part of what it claims to cover.* The rule from
+those two — enumerate every surface a class can occupy before declaring clean — now needs its
+companion: **a dump is a check too, and NULL-swallowing aggregation is how it lies.**
+
+### eu_remedy is NOT the audit_blank_1 pattern (Mike caught this; we both had it wrong)
+
+`audit_blank_1` is one string appearing twice, byte-identical. `eu_remedy`'s `___ percent (__%)` is
+**two different renderings of one number** — word form before "percent", numeral inside the parens. One
+param would emit *"five percent (five%)"*. So `eu_remedy_pct_word` + `eu_remedy_pct_num`, both derived
+by OVIS from one negotiated rate — the same arrangement as `audit_article`. The assembler computes
+nothing, so derivation is upstream. Nothing in the payload asserts the two agree; **that guard belongs
+in OVIS at resolution, not in the assembler**, which by contract A only substitutes.
+
+`$` and `%` stay fixed text outside the tokens: a value carrying its own currency or percent sign
+drifts the moment two deals disagree about the format.
+
+`initial_cotenancy_optional_2` had two defects — the raw blank and the unbalanced
+`[IDENTIFY KEY TENANT(S)`, an inner instruction whose closing bracket went with the outer
+`[OPTIONAL: …]` gate at extraction. Instruction stripped, blank keyed, stays `fill` (the dealmaker
+names the key tenants, not the landlord).
+
+### C — the two pylon blanks SHOULD be landlord_fill. Confirmed; tranche 12.
+
+Mike's margin comments in the sent Powder Springs LOI ("LL please insert dimensions", "LL please enter
+location of monument") are the same evidence class as the CAM / pro-rata re-key, and the fixture
+already showed both shipping blank. Renders confirmed against it: dimensions `__________` (10),
+location `__________________` (18).
+
+Not stacked onto tranche 10 — Mike is right that a second supersession on bodies superseded one tranche
+ago is how a body gets orphaned. **Tranche 12**, and note it is a param re-key rather than a body
+change, so it needs no new body version at all: `param_kind` `fill` → `landlord_fill` plus
+`landlord_fill_render`, on the existing v2 bodies.
+
+### D — sign_pn_choose_2 stays unresolved. No guess.
+
+Holding for Mike's answer. "monument or pylon" is not being added as a third option on a guess.
+
 ## Option-templating RULED + tranche 10 LOADED (2026-09-06)
 
 ### Ruling: option (a) — an option value may carry tokens

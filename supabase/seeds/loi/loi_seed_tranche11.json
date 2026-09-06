@@ -1,0 +1,148 @@
+{
+ "_README": [
+  "TRANCHE 11 - PATCH. The last three raw-blank surfaces, all inside choose_one option values.",
+  "Nothing here touches body_text - only option values.",
+  "",
+  "1. initial_cotenancy_optional_2",
+  "   was: 'and/or __________________ [IDENTIFY KEY TENANT(S)'",
+  "   now: 'and/or {{param:initial_cotenancy_key_tenants}}'",
+  "   Two defects in one value: an 18-underscore raw blank, and an UNBALANCED instruction",
+  "   bracket. Your note field shows the source as '[OPTIONAL:  and/or __________________",
+  "   [IDENTIFY KEY TENANT(S)]' - the closing bracket belongs to the inner instruction and was",
+  "   lost when the outer [OPTIONAL: ...] gate was stripped at extraction. The instruction is",
+  "   stripped entirely (it is guidance, never emitted) and the blank is keyed.",
+  "   Kept as `fill`: key tenants are identified by the dealmaker, not the landlord.",
+  "",
+  "2. utilities_optional_1",
+  "   was: 'in excess of an aggregate of $____________'",
+  "   now: 'in excess of an aggregate of ${{param:utilities_fee_cap}}'",
+  "   The '$' stays outside the token - it is fixed text, and a value carrying its own currency",
+  "   symbol would drift. 'an aggregate' needs no article param: the following word is fixed.",
+  "   `fill` - this is a negotiated cap on extraordinary fees, wizard-answered.",
+  "",
+  "3. eu_remedy - AND THIS IS NOT THE audit_blank_1 PATTERN. You and I both guessed it was.",
+  "   was: '...percentage rent of ___ percent (__%) of Tenant's gross sales...'",
+  "   now: '...percentage rent of {{param:eu_remedy_pct_word}} percent",
+  "        ({{param:eu_remedy_pct_num}}%) of Tenant's gross sales...'",
+  "   audit_blank_1 is ONE STRING appearing twice - 'seven percent (7%)' both times, byte",
+  "   identical. Here the two blanks take DIFFERENT RENDERINGS of one number: 'five percent",
+  "   (5%)'. Word form before 'percent', numeral inside the parentheses. One param cannot serve",
+  "   both without emitting 'five percent (five%)' or 'five' where '5' belongs.",
+  "   So: two params, both DERIVED BY OVIS from a single negotiated rate - the same arrangement",
+  "   as audit_article, where OVIS derives a dependent form rather than anyone entering it twice.",
+  "   The assembler does no computation, so the derivation has to happen upstream. Nothing in",
+  "   the payload asserts the two agree; if you want that guarded, it belongs in OVIS at",
+  "   resolution time, not in the assembler.",
+  "",
+  "FOUR THINGS FOR YOU, none of which I have keyed a decision into:",
+  "",
+  "A. SINGLE-OPTION CHOOSE_ONES. All three of these are choose_one with exactly one option,",
+  "   which violates the standing per-tranche rule 'no single-option choose_ones'. I have NOT",
+  "   changed that, because I think the rule now has a legitimate exception and that is your",
+  "   call, not mine. All three are [OPTIONAL: ...] constructs in the template - include this",
+  "   text or omit it. Since contract A made `omit` a first-class param kind, the two states are",
+  "   'this option' and {\"kind\": \"omit\"}, and the option set genuinely has one member. The rule",
+  "   predates the omit sentinel. Either amend it to exempt optional constructs, or these three",
+  "   get re-keyed to something else - tell me which.",
+  "",
+  "B. eu_remedy sits at sort_order 1 with no option 0, which you flagged. That is consistent",
+  "   with A: option 0 is the not-used branch and was never materialised because nothing",
+  "   represented it until `omit` existed. Worth checking whether the other two are also",
+  "   sort_order 1, and whether anything downstream assumes sort_order starts at 0.",
+  "",
+  "C. THE TWO PYLON BLANKS SHOULD BE landlord_fill, NOT fill - confirmed against Powder Springs,",
+  "   which carries Mike's own margin comments on exactly those blanks: 'LL please insert",
+  "   dimensions' on the dimensions blank and 'LL please enter location of monument' on the",
+  "   location blank. Same evidence class as the CAM/pro-rata landlord_fill re-key.",
+  "     sign_pe_blank_4 / sign_pn_blank_5 -> landlord_fill, render '__________'         (10)",
+  "     sign_pe_blank_3 / sign_pn_blank_4 -> landlord_fill, render '__________________' (18)",
+  "   I have NOT included that change here because it is a param-kind change across two bodies I",
+  "   just superseded in tranche 10, and stacking a second supersession on the same bodies in",
+  "   consecutive tranches is how a body ends up orphaned. Say the word and it is tranche 12.",
+  "",
+  "D. sign_pn_choose_2 UNRESOLVED IN THE FIXTURE - Mike's call, not mine and not yours.",
+  "   Powder Springs emitted 'on both sides of the monument or pylon sign(s)' - neither option,",
+  "   the CHOOSE carried through unresolved. Two readings and they lead opposite ways:",
+  "     (i) an oversight in the send. Then the acceptance test records it as a KNOWN FIXTURE",
+  "         DEFECT with an expected diff, exactly like SALE OF PROPERTY stripping, and the",
+  "         library stays as it is.",
+  "     (ii) deliberate - for a to-be-constructed sign it may genuinely not be settled which",
+  "         structure gets built, and 'monument or pylon' is the honest term. Then it is a third",
+  "         legal option and the library is missing it.",
+  "   Do NOT add the third option on my guess. Asking Mike."
+ ],
+ "_supersedes": {
+  "param_option_values": [
+   "initial_cotenancy_optional_2 (choose_one, its single option)",
+   "utilities_optional_1 (choose_one, its single option)",
+   "eu_remedy (choose_one, its single option at sort_order 1)"
+  ],
+  "_note": [
+   "Option-value replacements only. No canonical body is superseded by this tranche -",
+   "the three bodies these params belong to are unchanged."
+  ]
+ },
+ "param_patches": [
+  {
+   "param_key": "initial_cotenancy_optional_2",
+   "param_kind": "choose_one",
+   "options": [
+    "and/or {{param:initial_cotenancy_key_tenants}}"
+   ],
+   "new_parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "initial_cotenancy_key_tenants",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Named key tenant(s) whose occupancy the initial co-tenancy condition depends on. Replaces an 18-underscore raw blank. Dealmaker-answered, not landlord - Starbucks names the tenants whose traffic it is relying on."
+    }
+   ],
+   "extraction_note": "Template para 120. Raw blank keyed; the unbalanced '[IDENTIFY KEY TENANT(S)' instruction stripped - guidance, never emitted."
+  },
+  {
+   "param_key": "utilities_optional_1",
+   "param_kind": "choose_one",
+   "options": [
+    "in excess of an aggregate of ${{param:utilities_fee_cap}}"
+   ],
+   "new_parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "utilities_fee_cap",
+     "value_unit": "usd",
+     "code_status": "confirmed",
+     "note": "Aggregate cap on extraordinary fees the Landlord bears. Negotiated, wizard-answered. The '$' is fixed text outside the token - a value carrying its own currency symbol drifts."
+    }
+   ],
+   "extraction_note": "Template para 146. Raw 12-underscore blank keyed."
+  },
+  {
+   "param_key": "eu_remedy",
+   "param_kind": "choose_one",
+   "options": [
+    "or: Tenant shall have the option to pay percentage rent of {{param:eu_remedy_pct_word}} percent ({{param:eu_remedy_pct_num}}%) of Tenant's gross sales from the Premises, in lieu of all rent payable under the Lease"
+   ],
+   "new_parameters": [
+    {
+     "param_kind": "fill",
+     "param_key": "eu_remedy_pct_word",
+     "value_unit": null,
+     "code_status": "confirmed",
+     "note": "Percentage-rent rate in WORD form, e.g. 'five'. Derived by OVIS from the negotiated rate. Paired with eu_remedy_pct_num - two renderings of one number, NOT the audit_blank_1 one-string-twice pattern."
+    },
+    {
+     "param_kind": "fill",
+     "param_key": "eu_remedy_pct_num",
+     "value_unit": "percent",
+     "code_status": "confirmed",
+     "note": "Same rate in NUMERAL form, e.g. '5'. Derived by OVIS. The '%' is fixed text outside the token."
+    }
+   ],
+   "extraction_note": "Template para 91. Two raw blanks ('___ percent (__%)') keyed as two derived renderings of one rate."
+  }
+ ],
+ "canonical_bodies": [],
+ "clauses": [],
+ "director_questions": []
+}
