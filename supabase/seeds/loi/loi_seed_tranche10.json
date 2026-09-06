@@ -1,0 +1,202 @@
+{
+  "_README": [
+    "TRANCHE 10 - PATCH. Article defect + raw blanks inside choose_one options, both pylon bodies.",
+    "",
+    "1. ARTICLE - same defect as audit_right, same fix. 'to install a {{dimensions}}' is only",
+    "   correct for values starting with a consonant sound. \"a 4' x 8'\" but \"an 8' x 4'\".",
+    "   Dimensions are a landlord-supplied fill, so this is not hypothetical. Article promoted to",
+    "   its own choose_one {a, an} immediately before the dimensions token, first position only.",
+    "   sign_pn_choose_2 appears TWICE in panel_new_pylon and is untouched - both occurrences take",
+    "   the same value ('monument' or 'pylon'), same reasoning as audit_blank_1.",
+    "",
+    "2. RAW BLANK INSIDE A CHOOSE_ONE OPTION - your scan found it, and the fix needs your ruling.",
+    "   sign_pe_choose_1 and sign_pn_choose_1 both offer '__________ position from the top' as an",
+    "   option. That blank emits verbatim when the option is chosen.",
+    "   I have keyed it as a NESTED TOKEN inside the option value:",
+    "       ['top position', '{{param:sign_pe_position_ordinal}} position from the top']",
+    "   This follows directly from what your scan established: option values emit exactly as body",
+    "   text does. If they emit like body text, they should be substitutable like body text.",
+    "   BUT I do not know whether your loader/emitter substitutes inside option values, and I am",
+    "   not assuming it. If it does not, the alternatives are:",
+    "     (a) make substitution-in-options a supported feature (my preference - it generalises,",
+    "         and any future option carrying a value has the same need);",
+    "     (b) split choose_1 into a two-rung structure where the ordinal is a sibling fill that",
+    "         only resolves when the second option is selected - more machinery, and the gating",
+    "         lives at position level which is the wrong granularity;",
+    "     (c) drop the option to a plain fill carrying the whole phrase - loses the closed domain",
+    "         and lets a dealmaker type anything into a slot with two legal shapes.",
+    "   Tell me which and I re-key. Do not load this tranche until that is settled - the nested",
+    "   token is the only part of it that assumes something about your schema.",
+    "",
+    "3. NOT FIXED, NEEDS YOUR FIXTURE - a space before a period.",
+    "   Both bodies read '...located at {{param:...blank}} .' with a space between the token and",
+    "   the full stop. Filled, that emits 'located at Powder Springs Road .' which is visibly",
+    "   wrong. It appears IDENTICALLY in both bodies, which says it came from the template rather",
+    "   than being a transcription slip.",
+    "   I have deliberately NOT removed it. If the sent Powder Springs LOI carries that space,",
+    "   removing it fails the acceptance-test byte diff, and the fixture is the authority - not my",
+    "   sense of what looks right. Check the fixture and tell me: if the space is absent there,",
+    "   I will send tranche 11 removing it from both bodies; if present, it stays and gets an",
+    "   extraction_note so nobody 'fixes' it later.",
+    "",
+    "4. THREE MORE DEFECTS FROM YOUR SCAN, NOT IN THIS TRANCHE - send me the full current values",
+    "   and I will patch them:",
+    "     initial_cotenancy_optional_2 - raw blank AND an unbalanced instruction bracket",
+    "                                    ('[IDENTIFY KEY TENANT(S)' with no closing ']')",
+    "     utilities_optional_1         - '$____________'",
+    "     eu_remedy                    - '___ percent (__%)' - TWO blanks, and by the audit_right",
+    "                                    precedent almost certainly one value used twice",
+    "   I have fragments, not full values. Reconstructing a param value from a fragment is how the",
+    "   wrong thing gets patched confidently.",
+    "",
+    "5. YOUR SCAN-SCOPE CORRECTION IS THE REAL FINDING. 'Scan the bodies' meaning 'scan body_text'",
+    "   because that is where the first instance happened to live is the same failure as",
+    "   LIKE '%_%' - a rule that cannot fail on input it never looks at. Worth stating as a rule:",
+    "   when a scan finds a defect class, establish every surface that class can occupy BEFORE",
+    "   declaring the scan clean. Three of the five defects lived somewhere the scan wasn't looking."
+  ],
+  "_supersedes": {
+    "canonical_bodies": [
+      "SIGNAGE__ntd__v1__panel_existing_pylon",
+      "SIGNAGE__ntd__v1__panel_new_pylon"
+    ],
+    "_note": [
+      "Resolve by clause_key 'signage', brace_code NULL, segment_key 'panel_existing_pylon'",
+      "and 'panel_new_pylon'. Do NOT touch SIGN0/SIGN1, tower_element or master_sign_program."
+    ]
+  },
+  "canonical_bodies": [
+    {
+      "ref": "SIGNAGE__ntd__v2__panel_existing_pylon",
+      "brace_code": null,
+      "source": "national-template-drop",
+      "version": "v2",
+      "segment_key": "panel_existing_pylon",
+      "body_text": "Tenant will have the right, at no additional rent, to install {{param:sign_pe_article}} {{param:sign_pe_blank_4}} sign panel in the {{param:sign_pe_choose_1}} on both sides of the {{param:sign_pe_choose_2}} sign(s) located at {{param:sign_pe_blank_3}} . Landlord will pay for all costs associated with the maintenance of such sign. Tenant will pay all costs associated with the fabrication and installation of Tenant's sign panel(s).",
+      "extraction_note": "Template para 136. Article promoted to sign_pe_article per the audit_right precedent. sign_pe_choose_1's second option re-keyed to carry a nested ordinal token instead of a raw blank. Space before the final period retained pending fixture check - see _README item 3. CLAUDE CODE ADDITION (fixture-verified 2026-09-06): the SPACE BEFORE THE PERIOD in 'located at {{param}} .' is CORRECT and must not be 'fixed'. The sent Powder Springs LOI carries it verbatim ('to be located at __________________ . Landlord will pay...'), so removing it would fail the byte diff. It is template-original, not a slip.",
+      "parameters": [
+        {
+          "param_kind": "choose_one",
+          "param_key": "sign_pe_article",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "options": [
+            "a",
+            "an"
+          ],
+          "note": "Indefinite article immediately preceding sign_pe_blank_4. Value-dependent: \"a 4' x 8'\" but \"an 8' x 4'\" (eight reads with a vowel sound). Closed domain of two, so choose_one rather than fill - OVIS derives WHICH option from the leading sound of sign_pe_blank_4's value, and cannot derive a third thing. Mirrors audit_article."
+        },
+        {
+          "param_kind": "fill",
+          "param_key": "sign_pe_blank_4",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "note": "Sign panel dimensions. Landlord-supplied. Carries NO leading article - see sign_pe_article."
+        },
+        {
+          "param_kind": "choose_one",
+          "param_key": "sign_pe_choose_1",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "options": [
+            "top position",
+            "{{param:sign_pe_position_ordinal}} position from the top"
+          ],
+          "note": "Second option previously carried a RAW BLANK ('__________ position from the top') which would emit verbatim. Now carries a nested token. SEE _README - this needs your ruling on whether option values are templatable."
+        },
+        {
+          "param_kind": "fill",
+          "param_key": "sign_pe_position_ordinal",
+          "value_unit": null,
+          "code_status": "provisional",
+          "note": "Ordinal for the non-top panel position ('second', 'third'). NEW - replaces a raw blank that lived inside sign_pe_choose_1's second option. Resolves only when that option is selected. Provisional pending the option-templating ruling in _README item 2."
+        },
+        {
+          "param_kind": "choose_one",
+          "param_key": "sign_pe_choose_2",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "options": [
+            "monument",
+            "pylon"
+          ],
+          "note": "Unchanged."
+        },
+        {
+          "param_kind": "fill",
+          "param_key": "sign_pe_blank_3",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "note": "Sign location - intersection street names or other designation. LANDLORD COMPLETES. Unchanged."
+        }
+      ]
+    },
+    {
+      "ref": "SIGNAGE__ntd__v2__panel_new_pylon",
+      "brace_code": null,
+      "source": "national-template-drop",
+      "version": "v2",
+      "segment_key": "panel_new_pylon",
+      "body_text": "Tenant will have the right, at no additional rent, to install {{param:sign_pn_article}} {{param:sign_pn_blank_5}} sign panel in the {{param:sign_pn_choose_1}} on both sides of the {{param:sign_pn_choose_2}} sign(s) to be located at {{param:sign_pn_blank_4}} . Landlord will pay for all costs associated with the fabrication, installation and maintenance of such sign(s). Tenant will pay all costs associated with the fabrication and installation of Tenant's sign panel(s). Landlord agrees to construct the {{param:sign_pn_choose_2}} prior to delivery of the Premises to Tenant and shall install (or cause to be installed) such sign panel(s) prior to Tenant opening for business.",
+      "extraction_note": "Template para 138. Article promoted to sign_pn_article. sign_pn_choose_1's second option re-keyed to carry a nested ordinal token. sign_pn_choose_2 appears twice and is unchanged - one value, both occurrences, per the audit_blank_1 precedent. Space before the final period retained pending fixture check - see _README item 3. CLAUDE CODE ADDITION (fixture-verified 2026-09-06): the SPACE BEFORE THE PERIOD in 'located at {{param}} .' is CORRECT and must not be 'fixed'. The sent Powder Springs LOI carries it verbatim ('to be located at __________________ . Landlord will pay...'), so removing it would fail the byte diff. It is template-original, not a slip.",
+      "parameters": [
+        {
+          "param_kind": "choose_one",
+          "param_key": "sign_pn_article",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "options": [
+            "a",
+            "an"
+          ],
+          "note": "Indefinite article immediately preceding sign_pn_blank_5. Value-dependent: \"a 4' x 8'\" but \"an 8' x 4'\" (eight reads with a vowel sound). Closed domain of two, so choose_one rather than fill - OVIS derives WHICH option from the leading sound of sign_pn_blank_5's value, and cannot derive a third thing. Mirrors audit_article."
+        },
+        {
+          "param_kind": "fill",
+          "param_key": "sign_pn_blank_5",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "note": "Sign panel dimensions. Landlord-supplied. Carries NO leading article - see sign_pn_article."
+        },
+        {
+          "param_kind": "choose_one",
+          "param_key": "sign_pn_choose_1",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "options": [
+            "top position",
+            "{{param:sign_pn_position_ordinal}} position from the top"
+          ],
+          "note": "Second option previously carried a RAW BLANK ('__________ position from the top') which would emit verbatim. Now carries a nested token. SEE _README - this needs your ruling on whether option values are templatable."
+        },
+        {
+          "param_kind": "fill",
+          "param_key": "sign_pn_position_ordinal",
+          "value_unit": null,
+          "code_status": "provisional",
+          "note": "Ordinal for the non-top panel position. NEW - replaces a raw blank inside sign_pn_choose_1's second option. Provisional pending the option-templating ruling in _README item 2."
+        },
+        {
+          "param_kind": "choose_one",
+          "param_key": "sign_pn_choose_2",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "options": [
+            "monument",
+            "pylon"
+          ],
+          "note": "Appears TWICE in this body - the panel location and the Landlord construction obligation. One value, both occurrences: the landlord builds the same structure the panel goes on. Unchanged."
+        },
+        {
+          "param_kind": "fill",
+          "param_key": "sign_pn_blank_4",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "note": "Sign location. LANDLORD COMPLETES. Unchanged."
+        }
+      ]
+    }
+  ],
+  "clauses": [],
+  "director_questions": []
+}

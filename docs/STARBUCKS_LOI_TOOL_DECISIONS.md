@@ -991,6 +991,70 @@ RECOMM chain IS handbook-defined, and the audit record must show it **answered, 
 `firing_mode` is what says "not per deal". A load guard asserts all four fields together, since a
 silent miss would put the approval chain back in the per-deal path.
 
+## Option-templating RULED + tranche 10 LOADED (2026-09-06)
+
+### Ruling: option (a) — an option value may carry tokens
+
+> **An `option_value` may itself contain `{{param:...}}` tokens, substituted exactly as body text is.
+> ONE LEVEL DEEP.**
+
+It follows directly from what the scan gap established: a chosen option emits exactly as body text
+does, so it must *substitute* exactly as body text does. The rejected alternatives are rejected for the
+reasons Mike gave — a sibling `fill` gated on the option puts the gate at position level, the wrong
+granularity; collapsing to a plain `fill` loses a real closed choice between "top position" and "Nth
+position from the top".
+
+**Contract A refinement this forces:** A says every token needs a param-map entry and absence is a hard
+error. With option-templating that becomes *every token in the body **or in the SELECTED option***.
+Tokens inside unselected options never emit, so requiring values for them would make an unchosen branch
+block assembly.
+
+**One level only**, asserted by the loader. Deeper nesting would make substitution order matter and
+emission order-dependent; forbidding it now beats discovering the ambiguity at assembly.
+
+Loader changes: the token↔param cross-check now spans `body_text` UNION every option value (a nested
+token's param is declared, not orphaned); the underscore scan strips tokens from option values first,
+so a nested token is not mistaken for a raw blank; and bare-string options (`["a","an"]`, which tranche
+10 used) are normalised to `{"option_value": …}` with a warning rather than rejected — one shape
+downstream, no silent tolerance of two.
+
+### Tranche 10 loaded
+
+Both pylon-panel bodies to v2: article as `choose_one {a, an}` first position only, and
+`__________ position from the top` re-keyed to a nested `{{param:sign_*_position_ordinal}}`.
+`sign_pn_choose_2` appears twice and stays one param — the landlord builds the same structure the panel
+goes on. Migration `20260906170000` re-points the positions.
+
+### Item 3 — the space before the period STAYS. Fixture verified.
+
+Powder Springs carries it verbatim: `…to be located at __________________ . Landlord will pay…`.
+Mike's instinct to leave it was right, and removing it would have failed the byte diff. An
+`extraction_note` is now on both bodies saying so, so nobody "fixes" it later.
+
+### Three more findings from the same fixture paragraph
+
+1. **Both blanks shipped UNFILLED** in Powder Springs — dimensions `__________` (10 underscores) and
+   location `__________________` (18). They are keyed `fill`, i.e. wizard-answered, but the evidence
+   says landlord-completed. Strong `landlord_fill` candidates with those exact renders, on the CAM /
+   pro-rata precedent. **Mike's call** — flagged, not changed.
+2. **`sign_pn_choose_2` was never resolved.** Powder Springs emitted *"on both sides of the **monument
+   or pylon** sign(s)"* — neither option, the unresolved CHOOSE carried straight through. The
+   acceptance test will diff against any single-option emission. Either "monument or pylon" is a third
+   legitimate option, or Powder Springs shipped an unresolved choice and the diff is expected-and-
+   explainable. **Mike's call.**
+3. Consequently the article defect is **untested by this fixture** — with the dimensions blank
+   unfilled, Powder Springs reads "install a __________ sign panel" and the article never had to
+   agree. Real for future deals, invisible in the one send we can diff against.
+
+### A guard-scoping lesson
+
+The migration's first post-condition asserted *library-wide* "no raw blanks anywhere" and failed on
+three KNOWN, unrelated defects awaiting their own tranche. **A migration guard must assert what THAT
+migration is responsible for**; a library-wide invariant belongs in the standing per-tranche scan,
+which already reports those three. Otherwise every future migration fails on somebody else's
+outstanding work, and guards that fail for reasons you didn't cause are the ones people disable
+wholesale.
+
 ## SCAN GAP CLOSED — the underscore rule only read body_text (2026-09-06)
 
 Dumping the two pylon-panel bodies for Mike's tranche 10 exposed a hole in the scan I had just built:

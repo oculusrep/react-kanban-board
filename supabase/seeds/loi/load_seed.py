@@ -39,11 +39,35 @@ def strip_comments(o):
         return [strip_comments(x) for x in o]
     return o
 
+def normalize_options(d):
+    """Accept a bare string option as shorthand for {"option_value": "..."}.
+
+    Tranche 10 sent ["a", "an"] where earlier tranches sent [{"option_value": "a"}, ...]. Both are
+    unambiguous, so the shorthand is accepted and normalised IN PLACE rather than rejected — but it is
+    normalised, not tolerated in two shapes downstream, so every consumer sees one form.
+    """
+    n = 0
+    for b in d.get("canonical_bodies", []):
+        for prm in (b.get("parameters", []) or []):
+            opts = prm.get("options")
+            if not opts:
+                continue
+            for i, o in enumerate(opts):
+                if isinstance(o, str):
+                    opts[i] = {"option_value": o, "sort_order": i}
+                    n += 1
+    return n
+
+
 def validate(d):
     errs = []
     warns = []
     def E(msg): errs.append(msg)
     def W(msg): warns.append(msg)
+
+    n_short = normalize_options(d)
+    if n_short:
+        W(f"{n_short} option(s) given as bare strings; normalised to {{'option_value': ...}}")
 
     selectors = {s["selector_field"]: s for s in d.get("selectors", [])}
     bodies = {}
@@ -98,6 +122,9 @@ def validate(d):
             for where, val in vals:
                 if not val or where == "landlord_fill_render":
                     continue
+                val = TOKEN_ANY.sub("", val)   # a nested token is not a raw blank
+                if not val:
+                    continue
                 for m in re.finditer(r"_+", val):
                     E(f"body {ref} param {pk} {where}: raw underscore blank {m.group(0)!r} — it emits "
                       f"verbatim when chosen ({val[:70]!r})")
@@ -105,8 +132,15 @@ def validate(d):
                     E(f"body {ref} param {pk} {where}: stray {br!r} — instruction markup must be "
                       f"stripped from emitted values ({val[:70]!r})")
 
-        # token <-> param cross-validation (both directions)
-        tokens = set(TOKEN_KEY.findall(bt))
+        # token <-> param cross-validation (both directions).
+        # OPTION-TEMPLATING (ruled 2026-09-06): an option_value may itself carry {{param:...}} tokens,
+        # substituted exactly as body text is — because a chosen option emits exactly as body text
+        # does. So the token universe is body_text UNION every option value, not body_text alone.
+        opt_text = " ".join(
+            (o.get("option_value") or "")
+            for prm in (b.get("parameters", []) or [])
+            for o in (prm.get("options", []) or []))
+        tokens = set(TOKEN_KEY.findall(bt)) | set(TOKEN_KEY.findall(opt_text))
         pkeys = {p.get("param_key") for p in b.get("parameters", []) or [] if p.get("param_key")}
         for t in tokens - pkeys:
             E(f"body {ref}: token {{{{param:{t}}}}} has NO declared param (would emit raw into the document)")
@@ -143,6 +177,23 @@ def validate(d):
                 if p.get("options"): E(f"body {ref} param {p.get('param_key')}: landlord_fill must not carry options")
                 if not p.get("landlord_fill_render"):
                     E(f"body {ref} param {p.get('param_key')}: landlord_fill needs landlord_fill_render (the exact blank rule; an empty one is indistinguishable from a bug)")
+
+    # Option-templating is ONE LEVEL DEEP. A token inside an option whose own param carries options
+    # containing tokens would make substitution order matter and emission order-dependent; forbid it
+    # while there is no case for it, rather than discover the ambiguity at assembly.
+    for b in d.get("canonical_bodies", []):
+        if b.get("_existing"):
+            continue
+        params = {prm.get("param_key"): prm for prm in (b.get("parameters", []) or [])}
+        for prm in params.values():
+            for o in (prm.get("options", []) or []):
+                for nested in TOKEN_KEY.findall(o.get("option_value") or ""):
+                    child = params.get(nested)
+                    if child and (child.get("options") or []):
+                        for co in child["options"]:
+                            if TOKEN_KEY.findall(co.get("option_value") or ""):
+                                E(f"body {b.get('ref')}: option-templating nests more than one level "
+                                  f"({prm.get('param_key')} -> {nested} -> a token) — not supported")
 
     dqs = {q["question_key"] for q in d.get("director_questions", [])}
 
@@ -293,6 +344,7 @@ def q(s):
     return "'" + str(s).replace("'", "''") + "'"
 
 def emit_sql(d):
+    normalize_options(d)
     out = ["BEGIN;"]
     body_id = {}
     body_expr = {}   # ref -> SQL expression yielding the body id (literal for new, subselect for _existing)
