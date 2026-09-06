@@ -3,5 +3,6 @@
     "allow": [
       "Bash(git commit:*)"
     ]
-  }
+  },
+  "outputStyle": "Concise"
 }
