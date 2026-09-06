@@ -1021,36 +1021,45 @@ A **test** may still assert the whole set — `loi_negative_tests_v11.sql` P1 pi
 noticing that the set changed is exactly what a test is for. The distinction is replay: a migration is
 re-run in sequence with the future, a test is run against the present.
 
-### D RESOLVED (Mike) — `sign_*_choose_2` stays two options
+### D RESOLVED (Mike, then REVERSED by Mike) — `sign_*_choose_2` has THREE options
 
-The wizard asks which sign type the deal uses, so `{monument, pylon}` stands. **"monument or pylon" is
-NOT added as a third option.**
+**Final: `{monument, pylon, monument or pylon}`.** The wizard asks the sign type per deal, and
+**"undecided" is a legitimate answer that reads "monument or pylon" in the emitted LOI.** Powder
+Springs used it, and that paragraph was **CORRECT OUTPUT**.
 
-**Powder Springs is therefore a KNOWN FIXTURE DEFECT:** its CHOOSE went out unresolved because nobody
-picked, not because the unresolved form is a legal emission.
+An earlier entry here recorded Powder Springs as a "known fixture defect" on the reading that its
+CHOOSE had gone out unresolved. **That was wrong and is withdrawn — it was never a defect.** Applied as
+migration `20260906200000`: a param change only, no body change and no supersession, the same shape as
+the landlord-fill re-key.
 
-### Acceptance test — TWO expected diffs, and a coverage caveat
+`sign_pn_choose_2`'s second occurrence ("Landlord agrees to construct the {{param}} prior to delivery")
+takes the same value and reads correctly on this branch — *"Landlord agrees to construct the monument
+or pylon prior to delivery."* One param, both occurrences, nothing to change.
 
-Expected, explainable, neither a regression:
-1. **SALE OF PROPERTY strips** — the clause is retired (`transfer_supersedes_sale`), and Powder Springs
-   carrying it at its para 95 is the historical artifact.
-2. **The signage CHOOSE** — Powder Springs emitted "monument or pylon"; a correct run emits one of
-   them.
+**THE LESSON, kept because the next one will look the same: an unexpected emission is not
+automatically a defect.** We both read "monument or pylon" as an unresolved CHOOSE, and it was one
+paste away from being recorded as a permanent fixture defect. It was a third state nobody had
+modelled. **Ask what the output MEANS before classifying it as wrong — the send was made by someone who
+knew what they were doing.**
 
-**COVERAGE CAVEAT, to be stated in the test's own notes so a green run is not over-read.** In the
-Powder Springs signage paragraph the dimensions blank is empty, the location blank is empty, and the
-choose is unresolved — so that paragraph exercises almost none of the clause. **The acceptance test
-proves the assembler reproduces the send; it does not prove the signage clause is correct.** In
-particular the article fix (`a` vs `an` before the dimensions) is never exercised, because an empty
-blank never forces agreement.
+### The wizard "undecided" question is CLOSED — and closed as a LIBRARY change
 
-### FLAGGED FOR THE WIZARD, not now: "not decided yet" is a real state at LOI time
+We flagged that "not decided yet" might be a real state at LOI time, and that if it were, the fix would
+be an emitted-text decision rather than a wizard setting. It was, and it is: the third option carries
+the emitted words, so the wizard needs no special "undecided" mode at all — it offers three options and
+one of them says "monument or pylon". Nothing left open for the wizard build.
 
-Powder Springs is the evidence. If the wizard makes the sign-type question REQUIRED, that deal could
-not have been generated at all. Either it is required and the dealmaker picks the likely one, or
-"undecided" needs a representation — and if it does, **that is an emitted-text decision** (what does
-the sentence actually say?), which makes it Mike's call rather than a wizard implementation detail.
-Recorded now so it is not discovered mid-build.
+### Acceptance test — ONE expected diff, and the coverage caveat stands
+
+**One expected diff: SALE OF PROPERTY strips** (retired by `transfer_supersedes_sale`; Powder Springs
+carrying it at its para 95 is the historical artifact). The signage paragraph now **reproduces exactly**
+— the earlier "expected diff #2" is removed, because there is nothing to diff.
+
+**The coverage caveat still holds, for a slightly different reason.** Both blanks are landlord-fill and
+empty, and the choose takes the undecided branch, so that paragraph still exercises **almost none of the
+signage clause**. In particular the article fix (`a` vs `an`) is **still never exercised** — an empty
+dimensions render never forces agreement. State it in the test's own notes: **the acceptance test proves
+the assembler reproduces the send; it does not prove the signage clause is correct.**
 
 ### Mike's standing rule, recorded because it generalises past this incident
 
