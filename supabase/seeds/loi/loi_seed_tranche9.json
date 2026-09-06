@@ -1,0 +1,108 @@
+{
+  "_README": [
+    "TRANCHE 9 - PATCH. Heading strip, per contract rule B4.",
+    "",
+    "B4: headings are TEMPLATE-OWNED. Bodies never carry them; the assembler preserves the",
+    "template's heading run and replaces only the content after it. Three of 98 loaded bodies",
+    "embedded their heading against ~90 that did not. Under B4 those three would have emitted a",
+    "duplicate heading. This strips them.",
+    "",
+    "early_termination/placeholder was checked and needs NO change - its body is exactly",
+    "'Intentionally Deleted', no embedded heading. That is also the proof of B4: Powder Springs",
+    "emits 'EARLY TERMINATION:  Intentionally Deleted', so the heading survives a body swap and",
+    "therefore cannot be body-owned.",
+    "",
+    "SECOND DEFECT FOUND while stripping audit_right - report before you load:",
+    "audit_right/main contained a RAW UNPARAMETERISED BLANK. Its text read '...by multiplying",
+    "said verified costs by __ to set the first year's annual rent...'. That is a literal",
+    "double-underscore, not a token. It violates the standing per-tranche rule (zero underscore",
+    "blanks) and would have surfaced at the acceptance test as an unresolved blank.",
+    "Template para 212 carries TWO blanks: '_________________' (already keyed as audit_blank_1)",
+    "and '__' (never keyed at all).",
+    "",
+    "HOW I RESOLVED IT - and this one is a proposal, please rule on it:",
+    "I used {{param:audit_blank_1}} in BOTH positions rather than minting audit_blank_2.",
+    "  - Powder Springs fills both with the same value, 'seven percent (7%)'.",
+    "  - The handbook's worked example uses one rate throughout: '8% Return: If the total",
+    "    development costs are $1 million, then rent for Year 1 would be $80,000... equivalent to",
+    "    an 8% cap rate.' It is one developer-return rate appearing twice in one formula, not two",
+    "    independent inputs.",
+    "  - One param cannot drift from itself; two can, and a deal where they differ is arithmetic",
+    "    nonsense.",
+    "If you would rather two blanks in the source mean two params on principle, say so and I will",
+    "re-key with audit_blank_2 - but then something has to assert they are equal, or the formula",
+    "can be filled inconsistently.",
+    "NOTE for your token/param cross-validation: this body repeats a token. Set-equality still",
+    "passes, but confirm the validator does not assume tokens are unique.",
+    "",
+    "TRASH TARGETING: trash_recycling has four bodies all with segment_key 'main' - the uncoded",
+    "base plus TR0/TR1/TR2. Only the UNCODED BASE (brace_code NULL) embeds a heading. TR0/TR1/TR2",
+    "are clean and are NOT touched. Target by null brace_code, not by segment_key."
+  ],
+  "_supersedes": {
+    "canonical_bodies": [
+      "AUDIT_RIGHT__ntd__v1__main",
+      "EARLY_TERMINATION__ntd__v1__main",
+      "TRASH_RECYCLING__ntd__v1__main"
+    ],
+    "_note": [
+      "Refs above are by (clause_key, brace_code, segment_key) intent, not necessarily your exact",
+      "ref strings - resolve them as:",
+      "  audit_right      / brace_code NULL / segment_key 'main'",
+      "  early_termination/ brace_code NULL / segment_key 'main'",
+      "  trash_recycling  / brace_code NULL / segment_key 'main'   <-- UNCODED BASE ONLY",
+      "Do NOT touch trash_recycling TR0/TR1/TR2, and do NOT touch",
+      "early_termination/placeholder or early_termination/termination_fee."
+    ]
+  },
+  "canonical_bodies": [
+    {
+      "ref": "AUDIT_RIGHT__ntd__v2__main",
+      "brace_code": null,
+      "source": "national-template-drop",
+      "version": "v2",
+      "segment_key": "main",
+      "body_text": "Tenant shall have the right to inspect and audit at any time, Landlord's books, records and other documents which relate to the acquisition of property and development and construction costs of all improvements required to be constructed or installed by Landlord pursuant to the terms of the Lease. Landlord and Tenant understand and agree that if and only if the following calculation will result in a reduction of rent from that set forth above, the amount of rent due under the Lease as referenced above shall be adjusted to reflect an {{param:audit_blank_1}} return to Landlord upon all costs verified to Tenant's satisfaction incurred by Landlord in connection with the development of the Premises to the effect that the first years rent shall be adjusted downward and determined by multiplying said verified costs by {{param:audit_blank_1}} to set the first year's annual rent with the adjusted annual rent being increased by the same percentage increases at the same time intervals as set forth in the rent schedule above.",
+      "extraction_note": "Template para 212. Heading 'AUDIT RIGHT:' stripped per B4 - template-owned. The bracketed gate '[Use only for buildings of three tenants or less]' precedes the heading in the source and is instruction, already handled at the position. SECOND FIX: the raw '__' blank in the multiplier position is now keyed, reusing audit_blank_1 - see _README.",
+      "parameters": [
+        {
+          "param_kind": "fill",
+          "param_key": "audit_blank_1",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "note": "Developer return rate / implied cap rate. Appears TWICE in this body - as the stated return and again as the multiplier - because it is one rate used twice in one formula. Handbook standard is 8%; Powder Springs negotiated seven percent (7%) and filled both positions identically."
+        }
+      ]
+    },
+    {
+      "ref": "EARLY_TERMINATION__ntd__v2__main",
+      "brace_code": null,
+      "source": "national-template-drop",
+      "version": "v2",
+      "segment_key": "main",
+      "body_text": "Upon giving Landlord at least one hundred-twenty (120) days prior written notice, Tenant may terminate the Lease on or after the last day of the {{param:etr_blank_1}} full calendar month of the Lease term.",
+      "extraction_note": "Template para 93. Heading 'EARLY TERMINATION:' and its trailing tab stripped per B4. Body otherwise unchanged. THIS BODY DOES NOT EMIT: the ETR position is always Intentionally Deleted (early_termination/placeholder), a STARBUCKS-DIRECTED standing acknowledged deviation, so there is no 'deal that requests an ETR' path. It stays loaded for PHASE-2 REDLINE MATCHING - Phase 2 must recognise this text if a landlord counters with an ETR.",
+      "parameters": [
+        {
+          "param_kind": "fill",
+          "param_key": "etr_blank_1",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "note": "Ordinal of the full calendar month from which termination is available. Handbook preferred position is the 36th."
+        }
+      ]
+    },
+    {
+      "ref": "TRASH_RECYCLING__ntd__v2__main",
+      "brace_code": null,
+      "source": "national-template-drop",
+      "version": "v2",
+      "segment_key": "main",
+      "body_text": "In accordance with the attached Landlord Workletter, Landlord shall provide an appropriately sited and sized trash enclosure.",
+      "extraction_note": "Template para 148, the UNCODED BASE that the TR0/TR1/TR2 ladder rides. Heading 'TRASH AND RECYCLING:' stripped per B4. TR0/TR1/TR2 share segment_key 'main' but carry brace codes and are clean - do not touch them.",
+      "parameters": []
+    }
+  ],
+  "clauses": [],
+  "director_questions": []
+}

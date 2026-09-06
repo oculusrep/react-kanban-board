@@ -965,6 +965,74 @@ not rediscovered from the handbook a third time.
 **Freestanding is down to two blockers:** (1) Contingency Addendum provenance, (2) the R0 annual
 schedule shape, which rides the column-insert contract.
 
+## ETR omission is STARBUCKS-DIRECTED (2026-09-06) — attribution decides the approval chain
+
+**Mike confirmed: STARBUCKS directed the "Intentionally Deleted" ETR position. It is not an
+Oculus-initiated deviation.**
+
+This is a data fact, not a footnote. The handbook REQUIRES an ETR as exit strategy (2), and omitting
+one nominally needs **director + store development VP + RECOMM**. Who directed the omission decides
+whether that chain is **live per deal or already answered**. It is answered — Starbucks directed it —
+so it is logged **once** as a standing acknowledged deviation and never re-raised per deal.
+
+The position already carried `firing_mode = 'standing-acknowledged'`, which encodes the "once, not per
+deal" half correctly. What was wrong was the ATTRIBUTION: `authority = 'self-authored'` said Oculus
+originated it, which is precisely the claim Mike corrected. Fixed in migration `20260906150000`, with
+the rationale rewritten to name Starbucks as the director and the chain as answered.
+
+**New authority value `starbucks-field-direction`.** The enum could not express this. `self-authored`
+is wrong — Starbucks sanctioned it. `national-handbook` would be worse than wrong in an audit record:
+it would cite as sanction **the very document being deviated from**. Field direction from Starbucks
+store development is a distinct governance source, and this is the first standing acknowledged
+deviation, whose whole point is diverging from the handbook while being Starbucks-directed.
+
+`approval_authority` stays `national-handbook` and `approval_required` stays true — the director/VP/
+RECOMM chain IS handbook-defined, and the audit record must show it **answered, not absent**.
+`firing_mode` is what says "not per deal". A load guard asserts all four fields together, since a
+silent miss would put the approval chain back in the per-deal path.
+
+## Tranche 9 (heading strip) — REVIEWED, note corrected, NOT YET LOADED
+
+Staged at `supabase/seeds/loi/loi_seed_tranche9.json`; validation passes (3 bodies).
+
+**ETR note corrected as Mike asked.** The old note said the body "must be correct for the deals that
+do request an ETR," implying `main` sometimes emits. It never does. Reworded: this body DOES NOT EMIT
+— the ETR position is always Intentionally Deleted — and stays loaded for **Phase-2 redline matching**,
+so Phase 2 recognises the text if a landlord counters with an ETR.
+
+**`audit_right` raw `__` blank — Mike's proposal APPROVED, and verified rather than accepted.** He
+reused `audit_blank_1` for both blanks rather than minting `audit_blank_2`. Checked independently
+against the Powder Springs fixture: the emitted paragraph reads *"a seven percent (7%) return"* and
+*"multiplying said verified costs by seven percent (7%)"* — **both positions filled with the same
+value**. The arithmetic agrees with the handbook's worked example (costs × rate = Year 1 rent;
+$1M × 8% = $80,000). One rate used twice in one formula, so one param. Two params could drift, and a
+deal where they differ is arithmetic nonsense.
+
+**Validator confirmed safe for repeated tokens**, as Mike asked: `load_seed.py` builds
+`tokens = set(TOKEN_KEY.findall(bt))` and compares by set equality, so a token appearing twice
+validates normally.
+
+### NEW DEFECT in the same body — article agreement. HOLDING THE LOAD.
+
+The body reads *"…adjusted to reflect **an** {{param:audit_blank_1}} return…"*. Powder Springs emits
+*"…reflect **a** seven percent (7%) return…"*. The template's "an" fits the handbook's 8% default;
+it does **not** fit 7%, and the article is value-dependent — "a seven", "an eight", "a nine".
+
+As written, a 7% deal emits *"an seven percent (7%) return"*, which would surface at the acceptance
+test as a diff against Powder Springs. **Canonical bodies are immutable**, so loading this text now
+means an immediate tranche 10 to fix it — which is why the load is held rather than done and patched.
+
+Options, Mike's call (body text is his):
+1. **Fold the article into the param value** — body becomes "…to reflect {{param:audit_blank_1}}
+   return…", value becomes "a seven percent (7%)". Simplest, keeps one param, no new machinery.
+2. **A second `choose_one` param for the article** — precise but adds a param whose only job is
+   grammar, and nothing ties it to the rate.
+3. **Leave "an" and accept the diff** — only defensible if 8% is genuinely the standing default and 7%
+   was a one-off; Powder Springs says otherwise.
+
+Recommendation: option 1. The param is already prose-shaped ("seven percent (7%)"), not numeric, so
+carrying its article costs nothing and cannot drift from the rate it belongs to.
+
 ## Addendum skeleton LANDED + heading rule (contract B rule 4) — 2026-09-06
 
 `LOI_addendum_manifest.json` landed with its companion change. 17 paragraphs, own 0-based index space,
