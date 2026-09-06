@@ -12,11 +12,14 @@ BEGIN
   SELECT count(*), count(*) FILTER (WHERE landlord_fill_render <> ''), string_agg(param_key, ',' ORDER BY param_key)
     INTO n, n_render, ks
     FROM loi_body_parameter WHERE param_kind = 'landlord_fill';
-  IF n = 14 AND n_render = 14
+  -- A TEST may assert the whole set (unlike a migration guard, which must scope to its own change):
+  -- noticing that the set changed is exactly what this is for. Batch 3 added the four pylon blanks.
+  IF n = 18 AND n_render = 18
      AND ks = 'cam0_cam_psf,cam0_insurance_psf,cam0_tax_psf,pro_rata_share_blank_2,prs_cam_blank_2,'
               'prs_ins_blank_2,prs_tax_blank_1,sig_day,sig_ll_line,sig_ll_name,sig_ll_title,sig_month,'
-              'sig_year,tic_point_of_contact' THEN
-    RAISE NOTICE 'TEST P1 landlord-fill-declared: PASS (14 params, all with a render)';
+              'sig_year,sign_pe_blank_3,sign_pe_blank_4,sign_pn_blank_4,sign_pn_blank_5,'
+              'tic_point_of_contact' THEN
+    RAISE NOTICE 'TEST P1 landlord-fill-declared: PASS (18 params, all with a render)';
   ELSE RAISE WARNING 'TEST P1 landlord-fill-declared: FAIL (n=%, rendered=%, keys=%)', n, n_render, ks; END IF;
 END $$;
 
@@ -39,7 +42,11 @@ BEGIN
            WHEN 'cam0_tax_psf' THEN '______' WHEN 'cam0_insurance_psf' THEN '_____'
            WHEN 'cam0_cam_psf' THEN '______'
            WHEN 'prs_cam_blank_2' THEN '_____' WHEN 'prs_ins_blank_2' THEN '_____'
-           WHEN 'prs_tax_blank_1' THEN '_____' WHEN 'pro_rata_share_blank_2' THEN '____' END);
+           WHEN 'prs_tax_blank_1' THEN '_____' WHEN 'pro_rata_share_blank_2' THEN '____'
+           -- batch 3: pylon panel, template paras 136/138. Dimensions 10, location 18 — distinct.
+           WHEN 'sign_pe_blank_4' THEN '__________' WHEN 'sign_pn_blank_5' THEN '__________'
+           WHEN 'sign_pe_blank_3' THEN '__________________'
+           WHEN 'sign_pn_blank_4' THEN '__________________' END);
   IF bad IS NULL THEN RAISE NOTICE 'TEST P2 render-matches-template: PASS (widths preserved per-param)';
   ELSE RAISE WARNING 'TEST P2 render-matches-template: FAIL (%)', bad; END IF;
 END $$;

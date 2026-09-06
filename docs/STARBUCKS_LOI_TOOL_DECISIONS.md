@@ -991,6 +991,79 @@ RECOMM chain IS handbook-defined, and the audit record must show it **answered, 
 `firing_mode` is what says "not per deal". A load guard asserts all four fields together, since a
 silent miss would put the approval chain back in the per-deal path.
 
+## Pylon blanks → landlord_fill; D resolved; acceptance-test expectations (2026-09-06)
+
+### The four pylon blanks are landlord-fill — done as a migration, not a tranche
+
+`sign_pe_blank_4` / `sign_pn_blank_5` → `landlord_fill`, render `__________` (10).
+`sign_pe_blank_3` / `sign_pn_blank_4` → `landlord_fill`, render `__________________` (18).
+
+A **param re-key on the existing v2 bodies**: no new canonical-body version, no supersession, and
+therefore none of the orphaning risk that made stacking a second supersession onto tranche 10 a bad
+idea. Evidence is the same class as the CAM / pro-rata re-key — Mike's own margin comments in the sent
+Powder Springs LOI ("LL please insert dimensions", "LL please enter location of monument") plus both
+blanks shipping empty. Renders verified against that paragraph and kept distinct; a guard fails if the
+two widths are ever flattened to one. **18 landlord-fill params total.**
+
+### A REPLAY BUG IN MY OWN EARLIER GUARDS, found by doing this
+
+Both earlier landlord-fill migrations asserted a **library-wide count** — "expected 7 params",
+"expected 14 params total". True the day each was written; false the moment the next batch landed. This
+re-key would have made `20260906120000` and `20260906130000` **fail on replay**, each breaking on a
+later migration's correct work.
+
+Both rescoped to assert only their own named params. This is the same lesson as the tranche-10
+post-condition, and it now has a sharper form: **a migration guard must assert what its own change is
+responsible for — and a total is never that**, because a total is a statement about everyone else's
+work too. All three migrations now replay clean.
+
+A **test** may still assert the whole set — `loi_negative_tests_v11.sql` P1 pins all 18 keys, and
+noticing that the set changed is exactly what a test is for. The distinction is replay: a migration is
+re-run in sequence with the future, a test is run against the present.
+
+### D RESOLVED (Mike) — `sign_*_choose_2` stays two options
+
+The wizard asks which sign type the deal uses, so `{monument, pylon}` stands. **"monument or pylon" is
+NOT added as a third option.**
+
+**Powder Springs is therefore a KNOWN FIXTURE DEFECT:** its CHOOSE went out unresolved because nobody
+picked, not because the unresolved form is a legal emission.
+
+### Acceptance test — TWO expected diffs, and a coverage caveat
+
+Expected, explainable, neither a regression:
+1. **SALE OF PROPERTY strips** — the clause is retired (`transfer_supersedes_sale`), and Powder Springs
+   carrying it at its para 95 is the historical artifact.
+2. **The signage CHOOSE** — Powder Springs emitted "monument or pylon"; a correct run emits one of
+   them.
+
+**COVERAGE CAVEAT, to be stated in the test's own notes so a green run is not over-read.** In the
+Powder Springs signage paragraph the dimensions blank is empty, the location blank is empty, and the
+choose is unresolved — so that paragraph exercises almost none of the clause. **The acceptance test
+proves the assembler reproduces the send; it does not prove the signage clause is correct.** In
+particular the article fix (`a` vs `an` before the dimensions) is never exercised, because an empty
+blank never forces agreement.
+
+### FLAGGED FOR THE WIZARD, not now: "not decided yet" is a real state at LOI time
+
+Powder Springs is the evidence. If the wizard makes the sign-type question REQUIRED, that deal could
+not have been generated at all. Either it is required and the dealmaker picks the likely one, or
+"undecided" needs a representation — and if it does, **that is an emitted-text decision** (what does
+the sentence actually say?), which makes it Mike's call rather than a wizard implementation detail.
+Recorded now so it is not discovered mid-build.
+
+### Mike's standing rule, recorded because it generalises past this incident
+
+> When patching a collection, send **targeted edits keyed to what you mean to change**, not a
+> replacement — unless you have independently confirmed the full membership.
+
+His tranche-11 patch sent `options` as a one-element array, a set replacement, for a collection he had
+only partly observed (through my faulty dump). His point is that the replacement was the wrong
+instrument *regardless* of whether the dump was right: it asserts "this is the complete set" on the
+strength of an unverified view. Manifest patch v2 was a merge for exactly this reason. The two failures
+compose — a bad view plus a replacing instrument destroys data; a bad view plus a targeted edit does
+not.
+
 ## Tranche 11 APPLIED — and a correction: items A and B rested on a bug in MY dump (2026-09-06)
 
 The last three raw blanks in the library are keyed. **Library-wide raw-blank surfaces: NONE.**

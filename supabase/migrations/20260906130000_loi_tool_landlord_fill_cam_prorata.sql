@@ -55,11 +55,19 @@ UPDATE loi_body_parameter SET param_kind = 'landlord_fill', landlord_fill_render
 -- Load guard: 7 from the first batch + 7 here. A silent miss would put the acceptance test back to
 -- failing on blanks that are supposed to stay blank.
 DO $$
-DECLARE v_n INT; v_bad TEXT;
+DECLARE v_bad TEXT;
 BEGIN
-  SELECT count(*) INTO v_n FROM loi_body_parameter WHERE param_kind = 'landlord_fill';
-  IF v_n <> 14 THEN
-    RAISE EXCEPTION 'landlord_fill re-key batch 2: expected 14 params total, found %', v_n;
+  -- SCOPED to batch 2's own seven params. A library-wide total would fail the moment a later
+  -- migration adds an eighth landlord_fill param — a guard that breaks on somebody else's correct
+  -- work is the guard that gets deleted.
+  SELECT string_agg(k, ', ') INTO v_bad
+    FROM (VALUES ('cam0_tax_psf'),('cam0_insurance_psf'),('cam0_cam_psf'),('prs_cam_blank_2'),
+                 ('prs_ins_blank_2'),('prs_tax_blank_1'),('pro_rata_share_blank_2')) AS want(k)
+   WHERE NOT EXISTS (SELECT 1 FROM loi_body_parameter bp
+                      WHERE bp.param_key = want.k AND bp.param_kind = 'landlord_fill'
+                        AND bp.landlord_fill_render IS NOT NULL);
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'landlord_fill re-key batch 2: these params did not flip: %', v_bad;
   END IF;
 
   -- cam0_cap_pct is the negotiated escalation cap and must NOT have been swept up.

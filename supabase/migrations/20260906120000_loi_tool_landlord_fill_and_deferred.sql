@@ -95,12 +95,22 @@ UPDATE loi_body_parameter SET param_kind = 'landlord_fill', landlord_fill_render
 
 -- Load guard: all seven must have flipped, or the sentinel has holes exactly where the acceptance
 -- test would stop catching them.
+--
+-- SCOPED TO THIS MIGRATION'S OWN PARAMS, not a library-wide count. The first cut asserted
+-- "exactly 7 landlord_fill params exist", which was true the day it was written and false the moment
+-- batch 2 added seven more — a guard that fails on a LATER migration's correct work. Same rule as the
+-- tranche-10 post-condition: a guard asserts what its own change is responsible for.
 DO $$
-DECLARE v_n INT;
+DECLARE v_missing TEXT;
 BEGIN
-  SELECT count(*) INTO v_n FROM loi_body_parameter WHERE param_kind = 'landlord_fill';
-  IF v_n <> 7 THEN
-    RAISE EXCEPTION 'landlord_fill re-key: expected 7 params, found %', v_n;
+  SELECT string_agg(k, ', ') INTO v_missing
+    FROM (VALUES ('sig_day'),('sig_month'),('sig_year'),('sig_ll_line'),
+                 ('sig_ll_name'),('sig_ll_title'),('tic_point_of_contact')) AS want(k)
+   WHERE NOT EXISTS (SELECT 1 FROM loi_body_parameter bp
+                      WHERE bp.param_key = want.k AND bp.param_kind = 'landlord_fill'
+                        AND bp.landlord_fill_render IS NOT NULL);
+  IF v_missing IS NOT NULL THEN
+    RAISE EXCEPTION 'landlord_fill re-key: these params did not flip: %', v_missing;
   END IF;
 END $$;
 
