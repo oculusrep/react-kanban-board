@@ -1,6 +1,6 @@
 {
   "_README": [
-    "TRANCHE 9 - PATCH. Heading strip, per contract rule B4.",
+    "TRANCHE 9 v2 - PATCH. Heading strip (contract rule B4) + two audit_right defects.",
     "",
     "B4: headings are TEMPLATE-OWNED. Bodies never carry them; the assembler preserves the",
     "template's heading run and replaces only the content after it. Three of 98 loaded bodies",
@@ -35,6 +35,24 @@
     "NOTE for your token/param cross-validation: this body repeats a token. Set-equality still",
     "passes, but confirm the validator does not assume tokens are unique.",
     "",
+    "THIRD DEFECT - you found it, and your proposed fix breaks the second position:",
+    "The template's fixed word 'an' before the blank is VALUE-DEPENDENT. 'an eight percent (8%)'",
+    "but 'a seven percent (7%)'. As shipped, a 7% deal emits 'an seven percent (7%)'.",
+    "You proposed folding the article into the param value. That fixes position 1 and breaks",
+    "position 2 - Powder Springs emits 'multiplying said verified costs by seven percent (7%)',",
+    "with NO article. A value of 'a seven percent (7%)' would render 'by a seven percent (7%)'.",
+    "Verified against the send, both positions.",
+    "So the article is its own param, {{param:audit_article}}, used in the first position only.",
+    "Rewording the sentence to avoid the article is not available - it is Starbucks' text.",
+    "audit_article is keyed as `fill` because OVIS derives it mechanically from the rate rather",
+    "than anyone negotiating it. If you would rather constrain it, choose_one {a, an} is fine -",
+    "two options, so it does not trip the single-option rule. Your schema, your call.",
+    "",
+    "SWEEP THIS TOO: the article problem is not audit_right-specific. Any body where a param is",
+    "immediately preceded by 'a' or 'an' has it, latent. Worth scanning all 98 alongside the",
+    "underscore scan - both are the same class of defect, template text that is only correct for",
+    "the value the template author had in mind.",
+    "",
     "TRASH TARGETING: trash_recycling has four bodies all with segment_key 'main' - the uncoded",
     "base plus TR0/TR1/TR2. Only the UNCODED BASE (brace_code NULL) embeds a heading. TR0/TR1/TR2",
     "are clean and are NOT touched. Target by null brace_code, not by segment_key."
@@ -62,7 +80,7 @@
       "source": "national-template-drop",
       "version": "v2",
       "segment_key": "main",
-      "body_text": "Tenant shall have the right to inspect and audit at any time, Landlord's books, records and other documents which relate to the acquisition of property and development and construction costs of all improvements required to be constructed or installed by Landlord pursuant to the terms of the Lease. Landlord and Tenant understand and agree that if and only if the following calculation will result in a reduction of rent from that set forth above, the amount of rent due under the Lease as referenced above shall be adjusted to reflect an {{param:audit_blank_1}} return to Landlord upon all costs verified to Tenant's satisfaction incurred by Landlord in connection with the development of the Premises to the effect that the first years rent shall be adjusted downward and determined by multiplying said verified costs by {{param:audit_blank_1}} to set the first year's annual rent with the adjusted annual rent being increased by the same percentage increases at the same time intervals as set forth in the rent schedule above.",
+      "body_text": "Tenant shall have the right to inspect and audit at any time, Landlord's books, records and other documents which relate to the acquisition of property and development and construction costs of all improvements required to be constructed or installed by Landlord pursuant to the terms of the Lease. Landlord and Tenant understand and agree that if and only if the following calculation will result in a reduction of rent from that set forth above, the amount of rent due under the Lease as referenced above shall be adjusted to reflect {{param:audit_article}} {{param:audit_blank_1}} return to Landlord upon all costs verified to Tenant's satisfaction incurred by Landlord in connection with the development of the Premises to the effect that the first years rent shall be adjusted downward and determined by multiplying said verified costs by {{param:audit_blank_1}} to set the first year's annual rent with the adjusted annual rent being increased by the same percentage increases at the same time intervals as set forth in the rent schedule above.",
       "extraction_note": "Template para 212. Heading 'AUDIT RIGHT:' stripped per B4 - template-owned. The bracketed gate '[Use only for buildings of three tenants or less]' precedes the heading in the source and is instruction, already handled at the position. SECOND FIX: the raw '__' blank in the multiplier position is now keyed, reusing audit_blank_1 - see _README.",
       "parameters": [
         {
@@ -70,7 +88,24 @@
           "param_key": "audit_blank_1",
           "value_unit": null,
           "code_status": "confirmed",
-          "note": "Developer return rate / implied cap rate. Appears TWICE in this body - as the stated return and again as the multiplier - because it is one rate used twice in one formula. Handbook standard is 8%; Powder Springs negotiated seven percent (7%) and filled both positions identically."
+          "note": "Developer return rate / implied cap rate. Appears TWICE in this body - as the stated return and again as the multiplier - because it is one rate used twice in one formula. Handbook standard is 8%; Powder Springs negotiated seven percent (7%) and filled both positions identically. Carries NO leading article - see audit_article."
+        },
+        {
+          "param_kind": "choose_one",
+          "param_key": "audit_article",
+          "value_unit": null,
+          "code_status": "confirmed",
+          "note": "Indefinite article immediately preceding audit_blank_1 in the FIRST position only. Value-dependent and therefore not fixed template text: 'a seven percent (7%)' but 'an eight percent (8%)'. OVIS derives it from the leading sound of audit_blank_1's value. The SECOND position takes no article ('multiplying said verified costs by seven percent (7%)'), which is why the article cannot be folded into audit_blank_1 itself. CLAUDE CODE CHANGE: keyed choose_one {a, an} rather than fill. The domain is closed and has exactly two legal values, so choose_one makes a wrong article unrepresentable instead of merely unlikely; OVIS still derives WHICH option from the rate's leading sound, it just cannot derive a third thing.",
+          "options": [
+            {
+              "option_value": "a",
+              "sort_order": 0
+            },
+            {
+              "option_value": "an",
+              "sort_order": 1
+            }
+          ]
         }
       ]
     },

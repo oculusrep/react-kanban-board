@@ -991,47 +991,66 @@ RECOMM chain IS handbook-defined, and the audit record must show it **answered, 
 `firing_mode` is what says "not per deal". A load guard asserts all four fields together, since a
 silent miss would put the approval chain back in the per-deal path.
 
-## Tranche 9 (heading strip) — REVIEWED, note corrected, NOT YET LOADED
+## Tranche 9 LOADED — heading strip + two standing scans (2026-09-06)
 
-Staged at `supabase/seeds/loi/loi_seed_tranche9.json`; validation passes (3 bodies).
+Three bodies re-versioned to v2 and the v1 originals deleted: `audit_right/main`,
+`early_termination/main`, `trash_recycling/main` (the **uncoded base** only — TR0/TR1/TR2 were clean).
+Migration `20260906160000` re-points the positions; `early_termination/placeholder` and
+`/termination_fee` untouched. Library scans after the load: **0 heading-embedding bodies, 0 raw
+underscore blanks.**
 
-**ETR note corrected as Mike asked.** The old note said the body "must be correct for the deals that
-do request an ETR," implying `main` sometimes emits. It never does. Reworded: this body DOES NOT EMIT
-— the ETR position is always Intentionally Deleted — and stays loaded for **Phase-2 redline matching**,
-so Phase 2 recognises the text if a landlord counters with an ETR.
+### The article: my fix was wrong, Mike's is right
 
-**`audit_right` raw `__` blank — Mike's proposal APPROVED, and verified rather than accepted.** He
-reused `audit_blank_1` for both blanks rather than minting `audit_blank_2`. Checked independently
-against the Powder Springs fixture: the emitted paragraph reads *"a seven percent (7%) return"* and
-*"multiplying said verified costs by seven percent (7%)"* — **both positions filled with the same
-value**. The arithmetic agrees with the handbook's worked example (costs × rate = Year 1 rent;
-$1M × 8% = $80,000). One rate used twice in one formula, so one param. Two params could drift, and a
-deal where they differ is arithmetic nonsense.
+I proposed folding the article into `audit_blank_1` ("a seven percent (7%)"). **That breaks the second
+position.** Powder Springs, verbatim, both positions in one sentence:
+> "…adjusted to reflect **a seven percent (7%)** return to Landlord…"
+> "…multiplying said verified costs by **seven percent (7%)** to set…"
 
-**Validator confirmed safe for repeated tokens**, as Mike asked: `load_seed.py` builds
-`tokens = set(TOKEN_KEY.findall(bt))` and compares by set equality, so a token appearing twice
-validates normally.
+Position 1 takes the article; position 2 does not. My fix would have rendered "multiplying said
+verified costs by **a** seven percent (7%)". The article is its own param, first position only. The
+single-param ruling on `audit_blank_1` stands — one rate, no drift; only the grammar moved.
 
-### NEW DEFECT in the same body — article agreement. HOLDING THE LOAD.
+**`audit_article` keyed as `choose_one {a, an}`, not `fill`** (Mike left the schema call to me). The
+domain is closed and has exactly two legal values, so `choose_one` makes a wrong article
+*unrepresentable* rather than merely unlikely. OVIS still derives WHICH option from the rate's leading
+sound — it just cannot derive a third thing. Same reasoning as the landlord-fill sentinel: prefer the
+typed, closed form over a free string.
 
-The body reads *"…adjusted to reflect **an** {{param:audit_blank_1}} return…"*. Powder Springs emits
-*"…reflect **a** seven percent (7%) return…"*. The template's "an" fits the handbook's 8% default;
-it does **not** fit 7%, and the article is value-dependent — "a seven", "an eight", "a nine".
+### TWO STANDING SCANS — added to `load_seed.py`, run on every body of every tranche
 
-As written, a 7% deal emits *"an seven percent (7%) return"*, which would surface at the acceptance
-test as a diff against Powder Springs. **Canonical bodies are immutable**, so loading this text now
-means an immediate tranche 10 to fix it — which is why the load is held rather than done and patched.
+Mike's call, and `audit_right` carried BOTH. Same class of defect either way: **template text that is
+only correct for the value its author had in mind.** Both otherwise surface one deal at a time at the
+acceptance test, which is the worst place to find them.
 
-Options, Mike's call (body text is his):
-1. **Fold the article into the param value** — body becomes "…to reflect {{param:audit_blank_1}}
-   return…", value becomes "a seven percent (7%)". Simplest, keeps one param, no new machinery.
-2. **A second `choose_one` param for the article** — precise but adds a param whose only job is
-   grammar, and nothing ties it to the rate.
-3. **Leave "an" and accept the diff** — only defensible if 8% is genuinely the standing default and 7%
-   was a one-off; Powder Springs says otherwise.
+1. **Underscore run outside a `{{param:}}` token — ERROR, zero tolerance.** A raw template blank
+   nobody keyed; it emits verbatim as an unfilled line.
+2. **`a`/`an` immediately before a token — WARNING, not error.** Legitimate when the value domain is
+   closed and every member starts with the same sound, so it needs a human look rather than a block.
 
-Recommendation: option 1. The param is already prose-shaped ("seven percent (7%)"), not numeric, so
-carrying its article costs nothing and cannot drift from the rate it belongs to.
+Deliberately different severities: making (2) an error would block re-validating existing tranches over
+a judgement call, and a check that cries wolf gets switched off.
+
+### The scan immediately found TWO MORE — reported, not patched (body text is Mike's)
+
+Both signage pylon-panel bodies: *"…to install **a** {{param:sign_pe_blank_4}} sign panel…"* and the
+same in `panel_new_pylon`. The param is the template's `[INSERT DIMENSIONS]` blank, so the value is
+free-form — **"a 4' x 8'" is right but "an 8' x 4'" is too.** Exactly the `audit_right` defect, in a
+clause nobody was editing. Mike only found the original because he happened to be in that body for an
+unrelated reason; the scan found these two without anyone looking.
+
+### A bug my own guard caught, worth recording
+
+The first cut of the migration resolved the NEW body by `(brace_code IS NULL, segment_key, version)` —
+which matches all three v2 bodies, since they all share `brace_code NULL` and `segment_key 'main'`.
+`SELECT … INTO` silently took an arbitrary one, so **all three positions were re-pointed at the
+audit_right text** and two v2 bodies were orphaned. The post-condition guard ("no orphaned v2 bodies")
+failed loudly and the state was repaired.
+
+Two lessons now in the migration's own comments: **`SELECT … INTO` on a non-unique predicate picks
+arbitrarily and says nothing**, and the rewrite drives the re-point off the POSITION'S CLAUSE rather
+than the old body id, which makes it converge from either the original or the corrupted state. A third,
+from the same migration: **`LIKE '%_%'` matches every row**, because `_` is a single-character wildcard
+in LIKE — the underscore guard needed `~ '_'` instead.
 
 ## Addendum skeleton LANDED + heading rule (contract B rule 4) — 2026-09-06
 

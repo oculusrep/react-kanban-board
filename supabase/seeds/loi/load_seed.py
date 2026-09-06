@@ -12,7 +12,7 @@ Usage:
   python3 load_seed.py <seed.json>              # validate only
   python3 load_seed.py <seed.json> --load       # validate, then emit SQL on stdout
 """
-import sys, json, re, uuid
+import re, sys, json, uuid
 
 SOURCES = {"national-template-drop", "national-handbook", "southeast-doc", "oculus-authored", "national-template-ecdt",
            "completed-loi-powder-springs", "completed-loi-douglasville"}
@@ -27,6 +27,7 @@ REF_KINDS = {"deal_field", "clause_selection", "clause_field", "position_selecti
 OPERATORS = {"eq","neq","lt","lte","gt","gte","within_days_of","is_selected","not_selected","exists","not_exists"}
 PARAM_TOKEN = re.compile(r"\{\{param:[^}]+\}\}")   # valid token; removed before scanning for strays
 TOKEN_KEY = re.compile(r"\{\{param:([^}]+)\}\}")   # capture the key for token<->param cross-validation
+TOKEN_ANY = re.compile(r"\{\{param:[a-zA-Z0-9_]+\}\}")   # whole token, for the standing scans
 
 def stray_braces(bt):
     return re.findall(r"\{[^{}]*\}", PARAM_TOKEN.sub("", bt))  # any {...} left after valid tokens = stray code/marker
@@ -62,6 +63,27 @@ def validate(d):
         bt = b.get("body_text", "")
         for m in stray_braces(bt):
             E(f"body {ref}: stray '{m}' in body_text (only {{{{param:key}}}} tokens allowed; codes/markers must be stripped)")
+
+        # ---- STANDING SCANS (added 2026-09-06, after audit_right turned out to carry BOTH) --------
+        # Same class of defect either way: template text that is only correct for the value its
+        # author had in mind. Both otherwise surface one deal at a time at the acceptance test.
+        outside = TOKEN_ANY.sub("\x00", bt)   # blank out {{param:...}} so token underscores don't hit
+
+        # (1) An underscore run outside a token is a raw template blank nobody keyed. Zero tolerance —
+        #     it emits verbatim as an unfilled line. audit_right/main shipped with a literal '__'.
+        for m in re.finditer(r"_+", outside):
+            ctx = outside[max(0, m.start() - 40):m.end() + 30].replace("\x00", "<TOKEN>")
+            E(f"body {ref}: raw underscore blank {m.group(0)!r} outside any token — key it as a param "
+              f"(...{ctx}...)")
+
+        # (2) 'a'/'an' immediately before a token is value-dependent grammar: 'a seven percent (7%)'
+        #     but 'an eight percent (8%)'. WARNING, not an error — it is legitimate when the value
+        #     domain is closed and every member starts with the same sound. Check, then keep or key
+        #     the article as its own choose_one, as audit_right now does.
+        for m in re.finditer(r"\b(an?)\s+\x00", outside, re.I):
+            ctx = outside[max(0, m.start() - 40):m.end() + 20].replace("\x00", "<TOKEN>")
+            W(f"body {ref}: article {m.group(1)!r} immediately precedes a token — value-dependent "
+              f"unless every possible value starts with the same sound (...{ctx}...)")
         # token <-> param cross-validation (both directions)
         tokens = set(TOKEN_KEY.findall(bt))
         pkeys = {p.get("param_key") for p in b.get("parameters", []) or [] if p.get("param_key")}
