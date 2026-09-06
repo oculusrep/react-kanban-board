@@ -92,10 +92,12 @@ Two files were received but NOT yet loaded/committed:
   landlord body declared `_existing`. All recorded in the decisions doc; say so if any is wrong.
 - **Manifest granularity re-send** (adds `brace_code` + `segment_key`). Do NOT build the tightened
   completeness rule until Mike flags that it landed.
-- **LCW1: retired or dropped in error?** The Aug 2026 handbook deletes it; the template keeps it.
-  Settle BEFORE extracting the LCW bodies — if retired, the ladder is two rungs, not three. Decisive
-  one-lookup test in the decisions doc: does the handbook still carry the >=$200,000 letter-of-credit
-  security language that today lives ONLY in LCW1's body (para 110)?
+- ~~LCW1~~ **CLOSED 2026-09-06: key ALL THREE rungs** (LCW0/LCW1/LCW2). Template carries three; the
+  Aug 2026 handbook drops LCW1; body text comes from the template. LCW1's `provisional_note` text is
+  owed at extraction and written verbatim in the decisions doc. Revisit only if a future template drop
+  ALSO drops it — one source dropping it is not the signal.
+- **OWED, not yet buildable:** forbidden-substring check for "NNN"/"Triple Net" in emitted text. Build
+  when freestanding is scoped and a fixture exists, not before.
 - **ROFR provenance** (see the decisions doc): Douglasville's Right of First Refusal is not in the
   national template. Either it traces to a Starbucks source, or Bucket 1 is not empty.
 - CAM0 cap already resolved (3% standing default). ETR omitted by design.

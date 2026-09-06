@@ -956,10 +956,129 @@ constrain what the assembled document may say and do:
 3. **Starbucks cannot assign insurance proceeds.**
 4. **Landlord keeps latent defects and reconstruction.**
 
-Standard 1 is an emitted-text assertion of the same shape as the existing "zero brackets, zero codes"
-rule, and belongs in the acceptance test as a forbidden-substring check when freestanding is scoped.
-**Not built now** — freestanding is not scoped, and a rule with nothing to run against is unverified
-by construction. Recorded so it is not rediscovered from the handbook a third time.
+**OWED (agreed with Mike, 2026-09-06): a forbidden-substring check for "NNN" and "Triple Net" in
+emitted text.** Same shape as the existing "zero brackets, zero codes" acceptance rule. **Do not build
+it until freestanding is scoped and there is a fixture to run it against** — a rule with no fixture is
+unverified by construction, which is the lesson the rule-2 mutation test paid for. Recorded so it is
+not rediscovered from the handbook a third time.
+
+**Freestanding is down to two blockers:** (1) Contingency Addendum provenance, (2) the R0 annual
+schedule shape, which rides the column-insert contract.
+
+## LCW1 — CLOSED: key all three rungs (2026-09-06)
+
+**Decision: the LCW ladder is THREE rungs. Key LCW0 / LCW1 / LCW2 when `landlord_work` is extracted.**
+
+The Aug 2026 handbook deletes LCW1; the template still carries it. Two signals disagreed, so the
+standing rule decides: **body text comes from the TEMPLATE.** The template carries all three.
+
+### My "decisive test" was not decisive — the premise did not hold
+
+I proposed checking whether the ≥$200,000 irrevocable-standby-letter-of-credit language survives in
+the Aug 2026 handbook, reasoning that if it did, LCW1's substance had been relocated (deliberate
+retirement), and if it had not, the deletion had also destroyed Starbucks' own protection on large
+allowances (error in the drop).
+
+Mike ran it. **The language is in the Aug 2026 handbook** — RENT / TIA section, with LC-required
+thresholds, "LCs require Automatic Conditional Approval from RECOMM", Elements of a Conforming LC, LC
+due at lease execution or 70 days before possession, and the escrow comparison table. **But it is in
+the July 2025 handbook's RENT section identically.** It never lived only in LCW1, so finding it
+elsewhere demonstrates nothing about relocation.
+
+My error was narrow and worth naming: "LCW1's body is the only place in the TEMPLATE carrying that
+language" is true, and I inferred from it that the handbook's copy must therefore have come from LCW1.
+It did not — the handbook had its own copy all along, in both editions. **A uniqueness claim scoped to
+one document does not survive being carried into another.**
+
+**What the test did settle:** deleting LCW1 did not delete the protection. The "too substantive to
+happen silently" argument is off the table.
+
+**What it did not settle:** the structural hole is real. "Allowance, no work" has no rung in the Aug
+2026 handbook — LCW0 requires work, LCW2 forbids both. The template partitions cleanly on what the
+Landlord provides:
+
+| Rung | Landlord Work | Allowance |
+|---|---|---|
+| **LCW0** | yes | yes — "IF LANDLORD IS PAYING ALLOWANCE **IN ADDITION TO** LANDLORD WORK" |
+| **LCW1** | **no** | yes — "FALLBACK – IF LANDLORD IS PAYING ALLOWANCE **AS A SUBSTITUTE FOR** LANDLORD'S WORK" |
+| **LCW2** | no | no — "ALTERNATIVE – IF LANDLORD IS DELIVERING PREMISES IN CURRENT CONDITION AND NOT PROVIDING WORK" |
+
+### Owed at extraction — LCW1's `provisional_note`, verbatim
+
+> Present in the template and in the July 2025 handbook; absent from the Aug 2026 handbook. The
+> ≥$200,000 letter-of-credit standard that LCW1's body implements survives in the Aug 2026 RENT / TIA
+> section, so the deletion did not remove the protection. Keyed from the template per the standing
+> rule that body text comes from the template. REVISIT if a future template drop also drops it.
+
+**Revisit trigger, stated so it is not misread:** template AND handbook both dropping LCW1 is the
+signal for deliberate retirement. **One source dropping it is not.**
+
+## Powder Springs acceptance test is GATED — and registering `rent` closed a live C failure (2026-09-06)
+
+Mike asked whether regenerating Powder Springs today hits the deferred halt. It does, and checking
+turned up something worse than the answer.
+
+**Verified against `fixtures/1_SBUX LOI - Powder Springs Rd + EWC.docx`:**
+- Table 0 is 11x4 with a **Per Square Foot** column → the deal needs **R1**, not R0.
+- Para 49: "Landlord will, at its expense, perform the work described on the attached Landlord
+  Workletter. Landlord will also provide Tenant an improvement allowance of $75,000" → **LCW0**.
+
+Both are deferred, so a faithful run HALTS. **The acceptance test is gated on the rent-table
+column-insert / allowance contract, not on the assembler.** The assembler can be built and unit-tested;
+it just cannot be acceptance-tested end-to-end on Powder Springs until R0/R1 + LCW0/1/2 load.
+`LOI_RESUME_HERE.md` said "nothing blocks it", which implied the test was reachable. Corrected.
+
+**THE LIVE FAILURE.** The halt only worked for one of the two. `landlord_work` was registered as a
+deferred clause; the RENT SCHEDULE was registered **nowhere** — there was no `rent` row in `loi_clause`
+at all. The sweep manifest assigns paras 36–47 and 49–61 to clause `rent`, but nothing in the library
+ever declared it, so `loi_deferred_clause` did not list it and OVIS could not halt on it. Under C the
+assembler would have **stripped the entire rent schedule and shipped a clean-looking LOI with no rent
+table** — precisely the "reaches a landlord looking clean" failure C was amended to prevent, one clause
+away from being live.
+
+Registered in migration `20260906140000`. **My earlier sequencing note was wrong**: I wrote that R0/R1
+were "a position-level gap, register them with the column-insert contract." The halt has to exist
+BEFORE the assembler, not alongside the work that lifts it. Registering costs nothing and is undone by
+the same field update that will un-defer it. Test P3b asserts both gaps stay discoverable.
+
+**Expected, explainable diff:** Powder Springs carries SALE OF PROPERTY at its own para 95. That clause
+is `retired`, so it strips silently and correctly — a historical artifact, not a regression, and the
+acceptance test should show it as a deliberate difference.
+
+## cam_basis CLOSED — axis challenged, checked against source, confirmed as keyed (2026-09-06)
+
+**No migration. Enum unchanged.** `nn_multi_tenant` / `nn_single_tenant_building` / `nnn` stay exactly
+as loaded.
+
+The axis was challenged on the Marietta pad: if CAM0 vs CAM1 turned on whether a shared denominator
+exists, a single-tenant pad with no pool looked mis-keyed. Checked against the **Aug 2026 handbook**,
+and the discriminator is **who maintains**, not whether a denominator exists:
+- **CAM0** — all sites except single-tenant buildings.
+- **CAM1** — single-tenant buildings, which **retain a pro-rata share by design**.
+- **NNN** — only where Starbucks gets a rent reduction for self-maintaining the Parcel.
+
+Mike confirmed the **Landlord** maintains the Marietta pad, so Marietta is **CAM0** — consistent with
+it having been keyed CAM0 verbatim. The proposed `shared_cam_pool` / `sole_cam_burden` replacement axis
+is **WITHDRAWN and must not be built.**
+
+Recorded because the challenge was worth making and the answer is worth not re-deriving: a pro-rata
+share surviving on a single-tenant building is not an anomaly, it is the CAM1 design.
+
+## Freestanding — NNN drafting standards from the Aug 2026 handbook (2026-09-06)
+
+These are **standards, not bodies.** The CAM1 / NNN body text still comes from the template; these
+constrain what the assembled document may say and do:
+1. **Never use "NNN" or "Triple Net" in LOI text.** (Testable — see below.)
+2. **Starbucks cannot accept direct payment of Real Property Taxes.** Bills stay in Landlord's name;
+   Starbucks reimburses.
+3. **Starbucks cannot assign insurance proceeds.**
+4. **Landlord keeps latent defects and reconstruction.**
+
+**OWED (agreed with Mike, 2026-09-06): a forbidden-substring check for "NNN" and "Triple Net" in
+emitted text.** Same shape as the existing "zero brackets, zero codes" acceptance rule. **Do not build
+it until freestanding is scoped and there is a fixture to run it against** — a rule with no fixture is
+unverified by construction, which is the lesson the rule-2 mutation test paid for. Recorded so it is
+not rediscovered from the handbook a third time.
 
 **Freestanding is down to two blockers:** (1) Contingency Addendum provenance, (2) the R0 annual
 schedule shape, which rides the column-insert contract.
