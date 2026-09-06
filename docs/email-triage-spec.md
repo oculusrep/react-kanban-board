@@ -38,6 +38,33 @@
 
 Cost effect: today ~177 agent runs/day at ~12–24k input tok each. Short-circuiting inheritance + auto-match + header rules should remove the large majority. Re-measure before quoting a number.
 
+#### (f) — INSTRUMENT FIRST, plan on 09-13 (decided 2026-09-06)
+
+No migration yet. The 404s measured in §5 came back on **both** mailboxes, so the `[0]`-selection
+defect is proven from the source but **not** proven to be the cause of the observed failures. Two
+causes need opposite fixes:
+
+| Cause | Fix | Retryable? |
+|---|---|---|
+| **Wrong mailbox** — `gmail_id` is per-mailbox, `emails` stores one, `email_visibility` fans out to both | `gmail_id` per visibility row | yes, against the right mailbox |
+| **Gone** — deleted from Gmail between sync and triage | none possible | no, stop retrying |
+
+Only separable **at the moment of failure**. A probe days later cannot tell them apart, because a
+message deleted in the meantime looks identical to one that was never there. So `email-triage` now
+probes the other connection's mailbox on the 404 path and logs a verdict:
+
+```
+[Gmail 404] gmail_id=… attempted_mailbox=… visibility_rows=N verdict=… subject="…"
+```
+
+Verdicts: `wrong-mailbox:resolves-in:<email>` · `gone:not-in-any-mailbox` ·
+`gone:no-other-mailbox` · `probe-inconclusive:<status>` · `probe-failed:<msg>`.
+
+Read-only (`messages.get`), one extra call, failure path only. **Q6 for the 09-13 review:** count
+verdicts. Mostly `wrong-mailbox` → take the migration and build a retry queue. Mostly `gone` → the
+migration is still correct but a retry queue would retry things that can never succeed, and the
+right behaviour is to record the outcome and stop.
+
 #### BUILT 2026-09-06 — tier 1 in log-only, demote enforced
 
 | Piece | Mode |
@@ -472,7 +499,24 @@ Flagged captures a short reason when it's cheap to say — *"needs the site plan
 | **Rules list** | `AgentRulesPage` at `/admin/agent-rules` | Extend: demote semantics, reversibility, provenance |
 | **Corrections** | `EmailClassificationReviewPage` (separate screen — unused since Aug) | **Inline on each item** — one text box or mic button. Not a separate screen |
 
-**Deal-page information architecture** (emails, notes, commitments, synopsis in one place) is the silo problem — recon confirms email and `note`/`note_object_link` are fully disjoint, no FK either direction, two incompatible link designs. **Acknowledged as its own work item. Not solved here.**
+**Deal-page information architecture — corrected 2026-09-06.** An earlier version of this spec,
+and the source plan, said there is no UI showing emails on a deal. **That is wrong.**
+
+What exists: `DealDetailsPage.tsx:690` renders `<ActivityTab dealId>` → `GenericActivityTab` →
+clicking an `activity_type = 'Email'` row opens **`EmailDetailModal`**, which loads the full email
+body from `emails` by id. **12,380 activity rows carry an `email_id`; 2,827 of those have a
+`deal_id`.** Deal-linked emails are readable today, with full body, from the deal page.
+
+The real gaps are narrower than "no UI", and they are what the work item should target:
+
+| Gap | Detail |
+|---|---|
+| It is an activity timeline, not an email view | Emails are interleaved one-row-each with calls and tasks. No thread grouping, no unread state, no reply |
+| Only deal-tagged email is reachable | Surfacing requires an `activity` row, which triage writes only for tagged emails. **~19,500 of 22,290 emails are unreachable from any deal page** |
+| Notes are still a separate graph | `note` / `note_object_link` have no email-referencing column and no FK either direction — a typed link table on one side, an untyped polymorphic one on the other. Anything reading "the history" still sees half of it |
+
+So the silo is real but it is between **email and notes**, not between email and the deal page.
+**Still its own work item. Not solved here.**
 
 ---
 

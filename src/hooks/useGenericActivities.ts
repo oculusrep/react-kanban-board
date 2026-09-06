@@ -65,6 +65,7 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
             sender_email,
             sender_name,
             recipient_list,
+            is_relevant,
             email_attachments (
               id
             )
@@ -106,8 +107,26 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
         throw fetchError;
       }
 
-      console.log(`Found ${data?.length || 0} activities for ${parentObject.type}:${parentObject.id}`);
-      setActivities(data || []);
+      // Hide email activities whose email was demoted as non-business.
+      //
+      // Before 2026-09-06 the agent hard-DELETEd those rows, so the activity
+      // disappeared with them. They are kept now (~84/day) so the call can be
+      // corrected and counted -- but keeping them must not mean they start
+      // appearing in deal, contact and property timelines. Filtered here rather
+      // than in the query because an inner join on emails would drop every
+      // non-email activity too.
+      //
+      // Review them at /admin/email-review, filter "Demoted".
+      const visible = (data || []).filter(
+        (a: any) => !a.email_id || a.email?.is_relevant !== false
+      );
+      const hiddenCount = (data?.length || 0) - visible.length;
+      if (hiddenCount > 0) {
+        console.log(`Hid ${hiddenCount} demoted email activit${hiddenCount === 1 ? 'y' : 'ies'}`);
+      }
+
+      console.log(`Found ${visible.length} activities for ${parentObject.type}:${parentObject.id}`);
+      setActivities(visible);
 
     } catch (error) {
       console.error('Error in fetchActivities:', error);

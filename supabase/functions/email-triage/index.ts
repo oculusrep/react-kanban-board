@@ -333,6 +333,67 @@ serve(async (req) => {
                 if (!labelResult.success) {
                   result.gmail_label_error = labelResult.error;
                   console.log(`[Gmail Label] Could not apply label: ${labelResult.error}`);
+
+                  // ============================================================
+                  // 404 INSTRUMENTATION -- dependency (f), added 2026-09-06.
+                  //
+                  // ~25% of label applies fail with 404 notFound. Two possible
+                  // causes and they need opposite fixes:
+                  //
+                  //   WRONG MAILBOX  gmail_id is per-mailbox, but emails stores
+                  //                  exactly one, from whichever account synced
+                  //                  first, while email_visibility fans out to
+                  //                  both. Retryable against the right mailbox.
+                  //                  Fix = gmail_id per visibility row.
+                  //   GONE           the message was deleted from Gmail between
+                  //                  sync and triage. Permanent; stop retrying.
+                  //
+                  // Only distinguishable AT THE MOMENT OF FAILURE -- probing the
+                  // other mailbox days later cannot tell them apart, because a
+                  // message deleted in the meantime looks identical. So probe
+                  // now, log the verdict, and design the retry queue on 09-13
+                  // against measured causes instead of my inference.
+                  //
+                  // Read-only probe (messages.get), one extra call, only on the
+                  // failure path.
+                  // ============================================================
+                  if ((labelResult.error || '').includes('404')) {
+                    let verdict = 'unknown';
+                    try {
+                      const { data: others } = await supabase
+                        .from('gmail_connection')
+                        .select('id, google_email, access_token')
+                        .neq('id', gmailConnectionId)
+                        .eq('is_active', true);
+
+                      if (!others || others.length === 0) {
+                        verdict = 'gone:no-other-mailbox';
+                      } else {
+                        verdict = 'gone:not-in-any-mailbox';
+                        for (const other of others) {
+                          const probe = await fetch(
+                            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.gmail_id}?format=minimal`,
+                            { headers: { Authorization: `Bearer ${other.access_token}` } }
+                          );
+                          if (probe.ok) {
+                            verdict = `wrong-mailbox:resolves-in:${other.google_email}`;
+                            break;
+                          }
+                          if (probe.status !== 404) {
+                            verdict = `probe-inconclusive:${probe.status}`;
+                          }
+                        }
+                      }
+                    } catch (probeErr: any) {
+                      verdict = `probe-failed:${probeErr.message}`;
+                    }
+                    console.log(
+                      `[Gmail 404] gmail_id=${email.gmail_id} ` +
+                      `attempted_mailbox=${connection.google_email} ` +
+                      `visibility_rows=${email.email_visibility?.length ?? 0} ` +
+                      `verdict=${verdict} subject="${email.subject}"`
+                    );
+                  }
                 } else {
                   console.log(`[Gmail Label] Applied "${OVIS_LINKED_LABEL}" to: ${email.subject}`);
                 }
