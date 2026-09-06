@@ -84,6 +84,27 @@ def validate(d):
             ctx = outside[max(0, m.start() - 40):m.end() + 20].replace("\x00", "<TOKEN>")
             W(f"body {ref}: article {m.group(1)!r} immediately precedes a token — value-dependent "
               f"unless every possible value starts with the same sound (...{ctx}...)")
+        # ---- The standing scans again, over PARAM VALUES this time ----------------------------
+        # They emit into the document exactly as body_text does, so scanning only body_text left a
+        # hole: five option values carried raw underscore blanks and one carried an unstripped
+        # instruction bracket. A choose_one option is emitted verbatim when chosen.
+        for prm in b.get("parameters", []) or []:
+            pk = prm.get("param_key")
+            vals = [("preferred_value", prm.get("preferred_value")),
+                    ("fallback_value", prm.get("fallback_value")),
+                    ("landlord_fill_render", None)]   # render IS an underscore rule by design — skip
+            for i, o in enumerate(prm.get("options", []) or []):
+                vals.append((f"option[{i}]", o.get("option_value")))
+            for where, val in vals:
+                if not val or where == "landlord_fill_render":
+                    continue
+                for m in re.finditer(r"_+", val):
+                    E(f"body {ref} param {pk} {where}: raw underscore blank {m.group(0)!r} — it emits "
+                      f"verbatim when chosen ({val[:70]!r})")
+                for br in stray_braces(val):
+                    E(f"body {ref} param {pk} {where}: stray {br!r} — instruction markup must be "
+                      f"stripped from emitted values ({val[:70]!r})")
+
         # token <-> param cross-validation (both directions)
         tokens = set(TOKEN_KEY.findall(bt))
         pkeys = {p.get("param_key") for p in b.get("parameters", []) or [] if p.get("param_key")}

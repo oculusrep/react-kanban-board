@@ -991,6 +991,48 @@ RECOMM chain IS handbook-defined, and the audit record must show it **answered, 
 `firing_mode` is what says "not per deal". A load guard asserts all four fields together, since a
 silent miss would put the approval chain back in the per-deal path.
 
+## SCAN GAP CLOSED — the underscore rule only read body_text (2026-09-06)
+
+Dumping the two pylon-panel bodies for Mike's tranche 10 exposed a hole in the scan I had just built:
+**it scanned `body_text` only.** Param values emit into the document exactly as body text does — a
+`choose_one` option is emitted verbatim when chosen — so a raw blank hiding in an option was invisible.
+
+Extended to `preferred_value`, `fallback_value` and every `option_value`, for both the underscore rule
+and the stray-instruction-markup rule. (`landlord_fill_render` is skipped: it IS an underscore rule by
+design.) **Five pre-existing defects surfaced immediately**, none of them in body text:
+
+| body | param | option value |
+|---|---|---|
+| `initial_cotenancy/main` | `initial_cotenancy_optional_2` | `and/or __________________ [IDENTIFY KEY TENANT(S)` |
+| `utilities/main` | `utilities_optional_1` | `in excess of an aggregate of $____________` |
+| `exclusive_use/violation_remedy` | `eu_remedy` | `…percentage rent of ___ percent (__%) of Tenant's gross sales…` |
+| `signage/panel_existing_pylon` | `sign_pe_choose_1` | `__________ position from the top` |
+| `signage/panel_new_pylon` | `sign_pn_choose_1` | `__________ position from the top` |
+
+The first also carries an **unstripped instruction bracket** — `[IDENTIFY KEY TENANT(S)`, unbalanced —
+which the existing stray-markup check would have caught in body text but never looked for in an option.
+
+All five are Mike's text; **reported, not patched.** Every one would have emitted an unfilled blank
+into a real LOI the first time its option was chosen, and the acceptance test would have found them one
+deal at a time — the exact failure mode the scan exists to prevent.
+
+**The lesson is the scan's own scope, not the data.** A check is only as good as the surface it reads,
+and "scan the bodies" quietly meant "scan `body_text`" because that is where the first instance
+happened to live. Same shape as `LIKE '%_%'`: a rule that cannot fail on the input it never looks at.
+
+### Correction: `audit_article` does NOT trip the article warning
+
+Mike expected it to, and offered that as proof the check cannot be an error. The reasoning is right but
+the example is not: the scan matches the literal word `a`/`an` before a token, and `audit_right` v2
+reads `…to reflect {{param:audit_article}} {{param:audit_blank_1}}…` — the token is preceded by
+"reflect", and `audit_blank_1` is preceded by a *token*, not by the word. Verified: tranche 9 validates
+with no article warning.
+
+The severity split still stands on its own merits — a `choose_one` whose options all begin with the
+same sound would be a legitimate hit — but there is no such instance in the library today, and the two
+current hits are both real defects. Worth knowing, since "it fires on correct input" was the argument's
+load-bearing half and it is not yet demonstrated.
+
 ## Tranche 9 LOADED — heading strip + two standing scans (2026-09-06)
 
 Three bodies re-versioned to v2 and the v1 originals deleted: `audit_right/main`,
