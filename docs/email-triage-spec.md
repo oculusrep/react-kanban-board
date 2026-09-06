@@ -38,6 +38,93 @@
 
 Cost effect: today ~177 agent runs/day at ~12–24k input tok each. Short-circuiting inheritance + auto-match + header rules should remove the large majority. Re-measure before quoting a number.
 
+#### BUILT 2026-09-06 — tier 1 in log-only, demote enforced
+
+| Piece | Mode |
+|---|---|
+| `_shared/tier1.ts` — rule engine, content-blind | **log_only** — evaluates, stubs, inserts anyway |
+| `gmail-sync` — evaluate + stub, before the insert | **log_only** |
+| `email-triage` — delete → demote | **enforced now** |
+| Inheritance short-circuit | enforced, gated `inherited_links > 0 && min_seed >= 0.90` |
+| Sender auto-match short-circuit | enforced, gated on thread already carrying a deal link |
+| Migration `20260906153946` | stub columns + `emails.is_relevant` |
+
+**Why demote is not behind the log-only gate:** it is strictly safer than deleting, and every week
+it waits destroys another ~2,500 rows of evidence. Expect ~84/day of bulk to accumulate as demoted
+rows during the log-only week — that is the data that was being destroyed, so it is the point, not
+bloat.
+
+**`processed_message_ids` storing no sender or subject is why the cost projection is a range and
+why the 2,534 deletions cannot be analysed.** Widening it is part of the fix, not incidental. The
+delete-based design destroyed the evidence needed to size its own replacement.
+
+#### THE LOG-ONLY WEEK — what to read on 2026-09-13
+
+Five questions, five queries. Run all five before flipping `TIER1_MODE` to `'enforce'`.
+
+**Q1. Per-rule volume — which rules carry the weight?**
+```sql
+select tier1_reason, count(*) n, count(distinct sender_email) senders,
+       round(count(*)/7.0,1) per_day
+from processed_message_ids
+where action='tier1_bulk' and processed_at > now()-interval '7 days'
+group by 1 order by 2 desc;
+```
+Reading it: `A1:list-unsubscribe` should dominate. If `A5:bulk-domain` is large, the header
+signal is weaker than assumed and the domain list is doing the work — which is the fragile path.
+
+**Q2. False positives — the question that decides go/no-go.**
+```sql
+select p.tier1_reason, p.sender_email, count(*) n
+from processed_message_ids p
+join emails e on e.message_id = p.message_id
+join email_object_link l on l.email_id = e.id
+where p.action='tier1_bulk' and p.processed_at > now()-interval '7 days'
+group by 1,2 order by 3 desc;
+```
+**Any row here is a rule that would have deleted mail the agent then linked to a real CRM object.**
+Non-zero means do not enforce that rule. This query only works because log-only still inserts.
+
+**Q3. Personal — volume only, by design.**
+```sql
+select count(*) from processed_message_ids
+where action='tier1_personal' and processed_at > now()-interval '7 days';
+```
+No sender, no reason — the CHECK constraint forbids it. If this is 0, ladder B has no list yet and
+the §7 `! [Personal]` harvest is the blocker.
+
+**Q4. Actual model-call reduction — replaces the estimated range.**
+```sql
+select date_trunc('day', ai_processed_at)::date d,
+       count(*) filter (where is_relevant) kept,
+       count(*) filter (where not is_relevant) demoted
+from emails where ai_processed_at > now()-interval '7 days' group by 1 order by 1;
+```
+Plus, from the edge-function logs, the `model-skipped` count now in the triage summary line.
+Projected runs/day: **172 → 55–95 (45–68% reduction)**. This is where that gets replaced with a
+measured number.
+
+**Q5. Does the auto-match short-circuit ever fire?** Grep logs for
+`sender_automatch_thread_has_deal`. Expected to be near-zero by construction — if the thread
+carries a deal link, inheritance normally copied it and already decided. If it is genuinely 0 after
+a week, delete the branch rather than carry dead code.
+
+**FLIP CRITERIA — per-rule, not a single go/no-go.** The 09-13 review is not one decision, it is
+one decision per rule id. Do not let it collapse into "enforce tier 1: yes/no".
+
+| Rule | Enforce when |
+|---|---|
+| `A1:list-unsubscribe` | Q2 returns zero rows for it |
+| `A2:list-id` | Q2 returns zero rows for it |
+| `A3:precedence-*` | Q2 returns zero rows for it |
+| `A4:auto-submitted` | Q2 returns zero rows for it |
+| `A5:bulk-domain` | Q2 returns zero rows **per domain** — enforce the clean domains, hold the rest |
+| `B1/B2` personal | Q3 > 0 and the list came from the §7 harvest, not guesswork |
+
+A rule with any Q2 hit stays in log-only until its signal is narrowed — for A5 that means dropping
+the offending domain, not abandoning A5. Expect a mixed outcome: headers clean, some domains dirty.
+That is a partial flip, and partial is the expected result.
+
 ### (b) Correction-table repair — highest leverage
 
 | | |
@@ -60,6 +147,39 @@ Cost effect: today ~177 agent runs/day at ~12–24k input tok each. Short-circui
 
 The 43 `not_business` rows are the **most valuable** of the set and belong somewhere else — they are labelled tier-1 training data (§7), not link corrections.
 
+#### APPLIED 2026-09-06 — 15 rows backfilled, migration `20260906135453`
+
+Write sites fixed: `src/lib/logCorrection.ts` (new shared helper) wired into
+`EmailDetailModal` ×2, `FlaggedEmailQueuePage`, `SuggestedContactsPage`, and an inline
+equivalent in `email-correction/index.ts` ×2. `EmailClassificationReviewPage` ×3 already wrote
+`agent_corrections` and was left alone. Both tables are still written — `ai_correction_log`
+remains the review-UI dedupe filter. `agent_corrections`: 63 → 78.
+
+#### The 50 `feedback` rows — SEED CORPUS FOR §6. Do not lose these.
+
+Inspection resolved the "ambiguous" label: **all 50 have `object_type`, `incorrect_object_id`
+and `correct_object_id` NULL.** They are pure free text, and they are the **only human-written
+content anywhere in the correction dataset** — every other text field in both tables is a
+generated template. They stay in `ai_correction_log` (Option A, decided 2026-09-06).
+
+Why not force them into `agent_corrections` now: free-text rules would be selected by the same
+sender/domain/keyword mechanism §2(d) just narrowed for being too blunt. A rule like *"ignore
+properties not in GA or SC from this sender"* injected into an unrelated email from that sender
+is noise. §6 models scope properly; ship them there.
+
+The split matters — they are two different assets:
+
+| Kind | Count | What it is | Destination |
+|---|---|---|---|
+| Sender/subject-scoped rules | **36** | Real conditional logic: *"Anytime subject line contains Steeplechase Plaza and JBR, tag deal JBR - …"*, *"references to properties not in GA or SC should be ignored from this sender"*, *"On anything with 'New site for Review' in the subject, search subject and body for…"* | §6 rule schema |
+| Positive confirmations | **14** | *"This classification is correct. The AI made the right connections."* — **not rules.** These are few-shot examples of correct classification, the only labelled positives in the system | §7 prompt examples, not §6 |
+
+**Cross-reference to §5 (tier 1):** some of the 36 are tier-1 material and get honored in the
+pre-insert filter, **not** in §6 — e.g. *"CCIM advertisements should be ignored"*, *"this is a
+newsletter"*, *"This is an advertisement. Ignore"*. Triage them by destination when building
+tier 1: a sender/keyword kill rule belongs pre-insert; a deal-routing rule belongs in §6.
+Retrieve with `select * from ai_correction_log where correction_type = 'feedback'`.
+
 ### (c) Matcher
 
 | | |
@@ -67,12 +187,114 @@ The 43 `not_business` rows are the **most valuable** of the set and belong somew
 | **Must change** | Remove or widen the 5-stage gate in `searchDeals` ([:325](../supabase/functions/_shared/gemini-agent.ts#L325)). Cap thread-inheritance confidence well below the 0.7 link threshold, or require the model to re-confirm an inherited deal tag before it counts |
 | **New** | A confidence floor that actually gates writes. Today a 0.80 guess and a 1.00 rule match are stored identically and both propagate at 0.95 |
 
+#### FIX 1 APPLIED 2026-09-06 — stage gate widened 5 → 7
+
+Added `Pre-Submittal` (22 deals) and `Submitted-Reviewing` (4) to `searchDeals`. All 26 were
+created within the prior 180 days — live work the matcher structurally could not see. Visible
+deals **69 → 95 of 771**.
+
+`Lost` (514) and `Closed Paid` (133) rejected: their names are near-duplicates of live deals, so
+647 extra candidates would feed the same unranked `deal_name` ILIKE that produced the Barrio
+Burrito error. Recall up slightly, precision down heavily, in the exact failure mode being closed.
+
+**`.limit(10)` deliberately left unchanged.** Two variables must not move in one deploy when the
+result cannot be measured locally: the honest coverage number comes from step 5's batch retriage,
+and moving the cap at the same time would make it impossible to attribute the change. 95 candidates
+against a 10-row cap may displace matches that work today — that is a thing to find out on real
+data, not to pre-empt.
+
+Projected: 30d deal-link coverage 17.2% → ~18.4% (ceiling, from 33 measured recoverable emails —
+30d emails with no deal link whose sender is a contact at a hidden-live-deal's client).
+
+#### OPEN ITEM — searchDeals is an unranked ILIKE capped at 10
+
+`.ilike('deal_name', '%query%').limit(10)` has no ordering, so which 10 of 95 candidates come back
+is arbitrary. The right fix is to order results so live/recent stages sort first, making the cap
+bite on the least relevant candidates rather than at random. Out of scope for dependency (c);
+revisit once step 5 has measured what the widened gate actually did.
+
+#### OPEN ITEM — Lost and Closed Paid are structurally unmatchable
+
+647 deals the matcher can never see — but they are exactly where a revived site or a post-close
+question would need to match. A real gap, not a decision to leave permanently. Blocked on the same
+root cause as the seed bug: `deal_name` ILIKE is too weak a key to safely admit 647 more
+candidates. Fixing the key (tenant identity, sender's client, two independent signals) is what
+unblocks this.
+
+#### FIX 2 APPLIED 2026-09-06 — Option B, seed-gated inheritance
+
+`gemini-agent.ts`: `THREAD_INHERITANCE_MIN_SEED = 0.80`, `THREAD_INHERITANCE_MAX = 0.90`.
+Inheritance now (a) ignores earlier *inherited* copies when choosing a seed, so confidence cannot
+ratchet along a thread, (b) refuses to inherit from a seed below 0.80 — that email goes to the
+model instead, (c) propagates `min(seed_conf, 0.90)` rather than a flat 0.95. **Never manufacture
+confidence.**
+
+Corpus simulation over all 1,521 existing inherited links: **22 blocked, 1,499 kept**, average
+confidence 0.950 → 0.895.
+
+#### STEP 5 CONTRACT — do not rediscover this
+
+The model short-circuit in §2(a) must be gated on **inheritance having actually applied AND
+`min_inherited_seed_confidence >= 0.90`** — not on "email is in a tagged thread". Two fields on
+`AgentResult` carry it: `inherited_links` and `min_inherited_seed_confidence`.
+
+Why: under Option B an email whose seed is below the floor does **not** inherit, so it has no
+classification at all unless the model runs. A naive "in a tagged thread → skip the model"
+short-circuit would silently drop exactly the ambiguous cases the floor is designed to catch.
+**1,431 of 1,521 inherited links (94%) have a seed ≥ 0.90** and are eligible to skip the model —
+that is the bulk of the saving, with a real classification pass kept on the tail.
+
+#### OPEN ITEM — the seed bug (root cause, not fixed here)
+
+Neither inheritance fix touches the actual cause of the Barrio Burrito error. In that thread a
+**second, independent model call re-derived the same wrong deal** (0.80, 18:45), after the first
+had already done so at 0.70. Propagation amplified it; it did not create it.
+
+Cause: `searchDeals` ILIKEs `deal_name` only, so a shopping-centre name shared across tenants
+("Barrett Corners") matches a deal for a different tenant — *Barrio Burrito* email → deal
+*"Poke House - Dean Wang - Barrett Corners - Phase 3"*.
+
+A fix would need to look at signals the matcher currently ignores:
+* **Tenant/client identity** — the deal's `client_id` / tenant name vs the tenant the email is
+  actually about. "Barrio Burrito" and "Poke House" are different tenants at the same centre.
+* **Sender's client** — does the sender's contact record tie to that deal's client at all?
+* **Two independent signals** — require location AND (tenant OR participant) before a deal link,
+  rather than location alone clearing 0.70.
+
+Consequence while unfixed: the floor reduces the blast radius but does not stop it. In the Barrio
+Burrito thread specifically, the 0.80 re-derivation becomes the seed, so later inheritance is kept
+at 0.80 rather than blocked — the wrong deal still spreads, just at honest confidence instead of
+manufactured 0.95.
+
 ### (d) Domain-branch scoping
 
 | | |
 |---|---|
 | **Must change** | Exclude `@oculusrep.com` from the domain branch ([:530](../supabase/functions/_shared/gemini-agent.ts#L530)) |
 | **Evidence** | 31 of 63 corrections have mike@ or asantos@ as sender; the domain branch pulls those into **968 of 2,713 emails/30d (35.7%)** regardless of topic |
+
+#### APPLIED 2026-09-06 — deployed in email-triage v81
+
+`INTERNAL_EMAIL_DOMAINS` + `isDomainLearnable()` in `gemini-agent.ts`; kept separate from
+`PUBLIC_EMAIL_DOMAINS` because the reason for exclusion differs (§6 rules and §7 harvest will
+both want an "is this internal" concept). Exact-sender branch untouched, as specified.
+
+| Branch | Before | After |
+|---|---|---|
+| Domain match | 962 / 2,703 (35.6%) | **171 (6.3%)** |
+| Exact sender | 776 (28.7%) | 776 (28.7%) — unchanged |
+
+A `[Agent] Domain branch skipped for <domain>` log line was folded into the step-3 deploy (v82)
+so the path is observable at runtime; the change itself was verified by grepping the deployed
+bundle, since the branch not running produces no log of its own.
+
+**Open, re-measure after §2(b) — not a defect to fix now** (decided 2026-09-06): **751 of the
+776 exact-sender matches are internal** (`mike@` / `asantos@`); only 25 are external. So ~28% of
+mail still has corrections selected on sender identity alone, dominated by internal senders. This
+is a symptom of thin, skewed correction data — 31 of 63 corrections had internal senders — not a
+defect in the exact-match branch, which is a far stronger signal than a domain match. The backfill
+and the keyword branch should redistribute it. Re-run the exact/domain split once corrections
+start accumulating again.
 
 **Out of scope (per spec):** the deal-board trigger. Recorded, with dissent — §14.
 

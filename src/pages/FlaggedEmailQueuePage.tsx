@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { logAddedTag, type CorrectionObjectType } from '../lib/logCorrection';
 import { format } from 'date-fns';
 import {
   EnvelopeIcon,
@@ -223,14 +224,15 @@ const FlaggedEmailQueuePage: React.FC = () => {
 
       // Log the correction for AI learning
       if (reasoning) {
-        await supabase.from('ai_correction_log').insert({
-          email_id: item.email_id,
-          correction_type: 'added_tag',
-          object_type: links[0].type,
-          correct_object_id: links[0].id,
-          email_snippet: item.snippet,
-          sender_email: item.sender_email,
-          reasoning_hint: reasoning,
+        await logAddedTag({
+          emailId: item.email_id,
+          objectType: links[0].type as CorrectionObjectType,
+          objectId: links[0].id,
+          objectName: links[0].name,
+          emailSnippet: item.snippet,
+          senderEmail: item.sender_email,
+          emailSubject: item.subject,
+          reasoning,
         });
       }
 

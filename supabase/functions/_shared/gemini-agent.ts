@@ -129,6 +129,19 @@ const PUBLIC_EMAIL_DOMAINS = new Set([
 ]);
 
 /**
+ * Our own domains. Excluded from domain-level correction learning: 31 of 63
+ * corrections have mike@ or asantos@ as sender_email, so a domain match on
+ * oculusrep.com pulled internal-thread corrections into every internal email
+ * regardless of topic (962 of 2,703 emails over 30d matched by domain; 791 of
+ * those were internal). Kept separate from PUBLIC_EMAIL_DOMAINS because these
+ * are not public providers -- the reason for exclusion differs even though the
+ * effect on the domain branch is the same.
+ */
+const INTERNAL_EMAIL_DOMAINS = new Set([
+  'oculusrep.com',
+]);
+
+/**
  * Check if an email domain is a public/generic provider
  * Returns false for corporate/private domains that are safe for domain-level learning
  */
@@ -137,6 +150,40 @@ function isPublicEmailDomain(email: string): boolean {
   if (!domain) return true; // Treat malformed as public (no domain learning)
   return PUBLIC_EMAIL_DOMAINS.has(domain);
 }
+
+/**
+ * Domain-level correction learning is only meaningful when the domain
+ * identifies an outside counterparty. Public providers say nothing about who
+ * the sender is; our own domain says nothing about what the email is about.
+ */
+function isDomainLearnable(email: string): boolean {
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return false;
+  return !PUBLIC_EMAIL_DOMAINS.has(domain) && !INTERNAL_EMAIL_DOMAINS.has(domain);
+}
+
+// ============================================================================
+// THREAD INHERITANCE TUNING
+// ============================================================================
+
+/** Marker written into email_object_link.reasoning_log for an inherited link.
+ *  Also the discriminator that stops an inherited copy being used as a seed
+ *  for the next email -- read before changing. */
+const THREAD_INHERITANCE_PREFIX = 'Thread inheritance: ';
+
+/** A seed below this is not relayed to the rest of the thread; the email goes
+ *  to the model instead. 0.80 sits above the 0.70 link threshold, so a link
+ *  that only barely qualified cannot propagate. */
+const THREAD_INHERITANCE_MIN_SEED = 0.80;
+
+/** Ceiling on an inherited link's confidence. Inheritance copies evidence and
+ *  must never report more certainty than the seed it copied. */
+const THREAD_INHERITANCE_MAX = 0.90;
+
+/** Minimum seed confidence for an inherited classification to be trusted
+ *  without a model call. Matches THREAD_INHERITANCE_MAX deliberately: only a
+ *  link carrying the maximum inheritable confidence may skip the model. */
+const MODEL_SKIP_MIN_SEED = 0.90;
 
 // ============================================================================
 // TOOL DEFINITIONS - Exposed to Gemini
@@ -322,11 +369,35 @@ export async function searchDeals(
   supabase: SupabaseClient,
   query: string
 ): Promise<DealSearchResult[]> {
-  // Get active stage IDs
+  // Get active stage IDs.
+  //
+  // 2026-09-06: widened from 5 stages to 7 by adding Pre-Submittal and
+  // Submitted-Reviewing. Those 26 deals were ALL created within the prior 180
+  // days -- live work the matcher structurally could not see. Before: 69 of 771
+  // deals visible. After: 95.
+  //
+  // Lost (514) and Closed Paid (133) stay excluded deliberately. Their names are
+  // near-duplicates of live deals (same centres, same tenants, earlier attempts),
+  // so admitting them would feed 647 extra near-collisions to an unranked ILIKE
+  // on deal_name -- the same weakness that produced the Barrio Burrito ->
+  // Poke House error. See docs/email-triage-spec.md 2(c) open items.
+  //
+  // .limit(10) below is deliberately UNCHANGED in this deploy so the coverage
+  // effect of the stage widening can be isolated on real data (step 5 batch
+  // retriage). 95 candidates against a 10-row unranked cap may displace matches;
+  // that is the thing being measured.
   const { data: activeStages } = await supabase
     .from('deal_stage')
     .select('id, label')
-    .in('label', ['Negotiating LOI', 'At Lease/PSA', 'Under Contract / Contingent', 'Booked', 'Executed Payable']);
+    .in('label', [
+      'Negotiating LOI',
+      'At Lease/PSA',
+      'Under Contract / Contingent',
+      'Booked',
+      'Executed Payable',
+      'Pre-Submittal',
+      'Submitted-Reviewing',
+    ]);
 
   const activeStageIds = (activeStages || []).map((s: any) => s.id);
 
@@ -495,7 +566,7 @@ export async function getRelevantCorrections(
 
   // Extract domain for domain-level matching
   const senderDomain = senderEmail.split('@')[1]?.toLowerCase() || '';
-  const isPublicDomain = isPublicEmailDomain(senderEmail);
+  const domainLearnable = isDomainLearnable(senderEmail);
 
   // Extract distinct keywords from subject (3+ chars, exclude common words)
   const commonWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'has', 'have', 'been', 'will', 'your', 'from', 'they', 'this', 'that', 'with', 'what', 'there', 'about', 'would', 'their', 'which', 'could', 'other', 'these', 'then', 'than', 'some', 'into', 'them', 'just', 'only', 'come', 'made', 'find', 'here', 'know', 'take', 'want', 'does', 'going', 'thing']);
@@ -525,9 +596,13 @@ export async function getRelevantCorrections(
   }
 
   // ========================================================================
-  // PRIORITY 2: Domain match (only for private/corporate domains)
+  // PRIORITY 2: Domain match (external corporate domains only -- not public
+  // providers, and not our own domain; see isDomainLearnable)
   // ========================================================================
-  if (!isPublicDomain && corrections.length < MAX_CORRECTIONS) {
+  if (!domainLearnable) {
+    console.log(`[Agent] Domain branch skipped for ${senderDomain} (public provider or our own domain)`);
+  }
+  if (domainLearnable && corrections.length < MAX_CORRECTIONS) {
     const { data: domainMatches } = await supabase
       .from('agent_corrections')
       .select('*')
@@ -928,7 +1003,18 @@ export interface AgentResult {
     object_type: string;
     object_id: string;
     confidence: number;
-  }>;
+    /** How many links on this email came from thread inheritance. Step 5's
+   *  model short-circuit is gated on this being > 0 AND
+   *  min_inherited_seed_confidence >= 0.90 -- see docs/email-triage-spec.md 2(c). */
+  inherited_links: number;
+  /** Lowest seed confidence behind any inherited link on this email.
+   *  Infinity when nothing was inherited. */
+  min_inherited_seed_confidence: number;
+  /** True when the Gemini loop was skipped entirely. Counted per run so the
+   *  cost effect of the short-circuits is measurable, not assumed. */
+  model_skipped: boolean;
+  model_skip_reason: string | null;
+}>;
 }
 
 export async function runEmailTriageAgent(
@@ -957,6 +1043,10 @@ export async function runEmailTriageAgent(
     tool_calls: 0,
     rule_override: false,
     tags: [],
+    inherited_links: 0,
+    min_inherited_seed_confidence: Infinity,
+    model_skipped: false,
+    model_skip_reason: null,
   };
 
   // ========================================================================
@@ -1040,48 +1130,119 @@ export async function runEmailTriageAgent(
     if (threadEmails && threadEmails.length > 0) {
       const threadEmailIds = threadEmails.map(e => e.id);
 
-      // Get all tags from emails in this thread
+      // Get all tags from emails in this thread, with the evidence behind them.
+      // reasoning_log distinguishes a model-derived seed from an earlier
+      // inherited copy -- only a real seed may be inherited from, or a single
+      // weak guess would relay itself down the thread at full strength.
       const { data: threadTags } = await supabase
         .from('email_object_link')
-        .select('object_type, object_id')
+        .select('object_type, object_id, confidence_score, reasoning_log')
         .in('email_id', threadEmailIds);
 
       if (threadTags && threadTags.length > 0) {
         console.log(`[Agent] THREAD INHERITANCE: Found ${threadTags.length} tags from thread`);
 
-        // Get unique tags (dedupe by object_type + object_id)
-        const uniqueTags = new Map<string, { object_type: string; object_id: string }>();
+        // Keep the strongest SEED per object. Inherited copies are excluded as
+        // sources so confidence cannot ratchet up over a long thread.
+        const uniqueTags = new Map<
+          string,
+          { object_type: string; object_id: string; seed_confidence: number }
+        >();
         for (const tag of threadTags) {
+          const isInheritedCopy = (tag.reasoning_log || '').startsWith(THREAD_INHERITANCE_PREFIX);
+          if (isInheritedCopy) continue;
+
           const key = `${tag.object_type}:${tag.object_id}`;
-          if (!uniqueTags.has(key)) {
-            uniqueTags.set(key, tag);
+          const seedConfidence = Number(tag.confidence_score ?? 0);
+          const existing = uniqueTags.get(key);
+          if (!existing || seedConfidence > existing.seed_confidence) {
+            uniqueTags.set(key, {
+              object_type: tag.object_type,
+              object_id: tag.object_id,
+              seed_confidence: seedConfidence,
+            });
           }
         }
 
         // Apply each unique tag to this email
         for (const [key, tag] of uniqueTags) {
+          // FLOOR: a seed the model was unsure about does not get relayed. The
+          // Barrio Burrito -> Poke House error seeded at exactly 0.70 (the link
+          // threshold) and inheritance promoted it to 0.95 on three further
+          // emails. Across the corpus 276 of 305 inherited deal links came from
+          // a seed >= 0.90 and only 13 from a seed < 0.80 -- this blocks those
+          // 13 and leaves the rest untouched. Emails that fail the floor still
+          // reach the model, which is the point: they need a real opinion.
+          if (tag.seed_confidence < THREAD_INHERITANCE_MIN_SEED) {
+            console.log(
+              `[Agent] THREAD: NOT inheriting ${tag.object_type} ${tag.object_id} -- ` +
+              `seed confidence ${tag.seed_confidence} below floor ${THREAD_INHERITANCE_MIN_SEED}`
+            );
+            continue;
+          }
+
+          // PROPAGATE, never manufacture: carry the seed's own confidence,
+          // capped. Copying evidence must not create more of it.
+          const inheritedConfidence = Math.min(tag.seed_confidence, THREAD_INHERITANCE_MAX);
+
           const linkResult = await linkObject(
             supabase,
             email.id,
             tag.object_type as 'deal' | 'contact' | 'property' | 'client',
             tag.object_id,
-            0.95,
-            `Thread inheritance: Same conversation as tagged email`
+            inheritedConfidence,
+            `${THREAD_INHERITANCE_PREFIX}Same conversation as tagged email ` +
+            `(seed confidence ${tag.seed_confidence})`
           );
 
           if (linkResult.success) {
             result.links_created++;
+            result.inherited_links++;
+            result.min_inherited_seed_confidence = Math.min(
+              result.min_inherited_seed_confidence,
+              tag.seed_confidence
+            );
             result.tags.push({
               object_type: tag.object_type as 'deal' | 'contact' | 'property' | 'client',
               object_id: tag.object_id,
-              confidence: 0.95,
+              confidence: inheritedConfidence,
             });
-            console.log(`[Agent] THREAD: Inherited ${tag.object_type} tag: ${tag.object_id}`);
+            console.log(
+              `[Agent] THREAD: Inherited ${tag.object_type} tag: ${tag.object_id} ` +
+              `at ${inheritedConfidence} (seed ${tag.seed_confidence})`
+            );
           }
         }
 
         if (result.links_created > 0) {
           console.log(`[Agent] Thread inheritance: Applied ${result.links_created} tags from thread`);
+        }
+
+        // ====================================================================
+        // SHORT-CIRCUIT: skip the model when inheritance already settled it.
+        //
+        // Gated per the step-4 contract, NOT on "email is in a tagged thread".
+        // Both conditions are required:
+        //   inherited_links > 0                      inheritance actually fired
+        //   min_inherited_seed_confidence >= 0.90     every seed was strong
+        //
+        // An email whose seed fell below the 0.80 floor inherits NOTHING, and
+        // one seeded at 0.80-0.89 inherits but is not confident enough to go
+        // unexamined -- both must still reach the model or they end up with no
+        // real classification at all. 1,431 of 1,521 inherited links (94%)
+        // clear this bar, which is where the saving comes from.
+        // ====================================================================
+        if (
+          result.inherited_links > 0 &&
+          result.min_inherited_seed_confidence >= MODEL_SKIP_MIN_SEED
+        ) {
+          result.summary =
+            `Skipped model: inherited ${result.inherited_links} tag(s) from thread ` +
+            `at seed confidence >= ${MODEL_SKIP_MIN_SEED}`;
+          result.model_skipped = true;
+          result.model_skip_reason = 'thread_inheritance_high_confidence';
+          console.log(`[Agent] SHORT-CIRCUIT: ${result.summary}`);
+          return result;
         }
       }
     }
@@ -1140,6 +1301,48 @@ export async function runEmailTriageAgent(
           confidence: 0.95,
         });
       }
+    }
+
+    // ======================================================================
+    // SHORT-CIRCUIT: sender auto-match, gated on the thread already carrying a
+    // deal link (decided 2026-09-06).
+    //
+    // Auto-match resolves a CONTACT at confidence 1.0, but it never attempts a
+    // deal. Skipping the model on a contact match alone would mean those emails
+    // never get a deal link -- trading deal coverage for tokens in the same
+    // work that widened deal visibility to raise it (coverage is 17.2%). So the
+    // model still runs unless the deal question is already answered for this
+    // conversation.
+    //
+    // NOTE -- this branch is expected to fire RARELY, by construction. If the
+    // thread carries a deal link, thread inheritance upstream will normally
+    // have copied it and either short-circuited already (seed >= 0.90) or
+    // deliberately fallen through to the model (seed 0.80-0.89, or blocked
+    // below the floor). The reachable remainder is the edge case where the
+    // thread has a deal link that inheritance did not write here -- e.g. the
+    // link already existed and linkObject deduped it. The counter below exists
+    // to measure how often that actually happens during the log-only week
+    // rather than assuming.
+    // ======================================================================
+    let threadHasDealLink = false;
+    if (email.thread_id) {
+      const { data: threadDealLinks } = await supabase
+        .from('email_object_link')
+        .select('id, email_id, emails!inner(thread_id)')
+        .eq('object_type', 'deal')
+        .eq('emails.thread_id', email.thread_id)
+        .limit(1);
+      threadHasDealLink = !!(threadDealLinks && threadDealLinks.length > 0);
+    }
+
+    if (threadHasDealLink) {
+      result.summary =
+        `Skipped model: sender auto-matched to a known contact and the thread ` +
+        `already carries a deal link`;
+      result.model_skipped = true;
+      result.model_skip_reason = 'sender_automatch_thread_has_deal';
+      console.log(`[Agent] SHORT-CIRCUIT: ${result.summary}`);
+      return result;
     }
 
     // Still run AI to find deals/properties, but we've already linked the contact

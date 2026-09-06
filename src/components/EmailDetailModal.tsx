@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { supabase } from '../lib/supabaseClient';
+import { logAddedTag, logRemovedTag, type CorrectionObjectType } from '../lib/logCorrection';
 import AdvancedEmailView from './AdvancedEmailView';
 import AIReasoningTrace from './AIReasoningTrace';
 import RecordMetadata from './RecordMetadata';
@@ -255,17 +256,17 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
             .single();
 
           if (userData) {
-            const { error: logError } = await supabase.from('ai_correction_log').insert({
-              user_id: userData.id,
-              email_id: emailId,
-              correction_type: 'added_tag',
-              object_type: object.type,
-              correct_object_id: object.id,
-              email_snippet: emailDetails.snippet || emailDetails.subject,
-              sender_email: emailDetails.sender_email,
-              reasoning_hint: `User manually added tag to ${object.type} "${object.name}" - AI missed this`,
+            await logAddedTag({
+              emailId,
+              userId: userData.id,
+              objectType: object.type as CorrectionObjectType,
+              objectId: object.id,
+              objectName: object.name,
+              emailSnippet: emailDetails.snippet || emailDetails.subject,
+              senderEmail: emailDetails.sender_email,
+              emailSubject: emailDetails.subject,
+              reasoning: `User manually added tag to ${object.type} "${object.name}" - AI missed this`,
             });
-            if (logError) console.error('Failed to log correction:', logError);
           }
         }
       }
@@ -347,17 +348,18 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
             .single();
 
           if (userData) {
-            const { error: logError } = await supabase.from('ai_correction_log').insert({
-              user_id: userData.id,
-              email_id: emailId,
-              correction_type: 'removed_tag',
-              object_type: linkedObject.type,
-              incorrect_object_id: linkedObject.id,
-              email_snippet: emailDetails.snippet || emailDetails.subject,
-              sender_email: emailDetails.sender_email,
-              reasoning_hint: `User removed AI tag to ${linkedObject.type} "${linkedObject.name}"`,
+            await logRemovedTag({
+              emailId,
+              userId: userData.id,
+              objectType: linkedObject.type as CorrectionObjectType,
+              objectId: linkedObject.id,
+              objectName: linkedObject.name,
+              linkId: linkedObject.linkId,
+              emailSnippet: emailDetails.snippet || emailDetails.subject,
+              senderEmail: emailDetails.sender_email,
+              emailSubject: emailDetails.subject,
+              reasoning: `User removed AI tag to ${linkedObject.type} "${linkedObject.name}"`,
             });
-            if (logError) console.error('Failed to log removal:', logError);
           }
         }
       }

@@ -44,6 +44,8 @@ interface TriageResult {
   tool_calls: number;
   summary: string;
   gmail_label_applied: boolean;
+  /** Gemini loop was skipped by a short-circuit. Measures the cost effect. */
+  model_skipped: boolean;
   gmail_label_error?: string;
   error?: string;
 }
@@ -123,6 +125,7 @@ serve(async (req) => {
         tool_calls: 0,
         summary: '',
         gmail_label_applied: false,
+        model_skipped: false,
       };
 
       try {
@@ -160,33 +163,61 @@ serve(async (req) => {
         result.is_relevant = agentResult.is_relevant;
         result.action = agentResult.action;
         result.rule_override = agentResult.rule_override;
+        result.model_skipped = agentResult.model_skipped;
 
-        // HARD DELETE: If agent says delete, remove the email entirely
+        // DEMOTE (was HARD DELETE until 2026-09-06).
+        //
+        // The agent judging an email non-business used to DELETE the row --
+        // roughly 84/day, 2,534 in the trailing 30 days. That is irreversible
+        // and unmeasurable: a deleted row cannot be corrected when the agent is
+        // wrong, and cannot be counted when sizing tier-1 rules. It is also why
+        // those 2,534 deletions cannot be analysed retrospectively.
+        //
+        // Now the row is KEPT and marked is_relevant = false. Queue and UI
+        // filter on that column. This ships enforced immediately, NOT behind
+        // tier-1's log-only week: it is strictly safer than deleting, and every
+        // week it waits destroys another ~2,500 rows of evidence.
         if (agentResult.action === 'delete') {
-          console.log(`[DELETE] Removing non-business email: ${email.subject}`);
+          console.log(`[DEMOTE] Marking non-business (row kept): ${email.subject}`);
 
-          // Store message_id hash to prevent re-fetching during Gmail sync
+          // Stub so Gmail sync does not re-ingest it. action='demoted' now --
+          // 'deleted' is legacy and no longer written.
           if (email.message_id) {
             try {
               await supabase.from('processed_message_ids').upsert(
                 {
                   message_id: email.message_id,
                   gmail_connection_id: gmailConnectionId,
-                  action: 'deleted',
+                  action: 'demoted',
+                  sender_email: email.sender_email,
+                  tier1_reason: agentResult.rule_override
+                    ? 'agent:rule-override'
+                    : 'agent:not-business',
                   processed_at: new Date().toISOString(),
                 },
                 { onConflict: 'message_id' }
               );
             } catch (hashErr) {
-              // Table might not exist yet - that's OK, just log it
-              console.log('[DELETE] Could not store message_id hash:', hashErr);
+              console.log('[DEMOTE] Could not store message_id stub:', hashErr);
             }
           }
 
-          // Delete the email row (cascade will handle related records)
-          await supabase.from('emails').delete().eq('id', email.id);
+          const { error: demoteError } = await supabase
+            .from('emails')
+            .update({
+              is_relevant: false,
+              demoted_at: new Date().toISOString(),
+              demoted_reason: agentResult.summary || 'Agent judged non-business',
+              ai_processed: true,
+              ai_processed_at: new Date().toISOString(),
+            })
+            .eq('id', email.id);
 
-          console.log(`[DELETE] Email deleted: ${email.subject}`);
+          if (demoteError) {
+            console.error('[DEMOTE] Failed to demote email:', demoteError.message);
+          } else {
+            console.log(`[DEMOTE] Email demoted, row retained: ${email.subject}`);
+          }
         } else {
           // KEEP: Create activity records if tags were added
           // Create one activity per deal (so email shows in each deal's timeline)
@@ -343,11 +374,13 @@ serve(async (req) => {
     const deletedCount = results.filter((r) => r.action === 'delete').length;
     const ruleOverrideCount = results.filter((r) => r.rule_override).length;
     const labelsApplied = results.filter((r) => r.gmail_label_applied).length;
+    const modelSkipped = results.filter((r) => r.model_skipped).length;
 
     console.log(
       `Agent triage complete in ${duration}ms: ${results.length} emails, ` +
       `${totalTags} tags, ${totalToolCalls} tool calls, ${flaggedCount} flagged, ` +
-      `${deletedCount} deleted, ${ruleOverrideCount} rule overrides, ${labelsApplied} labeled`
+      `${deletedCount} demoted, ${ruleOverrideCount} rule overrides, ${labelsApplied} labeled, ` +
+      `${modelSkipped} model-skipped`
     );
 
     return new Response(
