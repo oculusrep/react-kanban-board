@@ -19,11 +19,13 @@ END $$;
 DO $$
 DECLARE n INT;
 BEGIN
+  -- After R1 loaded, `rent` is ACTIVE at clause level and its only remaining gap is R0 at POSITION
+  -- level. That asymmetry is exactly what the split bought.
   SELECT count(*) INTO n FROM loi_deferred_item;
-  IF n = 3 AND EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='clause' AND clause_key='landlord_work')
-           AND EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='clause' AND clause_key='rent')
-           AND EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='position' AND brace_code='R0') THEN
-    RAISE NOTICE 'TEST P2 unified-deferred-view: PASS (2 clause + 1 position)';
+  IF n = 2 AND EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='clause' AND clause_key='landlord_work')
+           AND NOT EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='clause' AND clause_key='rent')
+           AND EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='position' AND clause_key='rent' AND brace_code='R0') THEN
+    RAISE NOTICE 'TEST P2 unified-deferred-view: PASS (1 clause + 1 position; rent split)';
   ELSE RAISE WARNING 'TEST P2 unified-deferred-view: FAIL (% rows)', n; END IF;
 END $$;
 
@@ -56,10 +58,11 @@ BEGIN
   RAISE WARNING 'TEST N3 reason-required: FAIL (accepted a reasonless deferral)';
 EXCEPTION WHEN others THEN RAISE NOTICE 'TEST N3 reason-required: PASS (rejected: %)', SQLERRM; END $$;
 
--- P3 — THE POINT OF THE SPLIT: once `rent` goes active (R1 loaded), R0 must STILL be declared.
---      This is the state the later tranche will create, simulated here.
+-- P3 — THE POINT OF THE SPLIT: with `rent` active (R1 loaded), R0 must STILL be declared. This was
+--      written as a simulation before tranche 13; it is now the live state, and the UPDATE is a no-op
+--      kept so the test still asserts the invariant if the clause is ever re-deferred.
 UPDATE loi_clause SET is_active = true, inactive_reason = NULL, unavailable_kind = NULL
- WHERE clause_key = 'rent';
+ WHERE clause_key = 'rent' AND NOT is_active;
 DO $$
 DECLARE n_clause INT; n_pos INT;
 BEGIN

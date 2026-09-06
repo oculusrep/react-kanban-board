@@ -54,7 +54,12 @@ import docx
 # run and replaces only the content after it, so no body supplies a heading. The letter template
 # fuses headings into the clause paragraph; the addendum has them as separate paragraphs, which is
 # why the category exists. Exempt from the body rules, exactly as `letter_shell` is.
-CATS = {"primary", "addon", "instruction", "letter_shell", "heading", "blocked", "empty"}
+# `computed_table` = emitted, but its content comes from the ENGINE at assembly time, not from any
+# canonical body. The rent rows (template paras 51-59) are a fixed run of SKELETON paragraphs the
+# assembler replaces with computed rows; they exist whether or not R1 is the selected rung, so the
+# behaviour belongs to the skeleton, not to a position. Same shape as `heading` one level up: the
+# skeleton owns it, no body supplies it, and rules 2 and 4 skip it.
+CATS = {"primary", "addon", "instruction", "letter_shell", "heading", "computed_table", "blocked", "empty"}
 CONTENT = {"primary", "addon"}                       # categories that must map to a loaded body
 SEED_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -192,10 +197,10 @@ def check_manifest(manifest, manifest_path, template_path, inv):
             else:
                 per_body.append(i)
 
-        # A heading carries no body — that is the whole point of the category.
-        if cat == "heading" and e.get("bodies"):
-            problems.append(f"{name} para {i}: heading must not claim a body — headings are "
-                            f"template-owned and no canonical body supplies one")
+        # A heading or a computed table carries no body — that is the whole point of both categories.
+        if cat in ("heading", "computed_table") and e.get("bodies"):
+            problems.append(f"{name} para {i}: {cat} must not claim a body — it is skeleton-owned "
+                            f"and no canonical body supplies its content")
 
         # (3) exact-body resolution for any category that declares bodies.
         bodies = e.get("bodies")

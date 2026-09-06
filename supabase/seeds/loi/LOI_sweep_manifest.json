@@ -366,76 +366,83 @@
       "category": "empty"
     },
     "49": {
-      "category": "blocked",
-      "clause": "rent",
-      "note": "R1 marker",
+      "category": "instruction",
+      "clause": null,
+      "note": "R1 marker. Instruction, never emitted.",
       "text_head": "[{R1} – TO BE USED IF THE RENT IS TIED TO SQUARE FOOTAGE]"
     },
     "50": {
       "category": "empty"
     },
     "51": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "Years\t\tMonthly\t\tYearly\t\t[{R1}Per Square Foot]"
     },
     "52": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "1-5\t\t$\t\t\t$\t\t[{R1}$\t\t]"
     },
     "53": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "6-10\t\t$\t\t\t$\t\t[{R1}$\t\t]"
     },
     "54": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": ""
     },
     "55": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "Extension Options:"
     },
     "56": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "11-15              \t$                     \t\t$ \t\t[{R1}$\t\t]"
     },
     "57": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "16-20             \t$                     \t\t$ \t\t[{R1}$\t\t]"
     },
     "58": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "21-25             \t$                     \t\t$   \t\t[{R1}$\t\t]"
     },
     "59": {
-      "category": "blocked",
+      "category": "computed_table",
       "clause": "rent",
-      "note": "R1 schedule rows",
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
       "text_head": "26-30             \t$                      \t\t$\t\t[{R1}$\t\t]"
     },
     "60": {
       "category": "empty"
     },
     "61": {
-      "category": "blocked",
+      "category": "primary",
       "clause": "rent",
-      "note": "R1 remeasurement paragraph",
-      "text_head": "[{R1} The rent schedule is based on Landlord's estimate of the ground floor area of the Pr"
+      "note": "R1 remeasurement note. Emits on every R1 deal (handbook, both editions). All three worked examples dropped it — expected diff #2.",
+      "text_head": "[{R1} The rent schedule is based on Landlord's estimate of the ground floor area of the Pr",
+      "bodies": [
+        {
+          "clause_key": "rent",
+          "brace_code": "R1",
+          "segment_key": "main"
+        }
+      ]
     },
     "62": {
       "category": "empty"

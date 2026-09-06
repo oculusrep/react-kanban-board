@@ -1,0 +1,141 @@
+{
+  "_README": [
+    "TRANCHE 13 - R1. One body, no params, no blanks, no heading.",
+    "",
+    "ANSWERING YOUR SCHEMA QUESTION FIRST, because it changes what this tranche contains.",
+    "",
+    "You asked whether the seed needs a marker for 'a position with one body plus a table-emission",
+    "behaviour'. My answer: NO - because that is not the shape. R1 is an ordinary one-body position.",
+    "The table is not R1's behaviour. It is the SKELETON's.",
+    "",
+    "This follows directly from B4. Headings are template-owned: the skeleton supplies them, bodies",
+    "never carry them, and a position does not 'have heading-emission behaviour'. Paras 51-59 are",
+    "the same kind of thing one level up - a fixed run of template paragraphs that the assembler",
+    "replaces with engine-supplied rows. They are owned by the skeleton, they exist whether or not",
+    "R1 is the selected rung, and there is no canonical body behind them at all. Contract E already",
+    "says the rows are precomputed and the assembler does zero math; this just says WHERE the rows",
+    "land, and the answer is a skeleton paragraph range, not a position field.",
+    "",
+    "So the thing that needs loader support is a MANIFEST CATEGORY, not a seed marker:",
+    "",
+    "  category `computed_table` - emitted; carries no canonical body; rule-2 exempt exactly as",
+    "  `heading` and `letter_shell` are; content supplied by the engine at assembly time. Paras",
+    "  51-59 collapse to one such entry (or nine, if you would rather keep the index space",
+    "  paragraph-per-paragraph - your call, the manifest is yours).",
+    "",
+    "Why this is the better place for it:",
+    "  - If the marker lived on the position, then R0 - a different rung of the same clause -",
+    "    would need its own copy of the same marker, and so would any future rung. The table is",
+    "    invariant across rungs; the rungs are not.",
+    "  - Rule 4 reverse coverage stays honest. A skeleton category is something rule 2 knows to",
+    "    skip. A position field is something rule 4 would have to be taught to interpret.",
+    "  - It keeps 'position -> body' total. Every position has bodies and nothing else. The moment",
+    "    one position carries a behaviour flag, every consumer has to ask whether the flag is set",
+    "    before it can trust the body list.",
+    "",
+    "If you disagree, the fallback I would accept is an explicit position field you define and the",
+    "loader validates - never a field I invent that the loader ignores. But I do not think you need",
+    "one, and this tranche is written on the assumption that you don't: R1 below has no marker of",
+    "any kind.",
+    "",
+    "PARA 61 - the body. Template markers '[{R1}' and ']' stripped. Nothing else changed.",
+    "No heading (B4). No params: every noun in it is either fixed or resolved by the engine.",
+    "'Landlord's estimate' is not a blank - the sentence is about the estimate, not filled with it.",
+    "",
+    "EXPLICITLY NOT BODY TEXT, and worth stating because each looks like it should be:",
+    "  paras 51-59  - the tab-delimited rent rows. Placeholder for the computed table, above.",
+    "  para 49      - instruction marker. Guidance, never emitted.",
+    "  paras 36-47  - the R0 block. R0 is registered in loi_deferred_position and stays deferred.",
+    "                 Do NOT let this tranche flip the `rent` clause active in a way that lets R0",
+    "                 go silently absent - that is precisely the failure test P3 guards.",
+    "",
+    "ACCEPTANCE TEST CONSEQUENCE, already agreed but restating so it is in one place with the",
+    "tranche that causes it: Powder Springs OMITTED this sentence. All three sent LOIs did. It is",
+    "in the 'Provision in LOI' block of both handbook editions and is tenant-protective, so we",
+    "emit it deliberately. That is expected diff #2 alongside SALE OF PROPERTY stripping."
+  ],
+  "_supersedes": {
+    "canonical_bodies": [],
+    "_note": [
+      "Nothing superseded. `rent`/R1/main is a NEW body - the rent clause had no loaded",
+      "body at all, which is why it was registered deferred."
+    ]
+  },
+  "canonical_bodies": [
+    {
+      "ref": "RENT__R1__v1__main",
+      "clause_key": "rent",
+      "brace_code": "R1",
+      "source": "national-template-drop",
+      "version": "v1",
+      "segment_key": "main",
+      "body_text": "The rent schedule is based on Landlord's estimate of the ground floor area of the Premises, excluding mezzanine, basement and storage space, if any, and the rent will be adjusted if the actual number of square feet of the Premises is less than Landlord's estimate.",
+      "extraction_note": "Template para 61. '[{R1}' opening marker and ']' closing marker stripped. No heading (B4 - 'RENT:' is template-owned). No parameters. The rent rows at paras 51-59 are NOT part of this body - they are a skeleton-owned computed_table range, see _README. Omitted from all three sent LOIs; emitted deliberately per both handbook editions.",
+      "parameters": []
+    }
+  ],
+  "clauses": [
+    {
+      "clause_key": "rent",
+      "_topup": true,
+      "description": "CLAUDE CODE ADDITION to tranche 13: position structure, which is not body text. Mike sent the body only, by design.",
+      "guidance_note": "SHAPE = SELECTOR, NOT A RANKED LADDER. R0 and R1 are not preferences - neither is 'better' and nobody negotiates from one to the other; which applies is a DEAL FACT. Same axis the CAM incident resolved when building_type was retired for cam_basis. R0 is not loaded, so the variant declares subdomain {per_sqft} and is valid with R1 alone - the same mechanism that lets the ECDT CAM variant be valid with CAM0 alone. R0 later arrives in its own variant declaring {annual}: no re-ranking, no re-keying of R1.",
+      "variants": [
+        {
+          "variant_key": "rent_ecdt",
+          "deal_type_scope": [
+            "end-cap-drive-thru"
+          ],
+          "selector_field": "rent_basis",
+          "selector_version": 1,
+          "selector_subdomain": [
+            "per_sqft"
+          ],
+          "replaces_base": false,
+          "positions": [
+            {
+              "position_kind": "conditional_alternative",
+              "brace_code": "R1",
+              "selector_value": "per_sqft",
+              "is_default": true,
+              "template_paragraph": 61,
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "firing_mode": "per-deal",
+              "internal_note": "Rent tied to square footage. The one BODY is the remeasurement note (template para 61). The rent TABLE is NOT this position's body - paras 51-59 are skeleton-owned `computed_table` paragraphs the assembler replaces with engine rows (contract E: the assembler does zero math).",
+              "position_bodies": [
+                {
+                  "canonical_body_ref": "RENT__R1__v1__main",
+                  "emit_sequence": 0
+                }
+              ],
+              "applies_when": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "director_questions": [],
+  "selectors": [
+    {
+      "selector_field": "rent_basis",
+      "current_version": 1,
+      "note": "How rent is expressed: a set annual amount (R0) or tied to square footage (R1). A DEAL FACT, carried by the rent engine as Terms.measurement_basis - not a preference, so not a ranked ladder.",
+      "domain": [
+        {
+          "value": "per_sqft",
+          "version": 1,
+          "description": "Rent tied to square footage - the R1 four-column schedule with a Per Square Foot column."
+        },
+        {
+          "value": "annual",
+          "version": 1,
+          "description": "Rent as a set annual amount - the R0 three-column schedule. NOT LOADED; registered in loi_deferred_position."
+        }
+      ]
+    }
+  ]
+}

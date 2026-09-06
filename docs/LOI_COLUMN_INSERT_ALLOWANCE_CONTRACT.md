@@ -1,6 +1,6 @@
 # Column-Insert / Allowance Contract
 
-**STATUS (2026-09-06): reviewed. Q1, Q2, Q5, Q6 RESOLVED by Mike; Q2's mechanism is BUILT. Q3, Q4, Q7
+**STATUS (2026-09-06): reviewed; TRANCHE 13 (R1) LOADED. Q1, Q2, Q5, Q6 RESOLVED by Mike; Q2's mechanism is BUILT. Q3, Q4, Q7
 remain.** Body text is still Mike's; schema and assembler are mine.
 
 This is the critical path. `rent` (R0/R1) and `landlord_work` (LCW0/1/2) are both registered DEFERRED,
@@ -96,6 +96,31 @@ always — never at a fixed index.
 
 **OPEN:** what if `P = 0` (no extension options)? No worked example. Proposal: omit the blank and label
 rows entirely, giving `B + 1` rows. Needs confirmation, and it is cheap to state now.
+
+### 1.3b Where the rows land — `computed_table`, a SKELETON category (Mike, 2026-09-06)
+
+I asked whether a position needs a marker for "one body plus table-emission behaviour". **It does not,
+and the question was wrong.** The table is not R1's behaviour, it is the SKELETON's — B4 one level up.
+Headings are template-owned and a position does not "have heading-emission behaviour"; paras 51–59 are
+the same kind of thing, a fixed run of template paragraphs the assembler replaces with engine rows.
+They exist whether or not R1 is the selected rung, and no canonical body sits behind them.
+
+So the support went into a **manifest category**, not a seed field:
+
+> **`computed_table`** — emitted; carries no canonical body; rule-2 and rule-4 exempt exactly as
+> `heading` and `letter_shell` are; content supplied by the engine at assembly time.
+
+Mike's three reasons, all correct: on the position, R0 would need its own copy of the same marker and
+so would every future rung, though the table is invariant across rungs; rule 4 stays honest because a
+skeleton category is something rule 2 already skips, whereas a position flag would have to be taught;
+and it keeps `position → body` total, so no consumer has to check a flag before trusting the body list.
+
+**Nine entries, not one.** Rule 1 requires every paragraph index `0..N-1` to carry an assignment, so
+collapsing 51–59 into a single entry would break the invariant that makes gaps detectable. The count
+falls out of an existing rule rather than being a preference.
+
+Manifest now: **49 → `instruction`** (the marker, never emitted), **51–59 → `computed_table`**,
+**61 → `primary`** with the loaded `rent`/`R1`/`main` body.
 
 ### 1.4 The Per Square Foot column
 

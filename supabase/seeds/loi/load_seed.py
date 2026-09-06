@@ -389,9 +389,25 @@ def emit_sql(d):
         merge = bool(c.get("_topup") or c.get("_resource"))
         for v in c.get("variants", []):
             if merge:
-                # resolve the EXISTING variant (variant_key matches); add positions to it
+                # Resolve the EXISTING variant, and CREATE it if this topup is adding one. A topup is
+                # an overlay onto an existing CLAUSE; it may legitimately introduce a new variant (the
+                # rent clause was registered deferred with no variant at all, then gained rent_ecdt).
+                # Assuming the variant already exists silently inserts positions with a NULL
+                # variant_id, which is only caught by the NOT NULL constraint.
                 vid_expr = (f"(SELECT v.id FROM loi_variant v JOIN loi_clause c ON c.id=v.clause_id "
                             f"WHERE c.clause_key={q(c['clause_key'])} AND v.variant_key={q(v['variant_key'])})")
+                new_vid = str(uuid.uuid4())
+                dts = "ARRAY[" + ",".join(q(x) for x in v.get("deal_type_scope", ["end-cap-drive-thru"])) + "]::text[]"
+                out.append(
+                    f"INSERT INTO loi_variant (id,clause_id,variant_key,deal_type_scope,selector_field,selector_version,replaces_base) "
+                    f"SELECT {q(new_vid)},(SELECT id FROM loi_clause WHERE clause_key={q(c['clause_key'])}),"
+                    f"{q(v['variant_key'])},{dts},{q(v.get('selector_field'))},{q(v.get('selector_version'))},{q(v.get('replaces_base',False))} "
+                    f"WHERE NOT EXISTS (SELECT 1 FROM loi_variant v2 JOIN loi_clause c2 ON c2.id=v2.clause_id "
+                    f"WHERE c2.clause_key={q(c['clause_key'])} AND v2.variant_key={q(v['variant_key'])});")
+                for sval in v.get("selector_subdomain", []) or []:
+                    out.append(f"INSERT INTO loi_variant_selector_value (variant_id,value) "
+                               f"SELECT {vid_expr},{q(sval)} WHERE NOT EXISTS (SELECT 1 FROM "
+                               f"loi_variant_selector_value x WHERE x.variant_id={vid_expr} AND x.value={q(sval)});")
             else:
                 vid = str(uuid.uuid4()); vid_expr = q(vid)
                 dts = "ARRAY[" + ",".join(q(x) for x in v.get("deal_type_scope", ["end-cap-drive-thru"])) + "]::text[]"
