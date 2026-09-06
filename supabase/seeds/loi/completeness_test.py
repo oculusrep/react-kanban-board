@@ -197,6 +197,20 @@ def check_manifest(manifest, manifest_path, template_path, inv):
             else:
                 per_body.append(i)
 
+        # A computed_table must say WHICH table it is and WHAT GATES it. Both rungs of `rent` carry a
+        # table — R1's at paras 51-59, R0's at 38-47 — and they are DIFFERENT SHAPES (R1 has a fourth
+        # Per Square Foot column). Ungated, both would emit; unnamed, the assembler cannot tell which
+        # shape to render. Required now, while R0 is still deferred, so the gap is declared before the
+        # thing exists — the same reason loi_deferred_position exists.
+        if cat == "computed_table":
+            if not e.get("table"):
+                problems.append(f"{name} para {i}: computed_table must name its 'table' — the "
+                                f"assembler cannot render a shape it cannot identify")
+            g = e.get("gated_by")
+            if not isinstance(g, dict) or not g.get("selector_field") or not g.get("selector_value"):
+                problems.append(f"{name} para {i}: computed_table must carry 'gated_by' "
+                                f"{{selector_field, selector_value}} — ungated, every rung's table emits")
+
         # A heading or a computed table carries no body — that is the whole point of both categories.
         if cat in ("heading", "computed_table") and e.get("bodies"):
             problems.append(f"{name} para {i}: {cat} must not claim a body — it is skeleton-owned "
@@ -344,6 +358,21 @@ def run(manifest_paths):
                   f"paragraphs ({st['body_resolved']}/{len(st['per_body'])} content paragraphs body-resolved)")
         for i, cat, ck in st["deferred"]:
             print(f"    DEFERRED para {i}: {cat} on deferred clause {ck!r}")
+
+    # Two computed_table paragraph runs gated on the SAME selector value would both emit.
+    for mp, m, _ in manifests:
+        seen = {}
+        for k, e in (m.get("assignments") or {}).items():
+            if e.get("category") != "computed_table":
+                continue
+            g = e.get("gated_by") or {}
+            key = (g.get("selector_field"), g.get("selector_value"))
+            if key[0] and e.get("table"):
+                seen.setdefault(key, set()).add(e["table"])
+        for key, tables in seen.items():
+            if len(tables) > 1:
+                all_problems.append(f"computed_table: {key[0]}={key[1]} gates more than one table "
+                                    f"({', '.join(sorted(tables))}) — exactly one may emit")
 
     print(f"\nreverse coverage (all skeletons): {len(reachable & claimed)}/{len(reachable)} loaded "
           f"bodies claimed; {len(allowed)} documented as unjoined")

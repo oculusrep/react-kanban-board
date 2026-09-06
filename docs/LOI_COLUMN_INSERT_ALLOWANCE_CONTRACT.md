@@ -122,6 +122,43 @@ falls out of an existing rule rather than being a preference.
 Manifest now: **49 → `instruction`** (the marker, never emitted), **51–59 → `computed_table`**,
 **61 → `primary`** with the loaded `rent`/`R1`/`main` body.
 
+### 1.3c computed_table is GATED and NAMED — designed now, before R0 exists (Mike, 2026-09-06)
+
+Mike's catch: **both rungs have a table.** R1's is paras 51–59, R0's is 38–47. If `computed_table`
+emitted unconditionally, both would emit; and the two are **different shapes** — R1 carries a fourth
+Per Square Foot column, R0 does not — so the assembler cannot render one it cannot identify.
+
+Two required fields on every `computed_table` entry, enforced by the completeness test:
+
+```json
+"table": "rent_r1",
+"gated_by": { "selector_field": "rent_basis", "selector_value": "per_sqft" }
+```
+
+Plus a cross-entry assertion: **no two tables may share a gate.** If `rent_basis=per_sqft` ever gates
+both `rent_r0` and `rent_r1`, that is a failure, not a preference.
+
+This is the `loi_deferred_position` lesson again — **declare the gap before the thing exists.** R0 is
+not loaded and may not be for a long time, but the shape that keeps it from emitting alongside R1 is
+in place now, so landing R0 is an addition rather than a retrofit. When it lands: paras 38–47 become
+`computed_table` with `table: "rent_r0"` and `gated_by: rent_basis=annual`.
+
+Mutation-tested three ways, all caught: a missing `table`, a missing `gated_by`, and two tables sharing
+one gate.
+
+### 1.3d Paragraph grouping when an ALTERNATIVE shares a paragraph with a MODIFIER
+
+The grouping rule said positions sharing `(clause_id, template_paragraph)` concatenate **in
+`emit_order`**. That works when every fragment is a modifier, as with the three closing-statement
+fragments at para 218. It breaks for LCW1: its `security` fragment is a modifier with an `emit_order`,
+while the LCW1 body itself is an alternative, and **alternatives carry no `emit_order` at all** — the
+kind-shape CHECK forbids it.
+
+**Rule extended:** within a paragraph group, order by `(COALESCE(emit_order, -1), rank)` — a position
+with no `emit_order` sorts FIRST. A paragraph can hold at most one alternative, since alternatives are
+mutually exclusive, so this is deterministic: the selected rung's body leads, its modifiers follow in
+`emit_order`.
+
 ### 1.4 The Per Square Foot column
 
 Template header cell is `[{R1}Per Square Foot]`; each R1 data cell is `[{R1}$\t\t]`. **Brace codes
@@ -179,6 +216,29 @@ depend on anyone remembering. Test P3 in `loi_negative_tests_v12.sql` simulates 
 asserts R0 survives it.
 
 ---
+
+## Contract G — whitespace around an OMITTED param (NEW, 2026-09-06)
+
+Contract A defines what `omit` MEANS but not what happens to the whitespace beside it. Mike asked what
+the assembler currently does with the two already-loaded instances. **Answer: nothing — the assembler
+does not exist yet.** There is no observable behaviour to match, which is why this is a contract clause
+rather than a bug report.
+
+> **G. When a param resolves to `omit`, the assembler deletes the token together with exactly ONE
+> immediately-preceding space if one exists; otherwise together with exactly ONE immediately-following
+> space if one exists; otherwise the token alone. It touches no other whitespace.**
+
+**Scoped deliberately, per Mike's constraint: this is NOT global whitespace normalisation.** Tranche 10
+kept the space before the period in both pylon bodies because the fixture has it, and a global rule
+would eat it. G fires only at the site of an omitted token.
+
+Checked against all three loaded instances:
+
+| body | with the option | omitted |
+|---|---|---|
+| `utilities/main` | `…extraordinary fees in excess of an aggregate of $X that are associated…` | `…extraordinary fees that are associated…` ✓ |
+| `initial_cotenancy/main` | `…excluding Tenant, and/or X is/are occupied…` | `…excluding Tenant, is/are occupied…` ✓ |
+| LCW0/LCW1 (proposed) | `…improvements plus … ({{ref}} "Allowance")` | `…improvements ({{ref}} "Allowance")` ✓ |
 
 ## Part 2 — Allowance side
 

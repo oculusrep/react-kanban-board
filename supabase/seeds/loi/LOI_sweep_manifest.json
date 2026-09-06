@@ -377,56 +377,101 @@
     "51": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "Years\t\tMonthly\t\tYearly\t\t[{R1}Per Square Foot]"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "Years\t\tMonthly\t\tYearly\t\t[{R1}Per Square Foot]",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "52": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "1-5\t\t$\t\t\t$\t\t[{R1}$\t\t]"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "1-5\t\t$\t\t\t$\t\t[{R1}$\t\t]",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "53": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "6-10\t\t$\t\t\t$\t\t[{R1}$\t\t]"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "6-10\t\t$\t\t\t$\t\t[{R1}$\t\t]",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "54": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": ""
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "55": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "Extension Options:"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "Extension Options:",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "56": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "11-15              \t$                     \t\t$ \t\t[{R1}$\t\t]"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "11-15              \t$                     \t\t$ \t\t[{R1}$\t\t]",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "57": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "16-20             \t$                     \t\t$ \t\t[{R1}$\t\t]"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "16-20             \t$                     \t\t$ \t\t[{R1}$\t\t]",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "58": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "21-25             \t$                     \t\t$   \t\t[{R1}$\t\t]"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "21-25             \t$                     \t\t$   \t\t[{R1}$\t\t]",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "59": {
       "category": "computed_table",
       "clause": "rent",
-      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment.",
-      "text_head": "26-30             \t$                      \t\t$\t\t[{R1}$\t\t]"
+      "note": "R1 rent schedule. SKELETON-owned: replaced by engine-computed rows at assembly (contract E). No canonical body. Nine entries, not one, because rule 1 requires every paragraph index to carry an assignment. GATED: emits only when rent_basis resolves to per_sqft — R0's table (paras 38-47) is the same category gated on 'annual', and exactly one may emit.",
+      "text_head": "26-30             \t$                      \t\t$\t\t[{R1}$\t\t]",
+      "table": "rent_r1",
+      "gated_by": {
+        "selector_field": "rent_basis",
+        "selector_value": "per_sqft"
+      }
     },
     "60": {
       "category": "empty"
