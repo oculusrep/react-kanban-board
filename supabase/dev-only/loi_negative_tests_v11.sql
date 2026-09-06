@@ -4,33 +4,67 @@
 \set ON_ERROR_STOP on
 \timing off
 
--- P1 — the seven landlord-completed params are declared, each with a non-empty blank rule.
+-- P1 — all fourteen landlord-completed params are declared, each with a non-empty blank rule.
+--      Batch 1 = signature/TIC; batch 2 = the CAM $/SF and pro-rata % blanks.
 DO $$
 DECLARE n INT; n_render INT; ks TEXT;
 BEGIN
   SELECT count(*), count(*) FILTER (WHERE landlord_fill_render <> ''), string_agg(param_key, ',' ORDER BY param_key)
     INTO n, n_render, ks
     FROM loi_body_parameter WHERE param_kind = 'landlord_fill';
-  IF n = 7 AND n_render = 7
-     AND ks = 'sig_day,sig_ll_line,sig_ll_name,sig_ll_title,sig_month,sig_year,tic_point_of_contact' THEN
-    RAISE NOTICE 'TEST P1 landlord-fill-declared: PASS (7 params, all with a render)';
+  IF n = 14 AND n_render = 14
+     AND ks = 'cam0_cam_psf,cam0_insurance_psf,cam0_tax_psf,pro_rata_share_blank_2,prs_cam_blank_2,'
+              'prs_ins_blank_2,prs_tax_blank_1,sig_day,sig_ll_line,sig_ll_name,sig_ll_title,sig_month,'
+              'sig_year,tic_point_of_contact' THEN
+    RAISE NOTICE 'TEST P1 landlord-fill-declared: PASS (14 params, all with a render)';
   ELSE RAISE WARNING 'TEST P1 landlord-fill-declared: FAIL (n=%, rendered=%, keys=%)', n, n_render, ks; END IF;
 END $$;
 
--- P2 — renders are the template's own underscore runs, verbatim (widths differ and are not guessable).
+-- P2 — renders are the template's own underscore runs, verbatim. WIDTHS ARE NOT NORMALIZED: the
+--      template genuinely differs ($______ taxes / $_____ insurance / $______ CAM; _____ estimates
+--      vs ____ "Not to exceed"), and Powder Springs preserved the difference.
 DO $$
 DECLARE bad TEXT;
 BEGIN
   SELECT string_agg(param_key || '=' || landlord_fill_render, ' ') INTO bad
     FROM loi_body_parameter bp
    WHERE bp.param_kind = 'landlord_fill'
-     AND bp.landlord_fill_render <> (CASE bp.param_key
+     AND bp.landlord_fill_render IS DISTINCT FROM (CASE bp.param_key
+           -- batch 1: paras 15, 229-235
            WHEN 'sig_day' THEN '______' WHEN 'sig_month' THEN '_______________'
            WHEN 'sig_year' THEN '_______' WHEN 'sig_ll_line' THEN '______________________________'
            WHEN 'sig_ll_name' THEN '_______________________' WHEN 'sig_ll_title' THEN '_______________________'
-           WHEN 'tic_point_of_contact' THEN '______' END);
-  IF bad IS NULL THEN RAISE NOTICE 'TEST P2 render-matches-template: PASS';
+           WHEN 'tic_point_of_contact' THEN '______'
+           -- batch 2: para 164 (CAM0), 174, 178, 180, 182
+           WHEN 'cam0_tax_psf' THEN '______' WHEN 'cam0_insurance_psf' THEN '_____'
+           WHEN 'cam0_cam_psf' THEN '______'
+           WHEN 'prs_cam_blank_2' THEN '_____' WHEN 'prs_ins_blank_2' THEN '_____'
+           WHEN 'prs_tax_blank_1' THEN '_____' WHEN 'pro_rata_share_blank_2' THEN '____' END);
+  IF bad IS NULL THEN RAISE NOTICE 'TEST P2 render-matches-template: PASS (widths preserved per-param)';
   ELSE RAISE WARNING 'TEST P2 render-matches-template: FAIL (%)', bad; END IF;
+END $$;
+
+-- P2b — the three CAM $/SF widths are NOT all equal. Guards against a future "tidy-up" normalizing
+--       them; this is the specific thing Mike said not to do.
+DO $$
+DECLARE n_distinct INT;
+BEGIN
+  SELECT count(DISTINCT landlord_fill_render) INTO n_distinct
+    FROM loi_body_parameter WHERE param_key IN ('cam0_tax_psf','cam0_insurance_psf','cam0_cam_psf');
+  IF n_distinct = 2 THEN RAISE NOTICE 'TEST P2b cam-widths-not-normalized: PASS (______ / _____ / ______)';
+  ELSE RAISE WARNING 'TEST P2b cam-widths-not-normalized: FAIL (% distinct widths, expected 2)', n_distinct; END IF;
+END $$;
+
+-- P2c — cam0_cap_pct is the NEGOTIATED escalation cap, not a landlord blank. The word "cap" in a
+--       note must never collapse it into the $/SF estimates beside it.
+DO $$
+DECLARE k TEXT; pref TEXT; fb TEXT;
+BEGIN
+  SELECT param_kind, preferred_value, fallback_value INTO k, pref, fb
+    FROM loi_body_parameter WHERE param_key = 'cam0_cap_pct';
+  IF k = 'concession' AND pref = '3%' AND fb = '5%' THEN
+    RAISE NOTICE 'TEST P2c escalation-cap-still-negotiated: PASS (concession 3%% / 5%%)';
+  ELSE RAISE WARNING 'TEST P2c escalation-cap-still-negotiated: FAIL (kind=%, pref=%, fallback=%)', k, pref, fb; END IF;
 END $$;
 
 -- P3 — retired vs deferred are distinguishable, and mean opposite things to the assembler.

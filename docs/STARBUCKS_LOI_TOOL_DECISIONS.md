@@ -867,14 +867,41 @@ runs, verbatim and per-param (`______` vs `_______________` vs `________________
 verified against `LOI_US_7_30_2026.docx` paras 15 and 229–235 — the widths differ and are not
 guessable.
 
-**OPEN — needs Mike:** the eighth item on his list, "the CAM/tax/insurance blanks", is ambiguous and
-was deliberately NOT re-keyed. Two candidate sets exist and they mean different things:
-- `cam0_cam_psf` / `cam0_tax_psf` / `cam0_insurance_psf` — notes read "Annual cap, …", i.e. NEGOTIATED
-  caps we supply, which would make them ordinary `fill`, not landlord-fill.
-- `prs_cam_blank_2` / `prs_ins_blank_2` / `prs_tax_blank_1` — notes read "Free-fill blank from template
-  underscore run", which looks much more like landlord-completed pro-rata shares.
+**RESOLVED (Mike, 2026-09-06): BOTH sets are landlord-fill.** Source evidence from the SENT Powder
+Springs LOI — all of them shipped blank carrying Mike's own landlord instruction: "LL insert estimated
+taxes" / "LL insert insurance" / "LL insert CAM" on the three per-square-foot runs, and "LL please
+insert" on the pro-rata percentages. Re-keyed in migration `20260906130000`.
 
-Guessing here would put a blank rule where a negotiated number belongs, so the call is Mike's.
+**My "reads as caps we negotiate" was the wrong read.** The word *cap* in those notes was collapsing
+two different blanks:
+- `cam0_tax_psf` / `cam0_insurance_psf` / `cam0_cam_psf` — the landlord's ESTIMATED $/SF costs. The
+  sentence they sit in caps those charges, but the numbers are the landlord's estimates.
+  **landlord_fill.** Notes rewritten so the word no longer misleads.
+- `cam0_cap_pct` — the ESCALATION percentage we DO negotiate ("will not increase by more than
+  {{cam0_cap_pct}}, on a non-cumulative basis"). Untouched, and test P2c pins it so a future sweep
+  cannot pull it in with its neighbours.
+
+*Correction for the record:* Mike described `cam0_cap_pct` as staying "an ordinary `fill`". It is
+actually a `concession`, preferred 3% / fallback 5% — which is precisely the "Oculus opens at 3%,
+falls back to national 5%" he described, and a stronger encoding than `fill`. No change made.
+
+**Mapping was confirmed against the loaded rows before re-keying**, as Mike asked (he had inferred it
+from param names). `cam/main` reads "…${{cam0_tax_psf}} per square foot for real estate taxes,
+${{cam0_insurance_psf}} for insurance and ${{cam0_cam_psf}} for common area maintenance…", so the
+three names do point at the three per-square-foot runs.
+
+**One key differed from his list.** He described the `"Not to exceed ____%"` run and its "LL please
+insert" comment under the `prs_*` keys, but that blank actually lives on `pro_rata_share/main` as
+`pro_rata_share_blank_2`. Same blank, same evidence, different key — re-keyed as the seventh param in
+this batch. The three `prs_*` keys are the `"Estimated to be _____%"` runs, exactly as he said.
+
+**Widths are per-param and verbatim, never normalized** — the template genuinely differs and Powder
+Springs preserved the difference. Verified against `LOI_US_7_30_2026.docx` paras 164 (CAM0), 174, 178,
+180, 182: `$______` taxes / `$_____` insurance / `$______` CAM; `_____` for the three "Estimated to
+be" runs; `____` for "Not to exceed". Test P2b asserts the three CAM widths are NOT all equal, so a
+future tidy-up cannot quietly flatten them.
+
+**Fourteen landlord-fill params total** (7 signature/TIC + 7 here).
 
 *Rejected alternative:* pre-substituting in OVIS and shipping finished text. That would make the
 emitted text unattributable to a canonical body, breaking Phase-2 redline matching.
