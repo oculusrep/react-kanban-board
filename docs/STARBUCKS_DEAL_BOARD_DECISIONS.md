@@ -8,7 +8,9 @@ The spec says *what* to build. This says *why*, so that an ambiguity the spec do
 
 ## How to use this file
 
-**Read this before the spec, at the start of any session on this branch.**
+**Read this before the spec, at the start of any session on this board.**
+
+**Status (2026-09-07): v1 is merged to `main` and live in production** at `/starbucks-board`. The branch `feature/starbucks-deal-board` is merged; work now happens on `main` unless it's large enough to warrant its own branch. Everything below still governs — a shipped board makes these decisions more binding, not less.
 
 When you hit a decision the spec doesn't cover:
 
@@ -270,4 +272,6 @@ Append reversible calls made without the user, with a one-line reason. Reviewed 
 
 - **Live text-size control (A− / A+, default 135%, persisted to localStorage).** Added because the board was too small to read from ~10 ft on the office TV. Its 1.1 tension (scrolling at large scales) is resolved by the two-column Pre-Submittal below.
 - **Removed `none` from the court picker.** It was incorrectly offered as "No one (parked)", violating 2.10. The picker now offers Us / Them + a "clear" (→ unclassified). `none` remains a valid stored value but is never set from the UI.
+- **Triage mounts `TouchControls` and `KillPassAction`, not just the classify controls.** Extracted the note / next-action pair out of `DealSlideOver` so both surfaces share one implementation. Classifying a deal is when you notice what it needs, and 1.5 says a fix requiring you to leave the surface doesn't happen. A touch keeps you on the deal (it cools but doesn't classify); a pass/lost advances (the deal leaves the board).
+- **Hamburger-menu entry, and it closes the menu on navigate.** The board covers the nav (`fixed inset-0`), so nothing pointed at it — the only way in was typing the URL. The close is not decoration: the menu's `z-[10000]` backdrop would otherwise sit on top of the board. Not extended to the desktop nav row, which is the surface Mike actually uses at ≥1280px — flagged to him rather than done unasked.
 - ~~**Two-column Pre-Submittal layout.**~~ **Superseded** (2.12): the blockers are now real board columns, so the two-column-grid stopgap is gone. Its "revisit" — split Pre-Submittal by blocker — is what happened, at the board-column level rather than `deal_stage` rows. (Whether the blockers should become real `deal_stage` rows, so the split is shared with the master pipeline, is still open — revisit once the blocker distribution is visible post-classification.)

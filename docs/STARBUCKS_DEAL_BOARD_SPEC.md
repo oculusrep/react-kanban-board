@@ -5,8 +5,9 @@
 - **Owner:** Mike / Oculus Real Estate Partners
 - **Target:** Wall-mounted display (office TV, landscape, driven from a Mac); secondarily a desktop browser
 - **Scope:** Starbucks account only. Not the master pipeline.
-- **Branch:** `feature/starbucks-deal-board`
-- **Status:** Spec draft — grounded against the existing OVIS schema (see §3). Awaiting Mike's answers on §12 open items before schema work begins.
+- **Branch:** ~~`feature/starbucks-deal-board`~~ **merged to `main` (2026-09-07) and live in production.**
+- **Status:** **v1 SHIPPED.** Live at https://ovis.oculusrep.com/starbucks-board. Every §10 build step is done; the §12 open items are all closed. This file is now a record of what exists, not a plan — amend it when the board changes, and keep `STARBUCKS_DEAL_BOARD_DECISIONS.md` as the reasoning of record.
+- **In flight, not in the doc:** classification is still being done on the TV. As of 2026-09-01, 13 of 46 deals had a court set — the board's heat is only as real as that pass. Nothing else is pending.
 
 ---
 
@@ -400,6 +401,8 @@ On-board deals with no court ("no court") and no-history deals are not counted h
 
 Left of the daily number, a **"N to classify"** counter for Pre-Submittal deals with no blocker and no court. **When non-zero it renders hot and is the largest thing in the header — louder than the daily number** — because an unclassified deal corrupts every other figure (it can't be placed or heated). **At zero it disappears.** Click → the triage queue: one deal at a time, full-height, showing site/city/stage/history; classify (court + blocker) → auto-advance; Escape exits; saved per deal. **Never auto-opens** — a newly-arrived unclassified deal must not interrupt. Built for ~2–3 new deals/week, not bulk.
 
+**Triage carries the slide-over's full action set, not just classify.** Deciding a deal's court usually surfaces the thing you could do about it right now, and a fix that needs you to leave the surface doesn't happen (§1.5). So the queue also mounts `TouchControls` (Log a note / Set next action) and `KillPassAction` (Pass / Mark lost). The two behave differently on save, because they mean different things: **a touch cools the tile but does not classify it**, so the queue stays on the current deal and refreshes its history; **a pass/lost removes the deal from the board**, so it advances.
+
 ### 9.1 Agenda control
 
 Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live count of starred (`on_agenda = true`) deals. Clicking it filters the board to only those deals — same columns, same tiles, same slide-over on click — and toggles back to the full board. It's a filter over the existing board, not a separate screen. This is how the weekly call agenda gets built up through the week.
@@ -411,21 +414,31 @@ Next to the daily number, an **"Agenda (n)"** button (§3.2.2). `n` is the live 
 1. ~~**Schema**~~ **DONE (migration `20260825190000`):** 1:1 `deal_activity_state` satellite with the five board-owned fields; reset triggers on `note_object_link` + `task` (insert & `due_at` change); clear-`blocked_on`-on-leaving-Pre-Submittal trigger; RLS mirroring `deal`/`task`. Verified in a self-rolling-back functional test.
 2. ~~**Backfill**~~ **DONE (migrations `20260826120000`, `20260826130000`):** added the `activity`-insert reset trigger (activity is the primary touch signal, not notes — see §3.3) and seeded `ball_in_court_since` for all Starbucks deals from the most-recent of `activity.activity_date` / `note_object_link.created_at`, falling back to `now()`. Result: **20 real seeds, 27 `now()` fallbacks** — the fallbacks are flagged `seeded_fallback` and render as "no history" (§3.3.1). `ball_in_court` and `blocked_on` left unset (Mike classifies manually). Starbucks filter now uses `client.starbucks_layer_enabled = true` (flag set on both clients).
 3. ~~**Static board rendering**~~ **DONE:** full-screen route `/starbucks-board` (renders `fixed inset-0`, covers the app nav). Files: `src/lib/starbucksBoard.ts` (palette, heat/ordering/chip logic, all pure), `src/hooks/useStarbucksBoard.ts` (fetch + assemble columns/subheads/daily number), `src/pages/StarbucksDealBoardPage.tsx` (board UI). Heat computed client-side from `ball_in_court_since`; four columns, Pre-Submittal blocker subheads, "no history" tiles, agenda filter, daily number, click-to-refresh "synced" stamp. Not yet interactive (slide-over = step 5) and no realtime (step 6). Typechecks clean; `npm run build` passes. **Visual density is tuned on the actual TV — that's the point of this step.**
-4. **Real heat calculation** (client-side from `ball_in_court_since`).
+4. ~~**Real heat calculation**~~ **DONE** — delivered inside step 3; heat is computed client-side in `starbucksBoard.ts` from `ball_in_court_since`, never stored.
 5. ~~**Slide-over panel**~~ **DONE:** `DealSlideOver.tsx` — Change court (+ blocker with implied-court pre-select), Log a note, Set next action, recent notes, current open action, Open full deal. Tile click opens it; star toggles `on_agenda`. Dense-tile density fix for Pre-Submittal (§4.1). Typechecks clean; build passes.
 6. ~~**Realtime subscription**~~ **DONE (migration `20260831120000`):** channel on `deal_activity_state` + `deal`, debounced refetch (§8).
 7. ~~**Kill / Pass action**~~ **DONE (migration `20260831150000`):** the first board write to shared pipeline data — implemented as the **remove-from-board** action, not a general stage dropdown. `KillPassAction.tsx` in the slide-over, labeled by stage: **"Pass on this site"** (early → writes `site_submit.pass_reason` + `pass_reason_category` + a deal note, sets site → `Pass`; tile drops via §2.22, deal stays put) or **"Mark lost"** (later / no site_submit → `deal.loss_reason` + stage `Lost` + a deal note). Required reason in-step; decisions §2.22–§2.23. Also excludes dead-site deals from membership (board 39 → 30). Verified with rolling-back DB tests; typecheck + build pass.
    - **Between-stage move also DONE:** a **Stage dropdown** (four board stages) in the shared `ClassifyControls` (slide-over + triage) writes `deal.stage_id` — decisions §2.26. It propagates to `site_submit` via the sync trigger and clears `blocked_on` when leaving Pre-Submittal; no confirm (stays on board). Lost stays in the kill action.
 
+8. ~~**Board-owned waiting + priority states**~~ **DONE (migrations `20260831160000`, `20260831170000`):** `parked_until` → the quiet "Parking lot (n)" (decisions §2.24) and `urgent_until` → the ▲ marker with a 7-day auto-expiry TTL, a channel separate from heat (§2.25). `ParkControl.tsx`, `ParkingLot.tsx`, `UrgentToggle.tsx`.
+9. ~~**Accounts**~~ **DONE:** `client_id`-keyed All / Starbucks / Coastal GA filter, dim tile token, per-account agenda chips — decisions §2.21. The mechanism is the phase-3 one; nothing is hardcoded to these two clients.
+10. ~~**Triage gets the full action set**~~ **DONE:** `TouchControls.tsx` extracted out of `DealSlideOver` (Log a note / Set next action) so the slide-over and the triage queue share one implementation, and `KillPassAction` mounted in triage too — §9.0.
+11. ~~**Email-blind clock guard**~~ **DONE (migration `20260905172258`):** the correction described in §3.3 — email-triage activity no longer cools a tile.
+12. ~~**A way in**~~ **DONE:** hamburger-menu entry (§11).
+
 (The daily number, §9, was delivered in step 3's header — no separate step.)
 
-Steps 1–5 are the shippable core — **done**. Live on the TV, then realtime (6), then stage change (7).
+**All steps are done and merged to `main`.** What remains is not build work: living with the board on the TV and finishing the manual classification pass that gives its heat meaning.
 
 ---
 
 ## 11. Route / surface
 
-New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OVERLAY_UX.md`): e.g. `/starbucks-board`. The tile → slide-over interaction is an *overlay*, consistent with that doc — the slide-over panel components should take `objectType`/`objectId`-style props so they can later be reused from the map or master pipeline, not read `useParams`.
+New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OVERLAY_UX.md`): `/starbucks-board`, registered in `App.tsx` behind `CoachRoute` like the rest of the app. The tile → slide-over interaction is an *overlay*, consistent with that doc — the slide-over panel components should take `objectType`/`objectId`-style props so they can later be reused from the map or master pipeline, not read `useParams`.
+
+**Getting to it.** The page renders `fixed inset-0`, covering the app nav — so nothing on screen points back at it and for a while the only way in was typing the URL. There is now a **📺 Starbucks Deal Board** entry in the hamburger menu's Navigation section (`Navbar.tsx`), which closes the menu on navigate; the other entries in that section don't, and left open the menu's `z-[10000]` backdrop sits on top of the fullscreen board.
+
+**Caveat worth knowing:** the hamburger is `xl:hidden` — it only appears below 1280px. On a full-width desktop browser there is still no link to the board; the desktop nav is a separate row of `<Link>`s in the same file. Adding one there is a one-line change nobody has asked for yet.
 
 ---
 
@@ -433,10 +446,10 @@ New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OV
 
 1. ~~**Board columns.**~~ **Resolved:** four fixed columns — Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA; Lost and all paid/terminal stages off-board (§4).
 2. ~~**Starbucks filter.**~~ **Resolved:** `starbucks_layer_enabled` set `true` on both Starbucks clients; board filters on the flag. (Note: this flag also gates the Starbucks map layer / portal per recon — mentioned in case that surfaces elsewhere.)
-3. **`blocked_on` domain.** Confirm the five values (`pricing` / `site_plan` / `under_contract` / `info` / `ready`) and the fixed subhead order (§4.1). Any Pre-Submittal blocker missing?
+3. ~~**`blocked_on` domain.**~~ **Resolved (decisions §2.12, migrations `20260831130000` / `20260831140000`):** two values, not five — `awaiting_ll` (collapses `pricing` + `site_plan`, detailed by the `needs_pricing` / `needs_site_plan` booleans) and `site_control` (renamed `under_contract`). `info` became unclassified; `ready` became the derived band. A further blocker gets named when one actually emerges in classification, not speculatively.
 4. **Ball-in-court source of truth.** Recommended: the board keeps its own trigger-owned fields, separate from the (currently non-functional — see recon) AI `deal_synopsis` and from `deal.current_handoff_holder` (§3.2). Confirm — or drive one of those existing signals instead?
-5. **Does a deal ever legitimately sit at `ball_in_court = none`,** or should the board force a choice at "Change court"?
-6. **Archived / dead deals.** Derive on/off-board purely from stage (no migration), or add an explicit `is_active` flag (§3.5)? Reachable from the board at all, or only from the master pipeline?
+5. ~~**Does a deal ever legitimately sit at `ball_in_court = none`?**~~ **Resolved (decisions §2.10, §2.18):** no — `none` is never set from the UI. The picker offers Us / Them plus a clear (→ unclassified, `NULL`), which is a first-class absence state rather than a tolerance. `none` remains a legal stored value only so old rows don't break.
+6. ~~**Archived / dead deals.**~~ **Resolved (decisions §2.22, §2.23):** derived, no `is_active` flag. A deal drops off the board when its `site_submit.submit_stage` is one of Pass / Lost-Killed / Use Declined / Use Conflict / Not Available, or when its own stage leaves the board — and the kill/pass action writes exactly that (board went 39 → 30). Off-board deals stay reachable from the master pipeline, not from here.
 7. ~~**Does "log a call" also cool a tile?**~~ **Fully closed: yes.** `activity` is the primary touch signal for Starbucks deals (0/44 had notes; 19 had activity), so the reset trigger fires on `activity` insert (§3.3). No `sf_id` guard is needed — OVIS has no Salesforce sync (the `sf_*` columns are historical migration residue), so every activity insert is a human touch by definition.
 8. **Deal fields vs satellite table:** ~~open~~ **Decided:** a 1:1 `deal_activity_state` satellite table (named to generalize to the full pipeline in phase 3, not just this board view) holding all five board-owned fields (`ball_in_court`, `ball_in_court_party`, `ball_in_court_since`, `blocked_on`, `on_agenda`). Keeps `deal` from accreting view-specific state.
 
