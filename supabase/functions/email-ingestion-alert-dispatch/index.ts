@@ -27,8 +27,16 @@ const corsHeaders = {
 const ALERT_TO = (Deno.env.get('INGESTION_ALERT_TO') ?? 'mike@oculusrep.com')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
-/** Returns the Resend message id, or throws. Never returns on an unconfirmed send. */
-async function sendViaResend(subject: string, html: string): Promise<string> {
+/**
+ * Returns the Resend message id, or throws. Never returns on an unconfirmed send.
+ *
+ * `selfTest` routes to a deliberately invalid recipient so the FAILURE path can be
+ * exercised for real. It is a fixed literal, never caller-supplied -- an endpoint that
+ * accepted an arbitrary recipient would be an open relay for anyone holding the anon key.
+ * Everything else (row selection, flag updates, error recording, status code) runs exactly
+ * as in production, so this tests the real path rather than a simulation of it.
+ */
+async function sendViaResend(subject: string, html: string, selfTest = false): Promise<string> {
   const apiKey = Deno.env.get('RESEND_API_KEY');
   if (!apiKey) throw new Error('RESEND_API_KEY not configured');
   const from = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev';
@@ -36,7 +44,12 @@ async function sendViaResend(subject: string, html: string): Promise<string> {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ from, to: ALERT_TO, subject, html }),
+    body: JSON.stringify({
+      from,
+      to: selfTest ? ['not-a-valid-address'] : ALERT_TO,
+      subject,
+      html,
+    }),
   });
 
   const text = await res.text();
@@ -64,6 +77,12 @@ const et = (ts: string | null) =>
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  // Self-test hook: forces the Resend-failure branch against a fixed invalid recipient.
+  let selfTest = false;
+  try {
+    selfTest = (await req.json())?.self_test === true;
+  } catch { /* no body is the normal cron case */ }
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -112,7 +131,7 @@ Deno.serve(async (req) => {
             check the gmail-sync function logs, not the cron status.
           </p>`;
         try {
-          const id = await sendViaResend(subject, html);
+          const id = await sendViaResend(subject, html, selfTest);
           await supabase.from('email_ingestion_alert')
             .update({ notified: true, notify_error: null,
                       notify_attempts: (row.notify_attempts ?? 0) + 1 })
@@ -144,7 +163,7 @@ Deno.serve(async (req) => {
             ${et(row.last_received_at)}.
           </p>`;
         try {
-          const id = await sendViaResend(subject, html);
+          const id = await sendViaResend(subject, html, selfTest);
           await supabase.from('email_ingestion_alert')
             .update({ resolved_notified: true, notify_error: null })
             .eq('id', row.id);

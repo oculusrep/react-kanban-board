@@ -170,8 +170,29 @@ SELECT cron.schedule(
 --   second invocation   -> considered 0, nothing re-sent (one email per stall)
 --   row marked resolved -> all-clear sent,  Resend id 174b4252-4836-4a59-a46e-380760a2402d
 --   fourth invocation   -> considered 0, quiet again
--- NOT force-tested: the Resend-failure branch. It is written to leave `notified`
--- false and record notify_error so the next run retries, and it requires a
--- message id in the RESPONSE BODY rather than trusting the status code -- but no
--- real failure was induced, so that path is verified by construction only.
+-- FAILURE BRANCH NOW FORCE-TESTED TOO (2026-09-07), via a `{"self_test": true}`
+-- hook that routes to a FIXED invalid recipient -- a literal, never
+-- caller-supplied, since an endpoint accepting an arbitrary recipient would be an
+-- open relay for anyone holding the anon key:
+--   forced send      -> Resend HTTP 422 validation_error, dispatcher returned 500
+--   row after        -> notified STILL false, notify_error populated, attempts = 1
+--   retry, no hook   -> same row picked up and sent, Resend id e470518b-...
+-- So a failed alert stays pending and retries, and a silently-failing alerter is
+-- itself visible. That was the one path deciding whether this monitor can be
+-- trusted, and it is now tested rather than reasoned about.
+--
+-- KNOWN LIMITATION -- READ BEFORE ASSUMING COVERAGE:
+-- This detects whether ANYTHING is arriving, not whether EVERYTHING is. A PARTIAL
+-- gmail-sync failure -- some messages delivered, some dropped -- keeps
+-- max(received_at) fresh, holds the gap at zero, and NEVER FIRES. Applying the
+-- rule this monitor was built on: name the input that makes this check fail.
+-- "No mail at all" makes it fail. "Half the mail" does not.
+--   2026-09-07's stall was total, so this catches that class and cuts detection
+--   from ~8 hours to ~75 minutes. That is the whole claim; it is NOT full
+--   coverage of gmail-sync correctness.
+--   The eventual answer is a VOLUME FLOOR -- expected arrivals per business hour
+--   derived from this table's own history -- but that carries false-positive risk
+--   on genuinely quiet days, and a monitor that cries wolf gets muted, which is
+--   the failure this one exists to avoid. Deliberately NOT built. Whoever
+--   revisits this starts from a known edge, not from an assumption of coverage.
 -- ============================================================================
