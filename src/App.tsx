@@ -27,6 +27,7 @@ import SiteSubmitDetailsPage from "./pages/SiteSubmitDetailsPage";
 import AssignmentDetailsPage from "./pages/AssignmentDetailsPage";
 import NewPropertyPage from "./components/property/NewPropertyPage";
 import Navbar from "./components/Navbar";
+import StarbucksDealBoardPage from "./pages/StarbucksDealBoardPage";
 import SearchTestPage from "./components/SearchTestPage";
 import SearchDebugPage from "./components/SearchDebugPage";
 import NotesDebugPage from "./pages/NotesDebugPage";
@@ -154,6 +155,7 @@ function App() {
           <Route path="coach-dashboard" element={<CoachDashboardPage />} />
           {/* All routes below are blocked for coach users */}
           <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
+          <Route path="starbucks-board" element={<CoachRoute><StarbucksDealBoardPage /></CoachRoute>} />
           <Route path="tasks" element={<CoachRoute><TasksDashboardPage /></CoachRoute>} />
           <Route path="tasks/all" element={<CoachRoute><TasksPage /></CoachRoute>} />
           <Route path="settings/time-blocks" element={<CoachRoute><BlockTemplateSettingsPage /></CoachRoute>} />
