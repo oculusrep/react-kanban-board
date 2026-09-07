@@ -780,6 +780,17 @@ export default function Navbar() {
                 >
                   Tours
                 </button>
+                {/* The board renders fixed inset-0 over the nav, so close the
+                    menu on the way out or its backdrop covers the board. */}
+                <button
+                  onClick={() => {
+                    navigate('/starbucks-board');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  📺 Starbucks Deal Board
+                </button>
               </div>
             </div>
 
