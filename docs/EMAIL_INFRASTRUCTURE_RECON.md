@@ -18,7 +18,7 @@ relationship to deal state. No writes, no migrations, no deploys. Prod project
 > | Corrections dead since 2026-01-30; agent reads the starved table | **fixed** — 6 write sites redirected, 15 rows backfilled (63 → 78) |
 > | `searchDeals` gated to 5 stages, 69 of 771 deals visible | **fixed** — 7 stages, 95 visible |
 > | Thread inheritance copies at flat 0.95, propagating false positives | **fixed** — floor 0.80 on the seed, propagate `min(seed, 0.90)` |
-> | Bulk mail hard-DELETEd after a paid model call (2,603/30d) | **partly** — delete→demote enforced; tier-1 pre-insert filter is built but in `log_only`, filtering nothing until 09-13 |
+> | Bulk mail hard-DELETEd after a paid model call (2,603/30d) | **partly** — delete→demote enforced; tier-1 pre-insert filter is built but in `log_only`, filtering nothing until 09-14 |
 > | ~25% of label applies 404 | **instrumented, not fixed** — cause is being measured before the migration |
 > | `OVIS-Linked` applying? scopes granted? | **answered** in Addendum 4 — yes and yes (`gmail.modify` held on both) |
 > | "No UI shows emails on a deal page" | **that claim was wrong** — see the spec's silo section |

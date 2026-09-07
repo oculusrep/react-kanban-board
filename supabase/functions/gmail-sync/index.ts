@@ -208,8 +208,33 @@ serve(async (req) => {
               .eq('message_id', parsedEmail.messageId)
               .single();
 
-            if (wasProcessed) {
-              // Skip this email - it was previously deleted/processed
+            // A tier1_* stub must NOT cause a skip.
+            //
+            // BUG FIXED 2026-09-07. The tier-1 block above writes its stub before
+            // this guard runs. In log_only it then falls through -- straight into
+            // this check, which found the stub tier 1 had just written and skipped
+            // the email. log_only behaved exactly like enforce while logging
+            // "WOULD FILTER". 34 messages were dropped between gmail-sync v56
+            // (2026-09-06 22:35) and this fix; 0 of 34 reached `emails`.
+            //
+            // Worse than the data loss: Q2 (the tier-1 false-positive query) joins
+            // stubs to `emails`, so it would have returned zero rows forever and
+            // read as "no rule ever mis-filtered" -- the one check designed to
+            // catch a bad rule would have silently endorsed every rule.
+            //
+            // Why exclude here rather than reorder the stub write: getMessage()
+            // already runs before this guard, so the guard saves no Gmail quota,
+            // only the insert -- there is nothing to reclaim by skipping earlier.
+            // Reordering would also drop the second mailbox's email_visibility row
+            // for any message visible to both accounts, because the stub written
+            // while processing connection A would skip it while processing
+            // connection B in the same run. Excluding tier1_* keeps the fan-out.
+            //
+            // enforce mode is unaffected: it `continue`s above, before reaching here.
+            const isTier1Stub = (wasProcessed?.action || '').startsWith('tier1_');
+
+            if (wasProcessed && !isTier1Stub) {
+              // Skip this email - it was previously deleted/demoted
               console.log(`Skipping previously ${wasProcessed.action} email: ${parsedEmail.subject}`);
               result.skipped_deleted++;
               continue;

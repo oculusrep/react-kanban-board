@@ -20,10 +20,10 @@ commitment table (§4) has not been started; §2 was the prerequisite work.
 | **(d)** domain scoping | `INTERNAL_EMAIL_DOMAINS`, domain-branch reach 962 → 171 / 30d | live, email-triage v81 |
 | **(b)** correction table | 6 write sites → `agent_corrections`; `20260906135453` backfilled 15 rows (63 → 78) | live, v43/v82 |
 | **(c)** matcher | stage gate 5 → 7 (69 → 95 deals); inheritance floor 0.80, propagate `min(seed, 0.90)` | live, v83 |
-| **(a)** tier 1 | `_shared/tier1.ts` — **`TIER1_MODE = 'log_only'`, filters nothing**; delete→demote **enforced**; both model short-circuits gated | partial, v85 / gmail-sync v56 |
+| **(a)** tier 1 | `_shared/tier1.ts` — **`TIER1_MODE = 'log_only'`, filters nothing** (broken 09-06→09-07, see incident); delete→demote **enforced**; both model short-circuits gated | partial, v85 / gmail-sync **v57** |
 | **(f)** mailbox resolution | **instrumented, not migrated** — 404s probe the other mailbox and log a verdict | measuring |
 
-**Two things are waiting on data, both due 2026-09-13:**
+**Two things are waiting on data, both due 2026-09-14:**
 
 1. **Tier-1 flip** — per-rule, not one go/no-go. Five queries in §2(a), criteria table there.
 2. **(f) retry queue** — designed against measured 404 causes (Q6), not inference.
@@ -38,9 +38,13 @@ recorded `schema_migrations` versions do not match (e.g. `20260825190000_deal_ac
 recorded as `20260825233340`) — they were stamped at apply time rather than by filename. Tooling
 will read those files as unapplied. See `docs/SUPABASE_MIGRATION_DRIFT.md`.
 
-**Not yet observed in production:** `emails` has 0 rows with `is_relevant = false` as of this
-writing. The demote path is live and the UI surfaces it, but neither has been exercised against a
-real demotion. If that count is still 0 after 24h, something upstream changed.
+**Demote path confirmed working 2026-09-07:** 5 rows with `is_relevant = false`, latest 13:05 UTC —
+3 rule-override, 2 model-judged. Stubs written with `action='demoted'`, sender and reason retained.
+No `action='deleted'` written since 21:30 on 09-06 (the last 11 predate the v84 deploy).
+
+**Incident 2026-09-07:** checking that count is what surfaced the log-only bug below — tier 1 was
+silently enforcing for ~21 hours. Fixed in `gmail-sync` v57, measurement week restarted, review
+moved to **2026-09-14**. See §2(a) and §15.
 
 ---
 
@@ -74,7 +78,7 @@ real demotion. If that count is still 0 after 24h, something upstream changed.
 
 Cost effect: today ~177 agent runs/day at ~12–24k input tok each. Short-circuiting inheritance + auto-match + header rules should remove the large majority. Re-measure before quoting a number.
 
-#### (f) — INSTRUMENT FIRST, plan on 09-13 (decided 2026-09-06)
+#### (f) — INSTRUMENT FIRST, plan on 09-14 (decided 2026-09-06)
 
 No migration yet. The 404s measured in §5 came back on **both** mailboxes, so the `[0]`-selection
 defect is proven from the source but **not** proven to be the cause of the observed failures. Two
@@ -96,7 +100,7 @@ probes the other connection's mailbox on the 404 path and logs a verdict:
 Verdicts: `wrong-mailbox:resolves-in:<email>` · `gone:not-in-any-mailbox` ·
 `gone:no-other-mailbox` · `probe-inconclusive:<status>` · `probe-failed:<msg>`.
 
-Read-only (`messages.get`), one extra call, failure path only. **Q6 for the 09-13 review:** count
+Read-only (`messages.get`), one extra call, failure path only. **Q6 for the 09-14 review:** count
 verdicts. Mostly `wrong-mailbox` → take the migration and build a retry queue. Mostly `gone` → the
 migration is still correct but a retry queue would retry things that can never succeed, and the
 right behaviour is to record the outcome and stop.
@@ -121,7 +125,55 @@ bloat.
 why the 2,534 deletions cannot be analysed.** Widening it is part of the fix, not incidental. The
 delete-based design destroyed the evidence needed to size its own replacement.
 
-#### THE LOG-ONLY WEEK — what to read on 2026-09-13
+#### INCIDENT 2026-09-07 — log-only was silently enforcing. Week restarted.
+
+**`TIER1_MODE = 'log_only'` did not behave as log-only from `gmail-sync` v56 (2026-09-06 22:35)
+until v57 (2026-09-07 ~20:00).** It dropped mail exactly as `enforce` would, while logging
+`WOULD FILTER`.
+
+Cause: the tier-1 block writes its stub to `processed_message_ids` **before** the
+previously-processed guard. In log-only it then falls through — straight into that guard, which
+found the stub tier 1 had just written and skipped the email.
+
+| | |
+|---|---|
+| Messages dropped | **34** (0 of 34 reached `emails`) |
+| Re-ingested after the fix | **33** |
+| Not recovered | **3** — outside the forced full sync's 50-most-recent window. Verified still present in Gmail (one checked directly: absent from mike@, present in asantos@ including spam/trash). All bulk senders. Not lost, just not ingested. |
+| Data usable for Q2 from that window | **none** |
+
+**Worse than the data loss:** Q2 joins tier-1 stubs to `emails` and `email_object_link`. With 0 of
+34 present it would have returned zero rows and read as *"no rule ever mis-filtered."* **The one
+query designed to catch a bad rule would have silently endorsed every rule.**
+
+Fix (v57): exclude `tier1_*` from the guard rather than reordering the stub write. `getMessage()`
+already runs before the guard, so the guard saves no Gmail quota — only the insert — which removes
+the cost of re-classifying each tick. Reordering would instead have dropped the second mailbox's
+`email_visibility` row for any message visible to both accounts, because the stub written while
+processing connection A would skip it while processing connection B in the same run.
+
+**The measurement week restarts from the fix. Review date moved 09-13 → 2026-09-14.**
+
+#### THE LOG-ONLY WEEK — what to read on 2026-09-14
+
+##### ⛔ PRECONDITION — run this FIRST. If it is not 100%, stop.
+
+```sql
+select count(*) tier1_stubs,
+       count(*) filter (where exists (
+         select 1 from emails e where e.message_id = p.message_id)) present_in_emails,
+       count(*) filter (where not exists (
+         select 1 from emails e where e.message_id = p.message_id)) missing_from_emails
+from processed_message_ids p
+where p.action in ('tier1_bulk','tier1_personal');
+```
+
+**Every stubbed message must be present in `emails`.** Anything less means log-only was filtering
+after all, Q2's join has nothing to join to, **Q2 is invalid, and nothing flips** — regardless of
+how clean Q1 and Q2 look. Fix the ingestion path and restart the week.
+
+Read **34 / 0 / 34** before the v57 fix. Read **66 / 66 / 0** immediately after it.
+
 
 Five questions, five queries. Run all five before flipping `TIER1_MODE` to `'enforce'`.
 
@@ -172,7 +224,7 @@ measured number.
 carries a deal link, inheritance normally copied it and already decided. If it is genuinely 0 after
 a week, delete the branch rather than carry dead code.
 
-**FLIP CRITERIA — per-rule, not a single go/no-go.** The 09-13 review is not one decision, it is
+**FLIP CRITERIA — per-rule, not a single go/no-go.** The 09-14 review is not one decision, it is
 one decision per rule id. Do not let it collapse into "enforce tier 1: yes/no".
 
 | Rule | Enforce when |
@@ -647,6 +699,51 @@ The spec calls it *"pre-existing bug, does not block shadow mode, separate ten-m
 ### One thing the spec gets right that I'd have argued against
 
 Harvesting the VA's labels instead of running her in parallel for two weeks (§7). The plan proposed parallel running; the spec replaced it with a retrospective harvest. That is strictly better — months of data instead of two weeks, free, available today, and no coordination cost. Keep it.
+
+---
+
+## 15. Working practices — earned, not assumed
+
+### A config constant in a deployed bundle proves the value shipped, not that the path honours it
+
+On 2026-09-06 I grepped the deployed `gmail-sync` bundle, found
+`TIER1_MODE: 'log_only' | 'enforce' = 'log_only'`, and reported the safety mechanism as verified.
+It was not. The constant had shipped; the code path around it dropped 34 messages anyway, because
+the stub write sat on the wrong side of a guard. **The grep could only ever return a positive.**
+
+The check that mattered was one that could come back negative:
+
+```sql
+-- are the messages tier 1 says it "would have filtered" actually still being ingested?
+select count(*) filter (where not exists (
+  select 1 from emails e where e.message_id = p.message_id)) missing
+from processed_message_ids p where p.action like 'tier1_%';
+```
+
+**Rule: a shadow or log-only mode is not verified until a query has been run that would fail if the
+mode were being ignored.** Presence of a flag, a log line saying `WOULD FILTER`, or a matching
+constant in a bundle are all consistent with the mode doing nothing at all.
+
+**This applies directly to §4's shadow mode, which has the identical failure available.** The
+commitment table is specified to store `shadow_deal_id` and `shadow_ball_in_court` "without acting."
+A shadow field that is silently also being written to `deal_activity_state` looks exactly the same
+from the outside — same constant, same log line, same rows appearing. Before trusting a week of
+shadow data, run the negative check: *does `deal_activity_state.ball_in_court_since` change when a
+commitment row is written?* If it can't come back wrong, it isn't a check.
+
+Note also that §2(a)'s Q2 depends on log-only actually inserting. Any measurement built on "we
+recorded what we would have done" inherits the same requirement: the recording and the not-acting
+have to be verified separately.
+
+### Related, from earlier in this project
+
+- **Don't declare a finding solved on circumstantial alignment.** The Barrio Burrito seed was
+  assumed to be 0.70; simulating against the corpus showed the strongest seed was 0.80 and the
+  inherited links would *not* be blocked. The prediction was wrong in the direction of "the fix
+  works better than it does."
+- **A doc asserting an invariant is not evidence the invariant holds.** The deal-board spec said
+  "all activity inserts are human-originated — no guard needed." True when written, false within
+  days, and it stayed in the doc while 18 of 63 tiles lied.
 
 ---
 
