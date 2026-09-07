@@ -71,7 +71,15 @@ export interface ParsedEmail {
     email: string;
     name: string | null;
     type: 'to' | 'cc' | 'bcc';
-  }>;
+    /** Raw headers tier 1 classifies on. Present in the payload already --
+   *  getMessage() requests format='full' -- these were simply never extracted. */
+  tier1Headers: {
+    listUnsubscribe: string | null;
+    listId: string | null;
+    precedence: string | null;
+    autoSubmitted: string | null;
+  };
+}>;
   receivedAt: Date;
   labelIds: string[];
   attachments: EmailAttachment[];
@@ -424,6 +432,15 @@ export function parseGmailMessage(
   const references = getHeader(headers, 'References');
   const dateHeader = getHeader(headers, 'Date');
 
+  // Tier-1 signals. Content-blind: these say "this is a mailing" without
+  // anyone reading the mail. See _shared/tier1.ts.
+  const tier1Headers = {
+    listUnsubscribe: getHeader(headers, 'List-Unsubscribe'),
+    listId: getHeader(headers, 'List-Id'),
+    precedence: getHeader(headers, 'Precedence'),
+    autoSubmitted: getHeader(headers, 'Auto-Submitted'),
+  };
+
   // Parse sender
   const { email: senderEmail, name: senderName } = parseEmailAddress(from);
 
@@ -493,6 +510,7 @@ export function parseGmailMessage(
     receivedAt,
     labelIds: message.labelIds,
     attachments,
+    tier1Headers,
   };
 }
 

@@ -15,6 +15,80 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const NULL_UUID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Write a link correction to BOTH correction tables.
+ *
+ * agent_corrections is the one getRelevantCorrections() reads and injects into
+ * the Gemini prompt -- the learning loop. ai_correction_log is read only by
+ * EmailClassificationReviewPage as an "already reviewed" dedupe filter. This
+ * function wrote only the latter until 2026-09-06, which is why the agent's
+ * table took its last row on 2026-01-30 while corrections kept arriving.
+ *
+ * Sentinels: correct_object_type/_id are NOT NULL on agent_corrections, so a
+ * removal is encoded as correct_object_type='none' + NULL_UUID and an addition
+ * as incorrect_object_type='none' + NULL_UUID. formatCorrectionsForPrompt()
+ * branches on exactly these values -- keep them in sync with gemini-agent.ts.
+ *
+ * Never throws: a failed correction log must not fail the user's edit.
+ */
+async function logCorrection(
+  supabase: any,
+  args: {
+    action: 'add_tag' | 'remove_tag';
+    emailId: string;
+    userId: string;
+    objectType: string;
+    objectId: string;
+    linkId?: string | null;
+    reasoningHint?: string | null;
+    snippet?: string | null;
+    senderEmail?: string | null;
+    subject?: string | null;
+  }
+) {
+  const isRemoval = args.action === 'remove_tag';
+  const text =
+    args.reasoningHint ||
+    (isRemoval
+      ? `AI incorrectly linked to ${args.objectType} - user removed this link`
+      : `AI missed linking to ${args.objectType} - user manually added this link`);
+
+  const agentRow = {
+    email_id: args.emailId,
+    incorrect_link_id: isRemoval ? args.linkId ?? null : null,
+    incorrect_object_type: isRemoval ? args.objectType : 'none',
+    incorrect_object_id: isRemoval ? args.objectId : NULL_UUID,
+    correct_object_type: isRemoval ? 'none' : args.objectType,
+    correct_object_id: isRemoval ? NULL_UUID : args.objectId,
+    feedback_text: text,
+    sender_email: args.senderEmail ?? null,
+    email_subject: args.subject ?? null,
+    created_by_user_id: args.userId,
+  };
+
+  const { error: agentError } = await supabase.from('agent_corrections').insert(agentRow);
+  if (agentError) {
+    console.error('[Correction] agent_corrections insert failed:', agentError.message);
+  }
+
+  const { error: logError } = await supabase.from('ai_correction_log').insert({
+    user_id: args.userId,
+    email_id: args.emailId,
+    correction_type: isRemoval ? 'removed_tag' : 'added_tag',
+    object_type: args.objectType,
+    incorrect_object_id: isRemoval ? args.objectId : null,
+    correct_object_id: isRemoval ? null : args.objectId,
+    email_snippet: args.snippet ?? null,
+    sender_email: args.senderEmail ?? null,
+    reasoning_hint: text,
+  });
+  if (logError) {
+    console.error('[Correction] ai_correction_log insert failed:', logError.message);
+  }
+}
+
 interface CorrectionRequest {
   email_id: string;
   action: 'remove_tag' | 'add_tag';
@@ -83,7 +157,7 @@ serve(async (req) => {
     // Get email details for logging
     const { data: email } = await supabase
       .from('emails')
-      .select('snippet, sender_email')
+      .select('snippet, sender_email, subject')
       .eq('id', body.email_id)
       .single();
 
@@ -100,16 +174,17 @@ serve(async (req) => {
         throw new Error(`Failed to remove tag: ${deleteError.message}`);
       }
 
-      // Log the correction for AI learning
-      await supabase.from('ai_correction_log').insert({
-        user_id: user.id,
-        email_id: body.email_id,
-        correction_type: 'removed_tag',
-        object_type: body.object_type,
-        incorrect_object_id: body.object_id,
-        email_snippet: email?.snippet,
-        sender_email: email?.sender_email,
-        reasoning_hint: body.reasoning_hint,
+      // Log the correction for AI learning (both tables -- see logCorrection)
+      await logCorrection(supabase, {
+        action: 'remove_tag',
+        emailId: body.email_id,
+        userId: user.id,
+        objectType: body.object_type,
+        objectId: body.object_id,
+        reasoningHint: body.reasoning_hint,
+        snippet: email?.snippet,
+        senderEmail: email?.sender_email,
+        subject: email?.subject,
       });
 
       // Also remove activity record if this was the only/primary link
@@ -157,16 +232,17 @@ serve(async (req) => {
         throw new Error(`Failed to add tag: ${insertError.message}`);
       }
 
-      // Log the correction for AI learning
-      await supabase.from('ai_correction_log').insert({
-        user_id: user.id,
-        email_id: body.email_id,
-        correction_type: 'added_tag',
-        object_type: body.object_type,
-        correct_object_id: body.object_id,
-        email_snippet: email?.snippet,
-        sender_email: email?.sender_email,
-        reasoning_hint: body.reasoning_hint,
+      // Log the correction for AI learning (both tables -- see logCorrection)
+      await logCorrection(supabase, {
+        action: 'add_tag',
+        emailId: body.email_id,
+        userId: user.id,
+        objectType: body.object_type,
+        objectId: body.object_id,
+        reasoningHint: body.reasoning_hint,
+        snippet: email?.snippet,
+        senderEmail: email?.sender_email,
+        subject: email?.subject,
       });
 
       // Create activity record if one doesn't exist

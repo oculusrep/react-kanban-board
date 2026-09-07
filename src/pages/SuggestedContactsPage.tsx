@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { logAddedTag, type CorrectionObjectType } from '../lib/logCorrection';
 import { format } from 'date-fns';
 import {
   EnvelopeIcon,
@@ -290,22 +291,20 @@ const SuggestedContactsPage: React.FC = () => {
           console.warn('[AI Feedback] Cannot log - user ID not loaded yet');
         } else {
           console.log('[AI Feedback] Logging correction with user_id:', currentUserId, 'email_id:', item.email_id);
-          const { error: logError } = await supabase.from('ai_correction_log').insert({
-            user_id: currentUserId,
-            email_id: item.email_id,
-            correction_type: 'added_tag',
-            object_type: links[0].type,
-            correct_object_id: links[0].id,
-            email_snippet: item.snippet,
-            sender_email: item.sender_email,
-            reasoning_hint: reasoning,
+          // Writes agent_corrections (what the agent reads) and
+          // ai_correction_log (the review-UI dedupe filter). Logs its own
+          // failures and never throws -- correction logging must not fail the link.
+          await logAddedTag({
+            emailId: item.email_id,
+            userId: currentUserId,
+            objectType: links[0].type as CorrectionObjectType,
+            objectId: links[0].id,
+            objectName: links[0].name,
+            emailSnippet: item.snippet,
+            senderEmail: item.sender_email,
+            emailSubject: item.subject,
+            reasoning,
           });
-          if (logError) {
-            console.error('[AI Feedback] Error logging correction:', logError.message, logError.details, logError.hint);
-            // Don't throw - this is non-critical
-          } else {
-            console.log('[AI Feedback] Correction logged successfully');
-          }
         }
       }
 
@@ -372,32 +371,41 @@ const SuggestedContactsPage: React.FC = () => {
         throw ruleError;
       }
 
-      // Store message_id to prevent re-fetch (ignore errors - table may not exist)
+      // Stub so Gmail sync does not re-ingest it. action='demoted' -- 'deleted'
+      // is legacy and no longer written anywhere.
       if (item.email?.message_id) {
-        try {
-          await supabase.from('processed_message_ids').upsert(
-            {
-              message_id: item.email.message_id,
-              action: 'deleted',
-              processed_at: new Date().toISOString(),
-            },
-            { onConflict: 'message_id' }
-          );
-        } catch {
-          // Ignore - this is optional tracking
-        }
+        await supabase.from('processed_message_ids').upsert(
+          {
+            message_id: item.email.message_id,
+            action: 'demoted',
+            sender_email: item.sender_email,
+            tier1_reason: 'ui:domain-exclusion-rule',
+            processed_at: new Date().toISOString(),
+          },
+          { onConflict: 'message_id' }
+        ).catch(() => {});
       }
 
       // Delete the queue entry
       await supabase.from('unmatched_email_queue').delete().eq('id', item.id);
 
-      // Delete the email
-      await supabase.from('emails').delete().eq('id', item.email_id);
+      // DEMOTE the email, do not delete it (changed 2026-09-06 to match
+      // email-triage). A deleted row cannot be corrected when the call is
+      // wrong, and cannot be counted when sizing tier-1 rules. Review at
+      // /admin/email-review, filter "Demoted".
+      await supabase
+        .from('emails')
+        .update({
+          is_relevant: false,
+          demoted_at: new Date().toISOString(),
+          demoted_reason: `User excluded domain @${domain} from this queue`,
+        })
+        .eq('id', item.email_id);
 
       // Update local state
       setItems(prev => prev.filter(i => i.id !== item.id));
 
-      alert(`Done! Future emails from @${domain} will be automatically deleted.`);
+      alert(`Done! Future emails from @${domain} will be automatically demoted.`);
     } catch (err: any) {
       alert('Error: ' + err.message);
     } finally {

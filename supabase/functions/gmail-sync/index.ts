@@ -13,6 +13,7 @@
  * - Rate limiting and batch processing
  */
 
+import { classifyTier1, buildTier1Stub, TIER1_MODE } from '../_shared/tier1.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import {
@@ -41,6 +42,10 @@ interface SyncResult {
   synced_count: number;
   new_emails: number;
   duplicate_emails: number;
+  /** Tier-1 verdicts. In log_only mode these count what WOULD have been
+   *  filtered; the emails are still inserted. See _shared/tier1.ts. */
+  tier1_bulk: number;
+  tier1_personal: number;
   skipped_deleted: number;
   errors: string[];
   is_full_sync: boolean;
@@ -107,6 +112,8 @@ serve(async (req) => {
         synced_count: 0,
         new_emails: 0,
         duplicate_emails: 0,
+        tier1_bulk: 0,
+        tier1_personal: 0,
         skipped_deleted: 0,
         errors: [],
         is_full_sync: false,
@@ -152,6 +159,47 @@ serve(async (req) => {
             // Get full message content
             const fullMessage = await getMessage(accessToken, msgRef.id);
             const parsedEmail = parseGmailMessage(fullMessage, connection.google_email);
+
+            // ================================================================
+            // TIER 1 -- pre-insert classification. Content-blind: headers and
+            // sender address only, never the body.
+            //
+            // MODE IS 'log_only' AT TIME OF WRITING. Every rule is evaluated
+            // and the verdict is stubbed, but nothing is filtered -- the email
+            // inserts exactly as before. One week of that gives per-rule counts
+            // against real traffic before any mail stops being ingested.
+            // Flip TIER1_MODE to 'enforce' in _shared/tier1.ts after reading
+            // them. Do not flip it here.
+            // ================================================================
+            const tier1 = classifyTier1(parsedEmail.senderEmail, parsedEmail.tier1Headers);
+
+            if (tier1.verdict !== 'pass') {
+              const stub = buildTier1Stub({
+                messageId: parsedEmail.messageId,
+                gmailConnectionId: connection.id,
+                senderEmail: parsedEmail.senderEmail,
+                result: tier1,
+              });
+              if (stub) {
+                // onConflict message_id: a message visible to both mailboxes
+                // classifies identically, and the stub is per-message.
+                await supabase
+                  .from('processed_message_ids')
+                  .upsert(stub, { onConflict: 'message_id' });
+              }
+              result.tier1_bulk += tier1.verdict === 'bulk' ? 1 : 0;
+              result.tier1_personal += tier1.verdict === 'personal' ? 1 : 0;
+              console.log(
+                `[Tier1] ${TIER1_MODE === 'enforce' ? 'FILTERED' : 'WOULD FILTER'} ` +
+                `${tier1.verdict} (${tier1.reason}) from ${parsedEmail.senderEmail}`
+              );
+
+              if (TIER1_MODE === 'enforce') {
+                // Never inserted, never modelled, never fanned out to triage.
+                continue;
+              }
+              // log_only: fall through and insert as normal.
+            }
 
             // Check if this message was previously processed/deleted
             const { data: wasProcessed } = await supabase
@@ -286,7 +334,8 @@ serve(async (req) => {
 
         console.log(
           `${connection.google_email}: Synced ${result.synced_count} emails ` +
-          `(${result.new_emails} new, ${result.duplicate_emails} duplicates)`
+          `(${result.new_emails} new, ${result.duplicate_emails} duplicates, ` +
+          `tier1 would-filter: ${result.tier1_bulk} bulk / ${result.tier1_personal} personal)`
         );
       } catch (connError: any) {
         console.error(`Error syncing ${connection.google_email}:`, connError);

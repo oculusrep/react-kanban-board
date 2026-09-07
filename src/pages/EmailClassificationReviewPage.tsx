@@ -30,6 +30,11 @@ interface EmailWithLinks {
   direction: string | null;
   ai_processed: boolean;
   ai_processed_at: string | null;
+  /** false = agent judged non-business. Row is kept (previously these were
+   *  hard-DELETEd, ~84/day). Excluded from every view except 'demoted'. */
+  is_relevant: boolean;
+  demoted_at: string | null;
+  demoted_reason: string | null;
   recipient_list?: Array<{ email?: string; name?: string }> | null;
   links: EmailObjectLink[];
   hasReview: boolean; // Whether feedback/correction has been logged for this email
@@ -77,7 +82,7 @@ const EmailClassificationReviewPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'linked' | 'unlinked'>('linked');
-  const [reviewFilter, setReviewFilter] = useState<'needs_review' | 'reviewed' | 'all'>('needs_review');
+  const [reviewFilter, setReviewFilter] = useState<'needs_review' | 'reviewed' | 'all' | 'demoted'>('needs_review');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showAddLink, setShowAddLink] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -136,9 +141,19 @@ const EmailClassificationReviewPage: React.FC = () => {
           direction,
           ai_processed,
           ai_processed_at,
-          recipient_list
+          recipient_list,
+          is_relevant,
+          demoted_at,
+          demoted_reason
         `, { count: 'exact' })
         .eq('ai_processed', true);
+
+      // Demoted emails are their own bucket. Server-side so the count and
+      // paging are correct -- the review-status filters below run client-side
+      // and would leave holes in the page if used for this.
+      query = reviewFilter === 'demoted'
+        ? query.eq('is_relevant', false)
+        : query.eq('is_relevant', true);
 
       // Apply email search filter
       if (emailSearchQuery.trim()) {
@@ -250,6 +265,7 @@ const EmailClassificationReviewPage: React.FC = () => {
       } else if (reviewFilter === 'reviewed') {
         filteredEmails = filteredEmails.filter(e => e.hasReview);
       }
+      // 'demoted' is already narrowed server-side; 'all' means all non-demoted.
 
       setEmails(filteredEmails);
     } catch (err: any) {
@@ -1249,7 +1265,7 @@ const EmailClassificationReviewPage: React.FC = () => {
         </div>
         <div className="h-6 w-px bg-gray-300" />
         <div className="flex gap-2">
-          {(['needs_review', 'reviewed', 'all'] as const).map((rf) => (
+          {(['needs_review', 'reviewed', 'all', 'demoted'] as const).map((rf) => (
             <button
               key={rf}
               onClick={() => setReviewFilter(rf)}
@@ -1259,7 +1275,13 @@ const EmailClassificationReviewPage: React.FC = () => {
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              {rf === 'needs_review' ? 'Needs Review' : rf === 'reviewed' ? 'Reviewed' : 'All Status'}
+              {rf === 'needs_review'
+                ? 'Needs Review'
+                : rf === 'reviewed'
+                ? 'Reviewed'
+                : rf === 'all'
+                ? 'All Status'
+                : 'Demoted'}
             </button>
           ))}
         </div>
@@ -1483,6 +1505,24 @@ const EmailClassificationReviewPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Demoted banner. These rows were hard-DELETEd before
+                    2026-09-06; they are kept now so the call can be corrected
+                    and counted, which means they need to be visibly marked. */}
+                {!email.is_relevant && (
+                  <div className="mt-2 ml-12 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5">
+                    <NoSymbolIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-700" />
+                    <div className="text-xs text-amber-900">
+                      <span className="font-semibold">Demoted as non-business</span>
+                      {email.demoted_at && (
+                        <span className="text-amber-700"> · {formatDate(email.demoted_at)}</span>
+                      )}
+                      {email.demoted_reason && (
+                        <div className="mt-0.5 text-amber-800">{email.demoted_reason}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Quick view of links */}
                 {email.links.length > 0 && expandedId !== email.id && (

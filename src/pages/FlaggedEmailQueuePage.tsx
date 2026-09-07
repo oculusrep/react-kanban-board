@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { logAddedTag, type CorrectionObjectType } from '../lib/logCorrection';
 import { format } from 'date-fns';
 import {
   EnvelopeIcon,
@@ -223,14 +224,15 @@ const FlaggedEmailQueuePage: React.FC = () => {
 
       // Log the correction for AI learning
       if (reasoning) {
-        await supabase.from('ai_correction_log').insert({
-          email_id: item.email_id,
-          correction_type: 'added_tag',
-          object_type: links[0].type,
-          correct_object_id: links[0].id,
-          email_snippet: item.snippet,
-          sender_email: item.sender_email,
-          reasoning_hint: reasoning,
+        await logAddedTag({
+          emailId: item.email_id,
+          objectType: links[0].type as CorrectionObjectType,
+          objectId: links[0].id,
+          objectName: links[0].name,
+          emailSnippet: item.snippet,
+          senderEmail: item.sender_email,
+          emailSubject: item.subject,
+          reasoning,
         });
       }
 
@@ -311,28 +313,41 @@ const FlaggedEmailQueuePage: React.FC = () => {
         throw ruleError;
       }
 
-      // Store message_id to prevent re-fetch
+      // Stub so Gmail sync does not re-ingest it. action='demoted' -- 'deleted'
+      // is legacy and no longer written anywhere.
       if (item.email?.message_id) {
         await supabase.from('processed_message_ids').upsert(
           {
             message_id: item.email.message_id,
-            action: 'deleted',
+            action: 'demoted',
+            sender_email: item.sender_email,
+            tier1_reason: 'ui:domain-exclusion-rule',
             processed_at: new Date().toISOString(),
           },
           { onConflict: 'message_id' }
-        ).catch(() => {}); // Ignore if table doesn't exist
+        ).catch(() => {});
       }
 
       // Delete the queue entry
       await supabase.from('unmatched_email_queue').delete().eq('id', item.id);
 
-      // Delete the email
-      await supabase.from('emails').delete().eq('id', item.email_id);
+      // DEMOTE the email, do not delete it (changed 2026-09-06 to match
+      // email-triage). A deleted row cannot be corrected when the call is
+      // wrong, and cannot be counted when sizing tier-1 rules. Review at
+      // /admin/email-review, filter "Demoted".
+      await supabase
+        .from('emails')
+        .update({
+          is_relevant: false,
+          demoted_at: new Date().toISOString(),
+          demoted_reason: `User excluded domain @${domain} from this queue`,
+        })
+        .eq('id', item.email_id);
 
       // Update local state
       setItems(prev => prev.filter(i => i.id !== item.id));
 
-      alert(`Done! Future emails from @${domain} will be automatically deleted.`);
+      alert(`Done! Future emails from @${domain} will be automatically demoted.`);
     } catch (err: any) {
       alert('Error: ' + err.message);
     } finally {
