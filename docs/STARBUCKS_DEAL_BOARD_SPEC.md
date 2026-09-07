@@ -438,6 +438,8 @@ New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OV
 
 **Getting to it.** The page renders `fixed inset-0`, covering the app nav — so nothing on screen points back at it and for a while the only way in was typing the URL. There is now a **📺 Starbucks Deal Board** entry in the hamburger menu's Navigation section (`Navbar.tsx`), which closes the menu on navigate; the other entries in that section don't, and left open the menu's `z-[10000]` backdrop sits on top of the fullscreen board.
 
+**Getting back out.** The header's first control is a dim, text-only **← Pipeline** button (left of the STARBUCKS title) that navigates to `/master-pipeline`. Before it, the only exit from a board that covers the whole viewport was the browser's back button. It's deliberately quiet rather than a real button — it's chrome, and nothing on a wall display competes with the deals (decisions §1.6). Escape is *not* bound to exit at board level: it already closes the triage queue and the parking lot, and on a TV a stray keypress should never drop the board.
+
 **`Navbar.tsx` has two hamburgers, and they swap at `xl` (1280px).** The one labeled "Mobile: Hamburger Menu Button" is `xl:hidden`; at desktop width it is gone and a *different* hamburger — the one labeled "Reports Menu", a dropdown at the left of the desktop nav — is the one you actually see. The board is in **both**, first item in the desktop dropdown. If you add anything else to "the hamburger menu" here, put it in both or it will be invisible at the width the person asking is sitting at.
 
 ---

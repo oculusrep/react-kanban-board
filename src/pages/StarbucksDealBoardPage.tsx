@@ -7,6 +7,7 @@
 // Renders fixed inset-0 so it covers the app nav — it's a TV surface.
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useStarbucksBoard, { BoardColumn } from '../hooks/useStarbucksBoard';
 import {
   Account,
@@ -43,6 +44,7 @@ function loadScale(): number {
 const ACCOUNT_KEY = 'sbBoardAccount';
 
 export default function StarbucksDealBoardPage() {
+  const navigate = useNavigate();
   const [accountFilter, setAccountFilterState] = useState<string>(() => localStorage.getItem(ACCOUNT_KEY) || ACCOUNT_ALL);
   const { columns, ready, toClassify, parked, daily, accounts, agendaByAccount, loading, error, lastSynced, refresh } = useStarbucksBoard(accountFilter);
   const [agendaOnly, setAgendaOnly] = useState(false);
@@ -111,6 +113,7 @@ export default function StarbucksDealBoardPage() {
         style={{ backgroundColor: PALETTE.ground, color: PALETTE.text, fontFamily: CONDENSED_STACK }}
       >
         <Header
+          onExit={() => navigate('/master-pipeline')}
           daily={daily}
           toClassifyCount={toClassify.length}
           onOpenTriage={() => setTriageOpen(true)}
@@ -174,6 +177,7 @@ export default function StarbucksDealBoardPage() {
 
 // ---- Header: account filter + agenda + to-classify counter + daily + scale --
 function Header({
+  onExit,
   daily,
   toClassifyCount,
   onOpenTriage,
@@ -190,6 +194,7 @@ function Header({
   scale,
   onScale,
 }: {
+  onExit: () => void;
   daily: { attention: number; yours: number; theirs: number; unclassified: number; noHistory: number };
   toClassifyCount: number;
   onOpenTriage: () => void;
@@ -217,6 +222,19 @@ function Header({
   return (
     <div className="flex items-start justify-between px-6 pt-4 pb-3">
       <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
+        {/* Way out. The board covers the app nav (fixed inset-0), so without
+            this the only exit is the browser's back button. Dim and text-only
+            — it's chrome, and nothing on a wall display competes with the
+            deals (1.6). */}
+        <button
+          onClick={onExit}
+          className="rounded px-2 hover:opacity-100"
+          style={{ color: PALETTE.textDim, fontSize: px(14), opacity: 0.75 }}
+          title="Back to Master Pipeline"
+        >
+          ← Pipeline
+        </button>
+
         <h1 className="font-semibold tracking-wide" style={{ color: PALETTE.text, fontSize: px(20) }}>
           STARBUCKS
         </h1>
