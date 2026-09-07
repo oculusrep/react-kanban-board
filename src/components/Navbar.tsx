@@ -463,6 +463,17 @@ export default function Navbar() {
             {isReportsMenuOpen && (
               <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-[10001]">
                 <div className="py-1">
+                  {/* The board renders fixed inset-0 over the nav, so this menu
+                      is the only way back to it at desktop width. */}
+                  <button
+                    onClick={() => {
+                      navigate('/starbucks-board');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    📺 Starbucks Deal Board
+                  </button>
                   <button
                     onClick={() => {
                       navigate('/reports');

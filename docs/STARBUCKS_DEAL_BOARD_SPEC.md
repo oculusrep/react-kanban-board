@@ -438,7 +438,7 @@ New page (a *destination*, per OVIS's overlay-UX two-tier model in `docs/OVIS_OV
 
 **Getting to it.** The page renders `fixed inset-0`, covering the app nav — so nothing on screen points back at it and for a while the only way in was typing the URL. There is now a **📺 Starbucks Deal Board** entry in the hamburger menu's Navigation section (`Navbar.tsx`), which closes the menu on navigate; the other entries in that section don't, and left open the menu's `z-[10000]` backdrop sits on top of the fullscreen board.
 
-**Caveat worth knowing:** the hamburger is `xl:hidden` — it only appears below 1280px. On a full-width desktop browser there is still no link to the board; the desktop nav is a separate row of `<Link>`s in the same file. Adding one there is a one-line change nobody has asked for yet.
+**`Navbar.tsx` has two hamburgers, and they swap at `xl` (1280px).** The one labeled "Mobile: Hamburger Menu Button" is `xl:hidden`; at desktop width it is gone and a *different* hamburger — the one labeled "Reports Menu", a dropdown at the left of the desktop nav — is the one you actually see. The board is in **both**, first item in the desktop dropdown. If you add anything else to "the hamburger menu" here, put it in both or it will be invisible at the width the person asking is sitting at.
 
 ---
 
