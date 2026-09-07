@@ -118,14 +118,51 @@ Implemented as triggers, not application code — otherwise the email-triage and
 
 | # | Fires on | When |
 |---|---|---|
-| 1 | `AFTER INSERT ON activity` | `NEW.deal_id IS NOT NULL` |
+| 1 | `AFTER INSERT ON activity` | `NEW.deal_id IS NOT NULL AND NEW.email_id IS NULL AND NEW.sf_id IS NULL` — **amended 2026-09-05**, see below |
 | 2 | `AFTER INSERT ON note_object_link` | `NEW.deal_id IS NOT NULL` (notes are polymorphic — the link row carries `deal_id`, not the note) |
 | 3 | `AFTER INSERT ON task` | `NEW.deal_id IS NOT NULL` |
 | 4 | `AFTER UPDATE OF due_at ON task` | `NEW.deal_id IS NOT NULL AND NEW.due_at IS DISTINCT FROM OLD.due_at` |
 
 **Why `activity` is #1, not an afterthought (resolves old open item #5):** recon found Starbucks deal history lives almost entirely in the legacy `activity` table (`LogCallModal` writes it) — **0 of the (then) 44 Starbucks deals had any `note_object_link` row**, while 19 had activity. For this account, logging a call *is* the touch that must cool the tile; notes are the supplement, not the reverse.
 
-**All activity inserts are human-originated — no guard needed.** OVIS has no Salesforce sync and hasn't for over a year; the `sf_*` columns are one-time migration residue, and nothing else auto-writes `activity`. So every activity insert is a real human touch by definition, and firing on all of them is correct. There is no system-vs-human ambiguity to guard against. **Open item #5 is fully closed.**
+**~~All activity inserts are human-originated — no guard needed.~~ WRONG — corrected 2026-09-05
+(migration `20260905172258`).**
+
+The original claim was that nothing auto-writes `activity`, so every insert is a real human touch.
+That was true when written and false within days: **`email-triage` inserts one `activity` row per
+deal tag**, and those rows fired this trigger. 186 such inserts in the 7 days before the fix.
+
+The damage was exactly what this board exists to prevent — **18 of 63 tiles were showing a fresh
+clock whose last cause was an INBOUND email nobody had replied to.** Worst case read *2 days* when
+the true figure was **194**. Four Starbucks tiles were cooled by a single Google Chat notification
+(`chat-noreply@google.com`); two more by a real-estate news blast. A stale board is bad; a lying
+board is worse (1.3), and it was lying one tile in three.
+
+**The board now goes email-blind:**
+```sql
+WHEN (NEW.deal_id IS NOT NULL AND NEW.email_id IS NULL AND NEW.sf_id IS NULL)
+```
+
+*Why email-blind rather than direction-aware:* ball-in-court needs judgment the board does not yet
+have. 10 of the 28 bad clocks came from **outbound** mail (including intra-firm mike↔arty), and 6
+from non-correspondence entirely. Direction is not the signal. Email cools nothing until the
+commitment model can classify it — see `docs/email-triage-spec.md` §4.
+
+*The `sf_id` guard closes the item deferred in `20260826120000`'s own header.* The 5,532
+Salesforce-imported "Email" rows carry `email_id IS NULL`, so the email predicate alone would not
+stop them if that sync ever resumes. Verified before writing: 2,827 rows have `email_id` (all
+`activity_type='Email'`, all `sf_id` null); 11,277 have `sf_id` (last insert 2025-10-02); **64 are
+hand-logged Task/Call rows with neither, and those still reset the clock** — which is the whole
+point. Zero rows carry both.
+
+*Existing rows were left frozen.* 28 of 63 tiles held a value set by email; only 5 had any
+non-email cause to recompute from, so recomputing would have produced a board where some tiles are
+honest and some are not with no way to tell which. Frozen decays in the right direction — once the
+trigger stops firing the fake timestamps age toward looking neglected, which is where the truth is.
+Full option analysis in `docs/email-triage-spec.md` §14.
+
+**Open item #5 is closed, but not for the reason originally given.** It is closed by a guard, not
+by the absence of a need for one.
 
 ### 3.3.1 The "no history" marker (`seeded_fallback`)
 

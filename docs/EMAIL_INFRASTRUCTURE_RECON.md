@@ -4,6 +4,29 @@ Read-only investigation of OVIS email ingestion, matching, Gmail OAuth/labels, a
 relationship to deal state. No writes, no migrations, no deploys. Prod project
 `rqbvcvwbziilnycqtmnc`. All counts as of 2026-09-05 ~17:15 UTC.
 
+> ## ⚠️ READ THIS FIRST — much of what follows has been FIXED
+>
+> This document is the **recon snapshot of 2026-09-05**, kept as the evidence base and the record
+> of how each problem was found. It is **not** current-state. Six dependencies were built against
+> it and merged to `main` on 2026-09-07.
+>
+> **Current state: [`email-triage-spec.md`](email-triage-spec.md) → STATUS.**
+>
+> | Finding below | Now |
+> |---|---|
+> | 18 of 63 board tiles lying; email resets `ball_in_court_since` | **fixed** — `20260905172258`, board is email-blind |
+> | Corrections dead since 2026-01-30; agent reads the starved table | **fixed** — 6 write sites redirected, 15 rows backfilled (63 → 78) |
+> | `searchDeals` gated to 5 stages, 69 of 771 deals visible | **fixed** — 7 stages, 95 visible |
+> | Thread inheritance copies at flat 0.95, propagating false positives | **fixed** — floor 0.80 on the seed, propagate `min(seed, 0.90)` |
+> | Bulk mail hard-DELETEd after a paid model call (2,603/30d) | **partly** — delete→demote enforced; tier-1 pre-insert filter is built but in `log_only`, filtering nothing until 09-13 |
+> | ~25% of label applies 404 | **instrumented, not fixed** — cause is being measured before the migration |
+> | `OVIS-Linked` applying? scopes granted? | **answered** in Addendum 4 — yes and yes (`gmail.modify` held on both) |
+> | "No UI shows emails on a deal page" | **that claim was wrong** — see the spec's silo section |
+>
+> Still true and still unfixed: the ingestion crons authenticate with the legacy anon JWT;
+> `deal-synopsis` is live-but-empty on retired `gemini-1.5-pro`; `cfo-query` and `bookkeeper-query`
+> run deprecated `claude-sonnet-4-20250514`; three dead `gemini-1.5-*` call sites remain.
+
 **Headline:** email ingestion is live and healthy (5-min cron, ~590 emails/7d), AI linking is
 live, Gmail labeling code exists and holds the right scope. The assumption "email is ingested,
 linked to deals, and Gmail-tagged today" is **broadly true** — with three caveats:

@@ -1,6 +1,6 @@
 # Supabase migration history drift — diagnosis and options
 
-**Status as of 2026-09-01: Option 2 applied (bookkeeping half reconciled). `db push` still blocked. See [Where this stands](#where-this-stands).**
+**Status as of 2026-09-07: Option 2's gain has been partly undone by a branch merge — local-only is back to 10, remote-only up to 50. `db push` still blocked. See [Where this stands](#where-this-stands).**
 
 > ## ⚠️ Current procedure: `supabase db push` DOES NOT WORK
 >
@@ -147,13 +147,48 @@ Same as Option 2, then `DELETE` the 30 category-A rows that name-match a local f
 
 ## Where this stands
 
-| | Before | Now |
-|---|---:|---:|
-| History rows | 147 | 177 |
-| Local-only (file not recorded) | 31 | **0** |
-| Remote-only (recorded, no local file) | 40 | 40 |
+| | Before Option 2 | After Option 2 (09-01) | Now (09-07) |
+|---|---:|---:|---:|
+| History rows | 147 | 177 | 186 |
+| Local-only (file not recorded) | 31 | **0** | **10** ⬅ regressed |
+| Remote-only (recorded, no local file) | 40 | 40 | **50** ⬅ regressed |
 
-**Done:** Option 2. **Still open:** the 40 remote-only rows, which are what blocks `db push`.
+**Done:** Option 2. **Still open:** the remote-only rows, which are what blocks `db push`.
+
+### Regression 2026-09-07 — merging `feature/starbucks-deal-board` re-opened both columns
+
+Merging that branch to `main` brought 10 `deal_activity_state` migration files into
+`supabase/migrations/`. All 10 had already been applied to production from the worktree — but they
+were recorded with **apply-time** version numbers rather than their filename versions:
+
+| File on disk | Recorded as |
+|---|---|
+| `20260825190000_deal_activity_state.sql` | `20260825233340` |
+| `20260826120000_deal_activity_state_backfill.sql` | `20260826202601` |
+| `20260826130000_deal_activity_state_seeded_fallback.sql` | `20260827135213` |
+| `20260828120000_ball_in_court_nullable.sql` | `20260828141255` |
+| `20260831120000_deal_activity_state_realtime.sql` | `20260831130948` |
+| `20260831130000_blocked_on_restructure.sql` | `20260831132844` |
+| `20260831140000_drop_ready_blocker.sql` | `20260831135920` |
+| `20260831150000_site_submit_pass_reason.sql` | `20260831154010` |
+| `20260831160000_deal_activity_state_parked.sql` | `20260831163619` |
+| `20260831170000_deal_activity_state_urgent.sql` | `20260831181708` |
+
+**0 of 10 match.** So the same 10 migrations now count *twice*: 10 local-only (files whose version
+was never recorded) **and** 10 remote-only (recorded versions with no matching file). The schema is
+correct and complete — this is purely a bookkeeping mismatch — but it is exactly the shape Option 2
+was run to eliminate, and it will re-appear on every future worktree merge unless the recording step
+uses the filename version.
+
+**Root cause, and the cheap fix:** whatever recorded these stamped `date +%Y%m%d%H%M%S` at apply
+time instead of reusing the version already in the filename. The three `feature/email-triage`
+migrations merged the same day (`20260905172258`, `20260906135453`, `20260906153946`) **do** match,
+because they were recorded with the filename version per the CLAUDE.md procedure. The procedure is
+right; it was not followed for the deal-board batch.
+
+**Reconciling these 10 is Option-2-shaped work** — rewrite the 10 recorded versions to their
+filename versions, which clears 10 from each column at once. Not done here: it is a write to
+`schema_migrations` on production and should be its own reviewed change, not a footnote to a merge.
 
 ### Extra finding — a version-number collision
 

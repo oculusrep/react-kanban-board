@@ -64,15 +64,39 @@ Do not reopen without the user. Reasoning included so you can reason *from* them
 **Not** `deal_synopsis.ball_in_court` (AI-generated — violates 1.4, and the writer has never successfully run), **not** `deal.current_handoff_holder` (document-scoped; a deal can be pre-LOI with no document and still have a ball in someone's court).
 
 ### 2.2 Reset is a database trigger
-Fires on `note_object_link` insert, `task` insert, `task.due_at` change, and `activity` insert. Application code does not manage this.
+Fires on `note_object_link` insert, `task` insert, `task.due_at` change, and `activity` insert
+**where the activity is neither email-sourced nor Salesforce-imported** (see 2.4, reversed
+2026-09-05). Application code does not manage this.
 
 Reasoning: three future writers — the board, email triage, the voice layer — plus manual SQL. Any one forgetting to reset violates 1.2. Triggers are invisible in app code, which is the accepted cost; document them in the migration.
 
 ### 2.3 `activity` is the primary touch signal
 0 of 44 Starbucks deals had note links; 19 had activity. Notes are not where this history lives.
 
-### 2.4 No Salesforce guard
-There is no SF sync in OVIS and hasn't been for over a year. The `sf_*` columns are historical residue from a one-time migration. All `activity` inserts are human-originated by definition. A guard would wrongly exclude legitimate migrated history.
+### 2.4 ~~No Salesforce guard~~ → Email-blind + SF guard (REVERSED 2026-09-05)
+
+**Original decision:** there is no SF sync and hasn't been for over a year; the `sf_*` columns are
+one-time migration residue; all `activity` inserts are human-originated by definition, so a guard
+would wrongly exclude legitimate migrated history.
+
+**Reversed.** The premise held for Salesforce but missed a writer that arrived days later:
+`email-triage` inserts an `activity` row per deal tag, and every one of them cooled a tile. 186
+inserts in 7 days; **18 of 63 tiles were lying**, worst case showing 2 days when the truth was 194.
+Four tiles were cooled by one Google Chat notification.
+
+Migration `20260905172258`:
+```sql
+WHEN (NEW.deal_id IS NOT NULL AND NEW.email_id IS NULL AND NEW.sf_id IS NULL)
+```
+
+The `sf_id` half is kept — not because SF sync is active, but because the 5,532 SF-imported "Email"
+rows carry `email_id IS NULL` and would slip past the email predicate if it ever resumed. Cheap to
+close while the file was open. **The 64 hand-logged Task/Call rows still reset the clock**; that was
+verified before writing, not assumed.
+
+**What this says about 2.3:** `activity` is still the primary *human* touch signal. It stopped being
+a reliable *human-only* signal the moment a second writer existed. The lesson is 1.4's, not 2.3's —
+a signal is only as trustworthy as the list of things that can write it, and that list changes.
 
 ### 2.5 `ready` is a persistent value, not a transient state
 A deal sitting in `blocked_on = 'ready'` for two weeks is precisely the neglect this board exists to expose (1.3). Renders hot regardless of clock, sorts to top of column, chip reads "Submit it."

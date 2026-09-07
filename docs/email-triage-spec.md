@@ -8,6 +8,42 @@
 
 ---
 
+## STATUS — 2026-09-07
+
+**All six dependencies (§2) are built and live in production.** Merged to `main` at `fd99c3b4`
+(after `feature/starbucks-deal-board` at `27498845` — that ordering mattered, see below). The
+commitment table (§4) has not been started; §2 was the prerequisite work.
+
+| Dep | What shipped | State |
+|---|---|---|
+| **(e)** board trigger | `20260905172258` — clock ignores email- and SF-sourced activity | live |
+| **(d)** domain scoping | `INTERNAL_EMAIL_DOMAINS`, domain-branch reach 962 → 171 / 30d | live, email-triage v81 |
+| **(b)** correction table | 6 write sites → `agent_corrections`; `20260906135453` backfilled 15 rows (63 → 78) | live, v43/v82 |
+| **(c)** matcher | stage gate 5 → 7 (69 → 95 deals); inheritance floor 0.80, propagate `min(seed, 0.90)` | live, v83 |
+| **(a)** tier 1 | `_shared/tier1.ts` — **`TIER1_MODE = 'log_only'`, filters nothing**; delete→demote **enforced**; both model short-circuits gated | partial, v85 / gmail-sync v56 |
+| **(f)** mailbox resolution | **instrumented, not migrated** — 404s probe the other mailbox and log a verdict | measuring |
+
+**Two things are waiting on data, both due 2026-09-13:**
+
+1. **Tier-1 flip** — per-rule, not one go/no-go. Five queries in §2(a), criteria table there.
+2. **(f) retry queue** — designed against measured 404 causes (Q6), not inference.
+
+**Merge-order note.** `feature/email-triage`'s board-trigger migration edits
+`trg_reset_clock_on_activity_insert`, whose 10 creating migrations existed only on
+`feature/starbucks-deal-board`. Deal-board merged first so `main`'s history creates the object
+before editing it. The two branches touched zero files in common; both merges were clean.
+
+**Known drift introduced to `main` by that merge:** the deal-board migrations' filenames and their
+recorded `schema_migrations` versions do not match (e.g. `20260825190000_deal_activity_state.sql`
+recorded as `20260825233340`) — they were stamped at apply time rather than by filename. Tooling
+will read those files as unapplied. See `docs/SUPABASE_MIGRATION_DRIFT.md`.
+
+**Not yet observed in production:** `emails` has 0 rows with `is_relevant = false` as of this
+writing. The demote path is live and the UI surfaces it, but neither has been exercised against a
+real demotion. If that count is still 0 after 24h, something upstream changed.
+
+---
+
 ## 1. Contradictions — assumption vs actual
 
 | # | Plan assumed | Recon found | What it changes |
@@ -586,7 +622,11 @@ Baseline to beat, from recon: **10.7% deal-link coverage**, one confirmed thread
 
 ## 14. Where I think this spec is wrong
 
-### The deal-board trigger is not out of scope
+### ~~The deal-board trigger is not out of scope~~ — ACCEPTED AND FIXED 2026-09-05
+
+*Resolution: taken as dependency (e) and shipped in migration `20260905172258`, before any other
+dependency. Option C (leave the 28 existing values frozen) chosen — reasoning recorded in the
+migration header and in §14's option table below. The argument as originally written follows.*
 
 The spec calls it *"pre-existing bug, does not block shadow mode, separate ten-minute item."* I think two of those three are wrong.
 
