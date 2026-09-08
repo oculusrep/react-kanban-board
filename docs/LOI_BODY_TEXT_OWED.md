@@ -1,4 +1,13 @@
-# Body text owed by Mike — to unblock the acceptance test
+# Body text owed by Mike — CLEARED 2026-09-08
+
+> **STATUS: NOTHING IS OWED.** Tranche 13 (R1) and tranche 14 (LCW0/1/2) both landed, so every item
+> below is satisfied. The file is kept as the record of what was owed and why, and because the R0
+> section is still live. The next milestone is the ASSEMBLER and WIZARD spec — see
+> `docs/LOI_RESUME_HERE.md`.
+
+---
+
+## Original list (all satisfied)
 
 Everything schema-side and assembler-side is settled or built. What remains between here and running
 the Powder Springs acceptance test is **body text**, which is Mike's. This is the complete list, with

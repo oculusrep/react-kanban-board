@@ -1073,6 +1073,75 @@ strength of an unverified view. Manifest patch v2 was a merge for exactly this r
 compose — a bad view plus a replacing instrument destroys data; a bad view plus a targeted edit does
 not.
 
+## Tranche 14 LOADED — the library is CLOSED except rent/R0 (2026-09-07)
+
+`landlord_work` is ACTIVE. **80/80 content paragraphs covered, ZERO deferred** (was 74/2). 44 clauses,
+103 bodies, 110 body references across 96 paragraphs.
+
+### Shape: a LADDER, not a selector — the deliberate contrast with `rent_basis`
+
+| position | kind | rank/emit | template_paragraph | body |
+|---|---|---|---|---|
+| LCW0 | alternative | rank 0, default | 107 | work **and** allowance — the ask |
+| LCW1 | alternative | rank 1 | 110 | allowance **instead of** work — the FALLBACK |
+| LCW2 | alternative | rank 2 | 112 | neither — the ALTERNATIVE |
+| (uncoded) | modifier | emit 10 | **110** | the ≥$200,000 security sentence, gated on LCW1 |
+| (uncoded) | modifier | emit 20 | 114 | drive-through permits add-on |
+| (uncoded) | modifier | emit 30 | 116 | construction schedule add-on |
+
+R0/R1 are a **deal fact**, so `rent_basis` is a selector. LCW0/1/2 are **preferences** — the template's
+own markers read ask / FALLBACK / ALTERNATIVE — so they are a ranked ladder. The distinction is the one
+the CAM incident established, applied in the opposite direction.
+
+**The security sentence works exactly as Mike keyed it**, with two corrections he asked for: `brace_code`
+must be NULL (two positions cannot share `LCW1` — `loi_position_variant_brace_uk`), and
+`template_paragraph` is an INTEGER (110), not a symbolic name. It then shares LCW1's paragraph and the
+two concatenate, the alternative sorting first because alternatives may not carry `emit_order`.
+
+The two add-on bodies (`drive_through_permits` 114, `construction_schedule` 116) were loaded by tranche
+6 as position-less orphans and needed positions, not re-extraction.
+
+### template_paragraph is populated on EVERY position — and grouping is made VISIBLE
+
+Mike proposed leaving it NULL on anchors, reasoning that a non-null value creates a group a future
+position could join by accident. The counter-cost: nulls push LCW0 and LCW2 onto contract B's **fragile
+heading-matching tier** when they have a perfectly good index.
+
+Resolved by taking the anchoring and **detecting the join instead of preventing it by absence**:
+`completeness_test.py` now lists every multi-member paragraph group on each run, so a new one cannot
+appear unnoticed. Currently paras 15, 81, 110, 218 and 220/223/225/226. Monitor the artifact.
+
+### Two loader fixes, both MISLEADING ERRORS rather than missing data
+
+- **`value` accepted as an alias for `option_value`.** `lcw2_building_incl` was correct; the old message
+  read *"option missing option_value"*, which asserts the text is absent when it is right there under
+  another key. **An error that misdirects is worse than no error** — it sent Mike back to re-key
+  something that was already right.
+- The two add-on gates used `is_true`, which is not in `OPERATORS`; re-keyed `eq`/`true`.
+
+Also confirmed: no v1 residue. The invented key `landlord_contribution_work` appears nowhere.
+
+### The orphan `]` in LCW2 — CLOSED, and better than feared (Mike, from the handbook)
+
+Both handbook editions render the LCW2 header with the NOTE bracket **opening and never closing** after
+"LOI"; the body runs INSIDE it and the trailing `]` closes the NOTE. The template closes the NOTE early
+*and* keeps the trailing `]`, which is why it reads as orphaned.
+
+So the bracket belongs to the **instruction**, not to the Common Areas block. That block is
+**UNCONDITIONAL** and stripping the bracket retained nothing that should have been optional. My residual
+risk — that the missing opener meant the block was conditional — is retired, not carried forward.
+
+**Known source divergence, recorded not acted on:** the Southeast doc reads "other mechanical systems"
+where the template and both handbooks read "other mechanical **and utility** systems". Template is
+body-text authority.
+
+### Four tests updated where the tranche ended what they asserted
+
+v11 P3/P3b/P4 and v12 P2 all keyed off `landlord_work` being deferred. P4 moved to the granularity that
+still has a gap: **R0 has no `loi_position` row at all**, which is precisely the case position-level
+deferral exists for. `loi_deferred_item` now returns exactly one row, and it is a position — so the view
+earns its existence rather than duplicating `loi_deferred_clause`.
+
 ## Tranche 11 APPLIED — and a correction: items A and B rested on a bug in MY dump (2026-09-06)
 
 The last three raw blanks in the library are keyed. **Library-wide raw-blank surfaces: NONE.**

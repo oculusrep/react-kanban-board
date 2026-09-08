@@ -1,117 +1,153 @@
-# LOI Tool — RESUME HERE (handoff, 2026-09-01)
+# LOI Tool — RESUME HERE (handoff, 2026-09-08)
 
-Pick up the Starbucks LOI tool build. Full design record: `docs/STARBUCKS_LOI_TOOL_DECISIONS.md`.
-All work is on branch `feature/starbucks-loi-tool`, in the **worktree** at
-`/Users/mike/Documents/GitHub/react-kanban-board-loi` (NOT the main repo tree — Mike runs a parallel
-session on `main`; do all LOI work in the worktree). Last committed: `0e609e8c` (tranche 6 loaded).
+**Next session: write the spec for the ASSEMBLER and the WIZARD.** The library is closed; nothing
+else blocks that work. Read this file, then §"Where to start" at the bottom.
+
+Full design record: `docs/STARBUCKS_LOI_TOOL_DECISIONS.md` (1,893 lines — the authority, not this
+file). Branch `feature/starbucks-loi-tool`, in the **worktree** at
+`/Users/mike/Documents/GitHub/react-kanban-board-loi` — NOT the main tree, where Mike runs a parallel
+session on `main`. Last committed: `1b4522b9` (tranche 14).
 
 ## Environment
-- Dev DB (throwaway, NOT prod): `postgresql://postgres:CfYcl6tHwl3Pl2u@db.lntfzvzycshncqxecuob.supabase.co:5432/postgres`
-- No local Docker; drive the dev DB with `psql` directly. `python-docx` is installed.
-- Loader/validator: `supabase/seeds/loi/load_seed.py` (`python3 load_seed.py <file>` validates;
-  `--load` emits INSERT SQL to pipe into psql). Rent engine: `rent_engine.py` (Powder Springs
-  byte-exact). Docx emitter: `emit_rent_table.py`. Completeness harness: `completeness_test.py`.
-- Repo gotcha: `.gitignore` has blanket `*.sql`; only `supabase/migrations/*.sql` and
+
+- Dev DB (throwaway, NOT prod):
+  `postgresql://postgres:CfYcl6tHwl3Pl2u@db.lntfzvzycshncqxecuob.supabase.co:5432/postgres`
+- No local Docker; drive the dev DB with `psql`. `python-docx` installed.
+- Loader/validator: `supabase/seeds/loi/load_seed.py` — `python3 load_seed.py <file>` validates,
+  `--load` emits INSERT SQL to pipe into psql.
+- Completeness: `python3 completeness_test.py LOI_sweep_manifest.json LOI_addendum_manifest.json`
+  (takes N manifests).
+- Constraint suites: `supabase/dev-only/loi_negative_tests_v9..v12.sql`.
+- Rent engine `rent_engine.py` (Powder Springs byte-exact); docx emitter `emit_rent_table.py`.
+- **Repo gotcha:** `.gitignore` has a blanket `*.sql`; only `supabase/migrations/*.sql` and
   `supabase/dev-only/*.sql` are un-ignored.
 
-## State
-- **Clause library: 41 clauses loaded** (tranches 1–6). `landlord_work` deferred (`_blocked`; its
-  LCW base is blocked on the rent-schedule column-insert contract). Still blocked: R0/R1 rent
-  schedules, LCW0/1/2 primaries, Southeast CO back-ups, freestanding CAM variant.
-- Rent engine reproduces Powder Springs byte-exact; end-cap rent-table emission spike passed
-  (matches worked ECDT). Render contract: `docs/LOI_RENT_TABLE_RENDER_CONTRACT.md`.
-- Phase-2 foundation built: `loi_economic_term` catalog + unified `loi_negotiable_item` (3 kinds:
-  clause_position / economic_term / body_parameter).
-- Ownership rule locked; economic direction_of_favor set; CAM = `cam_basis` composite selector with
-  deal-type subdomain (`loi_variant_selector_value`).
+## State — the library is CLOSED
 
-## UNCOMMITTED / IN-FLIGHT (in the worktree, untracked; also in Mike's Downloads)
-Two files were received but NOT yet loaded/committed:
-- `supabase/seeds/loi/LOI_sweep_manifest.json` — the authoritative 236-paragraph sweep. Schema is a
-  dict `{template, template_paragraphs, _README, assignments}`; `assignments` is the list. Categories:
-  primary(49)/addon(27)/instruction(12)/letter_shell(16)/blocked(26)/empty(106). (My guessed schema
-  was wrong — inspect `assignments` entries directly; some entries stringify oddly, handle that.)
-- `supabase/seeds/loi/loi_seed_tranche7.json` — three items (closing frame, tenants-in-common
-  modifier, contaminated-sites).
+| | |
+|---|---|
+| clauses | 44 |
+| canonical bodies | 103 |
+| content paragraphs | **80/80 covered, ZERO deferred** |
+| body references | 110 across 96 paragraphs |
+| tests | v9 13/13 · v10 8/8 · v11 13/13 · v12 6/6 · completeness green |
+| **the only remaining gap** | **`rent`/`R0`**, registered in `loi_deferred_position` |
 
-## NEXT ACTIONS (in order)
-1. **Commit the permanent completeness test.** Adapt `completeness_test.py` to the manifest's
-   `assignments` schema and assert Mike's THREE things: (a) every non-empty paragraph has a category;
-   (b) every `primary`/`addon` paragraph maps to a LOADED canonical body (check against the DB or the
-   seed tranches); (c) nothing unassigned. Run it green. It doubles as the template-transition detector.
-2. **Load tranche 7** (validate then `--load`). Three items:
-   - Closing frame: always-emitting modifier on `letter_shell`, 3 segments (closing statement, SBUX
-     signature block, Landlord signature block).
-   - Tenants-in-common modifier (re-sent; was lost in the tranche-6 patch).
-   - Contaminated-sites (para 162): a body-less position raising 3 attachment/task requirements,
-     `firing_mode: on-deviation`, approval flagged.
-3. **Answer Mike's two questions** (he'll re-key against the answers):
-   - **Closing-statement L1/L0 dependency:** the "[DELETE PRECEDING SENTENCE IF NOT USING STARBUCKS
-     STANDARD FORM LEASE]" sentence drops when L1 is selected. RECOMMENDED SHAPE: make that sentence
-     its **own modifier position** on letter_shell (so it can carry a gate — applies_when is
-     position-level, not segment-level), with `applies_when: {ref_kind:'position_selection',
-     ref_clause_key:'lease', ref_brace_code:'L0', operator:'is_selected'}`. The rest of the closing
-     (signature blocks) stays an ungated always-emitting modifier.
-   - **Body-less contaminated-sites position: LOADABLE as-is.** No DB constraint forces a position to
-     have a body; model it as a `modifier` (brace optional) with 0 `position_bodies` + 3
-     `attachment_requirements`, `firing_mode: on-deviation`. It emits nothing; OVIS raises the tasks.
-     No need to invent a body or downgrade to guidance+director-question.
-4. ~~Build `loi_clause_exclusion`~~ **DONE (2026-09-01)** — `loi_clause_exclusion` + `is_active` on
-   clause/position + `loi_exclusion_violations()` + `loi_selectable_position`. TWO exclusions
-   (`transfer_supersedes_sale`, `pylon_panel_existing_xor_new`); `sale_of_property` de-activated;
-   ROFR/ROFO deliberately NOT built. 13/13 tests in `loi_negative_tests_v9.sql`. See the decisions doc.
-5. ~~Payload contract~~ **SIGNED OFF 2026-09-06 as A–F.** B/D/E as written; A amended with the
-   landlord-fill sentinel; C amended to HALT (not strip) on deferred/blocked/unloaded clauses; F added
-   — OVIS enforces exclusions and the assembler does not re-check. Library support for A and C is
-   built (migration 20260906120000, 10/10 in loi_negative_tests_v11.sql). **Next:** build the assembler → build the assembler → minimal
-   wizard → **Powder Springs acceptance test** (regenerate end-to-end from deal terms, diff vs
-   `fixtures/`, every difference explainable).
-   **THE POWDER SPRINGS ACCEPTANCE TEST IS NOT REACHABLE YET.** Verified 2026-09-06 against the
-   fixture: its rent table is 11x4 WITH a Per Square Foot column (= R1), and its Landlord
-   Contribution is workletter + $75,000 allowance (= LCW0). Both `rent` and `landlord_work` are
-   registered DEFERRED, so a faithful run HALTS under payload contract C rather than emitting.
-   **The test is gated on the rent-table column-insert / allowance contract, not on the assembler.**
-   Build the assembler now if you like — it just cannot be acceptance-tested end-to-end on Powder
-   Springs until R0/R1 + LCW0/1/2 load. (Powder Springs also carries SALE OF PROPERTY at its para 95,
-   which is retired: that one strips correctly and is an expected, explainable diff.)
+Two skeletons: the letter (`LOI_sweep_manifest.json`, 236 paras, transition detector ON) and the
+Contingency Addendum (`LOI_addendum_manifest.json`, 17 paras, PROVISIONAL, detector OFF with a stated
+exit condition — no authoritative .docx exists).
 
-   **Assembler contract reminders now in force (full text: payload contract A–F):**
-   OVIS owns exclusion enforcement and the deferred-clause halt — the assembler re-checks neither;
-   param entries are typed `{kind: value|landlord_fill|omit}` and absence is a hard error; select positions from `loi_selectable_position`
-   (never `loi_position` directly); run `loi_exclusion_violations()` over the selection before
-   emitting — `drop-b` resolves silently, `halt` stops the run; and join same-template-paragraph
-   fragments across positions into ONE paragraph (standing rule from the closing-statement split).
+**R0 is deferred because its render shape has no artifact anywhere.** The worked Freestanding LOI
+carries the R0 block as tab-delimited paragraphs with the `$` placeholders still EMPTY — it was never
+filled in. An R0 deal correctly HALTS. Powder Springs is R1, so this does not block the acceptance
+test. Unblocking needs a worked or executed freestanding LOI with a FILLED R0 schedule.
 
-## OPEN — OWED BY MIKE (not blocking the exclusion build; blocking the acceptance test)
-- ~~Closing statement / signature block~~ **RESOLVED — tranche 8 loaded 2026-09-05.** Para 218 split
-  three ways with the middle fragment gated on lease/L0; the tenant signature block is a three-way
-  ranked ladder (SIG0 template / SIG1 Powder Springs / SIG2 Douglasville), re-homed into its own
-  clause `tenant_signature_block`. **Powder Springs acceptance test resolves to SIG1.**
-- **VETO WINDOW:** three changes were made to Mike's tranche-8 file — SIG re-homed to its own clause
-  (forced: six constraint violations on the original shape), `authority` values remapped, and the
-  landlord body declared `_existing`. All recorded in the decisions doc; say so if any is wrong.
-- **Manifest granularity re-send** (adds `brace_code` + `segment_key`). Do NOT build the tightened
-  completeness rule until Mike flags that it landed.
-- ~~LCW1~~ **CLOSED 2026-09-06: key ALL THREE rungs** (LCW0/LCW1/LCW2). Template carries three; the
-  Aug 2026 handbook drops LCW1; body text comes from the template. LCW1's `provisional_note` text is
-  owed at extraction and written verbatim in the decisions doc. Revisit only if a future template drop
-  ALSO drops it — one source dropping it is not the signal.
-- **Addendum manifest = SEPARATE FILE per skeleton** (`LOI_addendum_manifest.json`), decided
-  2026-09-06 — see the decisions doc. When it lands: `completeness_test.py` takes N manifests, runs
-  rules 1-3 per manifest but rule 4 ONCE across the UNION of claims, and the four addendum bodies +
-  `future_construction/main` come OUT of `_unjoined_bodies` in the same change (rule 4's stale-entry
-  check is verified and will fail until they do).
-- **OWED, not yet buildable:** forbidden-substring check for "NNN"/"Triple Net" in emitted text. Build
-  when freestanding is scoped and a fixture exists, not before.
-- ~~ROFR / five-bodies provenance~~ **CLOSED 2026-09-06 by Mike: BUCKET 1 IS EMPTY, claim holds.**
-  ROFR + ROFO both trace to the Southeast doc and are a RANKED LADDER (ROFO = last-resort fallback),
-  so they need one clause with two rungs, NOT an exclusion. future_construction is a Southeast
-  "additional clause - not part of national template". The four Contingency Addendum clauses are
-  Starbucks-issued. Mike's full writeup with the second-skeleton instructions is still to come.
-- CAM0 cap already resolved (3% standing default). ETR omitted by design.
+## The contracts the assembler must implement
 
-## GOTCHAS
-- v1–v5 negative tests are empty-schema unit tests; they collide with the loaded library by fixture
-  key (not a regression). v6/v7/v8 green + the full load validate the current schema.
-- Body text is Mike's — patch shape/metadata freely, but if `body_text` needs changing, tell him.
-- Report every change made against Mike's seed files (he holds the extraction).
+Written out in full in the decisions doc; this is the index.
+
+- **A** — tokens stay in `body_text`; param values ride alongside. Entries are TYPED:
+  `{kind: value|landlord_fill|omit}`. Absence is a hard error; empty string is never the sentinel.
+  With option-templating, "every token" means every token in the body **or in the SELECTED option**.
+- **B** — placement by (1) the template's `[{CODE}]` marker runs, (2) section headings, (3) the R1
+  anchor, (4) `template_paragraph`. A missing anchor is a HARD FAILURE. **Tier 2 is the fragile one**
+  — a reworded heading breaks it silently, and the docx cross-check in `completeness_test.py` is what
+  catches that. Do not weaken either without replacing the guard.
+- **B4** — **headings are TEMPLATE-OWNED.** The assembler preserves the heading run and replaces only
+  the content after it, exactly as it strips the code marker. Never emitted from a body, never
+  duplicated.
+- **C** — strip by default, **but HALT on absence.** Deletion is legal only for content the payload
+  CHOSE not to claim; never for content the library cannot yet supply. `loi_deferred_item` is the
+  single "may I proceed?" query, spanning clause- and position-level gaps.
+- **D** — `modified` is OVIS metadata; `body_text` is authoritative.
+- **E** — rent rows arrive precomputed. **The assembler does zero math.**
+- **F** — **OVIS runs the exclusion check and the deferred halt; the assembler does NOT re-check** —
+  and cannot, being database-free. The payload is a post-validation artifact.
+- **G** — whitespace around an omitted param: delete the token plus exactly ONE immediately-preceding
+  space if present, else one following space, else the token alone. **Not global normalisation** —
+  tranche 10 deliberately keeps the space before the period in both pylon bodies.
+
+Plus two structural rules:
+- **Paragraph grouping:** positions sharing a non-null `(clause_id, template_paragraph)` concatenate
+  into ONE emitted paragraph, ordered by `(COALESCE(emit_order, -1), rank)` — a position with no
+  `emit_order` sorts first, since alternatives may not carry one. NULL never groups.
+- **`computed_table`:** skeleton-owned paragraphs the engine fills. Carries `table` and
+  `gated_by {selector_field, selector_value}`; no two tables may share a gate.
+
+## Assembler — LOCKED decisions, do not reopen
+
+- A **separate deterministic service**, not inside OVIS. Direct OVIS→service HTTP job call with an
+  idempotency key. **Never MCP.** In-place surgery on the real template `.docx`.
+- Why it cannot move into OVIS: contract F depends on the renderer being **database-free**. Give it
+  database access and F stops being coherent.
+- Pure function of the payload, triple version-pinned (library, template, assembler). The payload is
+  persisted verbatim as the operation log.
+- Acceptance test: emitted output has **zero brackets and zero codes** (landlord-fill renders
+  excepted), or it fails.
+
+## Acceptance test (Powder Springs) — two EXPECTED diffs
+
+Both explainable, neither a regression:
+1. **SALE OF PROPERTY strips** — retired by `transfer_supersedes_sale`; Powder Springs carrying it at
+   its para 95 is a historical artifact.
+2. **The R1 remeasurement note APPEARS** — deliberate. All three sent LOIs dropped it (the
+   bracket-wrapped paragraph went out with the brackets), but it is verbatim in the "Provision in LOI"
+   block of BOTH handbook editions and is tenant-protective.
+
+**COVERAGE CAVEAT, to state in the test's own notes.** In the Powder Springs signage paragraph both
+blanks are landlord-fill and empty and the choose takes the "monument or pylon" branch, so that
+paragraph exercises almost none of the signage clause — the article fix in particular is never
+exercised. **The test proves the assembler reproduces the send; it does not prove the clause is
+correct.**
+
+## Open, none blocking the spec
+
+- **R0 render shape** — needs a filled-R0 artifact. Freestanding only.
+- **`P = 0`** (no extension options) — omit the blank + label rows? No fixture. Mike's call.
+- **3-column table widths** — falls out of R0.
+- **`future_construction` letter paragraph** — pending; leaves `_unjoined_bodies` when it lands.
+- **`other_contingency`** — awaiting a send that uses it. `_unjoined_bodies` ends at exactly
+  `sale_of_property/main`, `early_termination/placeholder`, `other_contingency/main`.
+- **Forbidden-substring check** for "NNN"/"Triple Net" — OWED, but do NOT build until freestanding is
+  scoped and a fixture exists. A rule with no fixture is unverified by construction.
+- **Contingency Addendum second skeleton** — provenance closed (Starbucks-issued, Bucket 1 IS empty);
+  the skeleton build itself has not started.
+
+## Standing rules learned the hard way — start from these
+
+1. **Monitor the artifact, not the run.** Status signals report that a step RAN, never that it
+   PRODUCED anything. Before trusting a check, name the input that would make it fail and confirm that
+   input can reach it. Four instances cost real time: `LIKE '%_%'` matching every row; a scan reading
+   only `body_text` while 3 of 5 defects lived in option values; a dump whose `string_agg` swallowed
+   every `is_omit` row and produced two false design questions; and 432 green cron runs through an
+   8-hour outage.
+2. **Mutation-test every new assertion before trusting it.** Rule 2 alone passed two of three
+   deliberate corruptions, which is what produced rule 4.
+3. **A migration guard asserts what ITS OWN change is responsible for — a total is never that.** Two
+   landlord-fill migrations asserted library-wide counts and would have failed on replay.
+4. **SEEDS own structure; MIGRATIONS own state transitions seeds cannot express.** Building structure
+   in a migration made `completeness_test` fail — its inventory reads tranche files.
+5. **Body text is Mike's.** Patch shape and metadata freely, report every change; if `body_text` needs
+   changing, ask.
+6. **An unexpected emission is not automatically a defect.** "monument or pylon" was one step from
+   being recorded as a permanent fixture defect; it was a legitimate third state nobody had modelled.
+7. **"In the project" means chat can read it, not that it is on disk.** Search once, then ask for the
+   path or a paste.
+
+## Where to start next session
+
+**Write the spec for the assembler and the wizard.** Suggested shape, mirroring
+`LOI_COLUMN_INSERT_ALLOWANCE_CONTRACT.md`: what is settled (contracts A–G, the render contract, the
+grouping and `computed_table` rules), what is open, and what needs Mike — with every claim marked
+VERIFIED or OPEN.
+
+Questions worth resolving early, none yet decided:
+- **Payload schema, concretely.** A–G define the semantics; nothing has written the JSON shape.
+- **Wizard question order and gating.** `applies_when` is position-level; the wizard needs a
+  traversal that asks the fewest questions and never asks one whose answer is already implied.
+- **"Not decided yet" is a real state at LOI time** — proven by Powder Springs. The sign-type case was
+  solved in the LIBRARY (a third option carrying the emitted words), not as a wizard setting. Expect
+  more of these, and prefer the same answer.
+- **Where deal facts come from.** The wizard asks some; OVIS already holds others (sqft, term,
+  rent basis). Asking for something OVIS knows is a defect, not a convenience.
+- **Idempotency key semantics** — what makes two assembly requests "the same job".
