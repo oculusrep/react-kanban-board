@@ -1,0 +1,325 @@
+{
+  "_README": [
+    "TRANCHE 14 v2 - LCW0 / LCW1 / LCW2. Re-keyed against your three schema corrections.",
+    "Four bodies. Last body-text tranche before the assembler.",
+    "",
+    "WHAT CHANGED FROM v1, all yours:",
+    "",
+    "  a. clause_key is `landlord_work` throughout, not `landlord_contribution_work`. I invented",
+    "     that key from the template's heading. `landlord_work` is the clause already registered",
+    "     in loi_deferred_clause. My error, and exactly the kind the division of labour exists to",
+    "     catch - I don't get to name schema.",
+    "",
+    "  b. The security position carries brace_code NULL, not 'LCW1'.",
+    "     loi_position_variant_brace_uk is UNIQUE (variant_id, brace_code) WHERE brace_code IS NOT",
+    "     NULL, so two positions in one variant both carrying LCW1 are rejected at load. It is an",
+    "     UNCODED MODIFIER: brace null, emit_order set, applies_when gating on LCW1 selected AND",
+    "     the $200k condition.",
+    "",
+    "  c. template_paragraph is INTEGER, not a symbolic name. 'lcw1_body' was invented. Both LCW1",
+    "     positions carry 110, the template paragraph index. LCW0 (107) and LCW2 (112) are anchors",
+    "     - groups of one - so they stay NULL rather than being given their own indices. A",
+    "     non-null value there would create a group that a future position could join by accident.",
+    "     Say if you would rather every body carry its index.",
+    "",
+    "  d. lcw2_building_incl is a TWO-option choose_one: the text plus an is_omit branch, keyed",
+    "     like utilities_optional_1. Your correction stands - the tranche-11 params only looked",
+    "     single-option because the dump swallowed their is_omit rows through NULL concatenation.",
+    "     The '>= 2 options' guard was never violated and needs no amendment. I have marked the",
+    "     omit branch with `is_omit: true`; if your seed shape expresses it differently, that flag",
+    "     is the intent and the shape is yours.",
+    "",
+    "CONTRACT G - keyed to match, no body change needed.",
+    "G deletes the token plus exactly one immediately-preceding space. Checked against all three",
+    "bodies here and they were already written for it:",
+    "  LCW0/LCW1  '...improvements {{extras}} ('   -> '...improvements (the \"Allowance\")'",
+    "  LCW2       '...Premises, {{incl}} including' -> '...Premises, including, without limitation'",
+    "Both single-spaced. Nothing to re-key.",
+    "",
+    "THE ORPHAN ']' IS RESOLVED - and it is not what either of us feared.",
+    "You said only the Aug 2026 handbook could settle it. I have the handbook; you don't. Settled.",
+    "Both handbook editions render LCW2's header as:",
+    "  '{LCW2} ALTERNATIVE - IF LANDLORD IS DELIVERING PREMISES IN CURRENT CONDITION AND NOT",
+    "   PROVIDING WORK] [NOTE: NEVER INCLUDE THE TERM \"AS-IS\" IN ANY LOI - Landlord will not be",
+    "   required to install ... any such defect.]'",
+    "The NOTE bracket opens and is never closed after 'LOI' - the body runs INSIDE it and the",
+    "trailing ']' closes the NOTE. The template closes the NOTE early instead ('...IN ANY LOI]')",
+    "and keeps the trailing ']' as well, which is why it looks orphaned there.",
+    "So the ']' belongs to the instruction, NOT to the Common Areas block. The block is",
+    "UNCONDITIONAL and stripping the bracket retains nothing that should have been optional. Your",
+    "residual risk is closed, not carried forward. The feasibility-study sentence sits outside the",
+    "bracket in both sources and is unconditional too.",
+    "",
+    "ONE VARIANT NOTED, NOT ACTED ON: the Southeast doc reads 'other mechanical systems' where the",
+    "template and both handbooks read 'other mechanical and utility systems'. Template is body-text",
+    "authority, so 'and utility' is what is extracted here.",
+    "",
+    "ASSEMBLER LOCATION - that one is already decided, and I don't think it should reopen.",
+    "The handoff records it as locked: a SEPARATE deterministic service, direct OVIS->service HTTP",
+    "job call with an idempotency key, not MCP, doing in-place surgery on the real template .docx.",
+    "The reasoning behind it still holds - OVIS decides and projects, the service renders, and the",
+    "renderer is deal-agnostic and database-free, which is what makes contract F coherent (OVIS",
+    "runs the exclusion check and the deferred halt; the assembler cannot re-check and doesn't).",
+    "Put it inside OVIS and the assembler gains database access, which is exactly the property F",
+    "depends on it not having.",
+    "If something you have found since makes that wrong, say what - I would rather reopen it on a",
+    "reason than have it drift. Otherwise treat it as settled and scope to it."
+  ],
+  "_supersedes": {
+    "canonical_bodies": [
+      "Supersedes tranche 14 v1 IN FULL - v1 was never loaded. If any part of it",
+      "did land, resolve by clause_key 'landlord_contribution_work' and remove:",
+      "that clause_key does not exist and nothing should carry it."
+    ],
+    "_note": [
+      "All four are NEW bodies - the LCW ladder had no loaded body text.",
+      "Do NOT touch drive_through_permits or construction_schedule: positions, not bodies."
+    ]
+  },
+  "canonical_bodies": [
+    {
+      "ref": "LANDLORD_WORK__LCW0__v1__main",
+      "clause_key": "landlord_work",
+      "brace_code": "LCW0",
+      "template_paragraph": null,
+      "source": "national-template-drop",
+      "version": "v1",
+      "segment_key": "main",
+      "_existing": true
+    },
+    {
+      "ref": "LANDLORD_WORK__LCW1__v1__main",
+      "clause_key": "landlord_work",
+      "brace_code": "LCW1",
+      "template_paragraph": 110,
+      "source": "national-template-drop",
+      "version": "v1",
+      "segment_key": "main",
+      "_existing": true
+    },
+    {
+      "ref": "LANDLORD_WORK__uncoded__v1__lc_security",
+      "clause_key": "landlord_work",
+      "brace_code": null,
+      "template_paragraph": 110,
+      "source": "national-template-drop",
+      "version": "v1",
+      "segment_key": "lc_security",
+      "_existing": true
+    },
+    {
+      "ref": "LANDLORD_WORK__LCW2__v1__main",
+      "clause_key": "landlord_work",
+      "brace_code": "LCW2",
+      "template_paragraph": null,
+      "source": "national-template-drop",
+      "version": "v1",
+      "segment_key": "main",
+      "_existing": true
+    },
+    {
+      "ref": "LANDLORD_WORK__uncoded__v1__drive_through_permits",
+      "_existing": true,
+      "brace_code": null,
+      "source": "national-template-drop",
+      "version": "v1",
+      "segment_key": "drive_through_permits"
+    },
+    {
+      "ref": "LANDLORD_WORK__uncoded__v1__construction_schedule",
+      "_existing": true,
+      "brace_code": null,
+      "source": "national-template-drop",
+      "version": "v1",
+      "segment_key": "construction_schedule"
+    }
+  ],
+  "clauses": [
+    {
+      "clause_key": "landlord_work",
+      "_topup": true,
+      "description": "CLAUDE CODE ADDITION to tranche 14: position structure, which is not body text. Mike sent bodies only, by design.",
+      "guidance_note": "LCW0/LCW1/LCW2 are a RANKED LADDER, not a selector: they partition on WHAT THE LANDLORD PROVIDES (work+allowance / allowance instead of work / neither), and unlike rent_basis these ARE preferences - LCW0 is the ask, LCW1 the documented FALLBACK, LCW2 the ALTERNATIVE. The template says so in its own markers. LCW1 is keyed despite the Aug 2026 handbook dropping it: body text comes from the template, and one source dropping it is not the retirement signal (see the decisions doc). template_paragraph is populated on EVERY position, not only the grouped pair, so contract B can anchor by index instead of falling back to fragile heading matching; accidental grouping is caught by the completeness test listing every multi-member paragraph group.",
+      "variants": [
+        {
+          "variant_key": "landlord_work",
+          "deal_type_scope": [
+            "end-cap-drive-thru"
+          ],
+          "selector_field": null,
+          "selector_version": null,
+          "replaces_base": false,
+          "positions": [
+            {
+              "position_kind": "alternative",
+              "brace_code": "LCW0",
+              "rank": 0,
+              "is_default": true,
+              "template_paragraph": 107,
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "firing_mode": "per-deal",
+              "internal_note": "Landlord Work AND an allowance. Template para 107; the ask. Powder Springs used this rung (workletter + $75,000).",
+              "attachment_requirements": [
+                {
+                  "requirement": "Attach and complete the Landlord Workletter exhibit",
+                  "note": "Template instruction [ATTACH AND COMPLETE EXHIBIT]; the body references the attached Landlord Workletter."
+                }
+              ],
+              "position_bodies": [
+                {
+                  "canonical_body_ref": "LANDLORD_WORK__LCW0__v1__main",
+                  "emit_sequence": 0
+                }
+              ],
+              "applies_when": []
+            },
+            {
+              "position_kind": "alternative",
+              "brace_code": "LCW1",
+              "rank": 1,
+              "is_default": false,
+              "template_paragraph": 110,
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "firing_mode": "per-deal",
+              "internal_note": "FALLBACK: an allowance as a SUBSTITUTE for Landlord's work. Template paras 109-110. Present in the template and the July 2025 handbook; ABSENT from Aug 2026. Keyed per the standing rule that body text comes from the template - revisit only if a future template drop ALSO drops it.",
+              "provisional_note": "Absent from the Aug 2026 handbook; present in the template and the July 2025 handbook. The >=$200,000 letter-of-credit standard it implements survives in the Aug 2026 RENT/TIA section, so the deletion did not remove the protection.",
+              "attachment_requirements": [
+                {
+                  "requirement": "Attach and complete the Landlord Workletter exhibit",
+                  "note": "The body references allowances described in the attached Landlord Workletter."
+                }
+              ],
+              "position_bodies": [
+                {
+                  "canonical_body_ref": "LANDLORD_WORK__LCW1__v1__main",
+                  "emit_sequence": 0
+                }
+              ],
+              "applies_when": []
+            },
+            {
+              "position_kind": "modifier",
+              "brace_code": null,
+              "emit_order": 10,
+              "modifies_clause_id": "landlord_work",
+              "is_default": false,
+              "template_paragraph": 110,
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "firing_mode": "per-deal",
+              "internal_note": "The >=$200,000 security sentence. Rides LCW1 and SHARES its template_paragraph (110), so the two concatenate into ONE emitted paragraph - the alternative sorts first because alternatives carry no emit_order (grouping rule: order by COALESCE(emit_order,-1), rank). Uncoded: two positions cannot share brace_code LCW1 (loi_position_variant_brace_uk). Unselected = sentence absent; no omit sentinel needed.",
+              "landlord_fill_prompt": null,
+              "position_bodies": [
+                {
+                  "canonical_body_ref": "LANDLORD_WORK__uncoded__v1__lc_security",
+                  "emit_sequence": 0
+                }
+              ],
+              "applies_when": [
+                {
+                  "condition_group": 0,
+                  "ref_kind": "position_selection",
+                  "ref_clause_key": "landlord_work",
+                  "ref_brace_code": "LCW1",
+                  "operator": "is_selected",
+                  "note": "Only rides LCW1. The $200,000 threshold and the offset conditions are a DEAL FACT resolved in OVIS; this gate carries the structural half."
+                }
+              ]
+            },
+            {
+              "position_kind": "alternative",
+              "brace_code": "LCW2",
+              "rank": 2,
+              "is_default": false,
+              "template_paragraph": 112,
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "firing_mode": "per-deal",
+              "internal_note": "ALTERNATIVE: premises delivered in current condition, no work and no allowance. Template para 112. The template's orphan ']' belongs to the unclosed [NOTE: NEVER INCLUDE THE TERM \"AS-IS\"...] instruction, confirmed against both handbook editions - the Common Areas block is UNCONDITIONAL and nothing optional was lost by stripping it.",
+              "position_bodies": [
+                {
+                  "canonical_body_ref": "LANDLORD_WORK__LCW2__v1__main",
+                  "emit_sequence": 0
+                }
+              ],
+              "applies_when": []
+            },
+            {
+              "position_kind": "modifier",
+              "brace_code": null,
+              "emit_order": 20,
+              "modifies_clause_id": "landlord_work",
+              "is_default": false,
+              "template_paragraph": 114,
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "firing_mode": "per-deal",
+              "internal_note": "Landlord obtains drive-through permits and approvals. Template para 114. Body loaded by tranche 6 as a position-less orphan; this attaches it.",
+              "position_bodies": [
+                {
+                  "canonical_body_ref": "LANDLORD_WORK__uncoded__v1__drive_through_permits",
+                  "emit_sequence": 0
+                }
+              ],
+              "applies_when": [
+                {
+                  "condition_group": 0,
+                  "ref_kind": "deal_field",
+                  "ref_clause_key": null,
+                  "ref_field": "landlord_responsible_for_dt_permits",
+                  "operator": "eq",
+                  "note": "Template gate: [IF LANDLORD IS RESPONSIBLE FOR OBTAINING PERMITS AND SITE PLAN APPROVAL FOR THE DRIVE-THROUGH, ADD]",
+                  "compare_value": "true"
+                }
+              ]
+            },
+            {
+              "position_kind": "modifier",
+              "brace_code": null,
+              "emit_order": 30,
+              "modifies_clause_id": "landlord_work",
+              "is_default": false,
+              "template_paragraph": 116,
+              "code_status": "confirmed",
+              "rule_status": "confirmed",
+              "authority": "national-handbook",
+              "approval_required": false,
+              "firing_mode": "per-deal",
+              "internal_note": "Landlord provides its construction schedule 90 days before the Scheduled Delivery Date. Template para 116. Body loaded by tranche 6 as a position-less orphan; this attaches it.",
+              "position_bodies": [
+                {
+                  "canonical_body_ref": "LANDLORD_WORK__uncoded__v1__construction_schedule",
+                  "emit_sequence": 0
+                }
+              ],
+              "applies_when": [
+                {
+                  "condition_group": 0,
+                  "ref_kind": "deal_field",
+                  "ref_clause_key": null,
+                  "ref_field": "landlord_construction",
+                  "operator": "eq",
+                  "note": "Template gate: [FOR LANDLORD CONSTRUCTION, ADD]",
+                  "compare_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "director_questions": []
+}

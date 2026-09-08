@@ -56,6 +56,14 @@ def normalize_options(d):
                 if isinstance(o, str):
                     opts[i] = {"option_value": o, "sort_order": i}
                     n += 1
+                elif isinstance(o, dict) and "option_value" not in o and "value" in o:
+                    # `value` is an obvious alias for `option_value`. Accepted and normalised
+                    # rather than rejected: the previous behaviour reported it as "option missing
+                    # option_value", which reads as "the text is absent" when the text is right
+                    # there under a different key -- an error message that misdirects is worse
+                    # than none.
+                    o["option_value"] = o.pop("value")
+                    n += 1
     return n
 
 

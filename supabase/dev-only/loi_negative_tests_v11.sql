@@ -84,9 +84,11 @@ BEGIN
   -- 1 clause-level deferral now: landlord_work. `rent` went ACTIVE when R1 loaded, and its remaining
   -- gap (R0) moved to POSITION level in loi_deferred_position — that split is the point, not a
   -- regression. A retired clause must still never appear here.
-  IF r = 'retired' AND dfr = 'deferred' AND n_def = 1
+  -- landlord_work is no longer the deferred example: tranche 14 loaded LCW0/1/2 and lifted it.
+  -- NO clause-level deferral remains; the only gap left is rent/R0, at POSITION level.
+  IF r = 'retired' AND dfr IS NULL AND n_def = 0
      AND NOT EXISTS (SELECT 1 FROM loi_deferred_clause WHERE clause_key = 'sale_of_property') THEN
-    RAISE NOTICE 'TEST P3 retired-vs-deferred: PASS (sale=retired strips; landlord_work=deferred halts)';
+    RAISE NOTICE 'TEST P3 retired-vs-deferred: PASS (sale=retired strips; landlord_work now ACTIVE; no clause-level deferrals remain)';
   ELSE RAISE WARNING 'TEST P3 retired-vs-deferred: FAIL (sale=%, lw=%, deferred_view=%)', r, dfr, n_def; END IF;
 END $$;
 
@@ -97,10 +99,10 @@ DO $$
 DECLARE missing TEXT;
 BEGIN
   SELECT string_agg(k, ', ') INTO missing
-    FROM (VALUES ('landlord_work|-'), ('rent|R0')) AS want(k)
+    FROM (VALUES ('rent|R0')) AS want(k)
    WHERE NOT EXISTS (SELECT 1 FROM loi_deferred_item d
                       WHERE d.clause_key || '|' || coalesce(d.brace_code,'-') = want.k);
-  IF missing IS NULL THEN RAISE NOTICE 'TEST P3b deferred-registry-complete: PASS (landlord_work clause + rent/R0 position)';
+  IF missing IS NULL THEN RAISE NOTICE 'TEST P3b deferred-registry-complete: PASS (rent/R0 position - the only gap left)';
   ELSE RAISE WARNING 'TEST P3b deferred-registry-complete: FAIL (missing: %)', missing; END IF;
 END $$;
 
@@ -109,10 +111,14 @@ END $$;
 DO $$
 DECLARE n_sel INT; n_known INT;
 BEGIN
-  SELECT count(*) INTO n_sel   FROM loi_selectable_position WHERE clause_key = 'landlord_work';
-  SELECT count(*) INTO n_known FROM loi_clause             WHERE clause_key = 'landlord_work';
-  IF n_sel = 0 AND n_known = 1 THEN RAISE NOTICE 'TEST P4 deferred-known-not-selectable: PASS';
-  ELSE RAISE WARNING 'TEST P4 deferred-known-not-selectable: FAIL (selectable=%, known=%)', n_sel, n_known; END IF;
+  -- Moved to the granularity that still has a gap: R0 has NO row in loi_position at all (a gap must
+  -- be declarable BEFORE the thing exists), while its clause `rent` is active so R1 can be selected.
+  SELECT count(*) INTO n_sel   FROM loi_selectable_position WHERE clause_key='rent' AND brace_code='R0';
+  SELECT count(*) INTO n_known FROM loi_deferred_item       WHERE clause_key='rent' AND brace_code='R0';
+  IF n_sel = 0 AND n_known = 1
+     AND (SELECT count(*) FROM loi_selectable_position WHERE clause_key='rent' AND brace_code='R1') = 1 THEN
+    RAISE NOTICE 'TEST P4 deferred-known-not-selectable: PASS (R0 declared but absent; R1 selectable)';
+  ELSE RAISE WARNING 'TEST P4 deferred-known-not-selectable: FAIL (R0 sel=%, R0 declared=%)', n_sel, n_known; END IF;
 END $$;
 
 -- ===========================================================================

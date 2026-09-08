@@ -374,6 +374,23 @@ def run(manifest_paths):
                 all_problems.append(f"computed_table: {key[0]}={key[1]} gates more than one table "
                                     f"({', '.join(sorted(tables))}) — exactly one may emit")
 
+    # Every multi-member paragraph group, printed so a new one cannot appear unnoticed. Populating
+    # template_paragraph on every position buys contract-B anchoring instead of falling back to
+    # fragile heading matching, at the cost of a position joining a group by accident. The answer is
+    # not to leave anchors null and hope -- it is to make the grouping VISIBLE. Monitor the artifact.
+    for mp, m, _ in manifests:
+        groups = {}
+        for k, e in (m.get("assignments") or {}).items():
+            for b in e.get("bodies") or []:
+                if isinstance(b, dict):
+                    groups.setdefault(k, []).append(b.get("segment_key"))
+        multi = {k: v for k, v in groups.items() if len(v) > 1}
+        if multi:
+            print(f"\nparagraph groups >1 body ({os.path.basename(mp)}) - "
+                  f"each must be an INTENDED concatenation:")
+            for k in sorted(multi, key=int):
+                print(f"  para {k}: {', '.join(str(x) for x in multi[k])}")
+
     print(f"\nreverse coverage (all skeletons): {len(reachable & claimed)}/{len(reachable)} loaded "
           f"bodies claimed; {len(allowed)} documented as unjoined")
     if pending:

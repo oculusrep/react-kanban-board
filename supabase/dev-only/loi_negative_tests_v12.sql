@@ -21,11 +21,13 @@ DECLARE n INT;
 BEGIN
   -- After R1 loaded, `rent` is ACTIVE at clause level and its only remaining gap is R0 at POSITION
   -- level. That asymmetry is exactly what the split bought.
+  -- Tranche 14 lifted the last clause-level deferral (landlord_work). The library's ONLY remaining
+  -- gap is rent/R0, at position level -- precisely the case clause-level deferral could not express,
+  -- so the view now earns its existence rather than duplicating loi_deferred_clause.
   SELECT count(*) INTO n FROM loi_deferred_item;
-  IF n = 2 AND EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='clause' AND clause_key='landlord_work')
-           AND NOT EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='clause' AND clause_key='rent')
+  IF n = 1 AND NOT EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='clause')
            AND EXISTS (SELECT 1 FROM loi_deferred_item WHERE scope='position' AND clause_key='rent' AND brace_code='R0') THEN
-    RAISE NOTICE 'TEST P2 unified-deferred-view: PASS (1 clause + 1 position; rent split)';
+    RAISE NOTICE 'TEST P2 unified-deferred-view: PASS (0 clause + 1 position; R0 is the only gap left)';
   ELSE RAISE WARNING 'TEST P2 unified-deferred-view: FAIL (% rows)', n; END IF;
 END $$;
 

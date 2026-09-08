@@ -834,34 +834,60 @@
       "category": "empty"
     },
     "107": {
-      "category": "blocked",
+      "category": "primary",
       "clause": "landlord_work",
-      "note": "LCW0/LCW1/allowance/LCW2",
-      "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW0} - IF LANDLORD IS PAYING ALLOWANCE IN ADDITION TO L"
+      "note": "LCW0 - Landlord Work AND allowance. Heading+marker+body in one paragraph.",
+      "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW0} - IF LANDLORD IS PAYING ALLOWANCE IN ADDITION TO L",
+      "bodies": [
+        {
+          "clause_key": "landlord_work",
+          "brace_code": "LCW0",
+          "segment_key": "main"
+        }
+      ]
     },
     "108": {
       "category": "empty"
     },
     "109": {
-      "category": "blocked",
+      "category": "heading",
       "clause": "landlord_work",
-      "note": "LCW0/LCW1/allowance/LCW2",
+      "note": "LCW1 heading + marker, body at 110. Heading is template-owned (B4); the [{LCW1} FALLBACK ...] marker is instruction and never emits.",
       "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW1} FALLBACK – IF LANDLORD IS PAYING ALLOWANCE AS A SU"
     },
     "110": {
-      "category": "blocked",
+      "category": "primary",
       "clause": "landlord_work",
-      "note": "LCW0/LCW1/allowance/LCW2",
-      "text_head": "Landlord will provide Tenant an improvement allowance of $__________ toward the cost of Te"
+      "note": "LCW1 body plus the >=$200,000 security sentence - TWO positions sharing this paragraph, concatenated in (COALESCE(emit_order,-1), rank) order.",
+      "text_head": "Landlord will provide Tenant an improvement allowance of $__________ toward the cost of Te",
+      "bodies": [
+        {
+          "clause_key": "landlord_work",
+          "brace_code": "LCW1",
+          "segment_key": "main"
+        },
+        {
+          "clause_key": "landlord_work",
+          "brace_code": null,
+          "segment_key": "lc_security"
+        }
+      ]
     },
     "111": {
       "category": "empty"
     },
     "112": {
-      "category": "blocked",
+      "category": "primary",
       "clause": "landlord_work",
-      "note": "LCW0/LCW1/allowance/LCW2",
-      "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW2} ALTERNATIVE – IF LANDLORD IS DELIVERING PREMISES I"
+      "note": "LCW2 - current condition, no work and no allowance. The template's orphan ']' closes the unclosed [NOTE: NEVER INCLUDE \"AS-IS\"...] instruction, confirmed against both handbook editions; the Common Areas block is unconditional.",
+      "text_head": "LANDLORD CONTRIBUTION AND WORK:\t[{LCW2} ALTERNATIVE – IF LANDLORD IS DELIVERING PREMISES I",
+      "bodies": [
+        {
+          "clause_key": "landlord_work",
+          "brace_code": "LCW2",
+          "segment_key": "main"
+        }
+      ]
     },
     "113": {
       "category": "empty"
@@ -873,7 +899,7 @@
       "text_head": "[IF LANDLORD IS RESPONSIBLE FOR OBTAINING PERMITS AND SITE PLAN APPROVAL FOR THE DRIVE-THR",
       "bodies": [
         {
-          "clause_key": null,
+          "clause_key": "landlord_work",
           "brace_code": null,
           "segment_key": "drive_through_permits"
         }
@@ -889,7 +915,7 @@
       "text_head": "[FOR LANDLORD CONSTRUCTION, ADD]  Landlord will provide Tenant a copy of Landlord’s constr",
       "bodies": [
         {
-          "clause_key": null,
+          "clause_key": "landlord_work",
           "brace_code": null,
           "segment_key": "construction_schedule"
         }
