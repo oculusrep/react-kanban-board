@@ -1728,9 +1728,9 @@ export default function SiteSubmitSidebar({
             );
             setResearchRunsRefresh((n) => n + 1);
           }}
-          onSweepStarted={() => {
+          onSweepStarted={(_sweepId, chunkCount) => {
             showToast(
-              'Deep Sweep started — 6 chunks will fire sequentially (~2.5 hrs). Track progress in Past Research Runs.',
+              `Chunked research started — ${chunkCount} chunks will fire sequentially (~${Math.round(chunkCount * 0.4 * 10) / 10} hrs). Track progress in Past Research Runs.`,
               { type: 'success', duration: 5000 },
             );
             setResearchRunsRefresh((n) => n + 1);

@@ -6,8 +6,10 @@ interface StartResearchModalProps {
   siteSubmitLabel: string;
   onClose: () => void;
   onStarted: (response: { research_run_id: string; selected_count: number }) => void;
-  // Fired after a Deep Sweep is created (the tick drives the chunks from there).
-  onSweepStarted?: (sweepId: string) => void;
+  // Fired after a chunked run is created — a Deep Sweep, or a Custom Deep window
+  // longer than CHUNK_MONTHS. The tick engine drives the chunks from there.
+  // chunkCount is how many sequential chunks were queued.
+  onSweepStarted?: (sweepId: string, chunkCount: number) => void;
 }
 
 interface PreviewMuni {
@@ -35,18 +37,40 @@ type Mode = 'quick' | 'deep';   // research_mode still exists; Custom + Deep Swe
 
 const RADIUS_PRESETS = [3, 5, 10, 15];
 
-// Deep Sweep: full 3yr enumeration as N sequential 6-month chunks.
-const SWEEP_CHUNK_MONTHS = 6;
-const SWEEP_CHUNKS = 6;                 // 36 months / 6
-const SWEEP_COST_LABEL = '~$18';        // 6 chunks x ~$3
+// ---- Chunking -------------------------------------------------------------
+// The agent has an enumeration cliff at roughly six months of window: past that
+// it stops enumerating and starts SAMPLING, while still reporting as a Deep pass.
+// It completes 4/4 and 10/10 hearings but stops around 7 when told to enumerate
+// ~72. Observed live on 2026-09-08: a Custom Deep run over 2024-09 -> 2026-09
+// returned one record and admitted in its own coverage report that ~17 of the 24
+// months were never individually opened. No prompt wording fixes this; only slice
+// size does. So ANY Deep enumeration longer than CHUNK_MONTHS fires as N
+// sequential chunks through the existing sweep engine, never as one run.
+//
+// This is deliberately not a question we ask the user. There is no un-split path
+// in the UI, because a guard the user can skip is a guard that eventually gets
+// skipped, and the failure is silent — a sampled run that claims to be complete.
+const CHUNK_MONTHS = 6;
+
+// Deep Sweep: fixed 3yr enumeration.
+const SWEEP_CHUNKS = 36 / CHUNK_MONTHS;
+
+// Cost is quoted as a RANGE, never a point. $3/chunk is the floor (matching
+// PER_CHUNK_COST_USD in ResearchRunApprovalModal); the Aug 10 six-chunk Hall
+// County sweep landed near ~$27, i.e. ~$4.5/chunk on a dense county. A flat
+// figure understates exactly the counties most worth sweeping.
+const PER_CHUNK_COST_LOW_USD = 3;
+const PER_CHUNK_COST_HIGH_USD = 5;
+const costRange = (chunks: number) =>
+  `~$${chunks * PER_CHUNK_COST_LOW_USD}\u2013$${chunks * PER_CHUNK_COST_HIGH_USD}`;
 
 const TIERS: { key: Tier; label: string; cost: string; blurb: string }[] = [
   { key: 'quick',  label: 'Quick',  cost: 'Sniff test · ~$5',
     blurb: 'Sampled scan — is there a growth story here at all? Makes no completeness claim. Run early on every prospect.' },
   { key: 'custom', label: 'Custom', cost: 'Pick mode + window',
-    blurb: 'Choose the protocol (incl. a single Deep enumeration) and an explicit date range — e.g. one 6-month window.' },
-  { key: 'sweep',  label: 'Deep Sweep', cost: `3yr · ${SWEEP_COST_LABEL}`,
-    blurb: 'Full 3-year Deep enumeration as 6 sequential 6-month chunks — fires automatically over ~2.5 hrs, with one unified approval when done.' },
+    blurb: `Choose the protocol (incl. a Deep enumeration) and an explicit date range. A Deep window longer than ${CHUNK_MONTHS} months is split automatically into sequential chunks — the agent samples instead of enumerating past that.` },
+  { key: 'sweep',  label: 'Deep Sweep', cost: `3yr · ${costRange(SWEEP_CHUNKS)}`,
+    blurb: `Full 3-year Deep enumeration as ${SWEEP_CHUNKS} sequential ${CHUNK_MONTHS}-month chunks — fires automatically over ~2.5 hrs, with one unified approval when done.` },
 ];
 
 // ---- Date helpers: Eastern local dates, mirroring the edge function so the
@@ -70,6 +94,53 @@ function subtractMonthsISO(iso: string, months: number): string {
   const dd = Math.min(d, lastDay);
   return `${ny}-${String(nm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 }
+// Plain-calendar-date arithmetic. UTC internally on purpose: these are bare
+// YYYY-MM-DD values with no wall clock, and UTC is the only way to add days
+// without a DST hour shifting the date. Eastern-ness enters via easternToday().
+function toUTCDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+function addDaysISO(iso: string, days: number): string {
+  const dt = toUTCDate(iso);
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+function daysBetween(startISO: string, endISO: string): number {
+  return Math.round((toUTCDate(endISO).getTime() - toUTCDate(startISO).getTime()) / 86400000);
+}
+/** Whole months spanned, rounding a partial month UP (so 24m + 3d = 25m -> 5 chunks). */
+function monthSpan(startISO: string, endISO: string): number {
+  const [y1, m1, d1] = startISO.split('-').map(Number);
+  const [y2, m2, d2] = endISO.split('-').map(Number);
+  let months = (y2 - y1) * 12 + (m2 - m1);
+  if (d2 > d1) months += 1;
+  return Math.max(months, 0);
+}
+/**
+ * Split [startISO, endISO] into `count` back-to-back slices, most-recent first
+ * (index 0 ends at endISO). Adjacent slices share a boundary date, matching the
+ * Deep Sweep convention so get_research_coverage stitches them identically.
+ *
+ * REMAINDER RULE — equal-width, NOT 6+6+remainder. A 14-month window becomes
+ * three ~4.7-month chunks, not 6 + 6 + 2. The chunk count is the same either way
+ * (ceil(14/6) = 3) and every slice is under the cliff either way, but equal-width
+ * avoids a runt: a 2-month chunk pays the same fixed per-run overhead (~$3-$5,
+ * ~25 min) for a third of the coverage. The oldest boundary is pinned to startISO
+ * so day-rounding can never leave an uncovered sliver.
+ */
+function sliceWindows(startISO: string, endISO: string, count: number):
+  { window_start: string; window_end: string }[] {
+  const totalDays = daysBetween(startISO, endISO);
+  const bounds = Array.from({ length: count + 1 }, (_, i) =>
+    i === count ? startISO : addDaysISO(endISO, -Math.round((i * totalDays) / count)),
+  );
+  return Array.from({ length: count }, (_, i) => ({
+    window_end: bounds[i],
+    window_start: bounds[i + 1],
+  }));
+}
+
 function fmtMonthYear(iso: string): string {
   const [y, m] = iso.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -105,7 +176,7 @@ export default function StartResearchModal({
   onSweepStarted,
 }: StartResearchModalProps) {
   const [tier, setTier] = useState<Tier>('quick');
-  const [sweepConfirm, setSweepConfirm] = useState(false);
+  const [confirmStep, setConfirmStep] = useState(false);
   const [customMode, setCustomMode] = useState<Mode>('deep');
   const [customStart, setCustomStart] = useState<string>(() => subtractYearsISO(easternToday(), 3));
   const [customEnd, setCustomEnd] = useState<string>(() => easternToday());
@@ -200,10 +271,40 @@ export default function StartResearchModal({
   const sweepWindows = useMemo(() => {
     const today = easternToday();
     return Array.from({ length: SWEEP_CHUNKS }, (_, i) => ({
-      window_end: subtractMonthsISO(today, i * SWEEP_CHUNK_MONTHS),
-      window_start: subtractMonthsISO(today, (i + 1) * SWEEP_CHUNK_MONTHS),
+      window_end: subtractMonthsISO(today, i * CHUNK_MONTHS),
+      window_start: subtractMonthsISO(today, (i + 1) * CHUNK_MONTHS),
     }));
   }, []);
+
+  // ---- Custom Deep chunking (mandatory past CHUNK_MONTHS) ----
+  // Custom drives all FOUR window fields from a single date pair (see `plan`
+  // above), so the P&Z and permit spans are equal by construction and one chunk
+  // count is well-defined. If Custom ever grows separate P&Z/permit inputs, this
+  // has to become two counts (or slice their union) — revisit before that lands.
+  const customSpanMonths = useMemo(
+    () => monthSpan(plan.pz_window_start, plan.pz_window_end),
+    [plan.pz_window_start, plan.pz_window_end],
+  );
+  const customChunkCount = useMemo(
+    () => Math.max(1, Math.ceil(customSpanMonths / CHUNK_MONTHS)),
+    [customSpanMonths],
+  );
+  // Quick is untouched: only a Deep enumeration makes a completeness claim, so
+  // only Deep has a claim to falsify by sampling.
+  const willChunk = tier === 'custom' && customMode === 'deep' && customChunkCount > 1;
+  const customWindows = useMemo(
+    () => (willChunk ? sliceWindows(plan.pz_window_start, plan.pz_window_end, customChunkCount) : []),
+    [willChunk, plan.pz_window_start, plan.pz_window_end, customChunkCount],
+  );
+
+  // Anything that fires as chunks gets the same two-step cost confirmation.
+  const needsChunkConfirm = tier === 'sweep' || willChunk;
+  const chunkPlan = tier === 'sweep'
+    ? { count: SWEEP_CHUNKS, windows: sweepWindows }
+    : { count: customChunkCount, windows: customWindows };
+
+  // Never let the confirm screen outlive the plan it was quoting.
+  useEffect(() => { setConfirmStep(false); }, [tier, customMode, customStart, customEnd, radius]);
 
   // Coverage grouped: municipality -> record_type -> segments (newest first).
   const coverageByMuni = useMemo(() => {
@@ -242,6 +343,14 @@ export default function StartResearchModal({
     setSelected(new Set(munis.filter((m) => m.kind === 'county').map((m) => m.boundary_municipality_id)));
 
   const handleStart = async () => {
+    // Hard guard, not a UI nicety: the single-run path must be unreachable for a
+    // long Deep window no matter how the footer is refactored later.
+    if (willChunk) {
+      setSubmitError(
+        `A ${customSpanMonths}-month Deep window must be fired as ${customChunkCount} chunks, not one run.`,
+      );
+      return;
+    }
     setSubmitError(null);
     setSubmitting(true);
     try {
@@ -280,7 +389,7 @@ export default function StartResearchModal({
 
   // Deep Sweep: create the sweep + chunk rows; the ovis-sweep-tick engine fires
   // the chunks sequentially from there. No trigger call here.
-  const createSweep = async () => {
+  const createSweep = async (windows: { window_start: string; window_end: string }[]) => {
     setSubmitError(null);
     setSubmitting(true);
     try {
@@ -288,16 +397,16 @@ export default function StartResearchModal({
         p_site_id: siteSubmitId,
         p_radius_miles: radius,
         p_boundary_muni_ids: [...selected],
-        p_windows: sweepWindows,
+        p_windows: windows,
       });
       if (error) throw new Error(error.message);
       const sweepId = data as string;
       if (!sweepId) throw new Error('Sweep created but no id returned.');
-      onSweepStarted?.(sweepId);
+      onSweepStarted?.(sweepId, windows.length);
       onClose();
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : String(e));
-      setSweepConfirm(false);
+      setConfirmStep(false);
     } finally {
       setSubmitting(false);
     }
@@ -382,11 +491,33 @@ export default function StartResearchModal({
                   />
                 </div>
                 <p className="text-xs" style={{ color: '#8FA9C8' }}>Applied to both P&amp;Z and permit searches.</p>
+                {willChunk && (
+                  <div className="rounded border px-2 py-1.5 space-y-1"
+                       style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+                    <div className="text-xs font-medium" style={{ color: '#002147' }}>
+                      {customSpanMonths} months &rarr; {customChunkCount} sequential chunks
+                      {' '}(&le;{CHUNK_MONTHS} months each) &middot; {costRange(customChunkCount)}
+                    </div>
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs" style={{ color: '#4A6B94' }}>
+                      {customWindows.map((w, i) => (
+                        <span key={i}>
+                          {i > 0 && '· '}
+                          {fmtMonthYear(w.window_start)}–{fmtMonthYear(w.window_end)}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-xs" style={{ color: '#A27B5C' }}>
+                      Past ~{CHUNK_MONTHS} months the agent samples instead of enumerating while still
+                      reporting as Deep, so a longer Deep window is always split. Each chunk is its own
+                      run, fired one at a time; findings land in a single approval.
+                    </div>
+                  </div>
+                )}
               </div>
             ) : tier === 'sweep' ? (
               <div className="text-xs space-y-1" style={{ color: '#4A6B94' }}>
                 <div className="font-medium" style={{ color: '#002147' }}>
-                  6 sequential 6-month chunks · {SWEEP_COST_LABEL} · ~2.5 hrs
+                  {SWEEP_CHUNKS} sequential {CHUNK_MONTHS}-month chunks · {costRange(SWEEP_CHUNKS)} · ~2.5 hrs
                 </div>
                 <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                   {sweepWindows.map((w, i) => (
@@ -561,18 +692,18 @@ export default function StartResearchModal({
              style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
           <button
             type="button"
-            onClick={tier === 'sweep' && sweepConfirm ? () => setSweepConfirm(false) : onClose}
+            onClick={needsChunkConfirm && confirmStep ? () => setConfirmStep(false) : onClose}
             disabled={submitting}
             className="px-4 py-2 rounded-lg text-sm border"
             style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
           >
-            {tier === 'sweep' && sweepConfirm ? 'Back' : 'Cancel'}
+            {needsChunkConfirm && confirmStep ? 'Back' : 'Cancel'}
           </button>
-          {tier === 'sweep' ? (
-            sweepConfirm ? (
+          {needsChunkConfirm ? (
+            confirmStep ? (
               <button
                 type="button"
-                onClick={createSweep}
+                onClick={() => createSweep(chunkPlan.windows)}
                 disabled={submitting || selected.size === 0}
                 className="px-4 py-2 rounded-lg text-sm font-medium"
                 style={{
@@ -580,12 +711,14 @@ export default function StartResearchModal({
                   color: '#FFFFFF', opacity: submitting || selected.size === 0 ? 0.7 : 1,
                 }}
               >
-                {submitting ? 'Firing…' : `Confirm — fire ${SWEEP_CHUNKS} chunks (${SWEEP_COST_LABEL})`}
+                {submitting
+                  ? 'Firing…'
+                  : `Confirm — fire ${chunkPlan.count} chunks (${costRange(chunkPlan.count)})`}
               </button>
             ) : (
               <button
                 type="button"
-                onClick={() => setSweepConfirm(true)}
+                onClick={() => setConfirmStep(true)}
                 disabled={submitting || previewLoading || selected.size === 0}
                 className="px-4 py-2 rounded-lg text-sm font-medium"
                 style={{
@@ -593,7 +726,11 @@ export default function StartResearchModal({
                   color: '#FFFFFF', opacity: previewLoading || selected.size === 0 ? 0.7 : 1,
                 }}
               >
-                {selected.size === 0 ? 'Select at least one municipality' : `Review Deep Sweep (${SWEEP_CHUNKS} chunks)`}
+                {selected.size === 0
+                  ? 'Select at least one municipality'
+                  : tier === 'sweep'
+                    ? `Review Deep Sweep (${chunkPlan.count} chunks)`
+                    : `Review — ${chunkPlan.count} sequential chunks`}
               </button>
             )
           ) : (
