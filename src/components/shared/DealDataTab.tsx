@@ -118,6 +118,8 @@ interface FieldProps {
   isCurrency?: boolean;
   isNumber?: boolean;
   suffix?: string;
+  /** Optional parenthetical shown after the value (e.g. the annualized rent). */
+  annotation?: React.ReactNode;
   isEditable: boolean;
   editingField: string | null;
   editValue: any;
@@ -136,6 +138,7 @@ function Field({
   isCurrency = false,
   isNumber = false,
   suffix = '',
+  annotation,
   isEditable,
   editingField,
   editValue,
@@ -222,6 +225,9 @@ function Field({
           <>
             <span className="text-sm font-medium text-gray-900 flex-1">
               {formattedValue}
+              {annotation != null && formattedValue !== '-' && (
+                <span className="text-gray-500 ml-2 text-xs italic">{annotation}</span>
+              )}
             </span>
             {isEditable && (
               <button
@@ -537,6 +543,11 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
               type="number"
               isCurrency
               fieldKey="deal_rent_psf"
+              annotation={
+                deal.deal_rent_psf != null && deal.deal_available_sqft != null
+                  ? `(${formatCurrency(deal.deal_rent_psf * deal.deal_available_sqft)}/yr)`
+                  : null
+              }
             />
             <Field
               {...fieldProps}
