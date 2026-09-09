@@ -4,6 +4,9 @@
 // deal_activity_state, and re-seeds when a different deal is passed in.
 
 import { useEffect, useState, type ReactNode } from 'react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { format, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
 import {
   BallInCourt,
@@ -40,6 +43,10 @@ export default function ClassifyControls({
   const [blockedOn, setBlockedOn] = useState<BlockedOn | null>(deal.blockedOn);
   const [needsPricing, setNeedsPricing] = useState(deal.needsPricing);
   const [needsSitePlan, setNeedsSitePlan] = useState(deal.needsSitePlan);
+  // Clock start. Defaults to today — saving stamps NOW, as it always has. Edit
+  // it to backdate a deal whose real last touch predates the classification
+  // (the clock is the whole point of the board; a wrong start lies about heat).
+  const [clockDate, setClockDate] = useState<string>(todayLocal);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -50,6 +57,7 @@ export default function ClassifyControls({
     setBlockedOn(deal.blockedOn);
     setNeedsPricing(deal.needsPricing);
     setNeedsSitePlan(deal.needsSitePlan);
+    setClockDate(todayLocal());
     setErr(null);
   }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -73,7 +81,11 @@ export default function ClassifyControls({
     setNeedsSitePlan(false);
   }
 
+  // A backdated clock is itself a change worth saving, even if nothing else moved.
+  const backdated = clockDate !== todayLocal();
+
   const dirty =
+    backdated ||
     stage !== deal.stageLabel ||
     court !== deal.ballInCourt ||
     (party.trim() || null) !== (deal.ballInCourtParty ?? null) ||
@@ -103,7 +115,11 @@ export default function ClassifyControls({
         deal_id: deal.id,
         ball_in_court: court, // null = unclassified
         ball_in_court_party: party.trim() || null,
-        ball_in_court_since: new Date().toISOString(),
+        // today → stamp now (unchanged); an edited date → that local midnight,
+        // which is what daysSince() measures against (local calendar days).
+        ball_in_court_since: backdated
+          ? new Date(`${clockDate}T00:00:00`).toISOString()
+          : new Date().toISOString(),
         seeded_fallback: false,
         // blocked_on is Pre-only; on non-Pre it's cleared (consistent with the trigger)
         blocked_on: isPre ? blockedOn : null,
@@ -158,6 +174,33 @@ export default function ClassifyControls({
         style={inputStyle}
       />
 
+      {/* Clock started — every save resets the shot clock; this says to WHEN.
+          Today by default; back-date it when the last real touch was earlier. */}
+      <div className="mt-3">
+        <div style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 4 }}>
+          Clock started
+          {deal.ballInCourtSince && (
+            <span> · now {format(new Date(deal.ballInCourtSince), 'M/d')} ({deal.days}d)</span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* OVIS-standard react-datepicker; input styled for the dark panel */}
+          <DatePicker
+            selected={clockDate ? parseISO(clockDate) : null}
+            onChange={(d) => setClockDate(d ? format(d, 'yyyy-MM-dd') : todayLocal())}
+            dateFormat="MM/dd/yyyy"
+            maxDate={new Date()}
+            popperProps={{ strategy: 'fixed' }}
+            className="rounded px-2 py-1.5 bg-[#12161C] text-[#E8EDF3] border border-[#12161C] w-[130px]"
+          />
+          {backdated ? (
+            <Pill px={px} active={false} muted onClick={() => setClockDate(todayLocal())}>today</Pill>
+          ) : (
+            <span style={{ fontSize: px(12), color: PALETTE.textDim }}>today — resets to 0d</span>
+          )}
+        </div>
+      </div>
+
       {isPre && (
         <div className="mt-3">
           <div style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 4 }}>
@@ -197,11 +240,18 @@ export default function ClassifyControls({
           fontWeight: 600, fontSize: px(16), opacity: saving ? 0.6 : 1,
         }}
       >
-        {saveLabel ?? 'Save'}{canSave ? ' (resets clock)' : ''}
+        {saveLabel ?? 'Save'}
+        {canSave && (backdated ? ` (clock → ${format(parseISO(clockDate), 'M/d')})` : ' (resets clock)')}
       </button>
       {courtMissing && <div style={{ color: PALETTE.textDim, fontSize: px(12), marginTop: 4 }}>Set the ball-in-court to classify.</div>}
     </div>
   );
+}
+
+// today as a local YYYY-MM-DD (CLAUDE.md: local date, never toISOString())
+function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function Pill({ active, muted, onClick, children, px }: { active: boolean; muted?: boolean; onClick: () => void; children: ReactNode; px: (n: number) => number }) {

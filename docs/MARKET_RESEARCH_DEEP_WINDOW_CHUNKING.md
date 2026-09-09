@@ -219,3 +219,59 @@ every GA incorporation through 2025. Spot-checked and present:
 `upsert_boundary_municipalities` is idempotent on `(kind, state, geoid)`, so
 re-running the backfill against a newer TIGER vintage is the maintenance path when
 a future incorporation lands.
+
+---
+
+# Open items
+
+## 1. No chunked run has actually executed (verification gap)
+
+The slicing math is verified against nine window shapes (contiguity, month
+alignment, no shared day, exact outer coverage) and the repo typechecks unchanged.
+**The live path has not been exercised.** Nothing here has run
+Custom → `create_sweep_with_chunks` → `ovis-sweep-tick` → OpenClaw end to end.
+
+The exposure is low — it is the same RPC and the same tick engine the Deep Sweep
+button already uses in prod, handed a different window array — but that is a claim
+from reading code, not from a green run. First real test costs ~$12–$20.
+
+A **free** partial check: open a site submit → Start Research → **Custom** → **Deep**
+→ set a range past six months. The split notice and chunk list should render and
+the button should read "Review — N sequential chunks" rather than firing a single
+run. Only pressing Confirm spends anything.
+
+## 2. Run `8183d6a2` is still bad data
+
+The Cobb run that motivated all of this sits at `awaiting_review` with 1 record
+and ~17 unenumerated months. The fix is not retroactive, and because the run is
+standalone (`sweep_id IS NULL`) neither `get_sweep_gaps` nor `rerun_sweep_gaps`
+can reach it.
+
+To clear it: reject the run so its thin coverage stops stitching into
+`get_research_coverage` as a covered segment, then re-run the site as a Custom
+Deep 2024-09 → 2026-09, which now splits into 4 chunks.
+
+## 3. Historical sweeps keep their phantom sliver segments
+
+Month alignment only cleans up **new** runs. Sweeps already in the database keep
+their 1-day `pass_count = 2` rows — 20 of 44 on the Grovetown sweep alone, and
+every pre-existing sweep has them at each of its 5 boundaries.
+
+If those slivers become annoying in the coverage UI, the cheap fix is a filter in
+`get_research_coverage` rather than a data backfill: a 1-day segment whose depth
+is exactly one higher than both neighbours is a boundary artifact, not real
+double coverage. Not done here — it changes a shipped RPC's output for historical
+data, which deserves its own decision.
+
+## 4. The cost range is an estimate, not a measurement
+
+`research_run.estimated_cost_cents`, `input_tokens` and `output_tokens` exist
+(migration `20260901120000`) but are **NULL on all 62 runs** — the write path is
+there, the agent side that would populate it is not, so nothing in OVIS knows what
+a run actually cost.
+
+So the `$3–$5` per chunk in the confirmation dialog is hand-derived: $3 from
+`PER_CHUNK_COST_USD` in `ResearchRunApprovalModal`, ~$4.5 from the Aug 10 Hall
+County sweep's ~$27 over 6 chunks. **Once the agent reports usage, replace the
+constants with a query over recent `estimated_cost_cents` instead of widening the
+hardcoded band.**
