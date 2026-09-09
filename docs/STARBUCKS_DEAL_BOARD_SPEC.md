@@ -213,7 +213,7 @@ Decisions §2.12, §2.20. The board is **five columns**, left→right:
 The first two carry a small **"Pre-Submittal"** super-label. Routing (`columnKeyForDeal` in `starbucksBoard.ts`): Pre-Submittal deals route by `blocked_on`; everything else by stage. **Lost + all paid/terminal stages are off-board.** Two Pre-Submittal states are deliberately **not** columns:
 
 - **Ready-to-submit band** — a full-width strip *above* the columns for Pre-Submittal deals that are **classified but have no blocker** (nothing's stopping them). Hot, "Submit it", sorted top. **Hidden entirely when empty** (usually is). See §4.2.
-- **"To classify" counter + triage** — Pre-Submittal deals with **no blocker and no court** are off-board, surfaced only by the header counter (§9) and its triage queue.
+- **"To classify" band + counter + triage** — Pre-Submittal deals with **no blocker and no court** belong to no column. They surface in three places: the header counter (§9), its triage queue, and a **dim full-width band** below the ready band whose tiles carry the **"Set the court →"** instruction. The band is **hidden entirely when empty**. Two surfaces, not one, because the counter is a *number* — it tells you how many are unclassified but not *which sites*, and a tile you can see and click is how the board asks for a decision everywhere else (§1.5). Dim, not hot: the header's red number does the shouting, and the ready band stays the loudest thing under the header.
 
 Rules:
 - Empty columns still render, at reduced opacity. An empty column is information.
@@ -222,7 +222,7 @@ Rules:
 ### 4.1 Awaiting landlord detail + density
 
 - **Awaiting landlord** collapses pricing + site plan. Two booleans `needs_pricing` / `needs_site_plan` detail it; the tile shows a **Pricing / Site plan / Both** tag, and the classify controls require at least one (DB invariant `deal_activity_state_awaiting_ll_needs`).
-- **Density.** A column over `DENSE_THRESHOLD` tiles uses a **compact tile** (one line: heat bar · site name · optional detail tag · a small right token · star; city dropped). The `A−/A+` text-scale control (persisted) tunes for viewing distance. (With Unset gone, no column is chronically overloaded — new unclassified deals go to the counter, not a column.)
+- **Density.** Bands wrap horizontally, so neither steals column width. A column over `DENSE_THRESHOLD` tiles uses a **compact tile** (one line: heat bar · site name · optional detail tag · a small right token · star; city dropped). The `A−/A+` text-scale control (persisted) tunes for viewing distance. (With Unset gone, no column is chronically overloaded — new unclassified deals go to the counter, not a column.)
 
 ### 4.2 Ready-to-submit band (decisions §2.12)
 
@@ -362,7 +362,8 @@ The three buttons are the whole point. Cooling a tile must take under ten second
 
 - **Log a note** → inserts a `note` + a `note_object_link` (`object_type='deal'`, `deal_id`). Trigger cools the tile.
 - **Set next action** → inserts/updates a `task` (`deal_id`, `subject`, `due_at`). Trigger cools the tile.
-- **Change court** → sets `ball_in_court` and `ball_in_court_party`, resets the clock (`ball_in_court_since = now()`), and clears `seeded_fallback` (a human classification means the tile is no longer "no history"). **For Pre-Submittal deals, this control also sets `blocked_on`** (§3.2.1) — the two live together since both answer "why isn't this moving." Setting `blocked_on = 'ready'` flips the tile hot on purpose.
+- **Change court** → sets `ball_in_court` and `ball_in_court_party`, resets the clock (`ball_in_court_since = now()` by default — see **Clock started** below), and clears `seeded_fallback` (a human classification means the tile is no longer "no history"). **For Pre-Submittal deals, this control also sets `blocked_on`** (§3.2.1) — the two live together since both answer "why isn't this moving." Setting `blocked_on = 'ready'` flips the tile hot on purpose.
+- **Clock started (editable).** The classify controls carry a date picker that defaults to **today**; saving with it untouched stamps `now()`, exactly as before. Change it and the save writes **that date's local midnight** instead — which is what `daysSince()` measures against (local calendar days, Eastern; CLAUDE.md). Future dates are blocked (`maxDate = today`): the clock measures elapsed silence, and a future start would read as 0d forever. **Why it's editable:** classification and the last real touch are different events. Classifying a deal you last spoke about three weeks ago would otherwise reset it to 0d and hide it from the board's whole purpose — the clock would record when you filed the paperwork, not when the site went quiet. The field also shows the deal's *current* clock (`now 8/24 (16d)`) so a backdate is made against a visible baseline rather than from memory.
 - **Blocker → implied court (step-5 addition).** When Mike picks a Pre-Submittal `blocked_on`, the court pre-selects: `pricing`/`site_plan`/`under_contract` → **them**, `ready`/`info` → **us**. He can override before saving. Saves a click across the ~23 Pre-Submittal deals. (`IMPLIED_COURT` in `src/lib/starbucksBoard.ts`.)
 - **Log a note** → inserts a `note` + a `note_object_link` (`object_type='deal'`, `deal_id`). Trigger cools the tile.
 - **Set next action** → inserts a `task` (`deal_id`, `subject`, `due_at`, `owner_id`/`created_by_id` = `useAuth().userTableId`, `category_id` via `getCategoryIdByName('other')`). Trigger cools the tile.

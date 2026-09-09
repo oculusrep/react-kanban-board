@@ -1,4 +1,6 @@
 // Starbucks Deal Board — full-screen wall display (spec: docs/STARBUCKS_DEAL_BOARD_SPEC.md).
+// Two bands sit above the columns for the deals that belong to no column:
+// Ready to submit (hot) and To classify (dim).
 // Steps 3–5: static render + slide-over. Heat is client-side from
 // ball_in_court_since. Clicking a tile opens the slide-over; the star toggles
 // on_agenda. A live text-scale control (A- / A+, persisted) lets Mike tune
@@ -86,12 +88,16 @@ export default function StarbucksDealBoardPage() {
 
   // selectable across columns, the ready band, and the parking lot
   const selectedDeal = useMemo(
-    () => [...columns.flatMap((c) => c.deals), ...ready, ...parked].find((d) => d.id === selectedId) ?? null,
-    [columns, ready, parked, selectedId]
+    () => [...columns.flatMap((c) => c.deals), ...ready, ...toClassify, ...parked].find((d) => d.id === selectedId) ?? null,
+    [columns, ready, toClassify, parked, selectedId]
   );
 
-  // Agenda filter also applies to the ready band.
+  // Agenda filter also applies to both bands.
   const shownReady = useMemo(() => (agendaOnly ? ready.filter((d) => d.onAgenda) : ready), [ready, agendaOnly]);
+  const shownToClassify = useMemo(
+    () => (agendaOnly ? toClassify.filter((d) => d.onAgenda) : toClassify),
+    [toClassify, agendaOnly]
+  );
 
   // Account token on tiles only carries information in the "All" view with >1
   // account; hide it when a single account is in view (confirmed) — no noise.
@@ -139,7 +145,39 @@ export default function StarbucksDealBoardPage() {
 
         {/* Ready-to-submit band — hidden entirely when empty (decisions §2.12) */}
         {shownReady.length > 0 && (
-          <ReadyBand deals={shownReady} showToken={showToken} onOpen={(d) => setSelectedId(d.id)} onToggleStar={toggleStar} />
+          <TileBand
+            title="Ready to submit"
+            hint="nothing's blocking these — submit them"
+            verb="Submit it →"
+            accent={PALETTE.hot}
+            fill="rgba(214,69,60,0.14)"
+            tileFill="rgba(214,69,60,0.18)"
+            deals={shownReady}
+            showToken={showToken}
+            onOpen={(d) => setSelectedId(d.id)}
+            onToggleStar={toggleStar}
+          />
+        )}
+
+        {/* To-classify band. These deals sit in no column (columnKeyForDeal is
+            null for an unclassified, unblocked Pre-Submittal), so without this
+            they're visible only behind the header counter. Deliberately quiet —
+            the hot band is the ready one; this is dim like the unclassified
+            heat style, and the header's red number does the shouting. */}
+        {shownToClassify.length > 0 && (
+          <TileBand
+            title="To classify"
+            hint="no court set — the clock says nothing until you set one"
+            verb="Set the court →"
+            accent={PALETTE.textDim}
+            fill="rgba(255,255,255,0.04)"
+            tileFill={PALETTE.column}
+            verbColor={PALETTE.text}
+            deals={shownToClassify}
+            showToken={showToken}
+            onOpen={(d) => setSelectedId(d.id)}
+            onToggleStar={toggleStar}
+          />
         )}
 
         <div className="flex-1 grid gap-3 px-4 pb-4 overflow-hidden" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
@@ -339,23 +377,46 @@ interface TileHandlers {
   onToggleStar: (d: BoardDeal) => void;
 }
 
-// ---- Ready-to-submit band (decisions §2.12). Full-width, above the columns,
-// hot; the loudest thing on the board under the header. Rendered only when
-// non-empty (the parent guards this). Tiles flow horizontally and wrap. -------
-function ReadyBand({ deals, showToken, onOpen, onToggleStar }: { deals: BoardDeal[]; showToken: boolean } & TileHandlers) {
+// ---- Band (decisions §2.12). Full-width strip above the columns for deals
+// that belong to no column: "Ready to submit" (hot — the loudest thing under
+// the header) and "To classify" (dim). Rendered only when non-empty (the
+// parent guards this). Tiles flow horizontally and wrap. ---------------------
+function TileBand({
+  title,
+  hint,
+  verb,
+  accent,
+  fill,
+  tileFill,
+  verbColor,
+  deals,
+  showToken,
+  onOpen,
+  onToggleStar,
+}: {
+  title: string;
+  hint: string;
+  verb: string;
+  accent: string;     // border + title + count
+  fill: string;       // band background
+  tileFill: string;   // tile background
+  verbColor?: string; // defaults to accent
+  deals: BoardDeal[];
+  showToken: boolean;
+} & TileHandlers) {
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
   return (
     <div
       className="mx-4 mb-3 rounded-lg px-3 py-2"
-      style={{ backgroundColor: 'rgba(214,69,60,0.14)', border: `1px solid ${PALETTE.hot}` }}
+      style={{ backgroundColor: fill, border: `1px solid ${accent}` }}
     >
       <div className="flex items-baseline gap-2 mb-2">
-        <span className="uppercase tracking-wider font-semibold" style={{ color: PALETTE.hot, fontSize: px(14) }}>
-          Ready to submit
+        <span className="uppercase tracking-wider font-semibold" style={{ color: accent, fontSize: px(14) }}>
+          {title}
         </span>
-        <span className="tabular-nums" style={{ color: PALETTE.hot, fontSize: px(14) }}>{deals.length}</span>
-        <span style={{ color: PALETTE.textDim, fontSize: px(12) }}>· nothing's blocking these — submit them</span>
+        <span className="tabular-nums" style={{ color: accent, fontSize: px(14) }}>{deals.length}</span>
+        <span style={{ color: PALETTE.textDim, fontSize: px(12) }}>· {hint}</span>
       </div>
       <div className="flex flex-wrap gap-2">
         {deals.map((d) => (
@@ -363,10 +424,10 @@ function ReadyBand({ deals, showToken, onOpen, onToggleStar }: { deals: BoardDea
             key={d.id}
             onClick={() => onOpen(d)}
             className="relative rounded-md pl-3 pr-2 py-1 flex items-center gap-2 cursor-pointer"
-            style={{ backgroundColor: 'rgba(214,69,60,0.18)', minWidth: px(180), maxWidth: px(320) }}
+            style={{ backgroundColor: tileFill, minWidth: px(180), maxWidth: px(320) }}
             title={d.name}
           >
-            <div className="absolute left-0 top-0 bottom-0 rounded-l-md" style={{ width: 6, backgroundColor: PALETTE.hot }} />
+            <div className="absolute left-0 top-0 bottom-0 rounded-l-md" style={{ width: 6, backgroundColor: accent }} />
             <div className="min-w-0 flex-1">
               <div className="truncate" style={{ fontWeight: 600, fontSize: px(16), color: PALETTE.text }}>
                 {d.urgent && <span title="Urgent" style={{ color: PALETTE.urgent, fontWeight: 700 }}>▲ </span>}
@@ -374,7 +435,7 @@ function ReadyBand({ deals, showToken, onOpen, onToggleStar }: { deals: BoardDea
               </div>
               <div className="truncate" style={{ fontSize: px(11), color: PALETTE.textDim }}>{d.city ?? '—'}{showToken ? ` · ${d.accountToken}` : ''} · {d.days}d</div>
             </div>
-            <span className="whitespace-nowrap" style={{ fontSize: px(12), fontWeight: 600, color: PALETTE.hot }}>Submit it →</span>
+            <span className="whitespace-nowrap" style={{ fontSize: px(12), fontWeight: 600, color: verbColor ?? accent }}>{verb}</span>
             <button
               onClick={(e) => { e.stopPropagation(); onToggleStar(d); }}
               style={{ color: d.onAgenda ? PALETTE.text : PALETTE.textDim, opacity: d.onAgenda ? 1 : 0.4, fontSize: px(15) }}

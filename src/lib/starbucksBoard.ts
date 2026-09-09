@@ -114,8 +114,8 @@ export const DEAD_SUBMIT_STAGES = new Set<string>([
 
 // ---- Board columns (decisions §2.12). FIVE columns: the two Pre-Submittal
 // blocker columns + the three later stages. "Ready to submit" is NOT a column
-// (it's the top band, §4). "Unset"/unclassified is NOT a column (it's the
-// "to classify" header counter + triage queue). Left→right.
+// (it's the top band, §4), and neither is "Unset"/unclassified — that's the
+// "to classify" header counter + triage queue + its own dim band. Left→right.
 export interface BoardColumnDef {
   key: string;
   label: string;
@@ -145,8 +145,9 @@ export function readyToSubmit(d: {
 }
 
 // "To classify": a Pre-Submittal deal with NO blocker that is NOT yet
-// classified (no court). Off-board entirely — surfaced only by the header
-// counter + triage queue (§9). New deals arrive here (~2–3/week).
+// classified (no court). Belongs to no column — surfaced by the header counter,
+// the triage queue (§9), and the dim "To classify" band, whose tiles carry the
+// "Set the court →" instruction. New deals arrive here (~2–3/week).
 export function isToClassify(d: {
   stageLabel: string;
   blockedOn: BlockedOn | null;
@@ -156,8 +157,8 @@ export function isToClassify(d: {
 }
 
 // Which column a deal belongs to. Pre-Submittal deals route by blocker;
-// everything else by stage. Returns null if it belongs to the band, the
-// triage counter, or is off-board.
+// everything else by stage. Returns null if it belongs to a band (ready to
+// submit / to classify) or is off-board.
 export function columnKeyForDeal(d: BoardDeal): string | null {
   if (d.stageLabel === PRE_SUBMITTAL) {
     if (d.blockedOn === 'awaiting_ll') return 'blk_ll';
