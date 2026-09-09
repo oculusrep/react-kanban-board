@@ -64,30 +64,65 @@ hole.
 
 Exactly 6 months still fires as one run — that is the documented Custom use case.
 
-### Remainder rule: equal-width
+### Remainder rule: whole months, internal boundaries only
 
-A 14-month window becomes **three ~4.7-month chunks**, not `6 + 6 + 2`.
+**Internal boundaries snap to month edges; the outer edges stay exactly as the
+user typed them.** Chunk *i* ends on the last day of a month and chunk *i+1*
+starts on the 1st of the next. A 26-month window is 5 chunks of ~5 whole months,
+never `6+6+6+6+2` — a runt chunk pays the same fixed per-run overhead (~$3–$5,
+~25 min) for a fraction of the range.
 
-The chunk count is identical either way (`ceil(14/6) = 3`) and every slice is
-under the cliff either way. Equal-width wins because it avoids a runt: a 2-month
-chunk pays the same fixed per-run overhead (~$3–$5, ~25 min) for a third of the
-coverage. Boundaries are computed in **days**, most-recent first, with the oldest
-boundary pinned to the user's `start` so day-rounding can never leave an
-uncovered sliver. Adjacent slices share a boundary date, matching the Deep Sweep
-convention so `get_research_coverage` stitches them identically.
+The first cut at equal-width *day* slices was wrong for two reasons, both real:
 
-Verified invariants (`monthSpan` / `sliceWindows`):
+1. **A split month gets enumerated twice.** A boundary at 2026-04-03 puts Apr 1–3
+   in one chunk and Apr 3–30 in the next. An agent told to search "Apr 3 → Sep 8"
+   opens the whole April agenda set, and so does the chunk ending Apr 3. The
+   approval modal's cross-run dedupe catches the duplicate *records*, but the
+   second pass is paid for.
+2. **A shared boundary day was double-counted.** Windows were inclusive on both
+   sides, so every boundary produced a phantom 1-day `pass_count = 2` segment in
+   `get_research_coverage`. This was **already shipped behavior in the Deep
+   Sweep**, not something chunking introduced — verified on the live Grovetown
+   sweep `ec45f5f1`, where **20 of 44** coverage rows were 1-day slivers:
 
-| Window | Span | Chunks | Slices |
+   | segment | days | pass_count |
+   |---|---|---|
+   | 2023-08-13 → 2024-02-12 | 184 | 1 |
+   | **2024-02-13 → 2024-02-13** | **1** | **2** |
+   | 2024-02-14 → 2024-08-12 | 181 | 1 |
+
+   Month-aligned boundaries fix this outright: the coverage RPC builds half-open
+   `[wstart, wend + 1)` intervals, so Mar 31 / Apr 1 stitches into **one**
+   continuous segment rather than two plus a sliver.
+
+The chunk count still comes from the **elapsed span** (`monthSpan`), not from
+months touched — that is what keeps a 6-month window at one run and the 24-month
+Cobb window at 4 chunks. `MAX_SLICE_DAYS = 210` (~7 months) is the only escape
+hatch: if month-snapping pushed a slice past it, `chunkPlanFor` adds a chunk and
+rebuilds.
+
+Verified invariants (`chunkPlanFor` / `buildWindows`):
+
+| Window | Span | Chunks | Slice days |
 |---|---|---|---|
-| 2024-09-09 → 2026-09-08 (the live Cobb run) | 24 mo | **4** | max 183 days |
+| 2024-09-09 → 2026-09-08 (the live Cobb run) | 24 mo | **4** | 172–191 |
 | 2026-03-08 → 2026-09-08 | 6 mo | **1** (no split) | — |
-| 2026-03-07 → 2026-09-08 | 7 mo | 2 | max 93 days |
-| 2025-07-08 → 2026-09-08 | 14 mo | 3 | max 143 days |
-| 2023-09-08 → 2026-09-08 | 36 mo | 6 | max 183 days |
+| 2026-03-07 → 2026-09-08 | 7 mo | 2 | 85–99 |
+| 2025-07-08 → 2026-09-08 | 14 mo | 3 | 130–150 |
+| 2024-07-09 → 2026-09-09 | 26 mo | 5 | 144–181 |
+| 2023-09-09 → 2026-09-09 (Deep Sweep) | 36 mo | 6 | 173–192 |
+| 2025-01-31 → 2026-09-09 (start on the 31st) | 20 mo | 4 | 120–161 |
 
-In every case the slices are contiguous, share boundaries, and cover the
-requested range exactly (`window_end[0] == end`, `window_start[n-1] == start`).
+In every case: outer edges verbatim, chunks contiguous with **no shared day**
+(`window_end[i] + 1 day == window_start[i-1]`), and every internal boundary on a
+month start.
+
+The 26-month plan:
+
+```
+2026-04-01→2026-09-09 | 2025-11-01→2026-03-31 | 2025-06-01→2025-10-31
+| 2024-12-01→2025-05-31 | 2024-07-09→2024-11-30
+```
 
 ## The four-field window contract
 
@@ -128,12 +163,18 @@ a point estimate was wrong.
 The confirm step is reset whenever the tier, mode, dates, or radius change, so the
 screen can never quote a plan that is no longer current.
 
-### One label-only change to Deep Sweep
+### Two changes to Deep Sweep
 
-Deep Sweep **behavior is untouched** — still 6 fixed chunks of the last 36 months.
-Its cost *label* now uses the same range helper (`~$18` → `~$18–$30`), because
-leaving two contradictory cost models in the same modal is worse than the queued
-estimate fix it anticipates.
+Deep Sweep's **count and range are untouched** — still 6 chunks over the last 36
+months, still fired the same way. Two things did change:
+
+1. **It shares `buildWindows`**, so there is exactly one boundary convention in
+   the modal. Its boundary dates are now month-aligned, which stops it emitting
+   the phantom 1-day segments documented above. Old sweeps' coverage rows are
+   unaffected; only new runs are clean.
+2. **Its cost label** uses the same range helper (`~$18` → `~$18–$30`), because
+   leaving two contradictory cost models in one modal is worse than the queued
+   estimate fix it anticipates.
 
 **Quick is untouched.** Only a Deep enumeration makes a completeness claim, so
 only Deep has a claim to falsify by sampling.

@@ -117,28 +117,88 @@ function monthSpan(startISO: string, endISO: string): number {
   if (d2 > d1) months += 1;
   return Math.max(months, 0);
 }
+const monthIndex = (iso: string): number => {
+  const [y, m] = iso.split('-').map(Number);
+  return y * 12 + (m - 1);
+};
+const monthStartISO = (idx: number): string =>
+  `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}-01`;
+
+// Hard ceiling on any one slice. The cliff is ~6 months (183d); month-snapping an
+// end chunk can push a little past that when the user's range starts or ends
+// mid-month, which is fine. 210d (~7mo) is where we stop tolerating it and add a
+// chunk instead.
+const MAX_SLICE_DAYS = 210;
+
 /**
- * Split [startISO, endISO] into `count` back-to-back slices, most-recent first
- * (index 0 ends at endISO). Adjacent slices share a boundary date, matching the
- * Deep Sweep convention so get_research_coverage stitches them identically.
+ * Split [startISO, endISO] into at most `count` back-to-back windows, most-recent
+ * first (index 0 ends at endISO). Used by BOTH the Deep Sweep and Custom chunking
+ * so there is exactly one boundary convention.
  *
- * REMAINDER RULE — equal-width, NOT 6+6+remainder. A 14-month window becomes
- * three ~4.7-month chunks, not 6 + 6 + 2. The chunk count is the same either way
- * (ceil(14/6) = 3) and every slice is under the cliff either way, but equal-width
- * avoids a runt: a 2-month chunk pays the same fixed per-run overhead (~$3-$5,
- * ~25 min) for a third of the coverage. The oldest boundary is pinned to startISO
- * so day-rounding can never leave an uncovered sliver.
+ * INTERNAL BOUNDARIES ARE MONTH-ALIGNED; THE OUTER EDGES ARE VERBATIM. Chunk i
+ * ends on the last day of a month and chunk i+1 starts on the 1st of the next, so
+ * no calendar month is ever split across two chunks and no day belongs to two
+ * windows. Both mattered:
+ *
+ *   * A split month gets enumerated TWICE. An agent told to search "Apr 3 - Sep 8"
+ *     opens the whole April agenda set; so does the chunk ending Apr 3. The
+ *     approval modal's cross-run dedupe catches the records, but the second pass
+ *     is paid for.
+ *   * A shared boundary DAY produced a phantom 1-day pass_count=2 segment in
+ *     get_research_coverage at every boundary. Verified on the live Grovetown
+ *     sweep (ec45f5f1): 20 of its 44 coverage rows were 1-day slivers. Because the
+ *     coverage RPC works in half-open [wstart, wend+1) intervals, Mar 31 / Apr 1
+ *     now stitches into ONE continuous segment.
+ *
+ * The user's own start and end dates are never moved — only the cuts between
+ * chunks snap to month starts, so the requested range is covered exactly.
  */
-function sliceWindows(startISO: string, endISO: string, count: number):
+function buildWindows(startISO: string, endISO: string, count: number):
   { window_start: string; window_end: string }[] {
+  if (count <= 1) return [{ window_start: startISO, window_end: endISO }];
+  const startIdx = monthIndex(startISO);
+  const endIdx = monthIndex(endISO);
   const totalDays = daysBetween(startISO, endISO);
-  const bounds = Array.from({ length: count + 1 }, (_, i) =>
-    i === count ? startISO : addDaysISO(endISO, -Math.round((i * totalDays) / count)),
-  );
-  return Array.from({ length: count }, (_, i) => ({
-    window_end: bounds[i],
-    window_start: bounds[i + 1],
-  }));
+  const cuts: number[] = [];
+  for (let j = 1; j < count; j++) {
+    // Evenly-spaced ideal cut, snapped to whichever month start is nearer.
+    const ideal = addDaysISO(startISO, Math.round((j * totalDays) / count));
+    let idx = monthIndex(ideal);
+    if (daysBetween(monthStartISO(idx), ideal) > daysBetween(ideal, monthStartISO(idx + 1))) idx += 1;
+    idx = Math.min(Math.max(idx, startIdx + 1), endIdx);
+    if (cuts.length && idx <= cuts[cuts.length - 1]) idx = cuts[cuts.length - 1] + 1;
+    if (idx > endIdx) break;   // out of month slots: fewer chunks than asked, honestly
+    cuts.push(idx);
+  }
+  const starts = [startISO, ...cuts.map(monthStartISO)];
+  return starts
+    .map((st, k) => ({
+      window_start: st,
+      window_end: k === starts.length - 1 ? endISO : addDaysISO(starts[k + 1], -1),
+    }))
+    .reverse();   // most-recent first, matching chunk_index 0 = newest
+}
+
+/**
+ * The chunk plan for a range: ceil(span / CHUNK_MONTHS) windows, bumped only if
+ * month-snapping pushed a slice past MAX_SLICE_DAYS. Keeping the count off the
+ * elapsed span (not months touched) is what makes a 6-month window stay one run
+ * and a 24-month window come out at 4 chunks.
+ *
+ * REMAINDER RULE: whole months, spread as evenly as the calendar allows. A
+ * 26-month window is 5 chunks of ~5 months, never 6+6+6+6+2 — a runt chunk pays
+ * the same fixed per-run overhead (~$3-$5, ~25 min) for a fraction of the range.
+ */
+function chunkPlanFor(startISO: string, endISO: string) {
+  const span = monthSpan(startISO, endISO);
+  let n = Math.max(1, Math.ceil(span / CHUNK_MONTHS));
+  for (let guard = 0; guard < 4; guard++) {
+    const windows = buildWindows(startISO, endISO, n);
+    const widest = Math.max(...windows.map((w) => daysBetween(w.window_start, w.window_end)));
+    if (widest <= MAX_SLICE_DAYS || windows.length < n) return { span, windows };
+    n += 1;
+  }
+  return { span, windows: buildWindows(startISO, endISO, n) };
 }
 
 function fmtMonthYear(iso: string): string {
@@ -268,12 +328,12 @@ export default function StartResearchModal({
 
   // Deep Sweep chunk windows: 6 back-to-back 6-month slices, most-recent first.
   // chunk_index 0 = [today-6mo, today]. Each slice becomes pz_window == permit_window.
+  // Deep Sweep is unchanged in count and range — still SWEEP_CHUNKS chunks over
+  // the last 36 months. It just shares the month-aligned builder now, so it stops
+  // emitting a phantom 1-day double-counted segment at each boundary.
   const sweepWindows = useMemo(() => {
     const today = easternToday();
-    return Array.from({ length: SWEEP_CHUNKS }, (_, i) => ({
-      window_end: subtractMonthsISO(today, i * CHUNK_MONTHS),
-      window_start: subtractMonthsISO(today, (i + 1) * CHUNK_MONTHS),
-    }));
+    return buildWindows(subtractMonthsISO(today, 36), today, SWEEP_CHUNKS);
   }, []);
 
   // ---- Custom Deep chunking (mandatory past CHUNK_MONTHS) ----
@@ -281,21 +341,16 @@ export default function StartResearchModal({
   // above), so the P&Z and permit spans are equal by construction and one chunk
   // count is well-defined. If Custom ever grows separate P&Z/permit inputs, this
   // has to become two counts (or slice their union) — revisit before that lands.
-  const customSpanMonths = useMemo(
-    () => monthSpan(plan.pz_window_start, plan.pz_window_end),
+  const customPlan = useMemo(
+    () => chunkPlanFor(plan.pz_window_start, plan.pz_window_end),
     [plan.pz_window_start, plan.pz_window_end],
   );
-  const customChunkCount = useMemo(
-    () => Math.max(1, Math.ceil(customSpanMonths / CHUNK_MONTHS)),
-    [customSpanMonths],
-  );
+  const customSpanMonths = customPlan.span;
+  const customWindows = customPlan.windows;
+  const customChunkCount = customWindows.length;
   // Quick is untouched: only a Deep enumeration makes a completeness claim, so
   // only Deep has a claim to falsify by sampling.
   const willChunk = tier === 'custom' && customMode === 'deep' && customChunkCount > 1;
-  const customWindows = useMemo(
-    () => (willChunk ? sliceWindows(plan.pz_window_start, plan.pz_window_end, customChunkCount) : []),
-    [willChunk, plan.pz_window_start, plan.pz_window_end, customChunkCount],
-  );
 
   // Anything that fires as chunks gets the same two-step cost confirmation.
   const needsChunkConfirm = tier === 'sweep' || willChunk;
