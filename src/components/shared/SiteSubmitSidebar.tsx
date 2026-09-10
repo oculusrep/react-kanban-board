@@ -31,6 +31,8 @@ import OpenTasksPanel from '../tasks/OpenTasksPanel';
 import StartResearchModal from './StartResearchModal';
 import PastResearchRunsPanel from './PastResearchRunsPanel';
 import ResearchRunApprovalModal from './ResearchRunApprovalModal';
+import SiteStoryPanel from './SiteStoryPanel';
+import { resolveSiteCoordinate } from '../../utils/resolveSiteCoordinate';
 import { usePermissions } from '../../hooks/usePermissions';
 
 // Starbucks client_id — gates the "Start Research" action to the Starbucks account
@@ -56,6 +58,13 @@ export interface SiteSubmitData {
   delivery_timeframe: string | null;
   ti: number | null;
   year_1_rent: number | null;
+  // Site-level coordinates. Needed for the documented resolution precedence
+  // (site_submit.verified -> property.verified -> site_submit.sf_property ->
+  // property.lat) — see src/utils/resolveSiteCoordinate.ts.
+  verified_latitude?: number | null;
+  verified_longitude?: number | null;
+  sf_property_latitude?: number | null;
+  sf_property_longitude?: number | null;
   // Snapshot economics (populated from property/property_unit at site submit creation,
   // edited independently after that). See migration 20260514000000_add_site_submit_economics.sql.
   available_sqft: number | null;
@@ -279,6 +288,7 @@ export default function SiteSubmitSidebar({
   const [openApprovalRunId, setOpenApprovalRunId] = useState<string | null>(null);
   const [openApprovalSweepId, setOpenApprovalSweepId] = useState<string | null>(null);
   const [researchPanelExpanded, setResearchPanelExpanded] = useState(false);
+  const [siteStoryExpanded, setSiteStoryExpanded] = useState(false);
   const { hasPermission } = usePermissions();
   // Market-research action gate: Starbucks-family site (self or child) + can_run_market_research permission + has lat/lng on property.
   const canStartResearch =
@@ -287,6 +297,21 @@ export default function SiteSubmitSidebar({
     && hasPermission('can_run_market_research')
     && (siteSubmit.property?.verified_latitude != null
         || siteSubmit.property?.latitude != null);
+
+  // Site research thread gate. Same client-family + permission checks as
+  // market research, but the coordinate test uses the FULL documented
+  // precedence rather than property-only — a site whose only coordinate is its
+  // own verified override is perfectly researchable. The edge function resolves
+  // the coordinate again server-side and refuses with 422 if it can't; this
+  // gate is convenience, not control.
+  const resolvedCoordinate = siteSubmit
+    ? resolveSiteCoordinate(siteSubmit, siteSubmit.property)
+    : null;
+  const canStartResearchThread =
+    !!siteSubmit
+    && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)
+    && hasPermission('can_run_market_research')
+    && resolvedCoordinate != null;
   const [createFormKey, setCreateFormKey] = useState(0);
   const [editingHeaderField, setEditingHeaderField] = useState<'site_submit_name' | 'deal_name' | null>(null);
   const [headerEditValue, setHeaderEditValue] = useState('');
@@ -424,6 +449,10 @@ export default function SiteSubmitSidebar({
             asking_ground_lease_price,
             nnn,
             competitor_data,
+            verified_latitude,
+            verified_longitude,
+            sf_property_latitude,
+            sf_property_longitude,
             property_id,
             property_unit_id,
             client_id,
@@ -1584,6 +1613,33 @@ export default function SiteSubmitSidebar({
                         }}
                       />
                     )}
+                  </div>
+                )}
+                {/* Site story — the in-app research thread (archetype call +
+                    executive summary). Deliberately a section in the DATA tab,
+                    not a sixth tab: the strip is full at 500px. */}
+                {canStartResearchThread && (
+                  <div className="px-4 pb-4 pt-2 border-t mt-4" style={{ borderColor: '#8FA9C8' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSiteStoryExpanded((v) => !v)}
+                      className="flex items-center justify-between w-full text-left mb-2 hover:opacity-80 transition-opacity"
+                      aria-expanded={siteStoryExpanded}
+                    >
+                      <h4 className="text-sm font-semibold" style={{ color: '#002147' }}>
+                        Site story
+                      </h4>
+                      <svg
+                        className={`w-4 h-4 transition-transform ${siteStoryExpanded ? 'rotate-180' : ''}`}
+                        style={{ color: '#002147' }}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {siteStoryExpanded && <SiteStoryPanel siteSubmitId={siteSubmit.id} />}
                   </div>
                 )}
               </>
