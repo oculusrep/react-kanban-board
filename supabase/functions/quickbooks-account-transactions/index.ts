@@ -212,12 +212,18 @@ function parseGeneralLedgerReport(reportData: any): TransactionLine[] {
           const amountVal = colData[colMap['amount']]?.value
           if (amountVal) {
             const amount = parseFloat(String(amountVal).replace(/[,$]/g, '')) || 0
-            // For liability accounts (like draw accounts), positive usually means credit (commission earned)
-            // negative means debit (draw taken)
+            // The draw account is an Other Current Asset. QBO's `subt_nat_amount` is signed
+            // from that account's perspective:
+            //   positive = debit to the draw account  -> money advanced to the broker (a draw)
+            //   negative = credit to the draw account -> commission applied against the draw
+            // NOTE: the `debit`/`credit` fields below are REPORT-facing, not GL-facing —
+            // `debit` feeds the "Commissions Earned" column and `credit` feeds "Draws",
+            // which is the opposite of their GL meaning. Don't reason about the balance
+            // from these names; see the running-balance comment below.
             if (amount > 0) {
-              credit = amount  // Commission credited to account
+              credit = amount  // Draw taken
             } else if (amount < 0) {
-              debit = Math.abs(amount)  // Draw from account
+              debit = Math.abs(amount)  // Commission applied against the draw
             }
           }
         }
@@ -255,7 +261,10 @@ function parseGeneralLedgerReport(reportData: any): TransactionLine[] {
           continue
         }
 
-        runningBalance = runningBalance + debit - credit
+        // Balance = what the broker owes the company (a debit balance on the asset
+        // account). Draws increase it, commissions pay it down. `credit` holds draws
+        // and `debit` holds commissions here, hence the ordering.
+        runningBalance = runningBalance + credit - debit
 
         transactions.push({
           id: txnId || `${date}-${docNum || transactions.length}`,

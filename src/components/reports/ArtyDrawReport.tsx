@@ -61,7 +61,11 @@ export default function ArtyDrawReport() {
 
   // Date range - default to 2024-01-01 to capture full draw history
   const [startDate, setStartDate] = useState('2024-01-01');
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => {
+    // Local (Eastern) date — toISOString() is UTC and rolls to tomorrow in the evening.
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
 
   // Sort state
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
