@@ -258,7 +258,7 @@ serve(async (req) => {
     console.log(`[ProcessArtyCommission] Step 2: Fetching commission mapping for broker ${broker.id}...`);
     const { data: mapping, error: mappingError } = await supabase
       .from('qb_commission_mapping')
-      .select('qb_credit_account_id, qb_credit_account_name, qb_vendor_id, qb_vendor_name')
+      .select('id, qb_credit_account_id, qb_credit_account_name, qb_vendor_id, qb_vendor_name')
       .eq('broker_id', broker.id)
       .eq('payment_method', 'journal_entry')
       .eq('is_active', true)
@@ -414,21 +414,23 @@ serve(async (req) => {
     const today = new Date();
     const transactionDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    // OPTION A: JE only credits the draw balance amount to zero out the draw account
-    // Journal Entry: Draw balance amount (Commissions Paid Out → Draw Account) - clears the draw
-    // Bill: Net payment goes to Commissions Paid Out expense account
-    // Both use the same "Commissions Paid Out: Santos Real Estate Partners LLC" account
+    // OPTION A: the JE credits the draw account by the amount of commission actually
+    // applied against it -- min(grossCommission, drawBalance) -- NOT the full draw balance.
+    // Crediting the full balance would forgive draw the broker hasn't earned yet and
+    // overstate the Commissions Paid Out expense by the difference.
+    // Bill: Net payment (any commission left over after the draw is cleared).
+    // Both use the same "Commissions Paid Out: Santos Real Estate Partners LLC" account.
 
-    // Only create JE if there's a draw balance to clear
+    // Only create JE if some commission is actually being applied to the draw
     let jeResult: { Id: string; DocNumber?: string } | null = null;
 
-    if (drawBalance > 0) {
+    if (creditApplied > 0) {
       const journalEntry: QBJournalEntry = {
         DocNumber: docNumber,
         TxnDate: transactionDate,
         Line: [
           {
-            Amount: drawBalance,
+            Amount: creditApplied,
             DetailType: 'JournalEntryLineDetail',
             JournalEntryLineDetail: {
               PostingType: 'Debit',
@@ -437,7 +439,7 @@ serve(async (req) => {
             Description: `Commission (draw offset) - ${dealName} - ${paymentName}`,
           },
           {
-            Amount: drawBalance,
+            Amount: creditApplied,
             DetailType: 'JournalEntryLineDetail',
             JournalEntryLineDetail: {
               PostingType: 'Credit',
@@ -446,13 +448,13 @@ serve(async (req) => {
             Description: `Commission (draw offset) - ${dealName} - ${paymentName}`,
           },
         ],
-        PrivateNote: `OVIS Commission: ${dealName} - ${paymentName} for ${broker.name}. This JE clears draw balance of $${drawBalance.toFixed(2)}. Gross commission: $${grossCommission.toFixed(2)}, Net payment: $${netPayment.toFixed(2)}`,
+        PrivateNote: `OVIS Commission: ${dealName} - ${paymentName} for ${broker.name}. This JE applies $${creditApplied.toFixed(2)} of commission against a draw balance of $${drawBalance.toFixed(2)}, leaving $${drawAfter.toFixed(2)}. Gross commission: $${grossCommission.toFixed(2)}, Net payment: $${netPayment.toFixed(2)}`,
       };
 
       jeResult = await createJournalEntry(connection, journalEntry);
-      console.log(`[ProcessArtyCommission] Created JE: ${jeResult.DocNumber} to clear draw balance of $${drawBalance}`);
+      console.log(`[ProcessArtyCommission] Created JE: ${jeResult.DocNumber} applying $${creditApplied} against draw balance of $${drawBalance} (remaining: $${drawAfter})`);
     } else {
-      console.log(`[ProcessArtyCommission] No draw balance to clear, skipping JE`);
+      console.log(`[ProcessArtyCommission] No commission to apply against the draw, skipping JE`);
     }
 
     // ========================================================================
@@ -484,6 +486,48 @@ serve(async (req) => {
 
       billResult = await createBill(connection, bill);
       console.log(`[ProcessArtyCommission] Created Bill: ${billResult.DocNumber || billResult.Id}`);
+    }
+
+    // ========================================================================
+    // STEP 4b: Record the QBO entities we just created
+    // The OVIS-### sequence is derived from qb_commission_entry, so skipping this
+    // makes the next run reuse the same doc number.
+    // ========================================================================
+    const createdEntries: Array<Record<string, unknown>> = [];
+    if (jeResult) {
+      createdEntries.push({
+        payment_split_id: request.payment_split_id,
+        commission_mapping_id: mapping.id,
+        qb_entity_type: 'JournalEntry',
+        qb_entity_id: jeResult.Id,
+        qb_doc_number: jeResult.DocNumber || docNumber,
+        amount: creditApplied,
+        transaction_date: transactionDate,
+        status: 'created',
+        created_by_id: internalUserId,
+      });
+    }
+    if (billResult) {
+      createdEntries.push({
+        payment_split_id: request.payment_split_id,
+        commission_mapping_id: mapping.id,
+        qb_entity_type: 'Bill',
+        qb_entity_id: billResult.Id,
+        qb_doc_number: billResult.DocNumber || null,
+        amount: netPayment,
+        transaction_date: transactionDate,
+        status: 'created',
+        created_by_id: internalUserId,
+      });
+    }
+    if (createdEntries.length > 0) {
+      const { error: entryError } = await supabase
+        .from('qb_commission_entry')
+        .insert(createdEntries);
+      // Don't fail the run -- the QBO entities already exist -- but make it loud.
+      if (entryError) {
+        console.error('[ProcessArtyCommission] Failed to record qb_commission_entry rows:', entryError);
+      }
     }
 
     // ========================================================================
