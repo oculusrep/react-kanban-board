@@ -167,8 +167,17 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
     loadMessages(openThreadId);
   }, [openThreadId, loadMessages]);
 
+  // Scroll to the newest turn only when the thread GROWS, never on first load.
+  // The messages now live in the DATA tab's own scroll container, so an
+  // unconditional scrollIntoView would yank the whole tab down past the deal
+  // details the moment a thread is opened. After you send a turn, following the
+  // reply down is the right behaviour.
+  const prevCountRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (prevCountRef.current > 0 && messages.length > prevCountRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    prevCountRef.current = messages.length;
   }, [messages]);
 
   const handleStart = async () => {
@@ -335,7 +344,11 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             </div>
           )}
 
-          <div className="max-h-80 overflow-y-auto space-y-2 mb-2">
+          {/* No inner scroll box. The DATA tab is a single scroll container, so
+              a nested max-height scroller here would trap a long summary in a
+              320px window inside an already-scrolling panel — two scrollbars,
+              and the composer below it hard to reach. Let the messages flow. */}
+          <div className="space-y-2 mb-2">
             {loadingMessages && messages.length === 0 ? (
               <div className="text-xs" style={{ color: SLATE }}>Loading…</div>
             ) : (

@@ -1537,8 +1537,19 @@ export default function SiteSubmitSidebar({
           />
         ) : (
           <>
+            {/* One scroll container for the whole DATA tab.
+                SiteSubmitDataTab and DealDataTab both root at
+                `p-4 overflow-y-auto flex-1`, so inside the flex column they
+                claimed all remaining height and scrolled themselves — which left
+                the sections BELOW them (market research runs, site story)
+                squeezed off the bottom with nothing able to scroll to them.
+                Wrapping in a plain block scroller makes `flex-1` inert on those
+                two components (parent is no longer a flex container) and their
+                own `overflow-y-auto` a no-op at auto height, so this wrapper
+                owns scrolling for the whole tab and every section is reachable
+                under a single scrollbar. */}
             {activeTab === 'data' && (
-              <>
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 {siteSubmit.deal_id ? (
                   <DealDataTab
                     siteSubmit={siteSubmit}
@@ -1642,7 +1653,7 @@ export default function SiteSubmitSidebar({
                     {siteStoryExpanded && <SiteStoryPanel siteSubmitId={siteSubmit.id} />}
                   </div>
                 )}
-              </>
+              </div>
             )}
             {activeTab === 'chat' && (
               <PortalChatTab
