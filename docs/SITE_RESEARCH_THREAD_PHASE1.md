@@ -217,10 +217,47 @@ no-op-when-already-top `bringToFront` rule, which is load-bearing.
    today; don't repeat that).
 2. `supabase functions deploy ovis-site-research`
 3. Merge the branch (deploys the UI via Vercel).
-4. **Review the seeded prompt.** `prompt_template` row `('archetype_call', NULL, 1)`
-   is draft wording — the five archetype definitions, the "story carriers" framing,
-   and the 300-word cap are all a first pass. Iterating is an INSERT of version 2
-   plus flipping `is_active`, no deploy.
+4. **Review the active prompt.** See "The archetype prompt" below.
+
+## The archetype prompt
+
+**Active version: `('archetype_call', NULL, 2)`, activated 2026-09-12.**
+Verbatim reference copy: [PROMPT_archetype_call_v2.md](PROMPT_archetype_call_v2.md)
+— reference only, not executable, never re-applied on deploy. The live source of
+truth is the `prompt_template` row; if the two disagree, the row wins.
+
+v2 replaced v1's prose-only summary with a stated section skeleton, because named
+sections turned out to be what makes the requirements enforceable — v1 asked for
+prose and silently got inconsistent compliance. It adds: a ground-truth step
+(intersection + governing jurisdiction, with any mailing/governing mismatch flagged
+explicitly); a shallow scan of all six categories (schools/enrollment; rooftops and
+residential pipeline; site-level employment; daytime vs. residential population;
+traffic, access and AM flow; competitive ring), where an empty category is stated
+plainly as a finding rather than padded; a "Not claiming X and Y, because…"
+statement naming at least two declined archetypes; and an "Open questions that would
+change the call" section restricted to genuine falsifiers. Hard rules now cover
+inline sourcing of every number, straight-line distance to one decimal, never
+inventing a street number, labelling inferences `INFERRED`, and breadth-not-depth.
+The word cap moved 300 → 600. v1's one-primary/optional-secondary rule, its "a
+forced secondary is worse than none" line, and its refusal to estimate a missing
+number all carried over unchanged.
+
+Two conventions worth knowing because they cross into code:
+
+- **`story_carriers` are category names, not facts** — 2–3 entries copied verbatim
+  from a fixed six-name list, so carriers stay comparable across sites.
+  `parseArchetypeBlock` still caps at 10 entries / 200 chars as a safety net; the
+  narrower contract is the prompt's, not the parser's.
+- **The blank rule is scoped, not contradictory.** In prose, say plainly that
+  something could not be determined. In JSON, tables, and any exported field, leave
+  it blank — never `N/A`, `TBD`, `unknown`, or `0` standing in for unknown.
+
+**v1 is retained, deactivated (`is_active = false`) — do not delete it.**
+`research_thread.prompt_template_id` pins each thread to the template it was created
+with, so threads opened before 2026-09-12 keep replaying against v1. Deleting it
+would break their replay. Iterating again means inserting version 3 and flipping
+`is_active` — a row insert, no migration and no deploy — and updating the reference
+file in the same commit.
 
 ## Migration note
 
