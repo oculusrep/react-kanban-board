@@ -454,13 +454,23 @@ async function createThread(
 
   // trade_area and every ESRI demographic live on PROPERTY, not site_submit —
   // joined in here so the snapshot is complete in one shot.
+  //
+  // The submit_stage embed MUST carry the !site_submit_submit_stage_id_fkey
+  // constraint hint. site_submit has two IDENTICAL foreign keys on
+  // submit_stage_id (fk_site_submit_stage_id and site_submit_submit_stage_id_fkey),
+  // so PostgREST refuses to pick one: "Could not embed because more than one
+  // relationship was found for 'site_submit' and 'submit_stage_id'". The usual
+  // column-name form (submit_stage:submit_stage_id) does NOT disambiguate —
+  // both constraints sit on that same column, so only the constraint name works.
+  // Every other site_submit query in the codebase carries this same hint.
+  // property_id has a single FK and needs no hint.
   const { data: ssData, error: ssErr } = await service
     .from('site_submit')
     .select(`
       id, site_submit_name, client_id, notes, competitor_data,
       verified_latitude, verified_longitude,
       sf_property_latitude, sf_property_longitude,
-      submit_stage:submit_stage_id ( name ),
+      submit_stage!site_submit_submit_stage_id_fkey ( name ),
       property:property_id (
         id, address, city, state, zip, trade_area,
         latitude, longitude, verified_latitude, verified_longitude,
