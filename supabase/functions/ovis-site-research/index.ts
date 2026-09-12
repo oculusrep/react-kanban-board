@@ -34,6 +34,7 @@ import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-
 // versions, so `deno check` can't even resolve their types. The npm: specifier
 // resolves and typechecks cleanly under both Deno and the Supabase edge runtime.
 import Anthropic from 'npm:@anthropic-ai/sdk@0.124.0';
+import { TOOL_DEFINITIONS, WEB_SEARCH_TOOL, executeTool } from './tools.ts';
 
 // Gates research to the Starbucks account family: the Starbucks client itself OR
 // any client whose parent_id is Starbucks (child accounts like
@@ -53,6 +54,11 @@ const MODEL = 'claude-opus-5';
 // ever start hitting the wall clock, that is the signal to switch to streaming
 // + postgres_changes (see the Phase 1 doc).
 const MAX_TOKENS = 16000;
+
+// Tool-loop ceiling. Higher than claude-cfo-agent.ts's 10: six mandatory
+// categories across four tools plus web search legitimately needs more rounds,
+// and exhausting the loop loses the whole run.
+const MAX_ITERATIONS = 15;
 
 // Anthropic pricing, $/million tokens, verified 2026-09-10 against the Claude
 // API model table. Cache reads bill at 0.1x input, cache writes at 1.25x.
@@ -244,6 +250,7 @@ async function callModel(
   systemPrompt: string,
   pinnedContext: unknown,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  toolCtx?: { service: SupabaseClient; siteSubmitId: string | null },
 ): Promise<TurnResult> {
   // Dedicated workspace key — NOT the shared ANTHROPIC_API_KEY used by
   // cfo-query and bookkeeper-query, so this feature's spend is attributable and
@@ -266,57 +273,138 @@ async function callModel(
     },
   ];
 
-  const params: Record<string, unknown> = {
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system,
-    messages,
-    // Opus 5 runs adaptive thinking by default; stated explicitly so a future
-    // reader does not "helpfully" add budget_tokens (removed — 400 on Opus 5).
-    thinking: { type: 'adaptive' },
-    output_config: { effort: 'high' },
-  };
-  if (ENABLE_REFUSAL_FALLBACK) {
-    params.betas = [FALLBACK_BETA];
-    params.fallbacks = 'default';
+  // Tools are offered only when a tool context is supplied. web_search is a
+  // server-side tool (Anthropic runs it; no executor here); the other three are
+  // client tools we execute against Postgres.
+  const tools = toolCtx ? [WEB_SEARCH_TOOL, ...TOOL_DEFINITIONS] : undefined;
+
+  // The conversation grows across the loop, so work on a local copy.
+  const convo: Array<Record<string, unknown>> = messages.map((m) => ({ ...m }));
+
+  // Usage accumulates across every iteration — one "turn" of this function can
+  // be a dozen API round trips, and the cost column must reflect all of them.
+  let inTok = 0, outTok = 0, costUsd = 0, sawUsage = false;
+  let lastStop: string | null = null;
+  const toolsUsed: string[] = [];
+
+  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    const params: Record<string, unknown> = {
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system,
+      messages: convo,
+      // Opus 5 runs adaptive thinking by default; stated explicitly so a future
+      // reader does not "helpfully" add budget_tokens (removed — 400 on Opus 5).
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'high' },
+    };
+    if (tools) params.tools = tools;
+    if (ENABLE_REFUSAL_FALLBACK) {
+      params.betas = [FALLBACK_BETA];
+      params.fallbacks = 'default';
+    }
+
+    // Single cast at the call boundary: `fallbacks` is a beta parameter whose
+    // types lag the pinned SDK version.
+    const response = await withRetry(
+      () => client.beta.messages.create(params as never),
+      { maxRetries: 3, baseDelayMs: 2000, maxDelayMs: 30000 },
+    );
+
+    const resp = response as unknown as {
+      content: Array<Record<string, unknown>>;
+      usage?: Record<string, unknown>;
+      stop_reason?: string | null;
+      stop_details?: { category?: string | null; explanation?: string | null } | null;
+    };
+
+    if (resp.usage) {
+      sawUsage = true;
+      inTok += num(resp.usage.input_tokens) ?? 0;
+      outTok += num(resp.usage.output_tokens) ?? 0;
+      costUsd += computeCostUsd(resp.usage) ?? 0;
+    }
+    lastStop = resp.stop_reason ?? null;
+
+    // Always check stop_reason before reading content — a refusal returns HTTP
+    // 200 with an empty or partial body.
+    if (resp.stop_reason === 'refusal') {
+      const cat = resp.stop_details?.category ?? 'unspecified';
+      throw new Error(`model_refused: the model declined this request (category: ${cat})`);
+    }
+
+    // pause_turn: a server tool (web_search) is mid-flight. Echo the content
+    // back verbatim and let it continue — this is not a tool we execute.
+    if (resp.stop_reason === 'pause_turn') {
+      convo.push({ role: 'assistant', content: resp.content });
+      continue;
+    }
+
+    if (resp.stop_reason === 'tool_use') {
+      convo.push({ role: 'assistant', content: resp.content });
+
+      // Execute every tool_use block in this message and return ALL results in
+      // ONE user message — splitting them across messages teaches the model to
+      // stop calling tools in parallel.
+      const results: Array<Record<string, unknown>> = [];
+      for (const block of resp.content) {
+        if (block.type !== 'tool_use') continue;
+        const name = String(block.name);
+        const id = String(block.id);
+        toolsUsed.push(name);
+        try {
+          const out = await executeTool(
+            toolCtx!.service,
+            name,
+            (block.input ?? {}) as Record<string, unknown>,
+            { siteSubmitId: toolCtx!.siteSubmitId },
+          );
+          results.push({ type: 'tool_result', tool_use_id: id, content: JSON.stringify(out) });
+        } catch (e) {
+          // Return the failure to the model as a tool_result rather than
+          // aborting the run — a dead tool is a finding, not a crash.
+          const detail = e instanceof Error ? e.message : String(e);
+          console.warn(`[site-research] tool ${name} failed: ${detail}`);
+          results.push({
+            type: 'tool_result',
+            tool_use_id: id,
+            is_error: true,
+            content: `Tool ${name} failed: ${detail}. Report this category as not determinable rather than guessing.`,
+          });
+        }
+      }
+      convo.push({ role: 'user', content: results });
+      continue;
+    }
+
+    // end_turn / max_tokens — done.
+    const text = resp.content
+      .filter((b) => b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text as string)
+      .join('\n')
+      .trim();
+
+    if (!text) throw new Error(`empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'})`);
+
+    console.log(
+      `[site-research] finished in ${iteration + 1} iteration(s); tools: ${
+        toolsUsed.length ? toolsUsed.join(', ') : 'none'
+      }`,
+    );
+
+    return {
+      text,
+      input_tokens: sawUsage ? inTok : null,
+      output_tokens: sawUsage ? outTok : null,
+      cost_usd: sawUsage ? costUsd : null,
+      stop_reason: lastStop,
+    };
   }
 
-  // Single cast at the call boundary: `fallbacks` is a beta parameter whose
-  // types lag the pinned SDK version.
-  const response = await withRetry(
-    () => client.beta.messages.create(params as never),
-    { maxRetries: 3, baseDelayMs: 2000, maxDelayMs: 30000 },
+  throw new Error(
+    `tool_loop_exhausted: hit MAX_ITERATIONS (${MAX_ITERATIONS}) without a final answer. ` +
+      `Tools called: ${toolsUsed.join(', ') || 'none'}.`,
   );
-
-  const resp = response as unknown as {
-    content: Array<{ type: string; text?: string }>;
-    usage?: Record<string, unknown>;
-    stop_reason?: string | null;
-    stop_details?: { category?: string | null; explanation?: string | null } | null;
-  };
-
-  // Always check stop_reason before reading content — a refusal returns HTTP 200
-  // with an empty or partial body.
-  if (resp.stop_reason === 'refusal') {
-    const cat = resp.stop_details?.category ?? 'unspecified';
-    throw new Error(`model_refused: the model declined this request (category: ${cat})`);
-  }
-
-  const text = resp.content
-    .filter((b) => b.type === 'text' && typeof b.text === 'string')
-    .map((b) => b.text as string)
-    .join('\n')
-    .trim();
-
-  if (!text) throw new Error(`empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'})`);
-
-  return {
-    text,
-    input_tokens: num(resp.usage?.input_tokens),
-    output_tokens: num(resp.usage?.output_tokens),
-    cost_usd: computeCostUsd(resp.usage),
-    stop_reason: resp.stop_reason ?? null,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -564,13 +652,18 @@ async function createThread(
   const threadId = (threadRow as { id: string }).id;
 
   try {
-    const turn = await callModel(template.body, pinnedContext, [
-      {
-        role: 'user',
-        content:
-          'Make the archetype call for this site and write the executive summary, following your instructions.',
-      },
-    ]);
+    const turn = await callModel(
+      template.body,
+      pinnedContext,
+      [
+        {
+          role: 'user',
+          content:
+            'Make the archetype call for this site and write the executive summary, following your instructions.',
+        },
+      ],
+      { service, siteSubmitId },
+    );
 
     const parsed = parseArchetypeBlock(turn.text);
 
@@ -638,7 +731,7 @@ async function sendTurn(
 
   const { data: threadData, error: threadErr } = await service
     .from('research_thread')
-    .select('id, client_id, prompt_template_id, pinned_context, state')
+    .select('id, site_submit_id, client_id, prompt_template_id, pinned_context, state')
     .eq('id', threadId)
     .maybeSingle();
   if (threadErr) throw new Error(`thread lookup failed: ${threadErr.message}`);
@@ -646,6 +739,7 @@ async function sendTurn(
 
   const thread = threadData as {
     id: string;
+    site_submit_id: string;
     client_id: string;
     prompt_template_id: string | null;
     pinned_context: unknown;
@@ -718,7 +812,10 @@ async function sendTurn(
   for (const m of prior) replay.push({ role: m.role, content: m.content });
   replay.push({ role: 'user', content: userText });
 
-  const turn = await callModel(systemPrompt, thread.pinned_context, replay);
+  const turn = await callModel(systemPrompt, thread.pinned_context, replay, {
+    service,
+    siteSubmitId: thread.site_submit_id,
+  });
   const parsed = parseArchetypeBlock(turn.text);
 
   const { error: asstErr } = await service.from('research_thread_message').insert({
