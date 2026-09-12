@@ -1,8 +1,10 @@
 # Site Research Thread — Phase 1
 
-Status: **built, not yet deployed.** Migration applied to production; edge function
-and UI are on `feature/site-research-thread` and need `ANTHROPIC_API_KEY_RESEARCH`
-set plus a function deploy before they do anything.
+Status: **backend live, UI unmerged.** Migration applied to production, edge
+function `ovis-site-research` deployed, `ANTHROPIC_API_KEY_RESEARCH` set. The UI is
+still on `feature/site-research-thread` and reaches users only when that branch
+merges. Not yet exercised end to end against a real site — first live invoke
+pending as of 2026-09-12.
 
 A chat thread on the site submit that produces the archetype call and an executive
 summary for a Starbucks site. Text in, text out.
@@ -208,16 +210,26 @@ no-op-when-already-top `bringToFront` rule, which is load-bearing.
 
 ## Before this works
 
-1. **Provision a dedicated Anthropic workspace for OVIS** and set its key as the
-   Supabase secret `ANTHROPIC_API_KEY_RESEARCH`. Do *not* reuse `ANTHROPIC_API_KEY`
-   — that's shared with `cfo-query` and `bookkeeper-query`, so spend would be
-   unattributable. Workspaces carry their own monthly spend limit and threshold
-   alerts, and the Console filters usage by workspace, model, and key. Server-side
-   secret only — never a `VITE_` var (`geocodingService.ts` exposes a browser key
-   today; don't repeat that).
-2. `supabase functions deploy ovis-site-research`
-3. Merge the branch (deploys the UI via Vercel).
-4. **Review the active prompt.** See "The archetype prompt" below.
+Done, 2026-09-12:
+
+- ✅ **Dedicated Anthropic workspace provisioned**, its key set as the Supabase
+  secret `ANTHROPIC_API_KEY_RESEARCH`. Deliberately *not* `ANTHROPIC_API_KEY` —
+  that one is shared with `cfo-query` and `bookkeeper-query`, so spend on it would
+  be unattributable. The workspace carries its own monthly spend limit and
+  threshold alerts, and the Console filters usage by workspace, model, and key.
+  Server-side secret only, never a `VITE_` var (`geocodingService.ts` exposes a
+  browser key today; don't repeat that).
+- ✅ **`supabase functions deploy ovis-site-research`.** Note that a successful
+  deploy validates nothing about the Anthropic call — deploy is an upload, and the
+  `server-side-fallback-2026-07-01` beta can only fail at invoke time. If a live
+  invoke returns a 400 naming the beta or `fallbacks`, set
+  `ENABLE_REFUSAL_FALLBACK = false` in `ovis-site-research/index.ts` and redeploy.
+
+Remaining:
+
+1. Merge the branch (deploys the UI via Vercel). Until then the backend is live but
+   unreachable — there is no UI in production that calls it.
+2. **Review the active prompt.** See "The archetype prompt" below.
 
 ## The archetype prompt
 
