@@ -217,12 +217,17 @@ export default function ArtyDrawReport() {
   }, [data?.transactions, sortOrder]);
 
   const formatCurrency = (value: number) => {
+    // Round to cents first, then collapse -0 to 0 (-0 === 0, so this catches both).
+    // Without it, a balance that nets to zero through float arithmetic renders as
+    // "-$0.00" -- which reads like the company owes money it doesn't.
+    const cents = Math.round(value * 100) / 100;
+    const normalized = cents === 0 ? 0 : cents;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(value);
+    }).format(normalized);
   };
 
   const formatDate = (dateString: string) => {
