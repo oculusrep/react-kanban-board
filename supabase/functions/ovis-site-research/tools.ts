@@ -93,14 +93,17 @@ export const TOOL_DEFINITIONS = [
     name: 'query_nearby_schools',
     description:
       'Public and private K-12 schools near a point, from NCES — use this, not web search, for the ' +
-      'schools and enrollment category. Public schools come live from NCES Common Core of Data ' +
+      'schools and enrollment category. Returns computed `totals` for the radius (enrollment total and ' +
+      'school count per group, unknown-enrollment schools and planned schools by name): cite those ' +
+      'numbers and never add up the rows yourself. Public schools come live from NCES Common Core of Data ' +
       '(locations + characteristics); private schools from the NCES Private School Survey. Every row ' +
       'carries its own vintage (school year) — cite it. Distances are straight-line miles. ' +
       'ENROLLMENT IS NOT COMPARABLE ACROSS THE TWO GROUPS: public enrollment includes pre-K, private ' +
       'enrollment (enrollment_k12_ungraded) excludes it — report them separately, never summed. ' +
       'enrollment null means NCES did not report a figure: say so, do not estimate. A public school ' +
       'with status "Future" is planned and not yet open — a growth signal, not current enrollment. ' +
-      'Private addresses flagged address_is_mailing may be a mailing address, not the campus.',
+      'Private rows flagged address_is_mailing show address text from the mailing field; their distance still ' +
+      'comes from the NCES physical-location geocode.',
     input_schema: {
       type: 'object',
       properties: {
@@ -503,6 +506,11 @@ async function arcgisQuery(
   return { features: body.features ?? [], exceededTransferLimit: body.exceededTransferLimit };
 }
 
+/** Private rows fetched per query. Supabase caps a response at its max-rows setting, so a
+ *  larger request would be cut silently by the server; instead we ask for the exact match
+ *  count and flag truncation when the bbox holds more than we received. */
+const PRIVATE_ROW_CAP = 1000;
+
 async function queryPublicSchools(latitude: number, longitude: number, radius: number) {
   const pt = { lat: latitude, lng: longitude };
   const loc = await arcgisQuery(NCES_ARCGIS.publicLocations, {
@@ -537,7 +545,9 @@ async function queryPublicSchools(latitude: number, longitude: number, radius: n
       const c = chars.get(id);
       const total = typeof c?.TOTAL === 'number' ? c.TOTAL : Number(c?.TOTAL);
       const lat = Number(a.LAT), lng = Number(a.LON);
+      const d = Number.isFinite(lat) && Number.isFinite(lng) ? haversineMiles(pt, { lat, lng }) : null;
       return {
+        _distance: d, // unrounded — band membership and sort; stripped before returning
         nces_id: id,
         name: (a.NAME as string) ?? null,
         address: (a.STREET as string) ?? null,
@@ -550,14 +560,16 @@ async function queryPublicSchools(latitude: number, longitude: number, radius: n
         status: (c?.SY_STATUS_TEXT as string) ?? null,
         charter: c?.CHARTER_TEXT === 'Yes' ? true : c?.CHARTER_TEXT === 'No' ? false : null,
         virtual: (c?.VIRTUAL as string) ?? null,
-        distance_miles: Number.isFinite(lat) && Number.isFinite(lng) ? round1(haversineMiles(pt, { lat, lng })) : null,
+        distance_miles: d === null ? null : round1(d), // display only
         // Characteristics survey year when joined, else the location layer's school year.
         vintage: (c?.SURVYEAR as string) ?? (a.SCHOOLYEAR as string) ?? null,
       };
     })
     .filter((r) => r.status !== 'Inactive')
-    .filter((r) => r.distance_miles === null || r.distance_miles <= radius)
-    .sort((x, y) => (x.distance_miles ?? 99) - (y.distance_miles ?? 99));
+    // Band membership on the UNROUNDED distance: 1.04 mi is not "within 1 mi".
+    // A row with no coordinates cannot be placed in the band, so it is excluded.
+    .filter((r) => r._distance !== null && r._distance <= radius)
+    .sort((x, y) => (x._distance as number) - (y._distance as number));
 
   return { rows, truncated: !!loc.exceededTransferLimit };
 }
@@ -576,26 +588,34 @@ async function queryPrivateSchools(
     .limit(1);
   if (yErr) throw new Error(`nces_private_school lookup failed: ${yErr.message}`);
   const surveyYear = (latest as unknown as Array<{ survey_year: string }> | null)?.[0]?.survey_year;
-  if (!surveyYear) return { rows: [], survey_year: null };
+  if (!surveyYear) return { rows: [], survey_year: null, truncated: false };
 
   const pt = { lat: latitude, lng: longitude };
   const bb = bboxFor(latitude, longitude, radius);
-  const { data, error } = await service
+  const { data, error, count } = await service
     .from('nces_private_school')
     .select(
       'ppin, school_name, address, city, state, address_is_mailing, latitude, longitude, ' +
         'enrollment_k12_ungraded, level_code, lowest_grade_code, highest_grade_code, survey_year',
+      { count: 'exact' },
     )
     .eq('survey_year', surveyYear)
     .gte('latitude', bb.south).lte('latitude', bb.north)
-    .gte('longitude', bb.west).lte('longitude', bb.east);
+    .gte('longitude', bb.west).lte('longitude', bb.east)
+    .range(0, PRIVATE_ROW_CAP - 1);
   if (error) throw new Error(`nces_private_school query failed: ${error.message}`);
 
-  const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>)
+  const fetched = ((data ?? []) as unknown as Array<Record<string, unknown>>);
+  // No silent cut: if the bounding box holds more schools than we received, say so.
+  const truncated = typeof count === 'number' && count > fetched.length;
+
+  const rows = fetched
     .map((r) => {
       const lo = pssGrade(r.lowest_grade_code as number | null);
       const hi = pssGrade(r.highest_grade_code as number | null);
+      const d = haversineMiles(pt, { lat: Number(r.latitude), lng: Number(r.longitude) });
       return {
+        _distance: d,
         pss_id: r.ppin as string,
         name: r.school_name as string,
         address: (r.address as string) ?? null,
@@ -605,16 +625,20 @@ async function queryPrivateSchools(
         level: PSS_LEVEL[r.level_code as number] ?? null,
         grades: lo && hi ? (lo === hi ? lo : `${lo}-${hi}`) : null,
         enrollment_k12_ungraded: (r.enrollment_k12_ungraded as number) ?? null,
-        distance_miles: round1(haversineMiles(pt, { lat: Number(r.latitude), lng: Number(r.longitude) })),
+        distance_miles: round1(d), // display only
         vintage: r.survey_year as string,
       };
     })
-    .filter((r) => r.distance_miles <= radius)
-    .sort((x, y) => x.distance_miles - y.distance_miles)
-    .slice(0, 60);
+    .filter((r) => r._distance <= radius) // unrounded
+    .sort((x, y) => x._distance - y._distance);
 
-  return { rows, survey_year: surveyYear };
+  return { rows, survey_year: surveyYear, truncated };
 }
+
+type NamedSchool = { name: string | null; distance_miles: number | null; vintage: string | null };
+const named = (r: { name: string | null; distance_miles: number | null; vintage: string | null }): NamedSchool =>
+  ({ name: r.name, distance_miles: r.distance_miles, vintage: r.vintage });
+const distinct = (xs: Array<string | null>) => [...new Set(xs.filter((x): x is string => !!x))].sort();
 
 async function queryNearbySchools(
   service: SupabaseClient,
@@ -630,20 +654,71 @@ async function queryNearbySchools(
     queryPrivateSchools(service, latitude, longitude, radius),
   ]);
 
+  // ---- Totals: computed here so the model cites them instead of adding. ----
+  // A total is only produced when its group is COMPLETE. A truncated or failed query yields
+  // enrollment_total null with incomplete_reason, never a partial sum that looks whole.
+  let publicTotals: Record<string, unknown>;
+  if (pub.status === 'rejected') {
+    publicTotals = { enrollment_total: null, incomplete_reason: `NCES public school query failed: ${String((pub.reason as Error)?.message ?? pub.reason)}` };
+  } else {
+    const all = pub.value.rows;
+    const planned = all.filter((r) => r.status === 'Future');           // not open: excluded from totals
+    const current = all.filter((r) => r.status !== 'Future');
+    const known = current.filter((r) => r.enrollment_incl_prek !== null);
+    const unknown = current.filter((r) => r.enrollment_incl_prek === null);
+    publicTotals = pub.value.truncated
+      ? { enrollment_total: null, incomplete_reason: 'NCES returned its maximum record count for this radius; the school list is truncated, so no total is given.' }
+      : {
+          enrollment_total: known.reduce((sum, r) => sum + (r.enrollment_incl_prek as number), 0),
+          includes_prek: true,
+          schools_counted: current.length,
+          schools_with_enrollment: known.length,
+          unknown_enrollment_schools: unknown.map(named),
+          planned_schools_not_in_total: planned.map(named),
+          vintages: distinct(current.map((r) => r.vintage)),
+        };
+  }
+
+  let privateTotals: Record<string, unknown>;
+  if (priv.status === 'rejected') {
+    privateTotals = { enrollment_total: null, incomplete_reason: `Private school query failed: ${String((priv.reason as Error)?.message ?? priv.reason)}` };
+  } else {
+    const all = priv.value.rows;
+    const known = all.filter((r) => r.enrollment_k12_ungraded !== null);
+    const unknown = all.filter((r) => r.enrollment_k12_ungraded === null);
+    privateTotals = priv.value.truncated
+      ? { enrollment_total: null, incomplete_reason: `More than ${PRIVATE_ROW_CAP} private schools in the search area; the list is truncated, so no total is given.` }
+      : {
+          enrollment_total: known.reduce((sum, r) => sum + (r.enrollment_k12_ungraded as number), 0),
+          includes_prek: false,
+          schools_counted: all.length,
+          schools_with_enrollment: known.length,
+          unknown_enrollment_schools: unknown.map(named),
+          // Address TEXT only — coordinates are NCES's physical-location geocode regardless.
+          address_from_mailing_field_count: all.filter((r) => r.address_is_mailing).length,
+          vintages: distinct(all.map((r) => r.vintage)),
+        };
+  }
+
+  const strip = <T extends { _distance: unknown }>(rows: T[]) => rows.map(({ _distance, ...rest }) => rest);
+
   return {
     note:
-      'Two groups from two NCES surveys — report them separately. Distances are straight-line miles. ' +
-      'Each row has its own vintage (school year); cite it. Public enrollment_incl_prek INCLUDES pre-K; ' +
-      'private enrollment_k12_ungraded EXCLUDES it, so the two are not comparable and must not be summed. ' +
-      'A null enrollment means NCES did not report one — say that, do not estimate. Public status "Future" ' +
-      'is a planned school not yet open (a growth signal); inactive schools are already excluded. Private ' +
-      'rows with address_is_mailing=true may show a mailing address rather than the campus.',
+      'USE totals — do not add up the rows. totals is computed by the tool for exactly this radius: cite ' +
+      'enrollment_total and schools_counted as given, never re-add, adjust or round them. If a group has ' +
+      'enrollment_total null with incomplete_reason, that band has no valid total — say so and why. Public ' +
+      'and private are separate and must never be combined: public includes pre-K, private (K-12 and ' +
+      'ungraded) excludes it. unknown_enrollment_schools are counted in schools_counted but not in ' +
+      'enrollment_total — name them. planned_schools_not_in_total are public schools with status Future: ' +
+      'not open, a forward signal. address_is_mailing (and address_from_mailing_field_count) means only that ' +
+      'the displayed ADDRESS TEXT came from the mailing-address field; coordinates, distance and band membership ' +
+      'come from NCES\'s physical-location geocode and are not affected. Cite the vintages. Distances are straight-line miles; band membership uses unrounded distance.',
     radius_miles: radius,
-    public_schools: pub.status === 'fulfilled' ? pub.value.rows : [],
+    totals: { public: publicTotals, private: privateTotals },
+    public_schools: pub.status === 'fulfilled' ? strip(pub.value.rows) : [],
     public_truncated: pub.status === 'fulfilled' ? pub.value.truncated : undefined,
-    public_error: pub.status === 'rejected' ? String((pub.reason as Error)?.message ?? pub.reason) : undefined,
-    private_schools: priv.status === 'fulfilled' ? priv.value.rows : [],
-    private_error: priv.status === 'rejected' ? String((priv.reason as Error)?.message ?? priv.reason) : undefined,
+    private_schools: priv.status === 'fulfilled' ? strip(priv.value.rows) : [],
+    private_truncated: priv.status === 'fulfilled' ? priv.value.truncated : undefined,
   };
 }
 
