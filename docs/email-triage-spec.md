@@ -161,6 +161,12 @@ processing connection A would skip it while processing connection B in the same 
 
 #### THE LOG-ONLY WEEK — what to read on 2026-09-14
 
+> **Table moved 2026-09-14 (migration `20260914175119`).** Tier-1 stubs now live in `email_tier1_stub`, not
+> `processed_message_ids`. In the old table, email-triage's demote upsert (keyed on `message_id`)
+> overwrote the tier-1 row, so the queries below undercounted in the 09-07→09-14 week. A5 showed 0
+> surviving stubs from 47 hits. See [EMAIL_TRIAGE_REVIEW_2026-09-14.md](EMAIL_TRIAGE_REVIEW_2026-09-14.md).
+> The queries below are updated; results for weeks before 2026-09-14 cannot be recovered.
+
 ##### ⛔ PRECONDITION — run this FIRST. If it is not 100%, stop.
 
 ```sql
@@ -169,7 +175,7 @@ select count(*) tier1_stubs,
          select 1 from emails e where e.message_id = p.message_id)) present_in_emails,
        count(*) filter (where not exists (
          select 1 from emails e where e.message_id = p.message_id)) missing_from_emails
-from processed_message_ids p
+from email_tier1_stub p
 where p.action in ('tier1_bulk','tier1_personal');
 ```
 
@@ -186,7 +192,7 @@ Five questions, five queries. Run all five before flipping `TIER1_MODE` to `'enf
 ```sql
 select tier1_reason, count(*) n, count(distinct sender_email) senders,
        round(count(*)/7.0,1) per_day
-from processed_message_ids
+from email_tier1_stub
 where action='tier1_bulk' and processed_at > now()-interval '7 days'
 group by 1 order by 2 desc;
 ```
@@ -196,7 +202,7 @@ signal is weaker than assumed and the domain list is doing the work — which is
 **Q2. False positives — the question that decides go/no-go.**
 ```sql
 select p.tier1_reason, p.sender_email, count(*) n
-from processed_message_ids p
+from email_tier1_stub p
 join emails e on e.message_id = p.message_id
 join email_object_link l on l.email_id = e.id
 where p.action='tier1_bulk' and p.processed_at > now()-interval '7 days'
@@ -207,7 +213,7 @@ Non-zero means do not enforce that rule. This query only works because log-only 
 
 **Q3. Personal — volume only, by design.**
 ```sql
-select count(*) from processed_message_ids
+select count(*) from email_tier1_stub
 where action='tier1_personal' and processed_at > now()-interval '7 days';
 ```
 No sender, no reason — the CHECK constraint forbids it. If this is 0, ladder B has no list yet and
