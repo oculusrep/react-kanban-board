@@ -13,6 +13,7 @@
  */
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { NCES_ARCGIS, arcgisQueryUrl } from './nces-config.ts';
 
 // Server-side web search. No domain allowlist by design — source quality is a
 // prompt concern (prefer primary sources), not a config concern.
@@ -84,6 +85,28 @@ export const TOOL_DEFINITIONS = [
         longitude: { type: 'number' },
         radius_miles: { type: 'number', default: 3, minimum: 0.5, maximum: 25 },
         min_units: { type: 'integer', default: 0, minimum: 0 },
+      },
+      required: ['latitude', 'longitude'],
+    },
+  },
+  {
+    name: 'query_nearby_schools',
+    description:
+      'Public and private K-12 schools near a point, from NCES — use this, not web search, for the ' +
+      'schools and enrollment category. Public schools come live from NCES Common Core of Data ' +
+      '(locations + characteristics); private schools from the NCES Private School Survey. Every row ' +
+      'carries its own vintage (school year) — cite it. Distances are straight-line miles. ' +
+      'ENROLLMENT IS NOT COMPARABLE ACROSS THE TWO GROUPS: public enrollment includes pre-K, private ' +
+      'enrollment (enrollment_k12_ungraded) excludes it — report them separately, never summed. ' +
+      'enrollment null means NCES did not report a figure: say so, do not estimate. A public school ' +
+      'with status "Future" is planned and not yet open — a growth signal, not current enrollment. ' +
+      'Private addresses flagged address_is_mailing may be a mailing address, not the campus.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        latitude: { type: 'number' },
+        longitude: { type: 'number' },
+        radius_miles: { type: 'number', default: 2, minimum: 0.25, maximum: 10 },
       },
       required: ['latitude', 'longitude'],
     },
@@ -442,6 +465,188 @@ async function queryMunicipalProjects(
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// query_nearby_schools — NCES public (live ArcGIS) + private (PSS table)
+// ---------------------------------------------------------------------------
+
+const PSS_LEVEL: Record<number, string> = { 1: 'Elementary', 2: 'Secondary', 3: 'Combined elementary and secondary' };
+
+/** PSS LOGR/HIGR grade codes: 1 ungraded, 2 PK, 3 K, 4 TK, 5 transitional 1st, 6-17 = grades 1-12. */
+function pssGrade(code: number | null): string | null {
+  if (code == null) return null;
+  if (code === 1) return 'Ungraded';
+  if (code === 2) return 'PK';
+  if (code === 3) return 'K';
+  if (code === 4) return 'TK';
+  if (code === 5) return 'T1';
+  if (code >= 6 && code <= 17) return String(code - 5);
+  return null;
+}
+
+/** ArcGIS REST errors arrive as HTTP 200 with an `error` body — check both. */
+async function arcgisQuery(
+  target: { service: string; layer: number },
+  params: Record<string, string>,
+): Promise<{ features: Array<{ attributes: Record<string, unknown> }>; exceededTransferLimit?: boolean }> {
+  const res = await fetch(arcgisQueryUrl(target), {
+    method: 'POST', // POST keeps long NCESSCH IN (...) lists out of the URL
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ f: 'json', returnGeometry: 'false', ...params }),
+    signal: AbortSignal.timeout(NCES_ARCGIS.timeoutMs),
+  });
+  if (!res.ok) throw new Error(`NCES ${target.service} HTTP ${res.status}`);
+  const body = await res.json();
+  if (body?.error) {
+    throw new Error(`NCES ${target.service} error ${body.error.code ?? ''}: ${body.error.message ?? 'unknown'}`);
+  }
+  return { features: body.features ?? [], exceededTransferLimit: body.exceededTransferLimit };
+}
+
+async function queryPublicSchools(latitude: number, longitude: number, radius: number) {
+  const pt = { lat: latitude, lng: longitude };
+  const loc = await arcgisQuery(NCES_ARCGIS.publicLocations, {
+    geometry: `${longitude},${latitude}`,
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    distance: String(radius),
+    units: 'esriSRUnit_StatuteMile',
+    outFields: 'NCESSCH,NAME,STREET,CITY,STATE,ZIP,LAT,LON,SCHOOLYEAR',
+    resultRecordCount: '2000',
+  });
+
+  const locations = loc.features.map((f) => f.attributes);
+  const ids = [...new Set(locations.map((a) => String(a.NCESSCH)).filter(Boolean))];
+
+  // Characteristics (enrollment, level, grades, status) joined on NCESSCH, in batches.
+  const chars = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < ids.length; i += NCES_ARCGIS.characteristicsBatchSize) {
+    const batch = ids.slice(i, i + NCES_ARCGIS.characteristicsBatchSize);
+    const inList = batch.map((id) => `'${id.replace(/'/g, "''")}'`).join(',');
+    const c = await arcgisQuery(NCES_ARCGIS.publicCharacteristics, {
+      where: `NCESSCH IN (${inList})`,
+      outFields: 'NCESSCH,SURVYEAR,SCHOOL_LEVEL,GSLO,GSHI,TOTAL,SY_STATUS_TEXT,CHARTER_TEXT,VIRTUAL',
+    });
+    for (const f of c.features) chars.set(String(f.attributes.NCESSCH), f.attributes);
+  }
+
+  const rows = locations
+    .map((a) => {
+      const id = String(a.NCESSCH);
+      const c = chars.get(id);
+      const total = typeof c?.TOTAL === 'number' ? c.TOTAL : Number(c?.TOTAL);
+      const lat = Number(a.LAT), lng = Number(a.LON);
+      return {
+        nces_id: id,
+        name: (a.NAME as string) ?? null,
+        address: (a.STREET as string) ?? null,
+        city: (a.CITY as string) ?? null,
+        state: (a.STATE as string) ?? null,
+        level: (c?.SCHOOL_LEVEL as string) ?? null,
+        grades: c?.GSLO && c?.GSHI ? `${c.GSLO}-${c.GSHI}` : null,
+        // Negative TOTAL values are NCES missing / not-applicable / not-reported codes.
+        enrollment_incl_prek: Number.isFinite(total) && total >= 0 ? total : null,
+        status: (c?.SY_STATUS_TEXT as string) ?? null,
+        charter: c?.CHARTER_TEXT === 'Yes' ? true : c?.CHARTER_TEXT === 'No' ? false : null,
+        virtual: (c?.VIRTUAL as string) ?? null,
+        distance_miles: Number.isFinite(lat) && Number.isFinite(lng) ? round1(haversineMiles(pt, { lat, lng })) : null,
+        // Characteristics survey year when joined, else the location layer's school year.
+        vintage: (c?.SURVYEAR as string) ?? (a.SCHOOLYEAR as string) ?? null,
+      };
+    })
+    .filter((r) => r.status !== 'Inactive')
+    .filter((r) => r.distance_miles === null || r.distance_miles <= radius)
+    .sort((x, y) => (x.distance_miles ?? 99) - (y.distance_miles ?? 99));
+
+  return { rows, truncated: !!loc.exceededTransferLimit };
+}
+
+async function queryPrivateSchools(
+  service: SupabaseClient,
+  latitude: number,
+  longitude: number,
+  radius: number,
+) {
+  // Always the newest loaded PSS vintage.
+  const { data: latest, error: yErr } = await service
+    .from('nces_private_school')
+    .select('survey_year')
+    .order('survey_year', { ascending: false })
+    .limit(1);
+  if (yErr) throw new Error(`nces_private_school lookup failed: ${yErr.message}`);
+  const surveyYear = (latest as unknown as Array<{ survey_year: string }> | null)?.[0]?.survey_year;
+  if (!surveyYear) return { rows: [], survey_year: null };
+
+  const pt = { lat: latitude, lng: longitude };
+  const bb = bboxFor(latitude, longitude, radius);
+  const { data, error } = await service
+    .from('nces_private_school')
+    .select(
+      'ppin, school_name, address, city, state, address_is_mailing, latitude, longitude, ' +
+        'enrollment_k12_ungraded, level_code, lowest_grade_code, highest_grade_code, survey_year',
+    )
+    .eq('survey_year', surveyYear)
+    .gte('latitude', bb.south).lte('latitude', bb.north)
+    .gte('longitude', bb.west).lte('longitude', bb.east);
+  if (error) throw new Error(`nces_private_school query failed: ${error.message}`);
+
+  const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>)
+    .map((r) => {
+      const lo = pssGrade(r.lowest_grade_code as number | null);
+      const hi = pssGrade(r.highest_grade_code as number | null);
+      return {
+        pss_id: r.ppin as string,
+        name: r.school_name as string,
+        address: (r.address as string) ?? null,
+        city: (r.city as string) ?? null,
+        state: (r.state as string) ?? null,
+        address_is_mailing: r.address_is_mailing as boolean,
+        level: PSS_LEVEL[r.level_code as number] ?? null,
+        grades: lo && hi ? (lo === hi ? lo : `${lo}-${hi}`) : null,
+        enrollment_k12_ungraded: (r.enrollment_k12_ungraded as number) ?? null,
+        distance_miles: round1(haversineMiles(pt, { lat: Number(r.latitude), lng: Number(r.longitude) })),
+        vintage: r.survey_year as string,
+      };
+    })
+    .filter((r) => r.distance_miles <= radius)
+    .sort((x, y) => x.distance_miles - y.distance_miles)
+    .slice(0, 60);
+
+  return { rows, survey_year: surveyYear };
+}
+
+async function queryNearbySchools(
+  service: SupabaseClient,
+  args: { latitude: number; longitude: number; radius_miles?: number },
+) {
+  const { latitude, longitude } = args;
+  const radius = Math.min(Math.max(args.radius_miles ?? 2, 0.25), 10);
+
+  // The two sources fail independently — a down NCES service must not hide the
+  // private schools we already hold, and vice versa.
+  const [pub, priv] = await Promise.allSettled([
+    queryPublicSchools(latitude, longitude, radius),
+    queryPrivateSchools(service, latitude, longitude, radius),
+  ]);
+
+  return {
+    note:
+      'Two groups from two NCES surveys — report them separately. Distances are straight-line miles. ' +
+      'Each row has its own vintage (school year); cite it. Public enrollment_incl_prek INCLUDES pre-K; ' +
+      'private enrollment_k12_ungraded EXCLUDES it, so the two are not comparable and must not be summed. ' +
+      'A null enrollment means NCES did not report one — say that, do not estimate. Public status "Future" ' +
+      'is a planned school not yet open (a growth signal); inactive schools are already excluded. Private ' +
+      'rows with address_is_mailing=true may show a mailing address rather than the campus.',
+    radius_miles: radius,
+    public_schools: pub.status === 'fulfilled' ? pub.value.rows : [],
+    public_truncated: pub.status === 'fulfilled' ? pub.value.truncated : undefined,
+    public_error: pub.status === 'rejected' ? String((pub.reason as Error)?.message ?? pub.reason) : undefined,
+    private_schools: priv.status === 'fulfilled' ? priv.value.rows : [],
+    private_error: priv.status === 'rejected' ? String((priv.reason as Error)?.message ?? priv.reason) : undefined,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
@@ -456,6 +661,8 @@ export async function executeTool(
       return await queryTrafficCounts(service, input as never);
     case 'query_nearby_starbucks':
       return await queryNearbyStarbucks(service, input as never);
+    case 'query_nearby_schools':
+      return await queryNearbySchools(service, input as never);
     case 'query_municipal_projects':
       return await queryMunicipalProjects(service, input as never, ctx.siteSubmitId);
     default:
