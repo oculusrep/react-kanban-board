@@ -180,3 +180,240 @@ export async function downloadInvoiceAttachments(): Promise<Array<{ data: Uint8A
 
   return results.map(({ data, name }) => ({ data, name }))
 }
+
+// ============================================================================
+// WRITE PATH: server-side upload into a site submit's own folder.
+//
+// Until now this module was download-only. These functions let an edge function
+// write a file (e.g. research CSVs) into /Salesforce Documents/Site Submits/... with
+// the same folder naming, path guard and dropbox_mapping bookkeeping the browser
+// uses (src/services/dropboxService.ts), so a folder created here is the same folder
+// the Files tab shows.
+// ============================================================================
+
+const DROPBOX_API_URL = 'https://api.dropboxapi.com/2'
+const DROPBOX_UPLOAD_URL = 'https://content.dropboxapi.com/2/files/upload'
+export const DROPBOX_BASE_PATH = '/Salesforce Documents'
+
+/**
+ * Dropbox-API-Arg is an HTTP header, and headers must be ASCII. Dropbox requires
+ * "HTTP header safe JSON": every UTF-16 code unit at or above 0x7F escaped as a JSON
+ * unicode escape. A site submit named "Café Corner" would otherwise corrupt the header
+ * and the upload would fail. Escaping per code unit keeps surrogate pairs valid JSON.
+ * https://www.dropbox.com/developers/reference/json-encoding
+ */
+export function headerSafeJson(value: unknown): string {
+  const json = JSON.stringify(value)
+  let out = ''
+  for (let i = 0; i < json.length; i++) {
+    const code = json.charCodeAt(i)
+    out += code >= 0x7f ? '\\u' + code.toString(16).padStart(4, '0') : json[i]
+  }
+  return out
+}
+
+/**
+ * Server-side port of the browser's validatePath, made stricter. The browser checks
+ * only startsWith('/Salesforce Documents'), which also admits '/Salesforce DocumentsX/...'.
+ * Here the path must sit INSIDE the base folder, with no '.'/'..' or empty segments,
+ * no backslashes or control characters. This copy is the real control: the browser's
+ * runs where the caller controls the code.
+ */
+export function validateDropboxPath(path: string): void {
+  if (typeof path !== 'string' || path.length === 0 || path.length > 1000) {
+    throw new Error('Dropbox path rejected: empty or too long')
+  }
+  if (!path.startsWith(DROPBOX_BASE_PATH + '/')) {
+    throw new Error(`Dropbox path rejected: must be inside ${DROPBOX_BASE_PATH}/`)
+  }
+  for (let i = 0; i < path.length; i++) {
+    const code = path.charCodeAt(i)
+    if (code < 0x20 || code === 0x7f || code === 0x5c /* backslash */) {
+      throw new Error('Dropbox path rejected: control character or backslash')
+    }
+  }
+  const segments = path.slice(1).split('/')
+  if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+    throw new Error('Dropbox path rejected: empty, "." or ".." segment')
+  }
+}
+
+/** Same cleaning as buildEntityFolderPath in src/services/dropboxService.ts; keep them identical. */
+export function cleanFolderName(name: string): string {
+  return name.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/** Same as siteSubmitFolderName in src/services/dropboxService.ts; keep them identical. */
+export function siteSubmitFolderName(name: string | null | undefined, id: string): string {
+  const base = (name ?? '').trim() || 'Unnamed Site Submit'
+  return `${base} - ${id.slice(0, 8)}`
+}
+
+export function siteSubmitFolderPath(name: string | null | undefined, id: string): string {
+  return `${DROPBOX_BASE_PATH}/Site Submits/${cleanFolderName(siteSubmitFolderName(name, id))}`
+}
+
+/** One access token per invocation; refreshed once on 401, like downloadFile. */
+let cachedAccessToken: string | null = null
+
+async function dropboxRequest(
+  url: string,
+  init: { headers: Record<string, string>; body?: BodyInit },
+): Promise<Response> {
+  const credentials = getDropboxCredentials()
+  const token = cachedAccessToken ?? credentials.accessToken
+  const send = (t: string) =>
+    fetch(url, { method: 'POST', headers: { ...init.headers, Authorization: `Bearer ${t}` }, body: init.body })
+
+  let response = await send(token)
+  if (response.status === 401 && credentials.refreshToken) {
+    console.log('Dropbox token expired, attempting refresh...')
+    cachedAccessToken = await refreshAccessToken(credentials)
+    response = await send(cachedAccessToken)
+  }
+  return response
+}
+
+async function dropboxRpc(endpoint: string, args: unknown): Promise<Response> {
+  return dropboxRequest(`${DROPBOX_API_URL}/${endpoint}`, {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  })
+}
+
+export async function dropboxFolderExists(path: string): Promise<boolean> {
+  validateDropboxPath(path)
+  const res = await dropboxRpc('files/get_metadata', { path })
+  if (res.ok) {
+    const meta = await res.json()
+    return meta['.tag'] === 'folder'
+  }
+  const text = await res.text()
+  if (res.status === 409 && text.includes('not_found')) return false
+  throw new Error(`Dropbox get_metadata failed: ${res.status} - ${text}`)
+}
+
+/** Idempotent: an existing folder at the path counts as success. */
+export async function dropboxCreateFolder(path: string): Promise<void> {
+  validateDropboxPath(path)
+  const res = await dropboxRpc('files/create_folder_v2', { path, autorename: false })
+  if (res.ok) return
+  const text = await res.text()
+  if (res.status === 409 && text.includes('conflict')) {
+    if (await dropboxFolderExists(path)) return
+    throw new Error(`Dropbox create_folder conflict at ${path}, and it is not a folder`)
+  }
+  throw new Error(`Dropbox create_folder failed: ${res.status} - ${text}`)
+}
+
+export interface UploadResult {
+  path: string
+  size: number
+  rev: string
+}
+
+/**
+ * Upload bytes to an exact Dropbox path (single request; fine up to 150 MB).
+ *
+ * mode 'overwrite' replaces an existing file in place. Dropbox keeps the previous
+ * version in the file's revision history, so a re-run is recoverable. mode 'add' never
+ * replaces; with autorename it writes "name (1).csv".
+ */
+export async function uploadFile(
+  path: string,
+  data: Uint8Array,
+  opts: { mode?: 'add' | 'overwrite'; autorename?: boolean } = {},
+): Promise<UploadResult> {
+  validateDropboxPath(path)
+  const mode = opts.mode ?? 'add'
+  const res = await dropboxRequest(DROPBOX_UPLOAD_URL, {
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'Dropbox-API-Arg': headerSafeJson({
+        path,
+        mode,
+        autorename: opts.autorename ?? mode === 'add',
+        mute: true,
+        strict_conflict: false,
+      }),
+    },
+    // Copy into a plain ArrayBuffer-backed view: BodyInit's typing rejects
+    // Uint8Array<ArrayBufferLike> (it could be SharedArrayBuffer-backed).
+    body: new Uint8Array(data).buffer as ArrayBuffer,
+  })
+  if (!res.ok) {
+    throw new Error(`Dropbox upload failed for ${path}: ${res.status} - ${await res.text()}`)
+  }
+  const meta = await res.json()
+  console.log(`Uploaded ${meta.path_display ?? path} (${meta.size} bytes)`)
+  return { path: meta.path_display ?? path, size: meta.size, rev: meta.rev }
+}
+
+/**
+ * The site submit's own folder: read from dropbox_mapping, or created and mapped.
+ *
+ * - Mapping exists and the folder exists: that path.
+ * - Mapping exists but the folder was deleted in Dropbox: recreate at the mapped path.
+ * - No mapping: create /Salesforce Documents/Site Submits/{name} - {id8} (creating the
+ *   'Site Submits' parent if needed) and insert the mapping with the same sf_id
+ *   placeholder the browser uses. A concurrent insert (unique violation) re-reads.
+ *
+ * `service` must be a service-role client: dropbox_mapping writes are internal-only
+ * under RLS.
+ */
+// deno-lint-ignore no-explicit-any
+export async function resolveSiteSubmitFolder(service: any, siteSubmitId: string): Promise<string> {
+  const readMapping = async (): Promise<string | null> => {
+    const { data, error } = await service
+      .from('dropbox_mapping')
+      .select('dropbox_folder_path')
+      .eq('entity_type', 'site_submit')
+      .eq('entity_id', siteSubmitId)
+      .maybeSingle()
+    if (error) throw new Error(`dropbox_mapping lookup failed: ${error.message}`)
+    return data?.dropbox_folder_path ?? null
+  }
+
+  const mapped = await readMapping()
+  if (mapped) {
+    validateDropboxPath(mapped)
+    if (!(await dropboxFolderExists(mapped))) await ensureFolderWithParent(mapped)
+    return mapped
+  }
+
+  const { data: ss, error: ssErr } = await service
+    .from('site_submit')
+    .select('id, site_submit_name')
+    .eq('id', siteSubmitId)
+    .maybeSingle()
+  if (ssErr) throw new Error(`site_submit lookup failed: ${ssErr.message}`)
+  if (!ss) throw new Error(`site_submit ${siteSubmitId} not found`)
+
+  const path = siteSubmitFolderPath(ss.site_submit_name, ss.id)
+  await ensureFolderWithParent(path)
+
+  const { error: insErr } = await service.from('dropbox_mapping').insert({
+    entity_type: 'site_submit',
+    entity_id: siteSubmitId,
+    dropbox_folder_path: path,
+    sf_id: `AUTO-${siteSubmitId.substring(0, 13)}`, // same placeholder as useDropboxFiles
+    sfdb_file_found: false,
+    last_verified_at: new Date().toISOString(),
+  })
+  if (insErr) {
+    if (insErr.code === '23505') {
+      const raced = await readMapping()
+      if (raced) return raced
+    }
+    throw new Error(`dropbox_mapping insert failed: ${insErr.message}`)
+  }
+  return path
+}
+
+async function ensureFolderWithParent(path: string): Promise<void> {
+  const parent = path.substring(0, path.lastIndexOf('/'))
+  if (parent && parent !== DROPBOX_BASE_PATH && !(await dropboxFolderExists(parent))) {
+    await dropboxCreateFolder(parent)
+  }
+  await dropboxCreateFolder(path)
+}
