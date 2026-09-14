@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import DropboxService, { DropboxFile } from '../services/dropboxService';
+import DropboxService, { DropboxFile, siteSubmitFolderName } from '../services/dropboxService';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 
 // Type for files that can be uploaded - supports both FileList and File[]
@@ -28,12 +28,12 @@ interface UseDropboxFilesReturn {
 
 /**
  * React hook to manage Dropbox files for a specific entity (client/property/deal/property_unit)
- * @param entityType - Type of entity: 'client' | 'property' | 'deal' | 'contact' | 'property_unit'
+ * @param entityType - Type of entity: 'client' | 'property' | 'deal' | 'contact' | 'property_unit' | 'comp_property' | 'site_submit'
  * @param entityId - UUID of the entity
  * @returns Object containing files, loading states, and file management functions
  */
 export function useDropboxFiles(
-  entityType: 'client' | 'property' | 'deal' | 'contact' | 'property_unit' | 'comp_property',
+  entityType: 'client' | 'property' | 'deal' | 'contact' | 'property_unit' | 'comp_property' | 'site_submit',
   entityId: string | null
 ): UseDropboxFilesReturn {
   const [files, setFiles] = useState<DropboxFile[]>([]);
@@ -247,6 +247,10 @@ export function useDropboxFiles(
           tableName = 'comp_property';
           nameField = 'name,address,city,state';
           break;
+        case 'site_submit':
+          tableName = 'site_submit';
+          nameField = 'site_submit_name';
+          break;
         default:
           return null;
       }
@@ -268,6 +272,9 @@ export function useDropboxFiles(
         const firstName = data.first_name || '';
         const lastName = data.last_name || '';
         return `${firstName} ${lastName}`.trim() || 'Unnamed Contact';
+      } else if (entityType === 'site_submit') {
+        // "{name} - {id8}" — see siteSubmitFolderName for why the suffix is required.
+        return siteSubmitFolderName((data as unknown as { site_submit_name: string | null }).site_submit_name, entityId);
       } else if (entityType === 'comp_property') {
         // Folder name: "<comp name or address> - City, ST" so comps are easy to tell apart in Dropbox.
         const base = data.name || data.address || `Comp ${entityId.slice(0, 8)}`;

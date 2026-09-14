@@ -1,8 +1,8 @@
-import DropboxService from './dropboxService';
+import DropboxService, { siteSubmitFolderName } from './dropboxService';
 import { supabase } from '../lib/supabaseClient';
 import { prepareInsert } from '../lib/supabaseHelpers';
 
-type EntityType = 'property' | 'client' | 'contact' | 'deal';
+type EntityType = 'property' | 'client' | 'contact' | 'deal' | 'site_submit';
 
 /**
  * Service to sync property names with Dropbox folder names
@@ -212,6 +212,41 @@ export class DropboxPropertySyncService {
    */
   async syncDealName(dealId: string, oldName: string, newName: string) {
     return this.syncEntityName(dealId, 'deal', oldName, newName);
+  }
+
+  /**
+   * Keep a site submit's own Dropbox folder named after it.
+   *
+   * Two differences from the other entity types:
+   *  - The folder name is "{name} - {id8}" (siteSubmitFolderName), so both names are
+   *    decorated before handing off to syncEntityName — the id suffix never changes.
+   *  - Most site submits have NO folder of their own (they use the property folder), so
+   *    a missing mapping is the normal case and a silent no-op, not an error. The generic
+   *    auto-heal probe is skipped: site-submit folders are only ever created through OVIS,
+   *    which always writes the mapping.
+   */
+  async syncSiteSubmitName(
+    siteSubmitId: string,
+    oldName: string | null,
+    newName: string | null
+  ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+    if ((oldName ?? '') === (newName ?? '')) return { success: true, skipped: true };
+
+    const { data: mapping, error } = await supabase
+      .from('dropbox_mapping')
+      .select('id')
+      .eq('entity_type', 'site_submit')
+      .eq('entity_id', siteSubmitId)
+      .maybeSingle();
+    if (error) return { success: false, error: `Could not check Dropbox folder: ${error.message}` };
+    if (!mapping) return { success: true, skipped: true };
+
+    return this.syncEntityName(
+      siteSubmitId,
+      'site_submit',
+      siteSubmitFolderName(oldName, siteSubmitId),
+      siteSubmitFolderName(newName, siteSubmitId)
+    );
   }
 
   /**

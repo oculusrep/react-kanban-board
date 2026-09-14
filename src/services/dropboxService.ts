@@ -11,6 +11,20 @@ export interface DropboxFile {
   shared_link: string | null;
 }
 
+/**
+ * Folder name for a site submit's own Dropbox folder: "{site_submit_name} - {first 8 of id}".
+ *
+ * The id suffix is required, not decoration: site_submit_name is not unique (149 of
+ * 3,200 rows share a name with another site submit), and createFolderForEntity reuses a
+ * folder when the path already exists — so a bare name would silently put two site
+ * submits' files in one folder. Used for both creation and rename sync so the two can
+ * never disagree about the name. Character cleaning happens in buildEntityFolderPath.
+ */
+export function siteSubmitFolderName(name: string | null | undefined, id: string): string {
+  const base = (name ?? '').trim() || 'Unnamed Site Submit';
+  return `${base} - ${id.slice(0, 8)}`;
+}
+
 class DropboxService {
   private dbx: Dropbox;
   private readonly ALLOWED_BASE_PATH = '/Salesforce Documents';
@@ -549,12 +563,12 @@ class DropboxService {
 
   /**
    * Build folder path for an entity based on entity type
-   * @param entityType - Type of entity ('property', 'client', 'deal', 'contact')
+   * @param entityType - Type of entity ('property', 'client', 'deal', 'contact', 'comp_property', 'site_submit')
    * @param entityName - Name of the entity
    * @returns Clean folder path in proper subfolder
    */
   buildEntityFolderPath(
-    entityType: 'property' | 'client' | 'deal' | 'contact' | 'comp_property',
+    entityType: 'property' | 'client' | 'deal' | 'contact' | 'comp_property' | 'site_submit',
     entityName: string
   ): string {
     // Map entity types to their subfolder names
@@ -563,7 +577,8 @@ class DropboxService {
       client: 'Accounts',  // Clients go in Accounts folder
       deal: 'Opportunities',  // Deals go in Opportunities folder
       contact: 'Contacts',
-      comp_property: 'Comps'  // Comparable database records
+      comp_property: 'Comps',  // Comparable database records
+      site_submit: 'Site Submits'  // Site submit's own folder; name via siteSubmitFolderName()
     };
 
     const subfolder = subfolderMap[entityType];
@@ -585,7 +600,7 @@ class DropboxService {
    * @returns Created or existing folder info
    */
   async createFolderForEntity(
-    entityType: 'property' | 'client' | 'deal' | 'contact' | 'comp_property',
+    entityType: 'property' | 'client' | 'deal' | 'contact' | 'comp_property' | 'site_submit',
     entityName: string
   ): Promise<DropboxFile> {
     const folderPath = this.buildEntityFolderPath(entityType, entityName);
@@ -605,6 +620,15 @@ class DropboxService {
         modified: null,
         shared_link: null
       };
+    }
+
+    // Make sure the type's parent folder exists first. Every existing type's parent
+    // (Properties, Accounts, Opportunities, ...) was provisioned long ago; 'Site Submits'
+    // is new, and we don't rely on create_folder_v2 creating intermediate folders.
+    const parentPath = folderPath.substring(0, folderPath.lastIndexOf('/'));
+    if (parentPath && parentPath !== this.ALLOWED_BASE_PATH && !(await this.folderExists(parentPath))) {
+      console.log(`📁 Creating missing parent folder: ${parentPath}`);
+      await this.createFolder(parentPath);
     }
 
     // Create the folder

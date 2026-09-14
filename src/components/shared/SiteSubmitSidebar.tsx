@@ -842,13 +842,39 @@ export default function SiteSubmitSidebar({
           showToast('Save the site submit before renaming it', { type: 'error' });
           return;
         }
+        const previousName = siteSubmit.site_submit_name ?? null;
+        const nextName = trimmed || null;
         const { error: updateError } = await supabase
           .from('site_submit')
-          .update({ site_submit_name: trimmed || null })
+          .update({ site_submit_name: nextName })
           .eq('id', siteSubmit.id);
         if (updateError) throw updateError;
-        handleUpdate({ site_submit_name: trimmed || null });
-        showToast('Site submit name updated', { type: 'success' });
+        handleUpdate({ site_submit_name: nextName });
+
+        // Keep the site submit's own Dropbox folder named after it, matching the deal
+        // rename below. Best-effort: a Dropbox failure must not roll back the DB write.
+        // Site submits without their own folder are a silent no-op.
+        try {
+          const result = await getDropboxPropertySyncService().syncSiteSubmitName(
+            siteSubmit.id,
+            previousName,
+            nextName
+          );
+          if (!result.success) {
+            showToast(
+              `Site submit renamed in OVIS, but Dropbox folder sync failed: ${result.error || 'Unknown error'}`,
+              { type: 'error', duration: 6000 }
+            );
+          } else {
+            showToast('Site submit name updated', { type: 'success' });
+          }
+        } catch (syncErr) {
+          console.error('Dropbox site submit sync threw:', syncErr);
+          showToast('Site submit renamed in OVIS, but Dropbox folder sync threw an error.', {
+            type: 'error',
+            duration: 6000,
+          });
+        }
       } else {
         if (!siteSubmit.deal_id) return;
         const previousName = siteSubmit.deal_name || '';

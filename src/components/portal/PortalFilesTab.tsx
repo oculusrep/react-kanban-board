@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDropboxFiles } from '../../hooks/useDropboxFiles';
+import { useSiteSubmitDropboxFolder } from '../../hooks/useSiteSubmitDropboxFolder';
 import { supabase } from '../../lib/supabaseClient';
 
 interface PortalFilesTabProps {
@@ -10,16 +11,21 @@ interface PortalFilesTabProps {
   isInternalUser: boolean; // True for brokers/admins who can see/modify visibility
 }
 
+// Three Dropbox roots per site: the property's folder, the site submit's own folder
+// (/Salesforce Documents/Site Submits/{name} - {id8}), and the deal's folder.
+type FileSection = 'property' | 'site_submit' | 'deal';
+
 interface FileVisibilityOverride {
   dropbox_path: string;
   is_visible: boolean;
 }
 
 /**
- * PortalFilesTab - Displays files from Property and Deal Dropbox folders
+ * PortalFilesTab - Displays files from Property, Site Submit and Deal Dropbox folders
  *
  * Features:
- * - Two sections: Property Files (visible by default) and Deal Files (hidden by default)
+ * - Three sections: Property Files (visible by default), Site Submit Files and Deal Files
+ *   (both hidden by default — site-submit folders hold internal work such as research exports)
  * - Brokers can toggle visibility for individual files/folders
  * - Drag & drop upload to either section
  * - View-only for clients (only see visible files)
@@ -37,33 +43,44 @@ export default function PortalFilesTab({
   // Deal files hook
   const dealFiles = useDropboxFiles('deal', dealId || '');
 
+  // Site submit's own folder. Most site submits don't have one yet; the first upload
+  // into this section creates it.
+  const siteSubmitFiles = useDropboxFiles('site_submit', siteSubmitId || '');
+  // Own folder else property folder — used here only to explain the empty section.
+  const siteSubmitFolder = useSiteSubmitDropboxFolder(siteSubmitId, propertyId, siteSubmitFiles.folderPath);
+
   // Visibility overrides state
   const [propertyVisibility, setPropertyVisibility] = useState<Map<string, boolean>>(new Map());
   const [dealVisibility, setDealVisibility] = useState<Map<string, boolean>>(new Map());
+  const [siteSubmitVisibility, setSiteSubmitVisibility] = useState<Map<string, boolean>>(new Map());
   const [visibilityLoading, setVisibilityLoading] = useState(false);
 
   // Current path for navigation within each section
   const [propertyCurrentPath, setPropertyCurrentPath] = useState('');
   const [dealCurrentPath, setDealCurrentPath] = useState('');
+  const [siteSubmitCurrentPath, setSiteSubmitCurrentPath] = useState('');
 
   // Drag state for each section (native file drop = upload)
   const [propertyDragOver, setPropertyDragOver] = useState(false);
   const [dealDragOver, setDealDragOver] = useState(false);
+  const [siteSubmitDragOver, setSiteSubmitDragOver] = useState(false);
 
   // Drag state for moving an existing file/folder into another folder (internal move)
   const [movingItem, setMovingItem] = useState<
-    { path: string; name: string; type: string; section: 'property' | 'deal' } | null
+    { path: string; name: string; type: string; section: FileSection } | null
   >(null);
   const [moveDropTarget, setMoveDropTarget] = useState<string | null>(null);
-  const [moveError, setMoveError] = useState<{ section: 'property' | 'deal'; message: string } | null>(null);
+  const [moveError, setMoveError] = useState<{ section: FileSection; message: string } | null>(null);
 
   // Upload errors
   const [propertyUploadError, setPropertyUploadError] = useState<string | null>(null);
   const [dealUploadError, setDealUploadError] = useState<string | null>(null);
+  const [siteSubmitUploadError, setSiteSubmitUploadError] = useState<string | null>(null);
 
   // Collapsed state for sections
   const [propertyCollapsed, setPropertyCollapsed] = useState(false);
   const [dealCollapsed, setDealCollapsed] = useState(false);
+  const [siteSubmitCollapsed, setSiteSubmitCollapsed] = useState(false);
 
   // Delete confirmation state
   const [deleteConfirmPath, setDeleteConfirmPath] = useState<string | null>(null);
@@ -72,18 +89,35 @@ export default function PortalFilesTab({
   // File input refs for upload buttons
   const propertyFileInputRef = useRef<HTMLInputElement>(null);
   const dealFileInputRef = useRef<HTMLInputElement>(null);
+  const siteSubmitFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Per-section lookups, so handlers don't need an if/else chain per section.
+  const sectionHooks: Record<FileSection, ReturnType<typeof useDropboxFiles>> = {
+    property: propertyFiles,
+    site_submit: siteSubmitFiles,
+    deal: dealFiles,
+  };
+  const sectionCurrentPath: Record<FileSection, string> = {
+    property: propertyCurrentPath,
+    site_submit: siteSubmitCurrentPath,
+    deal: dealCurrentPath,
+  };
+  const setSectionDragOver = (section: FileSection, value: boolean) =>
+    ({ property: setPropertyDragOver, site_submit: setSiteSubmitDragOver, deal: setDealDragOver })[section](value);
+  const setSectionUploadError = (section: FileSection, value: string | null) =>
+    ({ property: setPropertyUploadError, site_submit: setSiteSubmitUploadError, deal: setDealUploadError })[section](value);
 
   // Create folder state (shared — only one section creates at a time)
-  const [creatingFolderFor, setCreatingFolderFor] = useState<'property' | 'deal' | null>(null);
+  const [creatingFolderFor, setCreatingFolderFor] = useState<FileSection | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [createFolderError, setCreateFolderError] = useState<string | null>(null);
 
-  const handleCreateFolder = async (entityType: 'property' | 'deal') => {
+  const handleCreateFolder = async (entityType: FileSection) => {
     const trimmed = newFolderName.trim();
     if (!trimmed) return;
-    const hook = entityType === 'property' ? propertyFiles : dealFiles;
-    const currentPath = entityType === 'property' ? propertyCurrentPath : dealCurrentPath;
+    const hook = sectionHooks[entityType];
+    const currentPath = sectionCurrentPath[entityType];
     setCreatingFolder(true);
     setCreateFolderError(null);
     try {
@@ -141,6 +175,22 @@ export default function PortalFilesTab({
             setDealVisibility(map);
           }
         }
+
+        // Fetch site submit visibility overrides
+        if (siteSubmitId) {
+          const { data: ssOverrides } = await supabase.rpc(
+            'get_portal_file_visibility_overrides',
+            { p_entity_type: 'site_submit', p_entity_id: siteSubmitId }
+          );
+
+          if (ssOverrides) {
+            const map = new Map<string, boolean>();
+            (ssOverrides as FileVisibilityOverride[]).forEach(o => {
+              map.set(o.dropbox_path, o.is_visible);
+            });
+            setSiteSubmitVisibility(map);
+          }
+        }
       } catch (err) {
         console.error('Error fetching visibility overrides:', err);
       } finally {
@@ -149,11 +199,11 @@ export default function PortalFilesTab({
     };
 
     fetchVisibilityOverrides();
-  }, [propertyId, dealId]);
+  }, [propertyId, dealId, siteSubmitId]);
 
   // Check if a file is visible in portal
   const isFileVisible = useCallback(
-    (path: string, entityType: 'property' | 'deal', visibilityMap: Map<string, boolean>) => {
+    (path: string, entityType: FileSection, visibilityMap: Map<string, boolean>) => {
       // Check for exact path override
       if (visibilityMap.has(path)) {
         return visibilityMap.get(path)!;
@@ -174,7 +224,9 @@ export default function PortalFilesTab({
         return visibilityValue;
       }
 
-      // Default: property = visible, deal = hidden
+      // Default: property = visible; site submit and deal = hidden. Site-submit folders
+      // hold internal work (e.g. research CSVs) that must not reach clients unless a
+      // broker explicitly shares a file.
       return entityType === 'property';
     },
     []
@@ -182,7 +234,7 @@ export default function PortalFilesTab({
 
   // Toggle file/folder visibility
   const toggleVisibility = useCallback(
-    async (path: string, entityType: 'property' | 'deal', entityId: string, currentlyVisible: boolean) => {
+    async (path: string, entityType: FileSection, entityId: string, currentlyVisible: boolean) => {
       const newVisibility = !currentlyVisible;
 
       try {
@@ -198,22 +250,19 @@ export default function PortalFilesTab({
         });
 
         // Update local state
-        if (entityType === 'property') {
-          setPropertyVisibility(prev => {
-            const newMap = new Map(prev);
-            newMap.set(path, newVisibility);
-            return newMap;
-          });
-        } else {
-          setDealVisibility(prev => {
-            const newMap = new Map(prev);
-            newMap.set(path, newVisibility);
-            return newMap;
-          });
-        }
+        const setVisibility = {
+          property: setPropertyVisibility,
+          site_submit: setSiteSubmitVisibility,
+          deal: setDealVisibility,
+        }[entityType];
+        setVisibility(prev => {
+          const newMap = new Map(prev);
+          newMap.set(path, newVisibility);
+          return newMap;
+        });
 
-        // If sharing a deal file, add chat notification
-        if (entityType === 'deal' && newVisibility && siteSubmitId) {
+        // Sharing a hidden-by-default file (deal or site submit) announces it in chat
+        if ((entityType === 'deal' || entityType === 'site_submit') && newVisibility && siteSubmitId) {
           const fileName = path.split('/').pop() || 'file';
           await addFileShareNotification(siteSubmitId, fileName, path);
         }
@@ -258,7 +307,7 @@ export default function PortalFilesTab({
       files: any[],
       folderPath: string | null,
       currentPath: string,
-      entityType: 'property' | 'deal',
+      entityType: FileSection,
       visibilityMap: Map<string, boolean>
     ) => {
       console.log(`🔍 [${entityType}] getVisibleFiles:`, {
@@ -316,130 +365,69 @@ export default function PortalFilesTab({
   );
 
   // Handle drag events
-  const handleDragOver = (e: React.DragEvent, section: 'property' | 'deal') => {
+  const handleDragOver = (e: React.DragEvent, section: FileSection) => {
     // Only treat drags carrying OS files as uploads. Internal item moves are
     // handled per-folder/breadcrumb and must not trigger the upload overlay.
     if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     e.stopPropagation();
-    if (section === 'property') {
-      setPropertyDragOver(true);
-    } else {
-      setDealDragOver(true);
+    setSectionDragOver(section, true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent, section: FileSection) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSectionDragOver(section, false);
+  };
+
+  // Upload into a section's folder (creates the folder + mapping on first upload).
+  // Property and deal uploads post a client-visible "shared a file" chat notice, as before.
+  // Site submit uploads do NOT: those files are hidden by default, and announcing them
+  // would leak internal filenames to the client. Sharing one via the eye toggle posts it.
+  const uploadToSection = async (section: FileSection, fileList: File[]) => {
+    const hook = sectionHooks[section];
+    const currentPath = sectionCurrentPath[section];
+    try {
+      setSectionUploadError(section, null);
+      await hook.uploadFiles(fileList as any, currentPath);
+      await hook.refreshFiles();
+      if (section === 'site_submit') return;
+      if (siteSubmitId && hook.folderPath) {
+        for (const file of fileList) {
+          const filePath = `${hook.folderPath}${currentPath}/${file.name}`;
+          await addFileShareNotification(siteSubmitId, file.name, filePath);
+        }
+      } else {
+        console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      setSectionUploadError(section, 'Failed to upload files');
     }
   };
 
-  const handleDragLeave = (e: React.DragEvent, section: 'property' | 'deal') => {
+  const handleDrop = async (e: React.DragEvent, section: FileSection) => {
     e.preventDefault();
     e.stopPropagation();
-    if (section === 'property') {
-      setPropertyDragOver(false);
-    } else {
-      setDealDragOver(false);
-    }
-  };
-
-  const handleDrop = async (e: React.DragEvent, section: 'property' | 'deal') => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (section === 'property') {
-      setPropertyDragOver(false);
-    } else {
-      setDealDragOver(false);
-    }
+    setSectionDragOver(section, false);
 
     if (!canUpload) return;
 
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
 
-    try {
-      if (section === 'property') {
-        setPropertyUploadError(null);
-        await propertyFiles.uploadFiles(Array.from(files) as any, propertyCurrentPath);
-        await propertyFiles.refreshFiles();
-        // Notify about uploaded files (property files are visible by default)
-        console.log('📁 Property upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath, 'currentPath:', propertyCurrentPath);
-        if (siteSubmitId && propertyFiles.folderPath) {
-          for (const file of Array.from(files)) {
-            const filePath = `${propertyFiles.folderPath}${propertyCurrentPath}/${file.name}`;
-            await addFileShareNotification(siteSubmitId, file.name, filePath);
-          }
-        } else {
-          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
-        }
-      } else {
-        setDealUploadError(null);
-        await dealFiles.uploadFiles(Array.from(files) as any, dealCurrentPath);
-        await dealFiles.refreshFiles();
-        // Notify about uploaded files
-        console.log('📁 Deal upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath, 'currentPath:', dealCurrentPath);
-        if (siteSubmitId && dealFiles.folderPath) {
-          for (const file of Array.from(files)) {
-            const filePath = `${dealFiles.folderPath}${dealCurrentPath}/${file.name}`;
-            await addFileShareNotification(siteSubmitId, file.name, filePath);
-          }
-        } else {
-          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
-        }
-      }
-    } catch (err) {
-      console.error('Upload error:', err);
-      if (section === 'property') {
-        setPropertyUploadError('Failed to upload files');
-      } else {
-        setDealUploadError('Failed to upload files');
-      }
-    }
+    await uploadToSection(section, Array.from(files));
   };
 
   // Handle file input upload
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    section: 'property' | 'deal'
+    section: FileSection
   ) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
 
-    try {
-      if (section === 'property') {
-        setPropertyUploadError(null);
-        await propertyFiles.uploadFiles(selectedFiles as any, propertyCurrentPath);
-        await propertyFiles.refreshFiles();
-        // Notify about uploaded files (property files are visible by default)
-        console.log('📁 Property file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath, 'currentPath:', propertyCurrentPath);
-        if (siteSubmitId && propertyFiles.folderPath) {
-          for (const file of Array.from(selectedFiles)) {
-            const filePath = `${propertyFiles.folderPath}${propertyCurrentPath}/${file.name}`;
-            await addFileShareNotification(siteSubmitId, file.name, filePath);
-          }
-        } else {
-          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
-        }
-      } else {
-        setDealUploadError(null);
-        await dealFiles.uploadFiles(selectedFiles as any, dealCurrentPath);
-        await dealFiles.refreshFiles();
-        // Notify about uploaded files
-        console.log('📁 Deal file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath, 'currentPath:', dealCurrentPath);
-        if (siteSubmitId && dealFiles.folderPath) {
-          for (const file of Array.from(selectedFiles)) {
-            const filePath = `${dealFiles.folderPath}${dealCurrentPath}/${file.name}`;
-            await addFileShareNotification(siteSubmitId, file.name, filePath);
-          }
-        } else {
-          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
-        }
-      }
-    } catch (err) {
-      console.error('Upload error:', err);
-      if (section === 'property') {
-        setPropertyUploadError('Failed to upload files');
-      } else {
-        setDealUploadError('Failed to upload files');
-      }
-    }
+    await uploadToSection(section, Array.from(selectedFiles));
 
     // Clear the input
     e.target.value = '';
@@ -451,7 +439,7 @@ export default function PortalFilesTab({
   const handleMoveDragStart = (
     e: React.DragEvent,
     item: any,
-    section: 'property' | 'deal'
+    section: FileSection
   ) => {
     if (!canUpload) return;
     setMovingItem({ path: item.path, name: item.name, type: item.type, section });
@@ -467,7 +455,7 @@ export default function PortalFilesTab({
   };
 
   // Whether the dragged item can drop into targetPath (a folder or a section root)
-  const canDropInto = (targetPath: string, section: 'property' | 'deal') => {
+  const canDropInto = (targetPath: string, section: FileSection) => {
     if (!movingItem || movingItem.section !== section) return false;
     // Can't drop onto itself, or move a folder into itself/its own descendants
     if (targetPath === movingItem.path || targetPath.startsWith(movingItem.path + '/')) return false;
@@ -480,7 +468,7 @@ export default function PortalFilesTab({
   const handleMoveDragOverTarget = (
     e: React.DragEvent,
     targetPath: string,
-    section: 'property' | 'deal'
+    section: FileSection
   ) => {
     if (!canDropInto(targetPath, section)) return;
     e.preventDefault();
@@ -497,7 +485,7 @@ export default function PortalFilesTab({
   const handleMoveDropTarget = async (
     e: React.DragEvent,
     targetPath: string,
-    section: 'property' | 'deal',
+    section: FileSection,
     filesHook: ReturnType<typeof useDropboxFiles>
   ) => {
     if (!canDropInto(targetPath, section)) return;
@@ -574,7 +562,7 @@ export default function PortalFilesTab({
   const renderFileSection = (
     title: string,
     icon: React.ReactNode,
-    entityType: 'property' | 'deal',
+    entityType: FileSection,
     entityId: string | null,
     filesHook: ReturnType<typeof useDropboxFiles>,
     visibilityMap: Map<string, boolean>,
@@ -584,7 +572,7 @@ export default function PortalFilesTab({
     uploadError: string | null,
     collapsed: boolean,
     setCollapsed: (c: boolean) => void,
-    fileInputRef: React.RefObject<HTMLInputElement>,
+    fileInputRef: React.RefObject<HTMLInputElement | null>,
     defaultVisible: boolean
   ) => {
     const { folders, files: regularFiles } = getVisibleFiles(
@@ -649,6 +637,16 @@ export default function PortalFilesTab({
       }
     };
 
+    // Site submit section: portal clients only see it once a broker has shared something
+    // from it (everything in it is hidden by default), and it has nothing to show without
+    // a site submit.
+    if (entityType === 'site_submit') {
+      if (!entityId) return null;
+      if (!isInternalUser && !filesHook.loading && !currentPath && folders.length + regularFiles.length === 0) {
+        return null;
+      }
+    }
+
     // Don't show section if no entity ID
     if (!entityId) {
       return (
@@ -676,7 +674,7 @@ export default function PortalFilesTab({
         {/* Section Header */}
         <div
           className={`px-4 py-3 flex items-center justify-between cursor-pointer ${
-            entityType === 'property' ? 'bg-green-50' : 'bg-blue-50'
+            entityType === 'property' ? 'bg-green-50' : entityType === 'site_submit' ? 'bg-slate-100' : 'bg-blue-50'
           }`}
           onClick={() => setCollapsed(!collapsed)}
         >
@@ -824,7 +822,13 @@ export default function PortalFilesTab({
               </div>
             ) : filesHook.error ? (
               <div className="p-4 text-center">
-                <p className="text-sm text-gray-500">{filesHook.error}</p>
+                <p className="text-sm text-gray-500">
+                  {entityType === 'site_submit' && filesHook.error === 'No Dropbox folder linked to this record'
+                    ? siteSubmitFolder.source === 'property'
+                      ? 'No site submit folder yet — this site\'s shared files are in Property Files above.'
+                      : 'No site submit folder yet.'
+                    : filesHook.error}
+                </p>
                 {canUpload && (
                   <p className="text-xs text-gray-400 mt-1">
                     Drag & drop files here to create folder
@@ -1168,7 +1172,7 @@ export default function PortalFilesTab({
     );
   };
 
-  if (!propertyId && !dealId) {
+  if (!propertyId && !dealId && !siteSubmitId) {
     return (
       <div className="p-4 text-center text-gray-500">
         <p>No property or deal linked to this site submit</p>
@@ -1198,6 +1202,27 @@ export default function PortalFilesTab({
         true // Property files visible by default
       )}
 
+      {/* Site Submit Files Section — the site submit's own folder */}
+      {renderFileSection(
+        'Site Submit Files',
+        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>,
+        'site_submit',
+        siteSubmitId || null,
+        siteSubmitFiles,
+        siteSubmitVisibility,
+        siteSubmitCurrentPath,
+        setSiteSubmitCurrentPath,
+        siteSubmitDragOver,
+        siteSubmitUploadError,
+        siteSubmitCollapsed,
+        setSiteSubmitCollapsed,
+        siteSubmitFileInputRef,
+        false // Site submit files hidden by default
+      )}
+
       {/* Deal Files Section */}
       {renderFileSection(
         'Deal Files',
@@ -1223,7 +1248,7 @@ export default function PortalFilesTab({
         <div className="mt-2 p-3 bg-gray-50 rounded-lg">
           <p className="text-xs text-gray-500">
             <strong>Visibility:</strong> Click the eye icon to show/hide files from portal users.
-            Property files are visible by default; deal files are hidden by default.
+            Property files are visible by default; site submit and deal files are hidden by default.
           </p>
         </div>
       )}
