@@ -8979,7 +8979,7 @@ Bash
 ⎿
 Run migration to add paid_date columns
 IN
-PGPASSWORD='IamSpyderman22!' psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.njmblljajdhfmymgxaes -d postgres -f migrations/add_payment_date_tracking.sql
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.njmblljajdhfmymgxaes -d postgres -f migrations/add_payment_date_tracking.sql
 OUT
 psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: FATAL:  Tenant or user not found
 connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: FATAL:  Tenant or user not found
@@ -8991,9 +8991,9 @@ IN
 grep -E "SUPABASE|DATABASE" .env 2>/dev/null | head -20
 OUT
 VITE_SUPABASE_URL=https://rqbvcvwbziilnycqtmnc.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxYnZjdndiemlpbG55Y3F0bW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAyMzk5ODIsImV4cCI6MjA2NTgxNTk4Mn0.819LDXCnlu2dgCPw91oMbZIojeFom-UxqJn2hA5yjBM
+VITE_SUPABASE_ANON_KEY=<redacted legacy anon key>
 SUPABASE_URL=https://rqbvcvwbziilnycqtmnc.supabase.co
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxYnZjdndiemlpbG55Y3F0bW5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDIzOTk4MiwiZXhwIjoyMDY1ODE1OTgyfQ.KbuogXTipZ7g51xekMnmPricFKd_KjD-r8E6LcO6730
+SUPABASE_SERVICE_KEY=<redacted legacy service_role key>
 Let me use the Supabase CLI to run the migration:
 Bash
 ⎿
@@ -9042,7 +9042,7 @@ const fs = require('fs');
 
 const supabase = createClient(
   'https://rqbvcvwbziilnycqtmnc.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxYnZjdndiemlpbG55Y3F0bW5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDIzOTk4MiwiZXhwIjoyMDY1ODE1OTgyfQ.KbuogXTipZ7g51xekMnmPricFKd_KjD-r8E6LcO6730'
+  '<redacted legacy service_role key>'
 );
 
 const sql = fs.readFileSync('migrations/add_payment_date_tracking.sql', 'utf8');
@@ -9111,7 +9111,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   'https://rqbvcvwbziilnycqtmnc.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxYnZjdndiemlpbG55Y3F0bW5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDIzOTk4MiwiZXhwIjoyMDY1ODE1OTgyfQ.KbuogXTipZ7g51xekMnmPricFKd_KjD-r8E6LcO6730'
+  '<redacted legacy service_role key>'
 );
 
 async function addColumns() {
@@ -19580,7 +19580,7 @@ Bash
 ⎿
 List all Salesforce tables in database
 IN
-PGPASSWORD='IamSpyderman22!' psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -d postgres -U postgres.rqbvcvwbziilnycqtmnc -c "\d salesforce_*"
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -d postgres -U postgres.rqbvcvwbziilnycqtmnc -c "\d salesforce_*"
 OUT
 psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: FATAL:  Tenant or user not found
 connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: FATAL:  Tenant or user not found
@@ -20179,7 +20179,7 @@ Write check-salesforce-data.js
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://rqbvcvwbziilnycqtmnc.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxYnZjdnd6aWlsbm55Y3F0bW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY4NzU3NzksImV4cCI6MjA1MjQ1MTc3OX0.uj0j7UHBFE0FX_NUFCn74QrXgTFo-XWdJkIGRFFNt6U';
+const supabaseKey = '<redacted legacy anon key>';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function analyzeSalesforceCalculations() {
@@ -23299,7 +23299,7 @@ Bash
 ⎿
 Query contact Dean Wang to check client_id
 IN
-PGPASSWORD='IamSpyderman22!' psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.hnasbncszqgkihvvocwg -d postgres -c "SELECT id, first_name, last_name, client_id FROM contact WHERE first_name = 'Dean' AND last_name = 'Wang' LIMIT 5;"
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.hnasbncszqgkihvvocwg -d postgres -c "SELECT id, first_name, last_name, client_id FROM contact WHERE first_name = 'Dean' AND last_name = 'Wang' LIMIT 5;"
 OUT
 psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (54.177.55.191), port 6543 failed: FATAL:  Tenant or user not found
 connection to server at "aws-0-us-west-1.pooler.supabase.com" (54.177.55.191), port 6543 failed: FATAL:  Tenant or user not found
@@ -23568,7 +23568,7 @@ node -e "
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(
   'https://rqbvcvwbziilnycqtmnc.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxYnZjdndiemlpbG55Y3F0bW5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDIzOTk4MiwiZXhwIjoyMDY1ODE1OTgyfQ.KbuogXTipZ7g51xekMnmPricFKd_KjD-r8E6LcO6730'
+  '<redacted legacy service_role key>'
 );
 
 (async () => {
@@ -27915,7 +27915,7 @@ Bash
 ⎿
 Check assignment table foreign keys
 IN
-PGPASSWORD='IamSpyderman22!' psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.etiqykqwvdbzhgjtxngk -d postgres -c "\d assignment" | grep -A 20 "Foreign-key constraints"
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.etiqykqwvdbzhgjtxngk -d postgres -c "\d assignment" | grep -A 20 "Foreign-key constraints"
 OUT
 psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (54.177.55.191), port 6543 failed: FATAL:  Tenant or user not found
 connection to server at "aws-0-us-west-1.pooler.supabase.com" (54.177.55.191), port 6543 failed: FATAL:  Tenant or user not found
@@ -27923,7 +27923,7 @@ Bash
 ⎿
 Check deal table foreign keys
 IN
-PGPASSWORD='IamSpyderman22!' psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.etiqykqwvdbzhgjtxngk -d postgres -c "\d deal" | grep -A 20 "Foreign-key constraints"
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-west-1.pooler.supabase.com -p 6543 -U postgres.etiqykqwvdbzhgjtxngk -d postgres -c "\d deal" | grep -A 20 "Foreign-key constraints"
 OUT
 psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: FATAL:  Tenant or user not found
 connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: FATAL:  Tenant or user not found

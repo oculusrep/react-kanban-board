@@ -386,16 +386,16 @@ Every 30 seconds (while FileManager is mounted):
 **1. Environment Variables** (Already configured in your `.env`):
 ```bash
 # Backend scripts
-DROPBOX_APP_KEY=g7ra9dncwf39k07
-DROPBOX_APP_SECRET=y5mo1orsy224glt
+DROPBOX_APP_KEY=<your_app_key>
+DROPBOX_APP_SECRET=<your_app_secret>
 DROPBOX_ACCESS_TOKEN=<current_token>
-DROPBOX_REFRESH_TOKEN=geErp6X53V4AAAAAAAAAAQnCMs7JWGKY0Rv4u_XRL8bOeU8HXypavFy895DTqz6D
+DROPBOX_REFRESH_TOKEN=<your_refresh_token>
 
 # Frontend (Vite requires VITE_ prefix)
 VITE_DROPBOX_ACCESS_TOKEN=<current_token>
-VITE_DROPBOX_REFRESH_TOKEN=geErp6X53V4AAAAAAAAAAQnCMs7JWGKY0Rv4u_XRL8bOeU8HXypavFy895DTqz6D
-VITE_DROPBOX_APP_KEY=g7ra9dncwf39k07
-VITE_DROPBOX_APP_SECRET=y5mo1orsy224glt
+VITE_DROPBOX_REFRESH_TOKEN=<your_refresh_token>
+VITE_DROPBOX_APP_KEY=<your_app_key>
+VITE_DROPBOX_APP_SECRET=<your_app_secret>
 ```
 
 **2. Token Refresh** (If needed):

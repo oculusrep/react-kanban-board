@@ -1,8 +1,9 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Extract connection details from Supabase URL
-const connectionString = `postgresql://postgres.rqbvcvwbziilnycqtmnc:IamSpyderman22!@aws-0-us-west-1.pooler.supabase.com:5432/postgres`;
+// DATABASE_URL is loaded from .env
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error('DATABASE_URL not set');
 
 const pool = new Pool({
   connectionString,

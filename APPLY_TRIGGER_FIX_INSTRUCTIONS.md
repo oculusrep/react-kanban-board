@@ -30,7 +30,7 @@ Apply the SQL from `/tmp/restore_triggers.sql` to your database.
 ### Option 2: Using psql Command Line
 
 ```bash
-psql "postgresql://postgres.ryvdqlkqoevohvzxzlkd:IamSpyderman22!@aws-0-us-west-1.pooler.supabase.com:6543/postgres" < /tmp/restore_triggers.sql
+psql "$DATABASE_URL" < /tmp/restore_triggers.sql
 ```
 
 ## SQL to Apply

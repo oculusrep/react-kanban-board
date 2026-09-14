@@ -1,0 +1,60 @@
+#!/usr/bin/env perl
+# Pre-commit secret scan: blocks commits that ADD lines containing
+#   - Postgres connection strings with a literal password (or PGPASSWORD='literal')
+#   - JWTs (Supabase anon / service_role keys, user tokens)
+#   - Dropbox tokens (sl.* access tokens, or a DROPBOX_*TOKEN / *APP_SECRET assigned a literal)
+#
+# Only added lines in the staged diff are checked, so editing a file that already
+# holds a legacy secret elsewhere is not blocked — run with --all to audit every tracked file.
+#
+# Install (hooks path is shared by every worktree):
+#   ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+# False positive? Replace the value with a placeholder ($VAR, <your_value>). Last resort: git commit --no-verify
+use strict;
+use warnings;
+
+my @rules = (
+  [ 'postgres connection string with password',
+    qr~postgres(?:ql)?://[^:/@\s'"`]+:(?![\$\[<*{]|password\b|PASSWORD\b|YOUR|your|postgres\@(?:localhost|127\.0\.0\.1))[^@\s'"`]+\@~ ],
+  [ 'PGPASSWORD with a literal value',
+    qr~PGPASSWORD=['"]?(?![\$<\[{]|password\b|PASSWORD\b|your|YOUR)[^\s'"]{4,}~ ],
+  [ 'JWT',
+    qr~eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}~ ],
+  [ 'Dropbox short-lived access token',
+    qr~\bsl\.[A-Za-z0-9_-]{40,}~ ],
+  [ 'Dropbox credential assigned a literal',
+    qr~(?i:dropbox)\w*(?i:refresh_?token|access_?token|app_?secret)\w*['"]?\s*[:=]\s*['"`]?(?![\$<\[{]|your|process\.|import\.|Deno\.|env\b)[A-Za-z0-9_.-]{15,}~ ],
+);
+
+my $self = 'scripts/git-hooks/pre-commit';
+my @hits;
+
+sub scan_line {
+  my ($file, $lineno, $text) = @_;
+  return if $file eq $self;
+  for my $r (@rules) {
+    push @hits, "$file:$lineno  $r->[0]" if $text =~ $r->[1];
+  }
+}
+
+if (@ARGV && $ARGV[0] eq '--all') {
+  for my $file (split /\0/, `git ls-files -z`) {
+    next unless -f $file && -T $file;
+    open my $fh, '<', $file or next;
+    while (my $l = <$fh>) { scan_line($file, $., $l); }
+  }
+} else {
+  my ($file, $n) = ('', 0);
+  for (split /\n/, `git diff --cached -U0 --no-color --no-ext-diff --diff-filter=ACMR`) {
+    if    (m{^\+\+\+ b/(.*)$})            { $file = $1; }
+    elsif (/^@@ -\S+ \+(\d+)(?:,\d+)? @@/) { $n = $1; }
+    elsif (/^\+(?!\+\+)/)                   { scan_line($file, $n, substr($_, 1)); $n++; }
+  }
+}
+
+exit 0 unless @hits;
+my $scope = (@ARGV && $ARGV[0] eq '--all') ? 'tracked files' : 'staged changes';
+print STDERR "\npre-commit: possible credentials in $scope (values not shown):\n";
+print STDERR "  $_\n" for @hits;
+print STDERR "\nReplace them with an env var (\$DATABASE_URL) or a placeholder, then re-stage.\n\n";
+exit 1;
