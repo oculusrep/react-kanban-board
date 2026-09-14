@@ -740,6 +740,40 @@ Note also that §2(a)'s Q2 depends on log-only actually inserting. Any measureme
 recorded what we would have done" inherits the same requirement: the recording and the not-acting
 have to be verified separately.
 
+### A failure path that resolves to a success-looking state is the recurring bug
+
+The config-constant incident above is one instance. Three more surfaced on 2026-09-14, and all
+three had the same shape: something failed, and the code wrote a state that success also writes.
+
+| # | Where | What failed | What it wrote | How long |
+|---|---|---|---|---|
+| 1 | `email-triage` per-email `catch` | Gemini 429 ("prepayment credits are depleted") | `ai_processed = true`, which is what a verdict writes | 09-09 11:45 ET → 09-14, **~580 emails**, invisible because ingestion was healthy |
+| 2 | `gemini-agent.ts` loop, empty `candidates` | Model returned no content (safety block, empty response) | `break` → default result `action: 'keep'`, recorded as processed | **Live since the agent was written.** Found while fixing #1 |
+| 3 | The fix for #1: `emails_sync_classification_status` trigger, first draft | A writer set `classification_status = 'failed'` **and** `ai_processed = true` | The trigger saw `ai_processed` go true and "corrected" status to `classified` | Never shipped; caught by the dry run's T4 |
+
+**#3 is the silent-success bug reproducing inside the fix for the silent-success bug.** The trigger
+existed to keep old writers compatible, and its first version resolved a contradictory write
+toward the success state instead of rejecting it. The CHECK constraint that should have caught the
+write never saw it, because the trigger had already made the row consistent. The fix: the trigger
+only fills in status when the writer did not set it. A writer that sets both inconsistently hits
+the constraint.
+
+**Rule: every failure path must end in a state that success cannot produce.** A default, a
+fallback, a compatibility shim or an "avoid infinite retries" guard that lands on the success value
+turns the failure invisible, and every count built on that state inherits the lie. When writing
+one, ask: *if this path runs, can any query tell afterwards that it ran?* If not, it needs its own
+state (here, `classification_status = 'failed'` and `'abandoned'`, plus the
+`model_no_verdict` outcome label).
+
+**The check has to exercise the failure path, not the happy path.** T4 in the dry run deliberately
+issued the contradictory write and expected a `check_violation`. The first version of the migration
+passed every happy-path test. Only the test that tried to break it could come back wrong.
+
+Corollary for monitoring: a healthy upstream signal says nothing about a downstream stage.
+Ingestion ran clean all five days while classification had stopped, so the staleness monitor could
+never see it. Each stage that can fail silently needs its own output-based signal
+(`email_classifier_health()`, migration `20260914130150`).
+
 ### Related, from earlier in this project
 
 - **Don't declare a finding solved on circumstantial alignment.** The Barrio Burrito seed was
