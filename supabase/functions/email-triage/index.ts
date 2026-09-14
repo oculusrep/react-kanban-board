@@ -11,7 +11,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-import { runEmailTriageAgent } from '../_shared/gemini-agent.ts';
+import { runEmailTriageAgent, ModelCallError, type ModelUsage } from '../_shared/gemini-agent.ts';
 import {
   applyLabelToMessage,
   refreshAccessToken,
@@ -33,6 +33,22 @@ const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 // Gmail label applied to successfully processed emails
 const OVIS_LINKED_LABEL = 'OVIS-Linked';
 
+// ============================================================================
+// FAILED CLASSIFICATION -- added 2026-09-14.
+//
+// A failed attempt is NOT a processed email. Until this date the per-email catch
+// set ai_processed = true "to avoid infinite retries", so a 429 and a real verdict
+// wrote identical row state: ~580 emails over five days of Gemini outage were
+// recorded as processed with no classification, and nothing could tell.
+//
+// Now: status 'failed', retried on a backoff so an outage costs one cheap call
+// per email per step rather than one per 5-minute tick. After MAX attempts the
+// row is 'abandoned' -- still unprocessed, still counted by
+// email_classifier_health(), no longer auto-retried. Reset to 'pending' to retry.
+// ============================================================================
+const RETRY_BACKOFF_MINUTES = [15, 60, 240, 720, 1440]; // after attempts 1..5
+const MAX_CLASSIFICATION_ATTEMPTS = RETRY_BACKOFF_MINUTES.length + 1; // 6th failure abandons
+
 interface TriageResult {
   email_id: string;
   subject: string;
@@ -46,8 +62,32 @@ interface TriageResult {
   gmail_label_applied: boolean;
   /** Gemini loop was skipped by a short-circuit. Measures the cost effect. */
   model_skipped: boolean;
+  /** Classification failed and was NOT recorded as processed. */
+  classification_failed: boolean;
   gmail_label_error?: string;
   error?: string;
+}
+
+/** Row fields for a recorded verdict. Every success write uses this, so status,
+ *  outcome and usage can't drift from ai_processed. */
+function classifiedFields(
+  outcome: string,
+  usage: ModelUsage,
+  attemptsSoFar: number
+): Record<string, unknown> {
+  const now = new Date().toISOString();
+  return {
+    ai_processed: true,
+    ai_processed_at: now,
+    classification_status: 'classified',
+    classification_outcome: outcome,
+    classification_attempts: attemptsSoFar + 1,
+    classification_last_attempt_at: now,
+    classification_next_attempt_at: null,
+    classification_error: null,
+    classification_input_tokens: usage.model_calls > 0 ? usage.input_tokens : null,
+    classification_output_tokens: usage.model_calls > 0 ? usage.output_tokens : null,
+  };
 }
 
 serve(async (req) => {
@@ -81,12 +121,16 @@ serve(async (req) => {
         recipient_list,
         direction,
         received_at,
+        classification_attempts,
         email_visibility (
           user_id,
           gmail_connection_id
         )
       `)
       .eq('ai_processed', false)
+      // Failed rows wait out their backoff; abandoned rows are not auto-retried.
+      .neq('classification_status', 'abandoned')
+      .or(`classification_next_attempt_at.is.null,classification_next_attempt_at.lte.${new Date().toISOString()}`)
       .order('received_at', { ascending: false })
       .limit(BATCH_SIZE);
 
@@ -126,7 +170,10 @@ serve(async (req) => {
         summary: '',
         gmail_label_applied: false,
         model_skipped: false,
+        classification_failed: false,
       };
+      const attemptsSoFar: number = email.classification_attempts ?? 0;
+      let verdictRecorded = false;
 
       try {
         // Extract gmail_connection_id from email_visibility for RLS
@@ -208,14 +255,15 @@ serve(async (req) => {
               is_relevant: false,
               demoted_at: new Date().toISOString(),
               demoted_reason: agentResult.summary || 'Agent judged non-business',
-              ai_processed: true,
-              ai_processed_at: new Date().toISOString(),
+              ...classifiedFields(agentResult.outcome, agentResult.usage, attemptsSoFar),
             })
             .eq('id', email.id);
 
           if (demoteError) {
             console.error('[DEMOTE] Failed to demote email:', demoteError.message);
+            throw new Error(`Failed to record demote verdict: ${demoteError.message}`);
           } else {
+            verdictRecorded = true;
             console.log(`[DEMOTE] Email demoted, row retained: ${email.subject}`);
           }
         } else {
@@ -278,14 +326,16 @@ serve(async (req) => {
             }
           }
 
-          // Mark email as processed
-          await supabase
+          // Record the verdict. An unchecked failure here used to leave the row
+          // unprocessed and re-bill it every tick; now it is a failed attempt.
+          const { error: markError } = await supabase
             .from('emails')
-            .update({
-              ai_processed: true,
-              ai_processed_at: new Date().toISOString(),
-            })
+            .update(classifiedFields(agentResult.outcome, agentResult.usage, attemptsSoFar))
             .eq('id', email.id);
+          if (markError) {
+            throw new Error(`Failed to record keep verdict: ${markError.message}`);
+          }
+          verdictRecorded = true;
 
           // Apply Gmail label if email was successfully linked (has tags)
           // This provides visual feedback in Gmail that OVIS has processed the email
@@ -415,14 +465,40 @@ serve(async (req) => {
         console.error(`Error processing email ${email.id}:`, emailError);
         result.error = emailError.message;
 
-        // Still mark as processed to avoid infinite retries
-        await supabase
-          .from('emails')
-          .update({
-            ai_processed: true,
-            ai_processed_at: new Date().toISOString(),
-          })
-          .eq('id', email.id);
+        if (verdictRecorded) {
+          // The verdict is stored; this was a post-verdict side effect (label,
+          // activity). Do not downgrade a real classification to failed.
+          console.error(`[Triage] Post-verdict error, verdict kept: ${emailError.message}`);
+        } else {
+          // NOT processed. Record the failure and schedule a retry.
+          result.classification_failed = true;
+          const attempts = attemptsSoFar + 1;
+          const abandoned = attempts >= MAX_CLASSIFICATION_ATTEMPTS;
+          const now = Date.now();
+          const usage: ModelUsage | null =
+            emailError instanceof ModelCallError ? emailError.usage : null;
+
+          const { error: failWriteError } = await supabase
+            .from('emails')
+            .update({
+              classification_status: abandoned ? 'abandoned' : 'failed',
+              classification_attempts: attempts,
+              classification_last_attempt_at: new Date(now).toISOString(),
+              classification_next_attempt_at: abandoned
+                ? null
+                : new Date(now + RETRY_BACKOFF_MINUTES[attempts - 1] * 60_000).toISOString(),
+              classification_error: String(emailError.message ?? emailError).slice(0, 1000),
+              classification_input_tokens: usage?.model_calls ? usage.input_tokens : null,
+              classification_output_tokens: usage?.model_calls ? usage.output_tokens : null,
+            })
+            .eq('id', email.id);
+
+          console.error(
+            `[Triage] CLASSIFICATION FAILED email=${email.id} attempt=${attempts}/${MAX_CLASSIFICATION_ATTEMPTS} ` +
+            `status=${abandoned ? 'abandoned' : 'failed'} error="${String(emailError.message).slice(0, 200)}"` +
+            (failWriteError ? ` FAILURE-WRITE-ERROR="${failWriteError.message}"` : '')
+          );
+        }
       }
 
       results.push(result);
@@ -436,12 +512,13 @@ serve(async (req) => {
     const ruleOverrideCount = results.filter((r) => r.rule_override).length;
     const labelsApplied = results.filter((r) => r.gmail_label_applied).length;
     const modelSkipped = results.filter((r) => r.model_skipped).length;
+    const classificationFailed = results.filter((r) => r.classification_failed).length;
 
     console.log(
       `Agent triage complete in ${duration}ms: ${results.length} emails, ` +
       `${totalTags} tags, ${totalToolCalls} tool calls, ${flaggedCount} flagged, ` +
       `${deletedCount} demoted, ${ruleOverrideCount} rule overrides, ${labelsApplied} labeled, ` +
-      `${modelSkipped} model-skipped`
+      `${modelSkipped} model-skipped, ${classificationFailed} classification-failed`
     );
 
     return new Response(

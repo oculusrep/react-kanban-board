@@ -1003,6 +1003,13 @@ export interface AgentResult {
     object_type: string;
     object_id: string;
     confidence: number;
+  }>;
+  /** How a verdict was reached. Stored as emails.classification_outcome so a
+   *  model loop that ended without done() is countable rather than looking like
+   *  a real verdict. */
+  outcome: ClassificationOutcome;
+  /** Gemini token usage summed across loop iterations. Zero when no model call. */
+  usage: ModelUsage;
     /** How many links on this email came from thread inheritance. Step 5's
    *  model short-circuit is gated on this being > 0 AND
    *  min_inherited_seed_confidence >= 0.90 -- see docs/email-triage-spec.md 2(c). */
@@ -1014,7 +1021,33 @@ export interface AgentResult {
    *  cost effect of the short-circuits is measurable, not assumed. */
   model_skipped: boolean;
   model_skip_reason: string | null;
-}>;
+}
+
+export type ClassificationOutcome =
+  | 'model_done'
+  | 'model_no_verdict'
+  | 'rule_exclusion'
+  | 'rule_link'
+  | 'thread_inheritance'
+  | 'sender_automatch';
+
+export interface ModelUsage {
+  model_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+/**
+ * The model could not produce a classification: an API error (429, 5xx,
+ * network) or an empty response. email-triage records this as
+ * classification_status = 'failed' and schedules a retry -- it must NEVER be
+ * recorded as processed. Carries the usage spent before the failure.
+ */
+export class ModelCallError extends Error {
+  constructor(message: string, public usage: ModelUsage) {
+    super(message);
+    this.name = 'ModelCallError';
+  }
 }
 
 export async function runEmailTriageAgent(
@@ -1047,6 +1080,8 @@ export async function runEmailTriageAgent(
     min_inherited_seed_confidence: Infinity,
     model_skipped: false,
     model_skip_reason: null,
+    outcome: 'model_no_verdict',
+    usage: { model_calls: 0, input_tokens: 0, output_tokens: 0 },
   };
 
   // ========================================================================
@@ -1079,6 +1114,7 @@ export async function runEmailTriageAgent(
         result.action = 'delete';
         result.summary = `Rule override: ${rule.rule_text}`;
         result.rule_override = true;
+        result.outcome = 'rule_exclusion';
         return result;
       }
 
@@ -1108,6 +1144,7 @@ export async function runEmailTriageAgent(
         result.summary = `Rule override: Linked to ${rule.target_object_type} via rule "${rule.rule_text}"`;
         result.rule_override = true;
         result.action = 'keep';
+        result.outcome = 'rule_link';
         return result;
       }
     }
@@ -1241,6 +1278,7 @@ export async function runEmailTriageAgent(
             `at seed confidence >= ${MODEL_SKIP_MIN_SEED}`;
           result.model_skipped = true;
           result.model_skip_reason = 'thread_inheritance_high_confidence';
+          result.outcome = 'thread_inheritance';
           console.log(`[Agent] SHORT-CIRCUIT: ${result.summary}`);
           return result;
         }
@@ -1341,6 +1379,7 @@ export async function runEmailTriageAgent(
         `already carries a deal link`;
       result.model_skipped = true;
       result.model_skip_reason = 'sender_automatch_thread_has_deal';
+      result.outcome = 'sender_automatch';
       console.log(`[Agent] SHORT-CIRCUIT: ${result.summary}`);
       return result;
     }
@@ -1539,11 +1578,30 @@ ${email.body_text || email.snippet}`;
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     console.log(`[Agent] Iteration ${iteration + 1}/${maxIterations}`);
 
-    const response = await callGeminiWithTools(apiKey, systemPrompt, messages);
+    let response: any;
+    try {
+      response = await callGeminiWithTools(apiKey, systemPrompt, messages);
+    } catch (err: any) {
+      // API error (429, 5xx) or network failure. Never a verdict.
+      throw new ModelCallError(String(err?.message ?? err), result.usage);
+    }
+
+    result.usage.model_calls++;
+    result.usage.input_tokens += response.usageMetadata?.promptTokenCount ?? 0;
+    result.usage.output_tokens +=
+      (response.usageMetadata?.candidatesTokenCount ?? 0) +
+      (response.usageMetadata?.thoughtsTokenCount ?? 0);
 
     if (!response.candidates?.[0]?.content) {
-      console.error('[Agent] No response from Gemini');
-      break;
+      // Used to `break` and return the default keep -- a silent non-verdict
+      // recorded as processed. Now a failure, retried and counted.
+      const finish = response.candidates?.[0]?.finishReason ?? 'none';
+      const block = response.promptFeedback?.blockReason ?? 'none';
+      console.error(`[Agent] No response from Gemini (finishReason=${finish}, blockReason=${block})`);
+      throw new ModelCallError(
+        `Gemini returned no content (finishReason=${finish}, blockReason=${block})`,
+        result.usage
+      );
     }
 
     const content = response.candidates[0].content;
@@ -1592,6 +1650,7 @@ ${email.body_text || email.snippet}`;
         result.summary = args.summary || '';
         result.is_relevant = args.is_business_relevant !== false;
         result.action = args.action === 'delete' ? 'delete' : 'keep';
+        result.outcome = 'model_done';
         console.log(`[Agent] Done: ${result.summary} (action: ${result.action})`);
         return result;
       }
