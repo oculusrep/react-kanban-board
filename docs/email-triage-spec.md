@@ -28,6 +28,11 @@ commitment table (§4) has not been started; §2 was the prerequisite work.
 1. **Tier-1 flip** — per-rule, not one go/no-go. Five queries in §2(a), criteria table there.
 2. **(f) retry queue** — designed against measured 404 causes (Q6), not inference.
 
+**09-14 review done — see [EMAIL_TRIAGE_REVIEW_2026-09-14.md](EMAIL_TRIAGE_REVIEW_2026-09-14.md).** Precondition
+passed; nothing flipped. Three defects found: Gemini credits depleted since 09-09 11:45 ET (575
+emails marked processed unclassified), demote upsert overwrites tier-1 stubs (Q1–Q3 undercount), and
+`searchRules` keyword collisions demoting real deal mail (184 rows).
+
 **Merge-order note.** `feature/email-triage`'s board-trigger migration edits
 `trg_reset_clock_on_activity_insert`, whose 10 creating migrations existed only on
 `feature/starbucks-deal-board`. Deal-board merged first so `main`'s history creates the object
