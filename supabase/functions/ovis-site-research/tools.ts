@@ -370,6 +370,11 @@ async function queryNearbyStarbucks(
   };
 }
 
+/** Rows fetched per municipal-project query. Supabase caps a response at its max-rows
+ *  setting, so a bigger request would be cut silently by the server; instead we ask for the
+ *  exact match count and report truncation when there are more rows than we received. */
+const MUNICIPAL_ROW_CAP = 1000;
+
 async function queryMunicipalProjects(
   service: SupabaseClient,
   args: { latitude: number; longitude: number; radius_miles?: number; min_units?: number },
@@ -382,19 +387,28 @@ async function queryMunicipalProjects(
   const bb = bboxFor(latitude, longitude, radius);
 
   // ---- approved: human-reviewed, committed, geocoded ----
-  const { data: approvedRows, error: aErr } = await service
+  const { data: approvedRows, error: aErr, count: approvedMatches } = await service
     .from('municipal_project_v')
     .select(
       'id, project_name, address, total_housing_units, builder_developer, zoning, source, ' +
         'effective_stage_name, municipality_name, centroid_lat, centroid_lng',
+      { count: 'exact' },
     )
     .gte('centroid_lat', bb.south).lte('centroid_lat', bb.north)
     .gte('centroid_lng', bb.west).lte('centroid_lng', bb.east)
-    .not('centroid_lat', 'is', null);
+    .not('centroid_lat', 'is', null)
+    .range(0, MUNICIPAL_ROW_CAP - 1);
   if (aErr) throw new Error(`municipal_project lookup failed: ${aErr.message}`);
 
-  const approved = ((approvedRows ?? []) as unknown as Array<Record<string, unknown>>)
-    .map((r) => ({
+  const approvedFetched = (approvedRows ?? []) as unknown as Array<Record<string, unknown>>;
+  // No silent cut: more matches in the search box than rows received means the list is partial.
+  const approvedTruncated = typeof approvedMatches === 'number' && approvedMatches > approvedFetched.length;
+
+  const approved = approvedFetched
+    .map((r) => {
+      const d = haversineMiles(pt, { lat: Number(r.centroid_lat), lng: Number(r.centroid_lng) });
+      return {
+      _distance: d, // unrounded — radius membership and sort; stripped before returning
       review_status: 'approved' as const,
       project_name: (r.project_name as string) ?? null,
       address: (r.address as string) ?? null,
@@ -404,38 +418,42 @@ async function queryMunicipalProjects(
       zoning: (r.zoning as string) ?? null,
       source: (r.source as string) ?? null,
       municipality: (r.municipality_name as string) ?? null,
-      distance_miles: round1(
-        haversineMiles(pt, { lat: Number(r.centroid_lat), lng: Number(r.centroid_lng) }),
-      ),
-    }))
-    .filter((r) => r.distance_miles <= radius)
+      distance_miles: round1(d), // display only
+      };
+    })
+    .filter((r) => r._distance <= radius) // unrounded: 3.04 mi is not within 3 mi
     .filter((r) => (r.total_housing_units ?? 0) >= minUnits || r.total_housing_units === null)
-    .sort((a, b) => a.distance_miles - b.distance_miles)
-    .slice(0, 60);
+    .sort((a, b) => a._distance - b._distance)
+    .map(({ _distance, ...rest }) => rest);
 
   // ---- pending: agent-discovered, NOT yet reviewed, NOT yet geocoded ----
   // Staging rows carry no coordinates (they are geocoded only at approval), so
   // they cannot be distance-filtered. They are instead scoped to this site's own
   // research runs, which were already bounded by the radius the researcher chose.
   let pending: Array<Record<string, unknown>> = [];
+  let pendingTruncated = false;
   if (siteSubmitId) {
-    const { data: runs } = await service
+    const { data: runs, error: rErr } = await service
       .from('research_run')
       .select('id')
       .eq('site_submit_id', siteSubmitId);
+    if (rErr) throw new Error(`research_run lookup failed: ${rErr.message}`);
     const runIds = ((runs ?? []) as Array<{ id: string }>).map((r) => r.id);
     if (runIds.length > 0) {
-      const { data: stagingRows, error: sErr } = await service
+      const { data: stagingRows, error: sErr, count: pendingMatches } = await service
         .from('municipal_project_staging')
         .select(
           'project_name, address, total_housing_units, builder_developer, zoning, source, ' +
             'location_description, approval_state, research_run_id',
+          { count: 'exact' },
         )
         .in('research_run_id', runIds)
         .eq('approval_state', 'pending')
-        .limit(200);
+        .range(0, MUNICIPAL_ROW_CAP - 1);
       if (sErr) throw new Error(`staging lookup failed: ${sErr.message}`);
-      pending = ((stagingRows ?? []) as unknown as Array<Record<string, unknown>>)
+      const stagingFetched = (stagingRows ?? []) as unknown as Array<Record<string, unknown>>;
+      pendingTruncated = typeof pendingMatches === 'number' && pendingMatches > stagingFetched.length;
+      pending = stagingFetched
         .filter((r) => ((r.total_housing_units as number) ?? 0) >= minUnits || r.total_housing_units === null)
         .map((r) => ({
           review_status: 'pending_unreviewed' as const,
@@ -459,10 +477,22 @@ async function queryMunicipalProjects(
       'you cite them, and must not present their unit counts as established fact. Pending rows are ' +
       'not geocoded, so distance_miles is null for them; they are scoped to this site\'s own ' +
       'research runs rather than to the radius you passed. No minimum unit threshold was applied — ' +
-      'a cluster of small projects is still a rooftops story.',
+      'a cluster of small projects is still a rooftops story. approved_count and ' +
+      'pending_unreviewed_count are the complete counts; cite them rather than counting rows. If a ' +
+      'count is null with an incomplete_reason, that list was truncated — say the count could not be ' +
+      'determined and why, and never present the rows you can see as the whole pipeline. Distances are ' +
+      'straight-line; radius membership uses unrounded distance.',
     radius_miles: radius,
-    approved_count: approved.length,
-    pending_unreviewed_count: pending.length,
+    approved_count: approvedTruncated ? null : approved.length,
+    approved_incomplete_reason: approvedTruncated
+      ? `More than ${MUNICIPAL_ROW_CAP} approved projects in the search area; the list is truncated, so no count is given.`
+      : undefined,
+    approved_truncated: approvedTruncated,
+    pending_unreviewed_count: pendingTruncated ? null : pending.length,
+    pending_incomplete_reason: pendingTruncated
+      ? `More than ${MUNICIPAL_ROW_CAP} pending projects for this site; the list is truncated, so no count is given.`
+      : undefined,
+    pending_truncated: pendingTruncated,
     approved,
     pending,
   };
