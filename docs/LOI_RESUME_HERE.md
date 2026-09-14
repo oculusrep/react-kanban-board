@@ -10,8 +10,8 @@ session on `main`. Last committed: `1b4522b9` (tranche 14).
 
 ## Environment
 
-- Dev DB (throwaway, NOT prod):
-  `postgresql://postgres:CfYcl6tHwl3Pl2u@db.lntfzvzycshncqxecuob.supabase.co:5432/postgres`
+- Dev DB (throwaway, NOT prod): `$LOI_DEV_URL`
+  The value lives in this worktree's `.env` (gitignored) — load it with `set -a && . ./.env && set +a`.
 - No local Docker; drive the dev DB with `psql`. `python-docx` installed.
 - Loader/validator: `supabase/seeds/loi/load_seed.py` — `python3 load_seed.py <file>` validates,
   `--load` emits INSERT SQL to pipe into psql.
