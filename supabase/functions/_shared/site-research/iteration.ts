@@ -16,7 +16,7 @@
 
 import { parseArchetypeBlock } from './archetype.ts';
 import {
-  type Block, type CreateFn, type ExecuteFn, MAX_ITERATIONS, type ModelResponse, requestOnce,
+  type Block, containerErrorMessage, type CreateFn, type ExecuteFn, MAX_ITERATIONS, type ModelResponse, requestOnce,
   tokenCostUsd, USD_PER_WEB_SEARCH, webSearchRequests,
 } from './loop.ts';
 import { buildBaseParams, isPermanentApiError, MODEL, PRICING } from './model.ts';
@@ -46,6 +46,8 @@ export interface ClaimedRun {
   archetype_primary?: string | null;
   archetype_secondary?: string | null;
   story_carriers?: string[] | null;
+  /** Code-execution container of the committed conversation (20260915125900_site_research_container.sql). */
+  container_id?: string | null;
 }
 
 export interface WorkerDb {
@@ -62,6 +64,7 @@ export interface WorkerDb {
   completeStep(a: {
     runId: string; owner: string; iteration: number; attempt: number;
     convo: Array<Record<string, unknown>>; clientToolCalls: number; webSearchLocked: boolean;
+    containerId?: string | null; containerExpiresAt?: string | null;
   }): Promise<boolean>;
   finalize(a: {
     runId: string; owner: string; iteration: number; attempt: number; convo: Array<Record<string, unknown>>;
@@ -142,6 +145,8 @@ export async function runModelIteration(run: ClaimedRun, owner: string, deps: It
       searchBudget: run.search_budget,
       searchesUsed: run.web_search_requests,
       dropRejected: run.web_search_locked,
+      // The container the conversation's code-execution blocks ran in; required to resume them.
+      containerId: run.container_id ?? null,
       log,
     });
 
@@ -204,6 +209,7 @@ export async function runModelIteration(run: ClaimedRun, owner: string, deps: It
       const committed = await deps.db.completeStep({
         runId: run.id, owner, iteration: run.iteration, attempt: run.attempt,
         convo, clientToolCalls: toolCalls, webSearchLocked: dropRejected,
+        containerId: resp.container?.id ?? null, containerExpiresAt: resp.container?.expires_at ?? null,
       });
       log(`${tag} end stop=${resp.stop_reason} tools=${toolCalls} searches=${searches} cost=${cost.toFixed(4)} ms=${now() - t0}${committed ? '' : ' (NOT committed: lease lost)'}`);
       if (!committed) return 'lease_lost';
@@ -239,6 +245,8 @@ export async function runModelIteration(run: ClaimedRun, owner: string, deps: It
     return result.status;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    const containerMsg = containerErrorMessage(e, run.container_id);
+    if (containerMsg) return await fail(containerMsg);
     if (e instanceof PermanentError || isPermanentApiError(e)) return await fail(msg);
     await deps.db.release(run.id, owner, run.iteration, run.attempt, msg);
     log(`${tag} transient error, lease released for retry: ${msg}`);
@@ -271,6 +279,7 @@ export function supabaseWorkerDb(service: Rpc): WorkerDb {
     completeStep: (a) => call('complete_thread_run_step', {
       p_run_id: a.runId, p_owner: a.owner, p_iteration: a.iteration, p_attempt: a.attempt,
       p_convo: a.convo, p_client_tool_calls: a.clientToolCalls, p_web_search_locked: a.webSearchLocked,
+      p_container_id: a.containerId ?? null, p_container_expires_at: a.containerExpiresAt ?? null,
     }),
     finalize: (a) => call('finalize_thread_run', {
       p_run_id: a.runId, p_owner: a.owner, p_iteration: a.iteration, p_attempt: a.attempt, p_convo: a.convo,

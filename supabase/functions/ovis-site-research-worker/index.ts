@@ -16,6 +16,9 @@
  * compared against the vault secret via get_site_research_worker_secret() — the
  * ovis-sweep-tick pattern. Callers: the cron tick, ovis-site-research (enqueue kick), and
  * this function (self-chain).
+ *
+ * Alerts go through _shared/site-research/alerts.ts: prefixed as site story, and from a separate
+ * bot when SITE_RESEARCH_TELEGRAM_BOT_TOKEN is set — never plain through OpenClaw's bot.
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -27,22 +30,9 @@ import { kickWorker } from '../_shared/site-research/kick.ts';
 import { runDeepPassIteration, supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
 import { edgePrivateLocations } from '../_shared/site-research/deep-pass.ts';
 import { resolveSiteSubmitFolder, uploadFile } from '../_shared/dropbox.ts';
+import { notifySiteResearch } from '../_shared/site-research/alerts.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
-
-const TELEGRAM_CHAT_ID = '8371575998';
-async function notifyTelegram(text: string): Promise<void> {
-  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
-  if (!token) { console.warn('TELEGRAM_BOT_TOKEN not set — skipping:', text); return; }
-  try {
-    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
-    });
-    if (!resp.ok) console.warn('Telegram non-2xx:', resp.status, await resp.text());
-  } catch (e) { console.warn('Telegram threw:', e); }
-}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -89,7 +79,7 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
       // within a minute or two (its heartbeat ages past the kick threshold).
       try { await kickWorker(id, secret); } catch (e) { console.warn(`[site-research] run=${id} self-chain failed, tick will resume:`, e); }
     },
-    onFailed: (id: string, error: string) => notifyTelegram(`❌ Site research run ${id} failed: ${error.slice(0, 300)}`),
+    onFailed: (id: string, error: string) => notifySiteResearch(`❌ Site research run ${id} failed: ${error.slice(0, 300)}`),
   };
 
   const outcome = run.kind === 'deep_pass'
@@ -145,7 +135,7 @@ serve(async (req) => {
     if (reapErr) console.warn('reap_stalled_thread_runs failed:', reapErr.message);
     const r = reaped as { reaped_count?: number; run_ids?: string[] } | null;
     if ((r?.reaped_count ?? 0) > 0) {
-      await notifyTelegram(`🧹 Reaped ${r!.reaped_count} site research run(s) with no activity for 20+ min — marked failed: ${(r!.run_ids ?? []).join(', ')}`);
+      await notifySiteResearch(`🧹 Reaped ${r!.reaped_count} site research run(s) with no activity for 20+ min — marked failed: ${(r!.run_ids ?? []).join(', ')}`);
     }
 
     const { data: due, error: dueErr } = await service.rpc('advance_thread_runs', { p_kick_after_seconds: 60 });
