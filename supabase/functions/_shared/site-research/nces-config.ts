@@ -9,8 +9,9 @@
  * Browse the catalog to find current names:
  *   https://services1.arcgis.com/Ua5sjt3LWTPigjyD/arcgis/rest/services
  *
- * Private schools are NOT here: enrollment for them exists only in the PSS bulk file,
- * which is loaded into public.nces_private_school by scripts/nces/load_pss.py.
+ * Private school ENROLLMENT is not here: it exists only in the PSS bulk file, which is
+ * loaded into public.nces_private_school by scripts/nces/load_pss.py. Private physical
+ * locations are (privateLocations).
  */
 export const NCES_ARCGIS = {
   baseUrl: 'https://services1.arcgis.com/Ua5sjt3LWTPigjyD/arcgis/rest/services',
@@ -23,6 +24,12 @@ export const NCES_ARCGIS = {
    *  (includes pre-K); negative values are NCES "missing / not applicable / not
    *  reported" codes. Also SURVYEAR, SCHOOL_LEVEL, GSLO/GSHI, SY_STATUS_TEXT. */
   publicCharacteristics: { service: 'School_Characteristics_Current', layer: 1 },
+
+  /** EDGE geocoded PHYSICAL locations for PSS private schools. Fields: PPIN, NAME, STREET, CITY,
+   *  STATE, ZIP, LAT, LON, SCHOOLYEAR. Used by the deep pass to confirm a mailing-flagged PSS
+   *  address before spending a web search on it (verified 2026-09-15: PPIN lookup returns the
+   *  physical street). */
+  privateLocations: { service: 'Private_School_Locations_Current', layer: 0 },
 
   /** Per-request timeout for NCES calls. */
   timeoutMs: 15000,

@@ -6,6 +6,7 @@
  *
  * Actions (POST JSON):
  *   { action: 'advance_run', run_id }  claim → one iteration → persist → self-chain or finalize.
+ *                                      deep_pass runs dispatch on pass_phase (deep-pass-worker.ts).
  *                                      Responds 202 at once; the iteration runs in
  *                                      EdgeRuntime.waitUntil, so no caller waits on the model.
  *   { action: 'tick' }                 every minute from pg_cron: kick runs whose chain broke,
@@ -19,10 +20,13 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-import { runOneIteration, supabaseWorkerDb } from '../_shared/site-research/iteration.ts';
+import { LEASE_SECONDS, runModelIteration, supabaseWorkerDb } from '../_shared/site-research/iteration.ts';
 import { anthropicCreate } from '../_shared/site-research/model.ts';
 import { executeTool, TOOL_DEFINITIONS, WEB_SEARCH_TOOL } from '../_shared/site-research/tools.ts';
 import { kickWorker } from '../_shared/site-research/kick.ts';
+import { runDeepPassIteration, supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
+import { edgePrivateLocations } from '../_shared/site-research/deep-pass.ts';
+import { resolveSiteSubmitFolder, uploadFile } from '../_shared/dropbox.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -63,19 +67,53 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
     await db.fail(runId, 'ANTHROPIC_API_KEY_RESEARCH not configured');
     return;
   }
-  const outcome = await runOneIteration(runId, crypto.randomUUID(), {
+  const owner = crypto.randomUUID();
+  const run = await db.claim(runId, owner, LEASE_SECONDS);
+  if (!run) {
+    console.log(`[site-research] run=${runId} not claimed (terminal, leased elsewhere, or out of attempts)`);
+    return;
+  }
+
+  const site = (r: typeof run) => {
+    const s = (r.pinned_context as { site?: { latitude?: unknown; longitude?: unknown } } | null)?.site;
+    const lat = Number(s?.latitude), lng = Number(s?.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { latitude: lat, longitude: lng } : null;
+  };
+  const common = {
     db,
     create: anthropicCreate(apiKey),
-    execute: (name, input, run) => executeTool(service, name, input, { siteSubmitId: run.site_submit_id }),
-    clientTools: [...TOOL_DEFINITIONS] as unknown as Array<Record<string, unknown>>,
-    webSearchTool: WEB_SEARCH_TOOL,
-    chain: async (id) => {
+    execute: (name: string, input: Record<string, unknown>, r: typeof run) =>
+      executeTool(service, name, input, { siteSubmitId: r.site_submit_id, site: site(r) }),
+    chain: async (id: string) => {
       // Self-chain the next iteration. If this call fails, the tick picks the run up
       // within a minute or two (its heartbeat ages past the kick threshold).
       try { await kickWorker(id, secret); } catch (e) { console.warn(`[site-research] run=${id} self-chain failed, tick will resume:`, e); }
     },
-    onFailed: (id, error) => notifyTelegram(`❌ Site research run ${id} failed: ${error.slice(0, 300)}`),
-  });
+    onFailed: (id: string, error: string) => notifyTelegram(`❌ Site research run ${id} failed: ${error.slice(0, 300)}`),
+  };
+
+  const outcome = run.kind === 'deep_pass'
+    ? await runDeepPassIteration(run, owner, {
+        ...common,
+        dp: supabaseDeepPassDb(service),
+        webSearchTool: WEB_SEARCH_TOOL,
+        edgePrivate: edgePrivateLocations,
+        exportFiles: async (siteSubmitId, files) => {
+          const folder = await resolveSiteSubmitFolder(service, siteSubmitId);
+          const out = [];
+          for (const f of files) {
+            // overwrite: stable names for import; Dropbox revision history keeps the previous run.
+            const u = await uploadFile(`${folder}/${f.name}`, f.bytes, { mode: 'overwrite' });
+            out.push({ name: f.name, path: u.path, size: u.size });
+          }
+          return out;
+        },
+      })
+    : await runModelIteration(run, owner, {
+        ...common,
+        clientTools: [...TOOL_DEFINITIONS] as unknown as Array<Record<string, unknown>>,
+        webSearchTool: WEB_SEARCH_TOOL,
+      });
   console.log(`[site-research] run=${runId} invocation outcome=${outcome}`);
 }
 

@@ -70,6 +70,9 @@ interface RunRow {
   attempts: number;
   web_search_requests: number;
   search_budget: number;
+  /** Deep pass only: current phase, and searches used before it began (budgets are per phase). */
+  pass_phase: 'prepare' | 'school_fill' | 'deep_pass' | 'exports' | null;
+  phase_search_base: number;
   client_tool_calls: number;
   cost_usd: string | number;
   retry_cost_usd: string | number;
@@ -80,7 +83,14 @@ interface RunRow {
 }
 
 const RUN_COLUMNS =
-  'id, kind, state, phase, iteration, attempts, web_search_requests, search_budget, client_tool_calls, cost_usd, retry_cost_usd, error, created_at, started_at, finished_at';
+  'id, kind, state, phase, pass_phase, phase_search_base, iteration, attempts, web_search_requests, search_budget, client_tool_calls, cost_usd, retry_cost_usd, error, created_at, started_at, finished_at';
+
+const PASS_PHASE_LABEL: Record<NonNullable<RunRow['pass_phase']>, string> = {
+  prepare: 'Deep pass: reading first-pass schools',
+  school_fill: 'Deep pass: filling school gaps',
+  deep_pass: 'Deep pass: researching story carriers',
+  exports: 'Deep pass: writing CSVs to Dropbox',
+};
 
 const isLive = (s: string | null | undefined) => s === 'queued' || s === 'running';
 
@@ -173,6 +183,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
   const [starting, setStarting] = useState(false);
   const [sending, setSending] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [startingDeepPass, setStartingDeepPass] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -350,17 +361,41 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
     }
   };
 
+  const handleDeepPass = async () => {
+    if (!openThreadId) return;
+    const ok = window.confirm(
+      'Run the deep pass? It fills school data gaps, researches the story carriers (up to 35 web searches in total), ' +
+        "writes Why Here / Supporting points / What's working against us, and saves schools.csv and employers.csv to " +
+        "this site submit's Dropbox folder. It runs in the background and takes several minutes.",
+    );
+    if (!ok) return;
+    setError(null);
+    setStartingDeepPass(true);
+    try {
+      await invoke({ action: 'start_deep_pass', thread_id: openThreadId });
+      await Promise.all([loadOpenThread(openThreadId), loadThreads()]);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setStartingDeepPass(false);
+    }
+  };
+
   const openThread = threads?.find((t) => t.id === openThreadId) ?? null;
   const runIsLive = !!run && isLive(run.state);
 
   const progressText = (r: RunRow): string => {
     if (r.state === 'queued') return 'Queued — starting shortly';
+    const base = r.kind === 'deep_pass' ? r.phase_search_base ?? 0 : 0;
     const parts = [
-      r.phase === 'researching' ? 'Researching' : r.phase === 'complete' ? 'Writing report' : 'Working',
+      r.kind === 'deep_pass' && r.pass_phase
+        ? PASS_PHASE_LABEL[r.pass_phase]
+        : r.phase === 'researching' ? 'Researching' : r.phase === 'complete' ? 'Writing report' : 'Working',
       `step ${r.iteration + 1}`,
       `${r.client_tool_calls} data ${r.client_tool_calls === 1 ? 'query' : 'queries'}`,
-      `${r.web_search_requests}/${r.search_budget} web searches`,
     ];
+    // Code-only deep pass phases have no search budget of their own.
+    if (r.search_budget - base > 0) parts.push(`${r.web_search_requests - base}/${r.search_budget - base} web searches`);
     if (r.attempts > 1) parts.push(`retry ${r.attempts - 1}`);
     return parts.join(' · ');
   };
@@ -472,6 +507,18 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                   ))}
                 </ul>
               )}
+              {openThread.archetype_primary && (
+                <button
+                  type="button"
+                  onClick={handleDeepPass}
+                  disabled={startingDeepPass || runIsLive}
+                  className="mt-1.5 px-2 py-0.5 rounded text-[11px] font-medium disabled:opacity-60"
+                  style={{ backgroundColor: 'transparent', color: NAVY, border: `1px solid ${NAVY}` }}
+                  title="Step 2: school fill-in, deep research on the story carriers, executive summary, CSV exports"
+                >
+                  {startingDeepPass ? 'Starting…' : 'Run deep pass'}
+                </button>
+              )}
             </div>
           )}
 
@@ -509,7 +556,11 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             {run && run.state === 'failed' && (
               <div className="px-2 py-1.5 rounded border" style={{ borderColor: TERRACOTTA, backgroundColor: '#FFF7F0' }}>
                 <div className="text-[11px] font-medium" style={{ color: TERRACOTTA }}>
-                  {run.kind === 'archetype' ? 'The site story failed before the report was written.' : 'This reply failed.'}
+                  {run.kind === 'archetype'
+                    ? 'The site story failed before the report was written.'
+                    : run.kind === 'deep_pass'
+                      ? 'The deep pass failed. Retry restarts it from the beginning.'
+                      : 'This reply failed.'}
                 </div>
                 {run.error && (
                   <div className="text-[11px] mt-0.5 break-words" style={{ color: TERRACOTTA }}>{run.error}</div>

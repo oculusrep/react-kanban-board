@@ -37,6 +37,15 @@ export interface ClaimedRun {
   web_search_locked: boolean;
   site_submit_id: string;
   pinned_context: unknown;
+  // Added by 20260915112139_site_research_deep_pass.sql. Optional so older fakes still type-check.
+  max_attempts?: number;
+  pass_phase?: 'prepare' | 'school_fill' | 'deep_pass' | 'exports' | null;
+  phase_state?: Record<string, unknown>;
+  phase_iteration_base?: number;
+  phase_search_base?: number;
+  archetype_primary?: string | null;
+  archetype_secondary?: string | null;
+  story_carriers?: string[] | null;
 }
 
 export interface WorkerDb {
@@ -71,6 +80,12 @@ export interface IterationDeps {
   clientTools: Array<Record<string, unknown>>;
   webSearchTool: Record<string, unknown> | null;
   chain: (runId: string) => Promise<void>;
+  /**
+   * What to do with a final (end_turn) response. Default: finalize the run with the text as
+   * the thread message and parse the archetype block. The deep pass uses it to move to its
+   * next phase instead. `convo` already ends with the assistant turn.
+   */
+  onEndTurn?: (a: { run: ClaimedRun; owner: string; text: string; convo: Array<Record<string, unknown>> }) => Promise<IterationOutcome>;
   onFailed?: (runId: string, error: string) => Promise<void>;
   log?: (msg: string) => void;
   now?: () => number;
@@ -79,7 +94,7 @@ export interface IterationDeps {
 export type IterationOutcome =
   | 'not_claimed' | 'chained' | 'finalized' | 'already_final' | 'lease_lost' | 'released' | 'failed';
 
-class PermanentError extends Error {}
+export class PermanentError extends Error {}
 
 const n = (v: unknown) => {
   const x = typeof v === 'number' ? v : Number(v);
@@ -88,13 +103,18 @@ const n = (v: unknown) => {
 
 export async function runOneIteration(runId: string, owner: string, deps: IterationDeps): Promise<IterationOutcome> {
   const log = deps.log ?? ((m) => console.log(m));
-  const now = deps.now ?? (() => Date.now());
-
   const run = await deps.db.claim(runId, owner, LEASE_SECONDS);
   if (!run) {
     log(`[site-research] run=${runId} not claimed (terminal, leased elsewhere, or out of attempts)`);
     return 'not_claimed';
   }
+  return await runModelIteration(run, owner, deps);
+}
+
+/** One model request for an already-claimed run. */
+export async function runModelIteration(run: ClaimedRun, owner: string, deps: IterationDeps): Promise<IterationOutcome> {
+  const log = deps.log ?? ((m) => console.log(m));
+  const now = deps.now ?? (() => Date.now());
   const tag = `[site-research] run=${run.id} iter=${run.iteration} attempt=${run.attempt}`;
   const t0 = now();
   log(`${tag} start kind=${run.kind} searches_so_far=${run.web_search_requests}/${run.search_budget}`);
@@ -107,8 +127,9 @@ export async function runOneIteration(runId: string, owner: string, deps: Iterat
   };
 
   try {
-    if (run.iteration >= MAX_ITERATIONS) {
-      return await fail(`tool_loop_exhausted: reached ${MAX_ITERATIONS} iterations without a final answer`);
+    // Per phase for a deep pass (each phase starts its own conversation); per run otherwise.
+    if (run.iteration - (run.phase_iteration_base ?? 0) >= MAX_ITERATIONS) {
+      return await fail(`tool_loop_exhausted: reached ${MAX_ITERATIONS} iterations without a final answer${run.pass_phase ? ` in phase ${run.pass_phase}` : ''}`);
     }
 
     const systemPrompt = await deps.db.promptBody(run.prompt_template_id);
@@ -197,6 +218,12 @@ export async function runOneIteration(runId: string, owner: string, deps: Iterat
       .join('\n')
       .trim();
     if (!text) throw new PermanentError(`empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'})`);
+
+    if (deps.onEndTurn) {
+      const outcome = await deps.onEndTurn({ run, owner, text, convo: [...run.convo, assistant as Record<string, unknown>] });
+      log(`${tag} end stop=${resp.stop_reason} end_turn=${outcome} searches=${searches} cost=${cost.toFixed(4)} ms=${now() - t0}`);
+      return outcome;
+    }
 
     const parsed = parseArchetypeBlock(text);
     if (!parsed) log(`${tag} no parseable archetype block; storing the text verbatim, columns unchanged`);

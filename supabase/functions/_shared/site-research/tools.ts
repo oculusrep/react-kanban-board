@@ -1,9 +1,9 @@
 /**
  * Tool definitions + executors for ovis-site-research.
  *
- * Four client tools plus Anthropic's server-side web_search. Every client tool
- * is READ-ONLY and additive: no schema was changed to add them, and nothing here
- * writes. In particular the streetlight_* tables are read through the EXISTING
+ * Five client tools plus Anthropic's server-side web_search. Every client tool
+ * is READ-ONLY and additive: nothing here writes. geocode_address calls the US Census
+ * geocoder (geocode.ts). In particular the streetlight_* tables are read through the EXISTING
  * get_streetlight_segments_in_bbox RPC — no new RPC, no constraint touched.
  *
  * Why distance math lives in TypeScript rather than SQL: PostgREST cannot express
@@ -14,6 +14,8 @@
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { NCES_ARCGIS, arcgisQueryUrl } from './nces-config.ts';
+import { haversineMiles, toRad } from './geo.ts';
+import { geocodeAddressTool } from './geocode.ts';
 
 // Server-side web search. No domain allowlist by design — source quality is a
 // prompt concern (prefer primary sources), not a config concern.
@@ -120,25 +122,32 @@ export const TOOL_DEFINITIONS = [
       required: ['latitude', 'longitude'],
     },
   },
+  {
+    name: 'geocode_address',
+    description:
+      'Locate a street address you found by search (an employer, a competitor, a project, a school, any ' +
+      'located fact) with the US Census geocoder, and get its straight-line distance from this site. ' +
+      'Returns the matched address, a match_quality, and distance_miles (one decimal) with its 1 / 3 / 5 mi ring (ring null beyond 5 mi). ' +
+      'distance_miles is given ONLY for an exact match (one candidate, same house number). When match ' +
+      'is null or distance_miles is null, write that the distance could not be determined: never estimate ' +
+      'a distance and never compute one yourself. Takes a street address with city and state ' +
+      '("4616 Roswell Rd, Marietta, GA 30062"), not a place name: a business or campus name does not ' +
+      'geocode, so find its street address first. Census positions are interpolated along the street, ' +
+      'good to about 0.1 mi.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: 'Street address including city and state, as the source states it.' },
+      },
+      required: ['address'],
+    },
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------
 // Geo helpers — great-circle distance, and point-to-linestring.
 // ---------------------------------------------------------------------------
-const R_MILES = 3958.7613;
-const toRad = (d: number) => (d * Math.PI) / 180;
-
-export function haversineMiles(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R_MILES * Math.asin(Math.sqrt(s));
-}
+export { haversineMiles };
 
 /**
  * Shortest distance from a point to a GeoJSON LineString, in miles.
@@ -524,7 +533,7 @@ function pssGrade(code: number | null): string | null {
 }
 
 /** ArcGIS REST errors arrive as HTTP 200 with an `error` body — check both. */
-async function arcgisQuery(
+export async function arcgisQuery(
   target: { service: string; layer: number },
   params: Record<string, string>,
 ): Promise<{ features: Array<{ attributes: Record<string, unknown> }>; exceededTransferLimit?: boolean }> {
@@ -589,8 +598,11 @@ async function queryPublicSchools(latitude: number, longitude: number, radius: n
         address: (a.STREET as string) ?? null,
         city: (a.CITY as string) ?? null,
         state: (a.STATE as string) ?? null,
+        zip: (a.ZIP as string) ?? null,
         level: (c?.SCHOOL_LEVEL as string) ?? null,
         grades: c?.GSLO && c?.GSHI ? `${c.GSLO}-${c.GSHI}` : null,
+        grade_low: (c?.GSLO as string) || null,
+        grade_high: (c?.GSHI as string) || null,
         // Negative TOTAL values are NCES missing / not-applicable / not-reported codes.
         enrollment_incl_prek: Number.isFinite(total) && total >= 0 ? total : null,
         status: (c?.SY_STATUS_TEXT as string) ?? null,
@@ -631,7 +643,7 @@ async function queryPrivateSchools(
   const { data, error, count } = await service
     .from('nces_private_school')
     .select(
-      'ppin, school_name, address, city, state, address_is_mailing, latitude, longitude, ' +
+      'ppin, school_name, address, city, state, zip, address_is_mailing, latitude, longitude, ' +
         'enrollment_k12_ungraded, level_code, lowest_grade_code, highest_grade_code, survey_year',
       { count: 'exact' },
     )
@@ -657,9 +669,12 @@ async function queryPrivateSchools(
         address: (r.address as string) ?? null,
         city: (r.city as string) ?? null,
         state: (r.state as string) ?? null,
+        zip: (r.zip as string) ?? null,
         address_is_mailing: r.address_is_mailing as boolean,
         level: PSS_LEVEL[r.level_code as number] ?? null,
         grades: lo && hi ? (lo === hi ? lo : `${lo}-${hi}`) : null,
+        grade_low: lo,
+        grade_high: hi,
         enrollment_k12_ungraded: (r.enrollment_k12_ungraded as number) ?? null,
         distance_miles: round1(d), // display only
         vintage: r.survey_year as string,
@@ -765,9 +780,11 @@ export async function executeTool(
   service: SupabaseClient,
   name: string,
   input: Record<string, unknown>,
-  ctx: { siteSubmitId: string | null },
+  ctx: { siteSubmitId: string | null; site?: { latitude: number; longitude: number } | null },
 ): Promise<unknown> {
   switch (name) {
+    case 'geocode_address':
+      return await geocodeAddressTool(String(input.address ?? ''), ctx.site ?? null);
     case 'query_traffic_counts':
       return await queryTrafficCounts(service, input as never);
     case 'query_nearby_starbucks':

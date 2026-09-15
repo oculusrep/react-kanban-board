@@ -18,7 +18,13 @@
  *      Writes the user message and enqueues a 'turn' run in one transaction.
  *
  *   3. { action: 'retry_run', thread_id }            -> { thread_id, run_id }
- *      Re-enqueues the thread's latest failed run (same kind and target message).
+ *      Re-enqueues the thread's latest failed run (same kind and target message). A failed
+ *      deep pass restarts from its first phase.
+ *
+ *   4. { action: 'start_deep_pass', thread_id }      -> { thread_id, run_id, seq }
+ *      Step 2. Writes the deep pass request as a user message and enqueues a 'deep_pass' run
+ *      (school fill → deep pass → CSV exports). Requires a completed Step 1 run on the thread,
+ *      because the deep pass reads its persisted school results.
  *
  * The gate (Starbucks account family + can_run_market_research) is re-checked here on
  * every call. The UI gate is a convenience, not a control.
@@ -29,6 +35,8 @@ import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-
 import { OPENING_USER_MESSAGE, replayMessages } from '../_shared/site-research/archetype.ts';
 import { kickWorker } from '../_shared/site-research/kick.ts';
 import { STEP1_SEARCH_BUDGET } from '../_shared/site-research/tools.ts';
+import { DEEP_PASS_PROMPT_KEY, DEEP_PASS_USER_MESSAGE } from '../_shared/site-research/deep-pass.ts';
+import { dataQualityFor } from '../_shared/site-research/snapshot.ts';
 
 // Gates research to the Starbucks account family: the Starbucks client itself OR any
 // client whose parent_id is Starbucks (child accounts like "Starbucks - JW (Coastal GA)").
@@ -222,6 +230,7 @@ serve(async (req: Request) => {
     if (action === 'create_thread') return await createThread(service, body, userId);
     if (action === 'send_turn') return await sendTurn(service, body, userId);
     if (action === 'retry_run') return await retryRun(service, body, userId);
+    if (action === 'start_deep_pass') return await startDeepPass(service, body, userId);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -338,6 +347,8 @@ async function createThread(
         }
       : null,
   };
+  // Computed from the fields above, so the prompt can open with the Esri gap when there is one.
+  (pinnedContext as Record<string, unknown>).data_quality = dataQualityFor(pinnedContext);
 
   const template = await resolvePromptTemplate(service, clientId!);
 
@@ -485,9 +496,25 @@ async function retryRun(service: SupabaseClient, body: Record<string, unknown>, 
   if (run.state !== 'failed' && run.state !== 'cancelled') {
     return jsonResponse({ error: 'not_retryable', detail: `The latest run is ${run.state}.` }, 409);
   }
-  if (run.kind === 'deep_pass') return jsonResponse({ error: 'not_retryable', detail: 'Deep pass retry is not supported yet.' }, 409);
 
   const messages = await loadMessages(service, thread.id);
+  if (run.kind === 'deep_pass') {
+    if (messages.some((m) => m.seq === run.target_seq)) {
+      return jsonResponse({ error: 'already_written', detail: 'That message already exists.' }, 409);
+    }
+    const { data: runId, error } = await service.rpc('enqueue_deep_pass', {
+      p_thread_id: thread.id, p_expected_seq: run.target_seq, p_user_content: null,
+      p_prompt_template_id: await deepPassTemplateId(service), p_created_by: userId,
+    });
+    if (error) {
+      if (pgCode(error) === '23505') return jsonResponse({ error: 'run_in_progress' }, 409);
+      if (pgCode(error) === '40001') return jsonResponse({ error: 'concurrent_turn', detail: 'This thread changed. Reload and try again.' }, 409);
+      throw new Error(`deep pass retry enqueue failed: ${error.message}`);
+    }
+    const kicked = await kick(service, runId as string);
+    return jsonResponse({ thread_id: thread.id, run_id: runId, state: 'queued', kicked }, 202);
+  }
+
   if (messages.some((m) => m.seq === run.target_seq)) {
     return jsonResponse({ error: 'already_written', detail: 'That message already exists.' }, 409);
   }
@@ -511,4 +538,61 @@ async function retryRun(service: SupabaseClient, body: Record<string, unknown>, 
   }
   const kicked = await kick(service, runId as string);
   return jsonResponse({ thread_id: thread.id, run_id: runId, state: 'queued', kicked }, 202);
+}
+
+// ---------------------------------------------------------------------------
+// Action: start_deep_pass (Step 2)
+// ---------------------------------------------------------------------------
+async function deepPassTemplateId(service: SupabaseClient): Promise<string> {
+  const { data, error } = await service
+    .from('prompt_template').select('id')
+    .eq('key', DEEP_PASS_PROMPT_KEY).eq('is_active', true).is('client_id', null)
+    .order('version', { ascending: false }).limit(1);
+  if (error) throw new Error(`prompt_template lookup failed: ${error.message}`);
+  const id = (data as Array<{ id: string }> | null)?.[0]?.id;
+  if (!id) throw new Error(`no active prompt_template for key '${DEEP_PASS_PROMPT_KEY}'`);
+  return id;
+}
+
+async function startDeepPass(service: SupabaseClient, body: Record<string, unknown>, userId: string): Promise<Response> {
+  const loaded = await loadThread(service, body.thread_id);
+  if (loaded instanceof Response) return loaded;
+  const thread = loaded;
+
+  const { data: t, error: tErr } = await service
+    .from('research_thread').select('archetype_primary').eq('id', thread.id).maybeSingle();
+  if (tErr) throw new Error(`thread lookup failed: ${tErr.message}`);
+  if (!(t as { archetype_primary: string | null } | null)?.archetype_primary) {
+    return jsonResponse({ error: 'no_archetype', detail: 'The first pass has not made an archetype call on this thread yet.' }, 409);
+  }
+
+  // The deep pass reads Step 1's persisted school results; threads from before background runs have none.
+  const { data: step1, error: s1Err } = await service
+    .from('research_thread_run').select('id')
+    .eq('thread_id', thread.id).eq('kind', 'archetype').eq('state', 'complete').limit(1);
+  if (s1Err) throw new Error(`step 1 run lookup failed: ${s1Err.message}`);
+  if (!step1?.length) {
+    return jsonResponse({
+      error: 'no_step1_results',
+      detail: 'This site story was created before tool results were saved, so the deep pass has no school data to read. Start a new site story, then run the deep pass on it.',
+    }, 409);
+  }
+
+  const prior = await loadMessages(service, thread.id);
+  const nextSeq = prior.length === 0 ? 0 : prior[prior.length - 1].seq + 1;
+  const { data: runId, error } = await service.rpc('enqueue_deep_pass', {
+    p_thread_id: thread.id, p_expected_seq: nextSeq, p_user_content: DEEP_PASS_USER_MESSAGE,
+    p_prompt_template_id: await deepPassTemplateId(service), p_created_by: userId,
+  });
+  if (error) {
+    if (pgCode(error) === '23505') {
+      return jsonResponse({ error: 'run_in_progress', detail: 'A run is already in progress on this thread. Wait for it to finish.' }, 409);
+    }
+    if (pgCode(error) === '40001') {
+      return jsonResponse({ error: 'concurrent_turn', detail: 'This thread changed. Reload and try again.' }, 409);
+    }
+    throw new Error(`deep pass enqueue failed: ${error.message}`);
+  }
+  const kicked = await kick(service, runId as string);
+  return jsonResponse({ thread_id: thread.id, run_id: runId, seq: nextSeq, state: 'queued', kicked }, 202);
 }

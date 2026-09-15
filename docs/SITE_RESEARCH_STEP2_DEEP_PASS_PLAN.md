@@ -1,17 +1,82 @@
-# Site Research — Step 2 (Deep Pass) — Plan and Drafts
+# Site Research — Step 2 (Deep Pass) — Plan, Drafts and As Built
 
-**Status: DRAFT. Nothing deployed, inserted, applied, or activated.** Branch
-`feature/site-research-deep-pass`. Written 2026-09-14.
+**Status: BUILT and deployed 2026-09-15** (see "As built" below). The findings, decisions and drafts
+further down are the design record as approved on 2026-09-14; where the build differs, "As built" says so.
 
-Built and tested on the branch:
+---
 
-- `supabase/functions/_shared/csv.ts` — CSV writer + `schools.csv` / `employers.csv` row builders
-- `supabase/functions/_shared/dropbox.ts` — server-side upload, folder create, path guard,
-  site-submit folder resolution (appended; the existing download functions are unchanged)
-- `supabase/functions/_shared/csv_dropbox_test.ts` — 23 unit tests, all passing
+## As built (2026-09-15)
 
-Not built yet: the Step 2 orchestration (edge function action, tool loop, persistence). It is
-blocked on the decisions below, several of which change the design materially.
+### How a deep pass runs
+
+One `research_thread_run` with `kind = 'deep_pass'`, on the Step 1 background engine
+(docs/SITE_RESEARCH_BACKGROUND_RUNS_DESIGN.md): same leases, attempts, step rows, cost accounting,
+cron tick and reaper. Migration `20260915112139_site_research_deep_pass.sql` adds `pass_phase`,
+`phase_state`, `phase_iteration_base`, `phase_search_base`, and the RPCs `advance_thread_run_phase`,
+`patch_thread_run_state`, `enqueue_deep_pass`; `claim_thread_run` (rebuilt from its live definition)
+also returns the phase fields and the thread's archetype and carriers.
+
+| Phase | Kind | What happens | Search budget |
+|---|---|---|---|
+| `prepare` | code | Reads the thread's latest complete archetype run's committed `query_nearby_schools` results (radius 1, 3, 5). Band = the smallest call that returned the school, so rows match the totals exactly. Checks every mailing-flagged private school against NCES EDGE `Private_School_Locations_Current` by PPIN. Builds the fill list: null enrollment (not planned schools), or an address EDGE cannot confirm as physical / a PO box. Empty list → straight to `deep_pass`. | — |
+| `school_fill` | model | `deep_pass_school_fill` v1 + `record_school_fill` + web_search. Code validates each fill: school on the list, field actually missing, whole-number enrollment, street starting with a street number, not a PO box, http(s) source URL. | 15 |
+| `deep_pass` | model | `deep_pass` v1 + `record_employer`, `geocode_address`, `query_nearby_starbucks`, `query_municipal_projects`, `query_traffic_counts` + web_search. Opening message is built by code: Esri data check, archetype and carriers, the banded NCES totals JSON, accepted WEB fills, fill summary, first pass report. `query_nearby_schools` is not offered. | 20 |
+| `exports` | code | Builds `schools.csv` and `employers.csv` (csv.ts), uploads both with `mode: overwrite` to the site submit's own Dropbox folder (created and mapped if missing), then finalizes the report as the thread message with an Exports footer. An upload failure retries; on the last attempt the report is delivered with an "Exports failed" footer instead of being lost. | — |
+
+Budgets are per phase and enforced by the existing run-level accounting: at each phase change
+`search_budget = searches so far + phase budget`. The 15-iteration ceiling is per phase.
+
+Entry points: `ovis-site-research` action `start_deep_pass` (writes the request as a user message and
+enqueues; refuses threads with no archetype call or no persisted Step 1 run), and `retry_run` on a failed
+deep pass (restarts from `prepare`). UI: "Run deep pass" on the open thread in SiteStoryPanel, with a
+confirmation, and phase-labeled progress.
+
+### Geocoding (`geocode_address`, available in Step 1 and Step 2)
+
+US Census geocoder, `onelineaddress`, benchmark `Public_AR_Current`, no key
+(`_shared/site-research/geocode.ts`). Verified by live calls: the response has **no match-quality
+field**, so `match_quality` is derived — `exact` (one candidate, same house number),
+`street_number_differs`, `no_street_number`, `ambiguous` (several candidates). Place names do not match
+("Wellstar Kennestone Hospital, Marietta GA" → 0). Positions are street-interpolated, ~0.1 mi from NCES's
+point at 4616 Roswell Rd.
+
+A distance (straight-line from the frozen site coordinate, computed in code) is returned **only for
+`exact`**. Anything else returns `distance_miles: null` and the model must say the distance could not be
+determined. `record_employer` uses the same rule, so `employers.csv` has a blank distance and band for
+any employer that did not geocode exactly, with the reason in `notes`.
+
+### Esri gap
+
+`pinned_context.data_quality.esri` (new threads) = `missing` | `partial` | `present`, from the property's
+13 Esri fields and `esri_enriched_at` (`_shared/site-research/snapshot.ts`). `archetype_call` v6 and
+`deep_pass` v1 open the report with a fixed "Data gap:" line when it is `missing`, and treat the empty
+categories as a data gap, never as weak demographics. The deep pass derives the flag from the snapshot, so
+it works on threads created before the flag was stored.
+
+### Differences from the approved drafts
+
+- Budget sentence in both deep-pass prompts: "When web_search is no longer available to you, the budget is
+  used up" (the engine removes the tool; it does not send a message).
+- `deep_pass` v1 gained geocode_address, the Esri gap section, and tool-sourced distances in hard rule 2.
+- Schools CSV notes carry the enrollment basis ("NCES enrollment includes pre-K" / "excludes pre-K"),
+  "address confirmed as physical by NCES EDGE", unconfirmed mailing addresses (with the street left blank,
+  so `full_address` is blank), and "planned (NCES status Future), not yet open".
+- `query_nearby_schools` rows now also carry `zip`, `grade_low`, `grade_high`. Results persisted before
+  this change fall back to splitting `grades`; public zip is blank for them.
+
+### Verified
+
+- Migration round-trip in a rolled-back transaction: enqueue (and the live-run block), claim payload,
+  wrong-owner advance refused, state patch, phase advance with cumulative budget and bases, invalid phase
+  rejected, pass_phase/kind check, retry enqueue.
+- 52 Deno tests (13 new for Step 2, including a full prepare → school_fill → deep_pass → exports run
+  against a stateful fake DB; mutation-checked).
+- Live, no model spend, at Macon's coordinates: real `query_nearby_schools` at 1/3/5 → extraction →
+  EDGE → fill list → schools.csv. 19 schools; public rows per band equal the tool's schools_counted plus
+  planned (1 / 5 / 11); all 7 mailing-flagged private addresses confirmed by EDGE, so Macon needs zero fill
+  searches. Census: exact match → distance; place name → null.
+- **Not yet run end to end with the model.** A deep pass needs a thread whose Step 1 ran on the background
+  engine (tool results persisted); Macon's current thread predates it.
 
 ---
 
