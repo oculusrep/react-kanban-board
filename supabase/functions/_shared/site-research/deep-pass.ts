@@ -21,7 +21,7 @@ import { ringFor, round1 } from './geo.ts';
 import { censusGeocode, distanceIfExact, type GeocodeMatch } from './geocode.ts';
 import { arcgisQuery, TOOL_DEFINITIONS } from './tools.ts';
 import { NCES_ARCGIS } from './nces-config.ts';
-import type { EsriDataQuality } from './snapshot.ts';
+import type { DemographicsQuality, EsriDataQuality } from './snapshot.ts';
 
 export const DEEP_PASS_USER_MESSAGE =
   'Run the deep pass: fill the school data gaps, go deep on the story carriers, and write the executive summary.';
@@ -474,8 +474,20 @@ export async function recordEmployer(
 // Deep pass opening message
 // ---------------------------------------------------------------------------
 
+/** The Data check line. Handles the demographics-block shape and the older property-only shape. */
+export function esriDataCheckLine(q: DemographicsQuality | EsriDataQuality): string {
+  if ('rings_miles' in q) {
+    return q.status === 'missing' ? `ESRI: MISSING. ${q.note}` : `ESRI: ${q.status.toUpperCase()}. ${q.note}`;
+  }
+  return q.status === 'missing'
+    ? `ESRI: MISSING. ${q.note}`
+    : q.status === 'partial'
+      ? `ESRI: PARTIAL. ${q.note} Empty fields: ${q.missing_fields.join(', ')}.`
+      : `ESRI: present (enriched ${q.esri_enriched_at}).`;
+}
+
 export function deepPassOpening(a: {
-  esri: EsriDataQuality;
+  esri: DemographicsQuality | EsriDataQuality;
   archetypePrimary: string | null;
   archetypeSecondary: string | null;
   storyCarriers: string[];
@@ -485,11 +497,7 @@ export function deepPassOpening(a: {
   fillSummary: string | null;
   firstPassReport: string | null;
 }): string {
-  const esriLine = a.esri.status === 'missing'
-    ? `ESRI: MISSING. ${a.esri.note}`
-    : a.esri.status === 'partial'
-      ? `ESRI: PARTIAL. ${a.esri.note} Empty fields: ${a.esri.missing_fields.join(', ')}.`
-      : `ESRI: present (enriched ${a.esri.esri_enriched_at}).`;
+  const esriLine = esriDataCheckLine(a.esri);
 
   const fills = a.fills.length
     ? a.fills.map((f) => `- ${f.name ?? f.school_id}: ${[

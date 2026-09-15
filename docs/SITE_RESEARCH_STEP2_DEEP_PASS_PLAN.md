@@ -53,6 +53,24 @@ any employer that did not geocode exactly, with the reason in `notes`.
 categories as a data gap, never as weak demographics. The deep pass derives the flag from the snapshot, so
 it works on threads created before the flag was stored.
 
+### Demographics source (2026-09-15, supersedes the Esri gap section above for new threads)
+
+Macon's demographics were on `site_submit.client_demographics` (1 / 2 / 3 mi + 5 / 7 / 10 min), not on
+the property, so the property-only snapshot reported no Esri data. New threads carry a `demographics`
+block (`_shared/site-research/snapshot.ts` `buildDemographics`): per ring and per drive time, the site
+submit's area when it has that radius, otherwise the property's, each labeled with `source` and `pulled_at`.
+Values within one area are never mixed; a radius neither source has is absent, never interpolated.
+`data_quality.esri.status`: `missing` (no data in either source), `partial` (a 1 / 3 / 5 mi school band has
+no population ring from either source), `present`. Prompts `archetype_call` v7 and `deep_pass` v2.
+
+Across the 190 Starbucks-family site submits at deploy: 110 missing, 36 present from the property,
+29 present mixed (site submit 1 / 2 / 3 mi + property 5 mi), 13 partial (site submit 1 / 2 / 3 mi, no
+property ring at 5 mi, including Macon), 2 present from the site submit.
+
+Drive-time polygons are sensitive to the exact start point: the same point on different dates returns
+identical figures, while moves of 11–94 m changed the 10-minute population by −28% to +5%. Macon's July 26
+pull (27,461) and September 15 pull (19,845) started 11.3 m apart.
+
 ### Differences from the approved drafts
 
 - Budget sentence in both deep-pass prompts: "When web_search is no longer available to you, the budget is

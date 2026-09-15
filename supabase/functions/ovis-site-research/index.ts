@@ -36,7 +36,7 @@ import { OPENING_USER_MESSAGE, replayMessages } from '../_shared/site-research/a
 import { kickWorker } from '../_shared/site-research/kick.ts';
 import { STEP1_SEARCH_BUDGET } from '../_shared/site-research/tools.ts';
 import { DEEP_PASS_PROMPT_KEY, DEEP_PASS_USER_MESSAGE } from '../_shared/site-research/deep-pass.ts';
-import { dataQualityFor } from '../_shared/site-research/snapshot.ts';
+import { buildDemographics, dataQualityFor } from '../_shared/site-research/snapshot.ts';
 
 // Gates research to the Starbucks account family: the Starbucks client itself OR any
 // client whose parent_id is Starbucks (child accounts like "Starbucks - JW (Coastal GA)").
@@ -253,8 +253,9 @@ async function createThread(
     return jsonResponse({ error: 'site_submit_id is required' }, 400);
   }
 
-  // trade_area and every ESRI demographic live on PROPERTY, not site_submit —
-  // joined in here so the snapshot is complete in one shot.
+  // Esri demographics live in TWO places: site_submit.client_demographics (custom rings and drive
+  // times pulled from the sidebar) and the property's Esri columns. Both are read here; see
+  // buildDemographics for precedence. trade_area lives on the property.
   //
   // The submit_stage embed MUST carry the !site_submit_submit_stage_id_fkey
   // constraint hint. site_submit has two IDENTICAL foreign keys on
@@ -268,19 +269,21 @@ async function createThread(
   const { data: ssData, error: ssErr } = await service
     .from('site_submit')
     .select(`
-      id, site_submit_name, client_id, notes, competitor_data,
+      id, site_submit_name, client_id, notes, competitor_data, client_demographics,
       verified_latitude, verified_longitude,
       sf_property_latitude, sf_property_longitude,
       submit_stage!site_submit_submit_stage_id_fkey ( name ),
       property:property_id (
         id, address, city, state, zip, trade_area,
         latitude, longitude, verified_latitude, verified_longitude,
-        pop_1_mile, pop_3_mile, pop_5_mile,
-        households_1_mile, households_3_mile,
-        hh_income_median_1_mile, hh_income_median_3_mile, hh_income_median_5_mile,
-        daytime_pop_1_mile, daytime_pop_3_mile,
-        median_age_3_mile,
-        tapestry_segment_code, tapestry_segment_name,
+        pop_1_mile, pop_3_mile, pop_5_mile, pop_10min_drive,
+        households_1_mile, households_3_mile, households_5_mile, households_10min_drive,
+        hh_income_median_1_mile, hh_income_median_3_mile, hh_income_median_5_mile, hh_income_median_10min_drive,
+        hh_income_avg_1_mile, hh_income_avg_3_mile, hh_income_avg_5_mile, hh_income_avg_10min_drive,
+        daytime_pop_1_mile, daytime_pop_3_mile, daytime_pop_5_mile, daytime_pop_10min_drive,
+        median_age_1_mile, median_age_3_mile, median_age_5_mile, median_age_10min_drive,
+        employees_1_mile, employees_3_mile, employees_5_mile, employees_10min_drive,
+        tapestry_segment_code, tapestry_segment_name, tapestry_lifemodes,
         esri_enriched_at
       )
     `)
@@ -312,7 +315,12 @@ async function createThread(
 
   const stage = (ss.submit_stage ?? null) as { name?: string | null } | null;
 
-  const pinnedContext = {
+  // Demographics: site_submit.client_demographics first, the property's Esri columns as fallback
+  // (the sidebar's order), carried on the rings that actually exist. The property block no longer
+  // repeats Esri columns, so a null property field can't contradict site-submit demographics.
+  const demographics = buildDemographics(ss.client_demographics ?? null, property);
+
+  const pinnedContext: Record<string, unknown> = {
     site: {
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
@@ -330,25 +338,12 @@ async function createThread(
           state: property.state ?? null,
           zip: property.zip ?? null,
           trade_area: property.trade_area ?? null,
-          pop_1_mile: property.pop_1_mile ?? null,
-          pop_3_mile: property.pop_3_mile ?? null,
-          pop_5_mile: property.pop_5_mile ?? null,
-          households_1_mile: property.households_1_mile ?? null,
-          households_3_mile: property.households_3_mile ?? null,
-          hh_income_median_1_mile: property.hh_income_median_1_mile ?? null,
-          hh_income_median_3_mile: property.hh_income_median_3_mile ?? null,
-          hh_income_median_5_mile: property.hh_income_median_5_mile ?? null,
-          daytime_pop_1_mile: property.daytime_pop_1_mile ?? null,
-          daytime_pop_3_mile: property.daytime_pop_3_mile ?? null,
-          median_age_3_mile: property.median_age_3_mile ?? null,
-          tapestry_segment_code: property.tapestry_segment_code ?? null,
-          tapestry_segment_name: property.tapestry_segment_name ?? null,
-          esri_enriched_at: property.esri_enriched_at ?? null,
         }
       : null,
+    demographics,
   };
-  // Computed from the fields above, so the prompt can open with the Esri gap when there is one.
-  (pinnedContext as Record<string, unknown>).data_quality = dataQualityFor(pinnedContext);
+  // Computed from the demographics block, so the prompt can state the data gap or incomplete rings.
+  pinnedContext.data_quality = dataQualityFor(pinnedContext);
 
   const template = await resolvePromptTemplate(service, clientId!);
 
