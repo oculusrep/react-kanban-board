@@ -37,6 +37,7 @@ Stores configuration for how each broker/referral partner's commissions should b
 | `qb_credit_account_name` | string | QBO Account name for credit |
 | `description_template` | string | Template for entry description |
 | `is_active` | boolean | Whether mapping is active |
+| `is_bor` | boolean | Broker of Record pass-through mapping (referral partners only). A client may have one active mapping per `is_bor` value — i.e. a referral mapping and a BOR mapping. See [BOR_DEAL_FEATURE_SPEC.md §5.5](BOR_DEAL_FEATURE_SPEC.md) |
 
 ### `qb_commission_entry` Table
 Tracks each commission entry created in QBO.

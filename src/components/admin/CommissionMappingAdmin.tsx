@@ -42,6 +42,7 @@ interface CommissionMapping {
   qb_credit_account_name: string | null;
   description_template: string | null;
   is_active: boolean;
+  is_bor: boolean;
 }
 
 interface CommissionMappingAdminProps {
@@ -59,7 +60,8 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
   const [qbIncomeAccounts, setQbIncomeAccounts] = useState<QBAccount[]>([]);
   const [qbVendors, setQbVendors] = useState<QBVendor[]>([]);
   // Broker of Record mode: bill debits a clearing liability + a JE recognizes the BOR fee as income.
-  // UI-only flag — the disbursement edge fn keys BOR behavior off the deal's transaction type.
+  // Persisted as qb_commission_mapping.is_bor. A referral partner can have one active referral
+  // mapping AND one active BOR mapping; the disbursement edge fn picks by the deal's transaction type.
   const [isBorMapping, setIsBorMapping] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingQb, setLoadingQb] = useState(false);
@@ -169,8 +171,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       broker_id: mapping.broker_id,
       client_id: mapping.client_id
     });
-    // A bill mapping that also carries a credit account is a BOR pass-through mapping.
-    setIsBorMapping(mapping.payment_method === 'bill' && !!mapping.qb_credit_account_id);
+    setIsBorMapping(mapping.is_bor);
     setEditingId(mapping.id);
     setShowAddForm(false);
   };
@@ -230,7 +231,8 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
         qb_credit_account_id: (formData.payment_method === 'journal_entry' || isBorMapping) ? formData.qb_credit_account_id : null,
         qb_credit_account_name: (formData.payment_method === 'journal_entry' || isBorMapping) ? formData.qb_credit_account_name : null,
         description_template: formData.description_template,
-        is_active: formData.is_active ?? true
+        is_active: formData.is_active ?? true,
+        is_bor: formData.entity_type === 'referral_partner' && isBorMapping
       };
 
       if (editingId) {
@@ -250,7 +252,10 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       handleCancel();
     } catch (err: any) {
       console.error('Error saving mapping:', err);
-      setError(err.message);
+      const existingKind = formData.entity_type === 'broker' ? 'broker' : isBorMapping ? 'Broker of Record' : 'referral';
+      setError(err.code === '23505'
+        ? `An active ${existingKind} mapping already exists for this ${formData.entity_type === 'broker' ? 'broker' : 'partner'} — edit that one instead.`
+        : err.message);
     } finally {
       setSaving(false);
     }
@@ -343,6 +348,19 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
     setFormData(updates);
   };
 
+  // Same company as payee on both its referral and BOR mappings: prefill the vendor from the
+  // partner's other mapping so both payouts go to one QBO vendor.
+  const handleClientChange = (clientId: string) => {
+    const sibling = mappings.find(m => m.client_id === clientId && m.id !== editingId && m.qb_vendor_id);
+    setFormData(prev => ({
+      ...prev,
+      client_id: clientId,
+      ...(!prev.qb_vendor_id && sibling
+        ? { qb_vendor_id: sibling.qb_vendor_id, qb_vendor_name: sibling.qb_vendor_name }
+        : {})
+    }));
+  };
+
   if (loading) {
     return <div className="text-center py-8 text-gray-500">Loading commission mappings...</div>;
   }
@@ -430,7 +448,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
               ) : (
                 <select
                   value={formData.client_id || ''}
-                  onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                  onChange={(e) => handleClientChange(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">Select a referral partner...</option>
@@ -464,7 +482,8 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                   The Bill to the referral partner debits the <strong>clearing liability</strong>, and a journal entry
                   recognizes your <strong>BOR Fee</strong> as income. Set the <strong>Debit Account</strong> to
                   BOR Pass-Through Clearing and the <strong>Credit Account</strong> to BOR Referral Income below.
-                  Vendor is optional — it's auto-created on first disbursement.
+                  Vendor is optional — it's auto-created on first disbursement, or reused from this partner's
+                  referral mapping. A partner can have both a referral mapping and a BOR mapping.
                 </p>
               </div>
             )}
@@ -493,6 +512,9 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
                 <option value="">Leave blank to auto-create by name…</option>
+                {formData.qb_vendor_id && !qbVendors.some(v => v.id === formData.qb_vendor_id) && (
+                  <option value={formData.qb_vendor_id}>{formData.qb_vendor_name || formData.qb_vendor_id}</option>
+                )}
                 {qbVendors.map(v => (
                   <option key={v.id} value={v.id}>{v.displayName}</option>
                 ))}
@@ -629,7 +651,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                           : mapping.client?.client_name}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {mapping.entity_type === 'broker' ? 'Broker' : 'Referral Partner'}
+                        {mapping.entity_type === 'broker' ? 'Broker' : mapping.is_bor ? 'Referral Partner · Broker of Record' : 'Referral Partner'}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm">

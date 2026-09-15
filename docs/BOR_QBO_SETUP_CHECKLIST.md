@@ -55,7 +55,8 @@ You do **not** need to create these vendors in QuickBooks by hand. OVIS auto-cre
 
 1. Add the out-of-state broker as a **Client** in OVIS (on a BOR deal, the Client field = the referring broker / payee).
 2. Create a **commission mapping** (admin → CommissionMapping): entity type = **referral partner**, payment method = **bill**, vendor left blank (auto-created) or linked if it already exists.
-3. **Debit account = BOR Pass-Through Clearing.** ⚠️ The current mapping UI lists only *expense* accounts in the debit dropdown, so the liability may not be selectable there. Per the spec, the **BOR edge-function branch forces the debit to the clearing liability**, so this is handled in code — you don't have to pick it in the UI. (Optionally 1099-track the broker on the auto-created vendor later.)
+3. Check **Broker of Record (pass-through)** on the mapping: **Debit account = BOR Pass-Through Clearing**, **Credit account = BOR Referral Income** (both auto-filled once QBO data is refreshed). (Optionally 1099-track the broker on the vendor later.)
+4. **Partner already set up as a normal referral partner?** Don't edit that mapping — add a **second** mapping for the same partner with the BOR box checked. A partner can have one referral mapping and one BOR mapping; the disbursement picks the right one by deal type, and both pay the same QBO vendor. See [BOR_DEAL_FEATURE_SPEC.md §5.5](BOR_DEAL_FEATURE_SPEC.md).
 
 ---
 

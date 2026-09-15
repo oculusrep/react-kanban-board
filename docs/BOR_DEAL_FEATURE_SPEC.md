@@ -127,8 +127,7 @@ Unchanged — reuse existing Dropbox [FileManager](../src/components/FileManager
 1. **Income account:** `BOR Referral Income` (Income) — where Oculus's BOR Fee lands.
 2. **Clearing account:** `BOR Pass-Through Clearing` (Other Current Liability) — holds collected commission that isn't Oculus revenue.
 3. An **invoice item** mapped to the clearing liability account (so the invoice line credits the liability, not income).
-4. Per referring broker: add them as a **Client** in OVIS + a `qb_commission_mapping` row (`entity_type='referral_partner'`, `client_id` = the partner, `payment_method='bill'`). The QB **vendor is auto-created** at first disbursement via `findOrCreateVendor` ([_shared/quickbooks.ts:723](../supabase/functions/_shared/quickbooks.ts#L723)) — no manual QBO vendor needed.
-   - ⚠️ **Debit account = the clearing liability**, but the existing `CommissionMappingAdmin` debit dropdown lists only *expense* accounts, so the liability isn't selectable there. **The BOR edge-function branch forces the debit to `BOR Pass-Through Clearing`** (config/constant), ignoring the mapping's debit field. No mapping-UI change required. *(Alternative: extend the UI to offer liability accounts for BOR partners — not chosen.)*
+4. Per referring broker: add them as a **Client** in OVIS + a **BOR** `qb_commission_mapping` row (`entity_type='referral_partner'`, `client_id` = the partner, `payment_method='bill'`, `is_bor=true`, debit = `BOR Pass-Through Clearing`, credit = `BOR Referral Income`). In the admin UI this is a Referral Partner mapping with **"Broker of Record (pass-through)"** checked, which switches the debit dropdown to liability accounts and the credit dropdown to income accounts and auto-fills both. The QB **vendor is auto-created** at first disbursement via `findOrCreateVendor` ([_shared/quickbooks.ts](../supabase/functions/_shared/quickbooks.ts)) unless one is already linked — see §5.5 for partners that also have a normal referral mapping.
 
 ### 5.2 Per-installment lifecycle
 
@@ -174,6 +173,26 @@ Oculus files taxes on a **cash basis**. This structure is fully cash-basis compa
 - **Recognition date = the JE date.** Set it to **when the cash is received/kept** (recommended) so recognition aligns with when Oculus actually holds the money and avoids year-end ambiguity when a collection and its disbursement straddle Dec 31. Mechanically identical JE; only the date differs.
 
 **Open accountant question (one line):** *For BOR pass-throughs, recognize our flat fee on the receipt date or the disbursement date?* This only affects the JE date, not the account setup.
+
+### 5.5 Partner that is both a referral partner and a BOR partner
+
+A company can refer deals to Oculus (normal referral: Oculus pays them a referral fee, **expense**) *and* use Oculus as Broker of Record (pass-through: Bill debits the **clearing liability** + BOR Fee JE). The checks go to the **same company name**, but the QuickBooks accounts differ, so the partner needs **two mappings** — one per purpose.
+
+**Model (migration `20260915133618_commission_mapping_is_bor`):**
+- `qb_commission_mapping.is_bor boolean not null default false` makes the mapping's purpose explicit. (Previously "BOR mode" was inferred in the UI from a bill mapping carrying a credit account; the backfill set `is_bor=true` on exactly those rows — NAI Red.)
+- Unique active mapping per **(`client_id`, `is_bor`)** — was per `client_id`. A partner can hold one active referral mapping and one active BOR mapping, never two of the same kind.
+- Check `bor_mapping_shape`: `is_bor` rows must be `referral_partner` + `bill` + have a credit account.
+
+**Disbursement (`quickbooks-create-referral-entry`):** selects the mapping with `is_bor = (deal.transaction_type_id = BOR Referral Fee)`. A BOR deal for a partner with only a referral mapping fails with "No Broker of Record commission mapping configured" (it will **not** fall back to the referral mapping — that would book the pass-through to referral-fee expense).
+
+**One vendor, not two:** if the mapping being used has no QBO vendor, the function reuses the vendor from the partner's other active mapping, then `client.qb_vendor_id`, before auto-creating by name. Existing referral partners have their vendor only on the mapping (e.g. "Archon Commercial Advisors" → vendor "Archon Commercial Advisors, LLC"), so without this a blank BOR mapping would have created a duplicate vendor. The admin UI also prefills the vendor from the sibling mapping when you pick the partner.
+
+**Setup steps for such a partner:**
+1. Keep the existing Referral Partner mapping as-is (debit = `Commissions Paid Out:Referral Fee to Other Broker`).
+2. **Add Mapping** → Entity Type = Referral Partner → pick the same partner → check **Broker of Record (pass-through)** → confirm debit = `BOR Pass-Through Clearing`, credit = `BOR Referral Income`, vendor = the same QBO vendor (prefilled) → Save.
+3. On the BOR deal, set **Referral Partner** (Client) = that company. Bill-To stays the paying party.
+
+The mappings table labels the second row "Referral Partner · Broker of Record".
 
 ---
 

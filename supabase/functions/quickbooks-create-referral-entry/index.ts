@@ -192,14 +192,17 @@ serve(async (req) => {
       )
     }
 
-    // Get the commission mapping for this referral partner
-    const { data: mapping, error: mappingError } = await supabaseClient
+    // Get the commission mapping for this referral partner. A partner can have both a
+    // normal referral mapping and a BOR pass-through mapping (same payee, different
+    // accounts) — pick the one matching this deal's type.
+    const { data: mapping } = await supabaseClient
       .from('qb_commission_mapping')
       .select('*')
       .eq('client_id', referralPayee.id)
       .eq('entity_type', 'referral_partner')
+      .eq('is_bor', isBor)
       .eq('is_active', true)
-      .single()
+      .maybeSingle()
 
     // If no specific mapping exists, use the default referral fee account
     let debitAccountId: string
@@ -212,6 +215,23 @@ serve(async (req) => {
       debitAccountName = mapping.qb_debit_account_name
       vendorId = mapping.qb_vendor_id
       vendorName = mapping.qb_vendor_name
+
+      // No vendor on this mapping: reuse the partner's existing QBO vendor — from their
+      // other (referral ↔ BOR) mapping, else the client record — so payouts to the same
+      // company don't auto-create a duplicate vendor under a slightly different name.
+      if (!vendorId) {
+        const { data: sibling } = await supabaseClient
+          .from('qb_commission_mapping')
+          .select('qb_vendor_id, qb_vendor_name')
+          .eq('client_id', referralPayee.id)
+          .eq('entity_type', 'referral_partner')
+          .eq('is_active', true)
+          .not('qb_vendor_id', 'is', null)
+          .limit(1)
+          .maybeSingle()
+        vendorId = sibling?.qb_vendor_id || referralPayee.qb_vendor_id
+        vendorName = sibling?.qb_vendor_id ? sibling.qb_vendor_name : (referralPayee.qb_vendor_name || vendorName)
+      }
     } else {
       // Use default referral fee account - look up from a system config or use hardcoded default
       // In production, you'd want this to be configurable
@@ -220,7 +240,9 @@ serve(async (req) => {
       // For now, we'll require a mapping
       return new Response(
         JSON.stringify({
-          error: `No QuickBooks commission mapping configured for referral partner: ${referralPayee.client_name}. Please set up the mapping in Settings.`,
+          error: isBor
+            ? `No Broker of Record commission mapping configured for ${referralPayee.client_name}. Add a Referral Partner mapping with "Broker of Record (pass-through)" checked in Settings.`
+            : `No QuickBooks commission mapping configured for referral partner: ${referralPayee.client_name}. Please set up the mapping in Settings.`,
           clientId: referralPayee.id,
           clientName: referralPayee.client_name
         }),
