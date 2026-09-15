@@ -34,7 +34,8 @@ import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-
 // versions, so `deno check` can't even resolve their types. The npm: specifier
 // resolves and typechecks cleanly under both Deno and the Supabase edge runtime.
 import Anthropic from 'npm:@anthropic-ai/sdk@0.124.0';
-import { TOOL_DEFINITIONS, WEB_SEARCH_TOOL, executeTool } from './tools.ts';
+import { STEP1_SEARCH_BUDGET, TOOL_DEFINITIONS, WEB_SEARCH_TOOL, executeTool } from './tools.ts';
+import { runToolLoop, type ModelResponse } from './loop.ts';
 
 // Gates research to the Starbucks account family: the Starbucks client itself OR
 // any client whose parent_id is Starbucks (child accounts like
@@ -55,10 +56,7 @@ const MODEL = 'claude-opus-5';
 // + postgres_changes (see the Phase 1 doc).
 const MAX_TOKENS = 16000;
 
-// Tool-loop ceiling. Higher than claude-cfo-agent.ts's 10: six mandatory
-// categories across four tools plus web search legitimately needs more rounds,
-// and exhausting the loop loses the whole run.
-const MAX_ITERATIONS = 15;
+// Tool-loop ceiling (MAX_ITERATIONS) and the run-level web search budget live in loop.ts.
 
 // Anthropic pricing, $/million tokens, verified 2026-09-10 against the Claude
 // API model table. Cache reads bill at 0.1x input, cache writes at 1.25x.
@@ -231,21 +229,6 @@ interface TurnResult {
   stop_reason: string | null;
 }
 
-function computeCostUsd(usage: Record<string, unknown> | undefined): number | null {
-  if (!usage) return null;
-  const input = num(usage.input_tokens) ?? 0;
-  const output = num(usage.output_tokens) ?? 0;
-  const cacheRead = num(usage.cache_read_input_tokens) ?? 0;
-  const cacheWrite = num(usage.cache_creation_input_tokens) ?? 0;
-  return (
-    (input * USD_PER_M_INPUT +
-      output * USD_PER_M_OUTPUT +
-      cacheRead * USD_PER_M_CACHE_READ +
-      cacheWrite * USD_PER_M_CACHE_WRITE) /
-    1_000_000
-  );
-}
-
 async function callModel(
   systemPrompt: string,
   pinnedContext: unknown,
@@ -273,138 +256,52 @@ async function callModel(
     },
   ];
 
-  // Tools are offered only when a tool context is supplied. web_search is a
-  // server-side tool (Anthropic runs it; no executor here); the other three are
-  // client tools we execute against Postgres.
-  const tools = toolCtx ? [WEB_SEARCH_TOOL, ...TOOL_DEFINITIONS] : undefined;
-
-  // The conversation grows across the loop, so work on a local copy.
-  const convo: Array<Record<string, unknown>> = messages.map((m) => ({ ...m }));
-
-  // Usage accumulates across every iteration — one "turn" of this function can
-  // be a dozen API round trips, and the cost column must reflect all of them.
-  let inTok = 0, outTok = 0, costUsd = 0, sawUsage = false;
-  let lastStop: string | null = null;
-  const toolsUsed: string[] = [];
-
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    const params: Record<string, unknown> = {
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system,
-      messages: convo,
-      // Opus 5 runs adaptive thinking by default; stated explicitly so a future
-      // reader does not "helpfully" add budget_tokens (removed — 400 on Opus 5).
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'high' },
-    };
-    if (tools) params.tools = tools;
-    if (ENABLE_REFUSAL_FALLBACK) {
-      params.betas = [FALLBACK_BETA];
-      params.fallbacks = 'default';
-    }
-
-    // Single cast at the call boundary: `fallbacks` is a beta parameter whose
-    // types lag the pinned SDK version.
-    const response = await withRetry(
-      () => client.beta.messages.create(params as never),
-      { maxRetries: 3, baseDelayMs: 2000, maxDelayMs: 30000 },
-    );
-
-    const resp = response as unknown as {
-      content: Array<Record<string, unknown>>;
-      usage?: Record<string, unknown>;
-      stop_reason?: string | null;
-      stop_details?: { category?: string | null; explanation?: string | null } | null;
-    };
-
-    if (resp.usage) {
-      sawUsage = true;
-      inTok += num(resp.usage.input_tokens) ?? 0;
-      outTok += num(resp.usage.output_tokens) ?? 0;
-      costUsd += computeCostUsd(resp.usage) ?? 0;
-    }
-    lastStop = resp.stop_reason ?? null;
-
-    // Always check stop_reason before reading content — a refusal returns HTTP
-    // 200 with an empty or partial body.
-    if (resp.stop_reason === 'refusal') {
-      const cat = resp.stop_details?.category ?? 'unspecified';
-      throw new Error(`model_refused: the model declined this request (category: ${cat})`);
-    }
-
-    // pause_turn: a server tool (web_search) is mid-flight. Echo the content
-    // back verbatim and let it continue — this is not a tool we execute.
-    if (resp.stop_reason === 'pause_turn') {
-      convo.push({ role: 'assistant', content: resp.content });
-      continue;
-    }
-
-    if (resp.stop_reason === 'tool_use') {
-      convo.push({ role: 'assistant', content: resp.content });
-
-      // Execute every tool_use block in this message and return ALL results in
-      // ONE user message — splitting them across messages teaches the model to
-      // stop calling tools in parallel.
-      const results: Array<Record<string, unknown>> = [];
-      for (const block of resp.content) {
-        if (block.type !== 'tool_use') continue;
-        const name = String(block.name);
-        const id = String(block.id);
-        toolsUsed.push(name);
-        try {
-          const out = await executeTool(
-            toolCtx!.service,
-            name,
-            (block.input ?? {}) as Record<string, unknown>,
-            { siteSubmitId: toolCtx!.siteSubmitId },
-          );
-          results.push({ type: 'tool_result', tool_use_id: id, content: JSON.stringify(out) });
-        } catch (e) {
-          // Return the failure to the model as a tool_result rather than
-          // aborting the run — a dead tool is a finding, not a crash.
-          const detail = e instanceof Error ? e.message : String(e);
-          console.warn(`[site-research] tool ${name} failed: ${detail}`);
-          results.push({
-            type: 'tool_result',
-            tool_use_id: id,
-            is_error: true,
-            content: `Tool ${name} failed: ${detail}. Report this category as not determinable rather than guessing.`,
-          });
-        }
-      }
-      convo.push({ role: 'user', content: results });
-      continue;
-    }
-
-    // end_turn / max_tokens — done.
-    const text = resp.content
-      .filter((b) => b.type === 'text' && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .join('\n')
-      .trim();
-
-    if (!text) throw new Error(`empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'})`);
-
-    console.log(
-      `[site-research] finished in ${iteration + 1} iteration(s); tools: ${
-        toolsUsed.length ? toolsUsed.join(', ') : 'none'
-      }`,
-    );
-
-    return {
-      text,
-      input_tokens: sawUsage ? inTok : null,
-      output_tokens: sawUsage ? outTok : null,
-      cost_usd: sawUsage ? costUsd : null,
-      stop_reason: lastStop,
-    };
+  const baseParams: Record<string, unknown> = {
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    system,
+    // Opus 5 runs adaptive thinking by default; stated explicitly so a future
+    // reader does not "helpfully" add budget_tokens (removed — 400 on Opus 5).
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'high' },
+  };
+  if (ENABLE_REFUSAL_FALLBACK) {
+    baseParams.betas = [FALLBACK_BETA];
+    baseParams.fallbacks = 'default';
   }
 
-  throw new Error(
-    `tool_loop_exhausted: hit MAX_ITERATIONS (${MAX_ITERATIONS}) without a final answer. ` +
-      `Tools called: ${toolsUsed.join(', ') || 'none'}.`,
-  );
+  // The loop (and its run-level web search budget) lives in loop.ts. Tools are offered
+  // only when a tool context is supplied: web_search is server-side (Anthropic runs it);
+  // the rest are client tools executed against Postgres / NCES.
+  const result = await runToolLoop({
+    // Single cast at the call boundary: `fallbacks` is a beta parameter whose types lag
+    // the pinned SDK version. withRetry covers 429/5xx only.
+    create: (params) =>
+      withRetry(() => client.beta.messages.create(params as never), {
+        maxRetries: 3, baseDelayMs: 2000, maxDelayMs: 30000,
+      }) as unknown as Promise<ModelResponse>,
+    execute: (name, input) =>
+      executeTool(toolCtx!.service, name, input, { siteSubmitId: toolCtx!.siteSubmitId }),
+    baseParams,
+    messages,
+    clientTools: toolCtx ? [...TOOL_DEFINITIONS] as unknown as Array<Record<string, unknown>> : [],
+    webSearchTool: toolCtx ? WEB_SEARCH_TOOL : null,
+    searchBudget: STEP1_SEARCH_BUDGET,
+    pricing: {
+      usdPerMInput: USD_PER_M_INPUT,
+      usdPerMOutput: USD_PER_M_OUTPUT,
+      usdPerMCacheRead: USD_PER_M_CACHE_READ,
+      usdPerMCacheWrite: USD_PER_M_CACHE_WRITE,
+    },
+  });
+
+  return {
+    text: result.text,
+    input_tokens: result.input_tokens,
+    output_tokens: result.output_tokens,
+    cost_usd: result.cost_usd,
+    stop_reason: result.stop_reason,
+  };
 }
 
 // ---------------------------------------------------------------------------

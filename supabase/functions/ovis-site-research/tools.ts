@@ -17,11 +17,17 @@ import { NCES_ARCGIS, arcgisQueryUrl } from './nces-config.ts';
 
 // Server-side web search. No domain allowlist by design — source quality is a
 // prompt concern (prefer primary sources), not a config concern.
+//
+// No max_uses here: max_uses caps searches PER API REQUEST, not per run. loop.ts sets it
+// on every request to the budget still remaining, and removes the tool once the run's
+// budget is spent. See loop.ts.
 export const WEB_SEARCH_TOOL = {
   type: 'web_search_20260209',
   name: 'web_search',
-  max_uses: 12,
-} as const;
+};
+
+/** Web searches allowed across one whole Step 1 run (all loop iterations together). */
+export const STEP1_SEARCH_BUDGET = 12;
 
 export const TOOL_DEFINITIONS = [
   {
