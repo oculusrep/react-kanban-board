@@ -273,3 +273,75 @@ collision rows. Fix candidates for Mike to prioritise:
 - constrain `searchRules` to sender/domain equality
 - recover the 184 collision demotes
 - fix the Bob Aiken contact record
+
+---
+
+## Follow-up — fixes shipped and outage re-run (2026-09-14 → 09-15)
+
+| Step | What | State |
+|---|---|---|
+| Classification state | Migration `20260914130150`: `classification_status` (pending/classified/failed/abandoned), outcome, attempts/backoff, tokens; `email_classifier_health()` + alert. email-triage v87, dispatcher v4 | live, verified on a live run |
+| Stub overwrite | Migration `20260914175119`: tier-1 stubs moved to `email_tier1_stub` (503 rows); gmail-sync v60 writes there | live, verified: CBRE A1 stubs + model demote coexisting at 22:20 UTC |
+| Re-run | 577 outage emails (rebuilt from logs; all billing 429s, 09-09 15:45 → 09-14 16:35 UTC) marked `failed`, drained by cron | done 2026-09-15 07:17 UTC |
+
+Note on versions: every edge function's version number went up by one at ~20:40 UTC on 09-14. That was a
+`supabase secrets set` (Dropbox token rotation) re-versioning all functions with unchanged code, not a deploy.
+
+### Re-run results (from `classification_status`, not logs)
+
+| | count |
+|---|---|
+| classified | **577 / 577** |
+| failed / abandoned | **0 / 0** |
+| retried inside the re-run and then succeeded (attempts = 3) | 4: three Gemini 503s, one `MALFORMED_FUNCTION_CALL` empty response |
+| judged non-business (demoted) | **308**, all model-judged |
+| linked to any CRM object | 113 (94 already had pre-model auto-match links; **35 got new links** in the re-run) |
+| new links by type | 22 deal links on 10 emails · 19 property links on 12 emails · 20 client · 9 contact |
+| kept, no link | 177 |
+
+**One of the four retries is the silent-failure fix earning its keep.** Gemini returned no content
+(`finishReason=MALFORMED_FUNCTION_CALL`) on attempt 2. The old code would have `break`-ed and recorded
+"keep". It was recorded as failed, retried an hour later, and got a real verdict.
+
+### `model_no_verdict` — a finding about the agent loop, not just a label
+
+| outcome | emails | share | avg input tokens |
+|---|---|---|---|
+| model_done | 407 | 70.5% | 11,395 |
+| **model_no_verdict** | **168** | **29.2% of the 575 model runs** | **17,140** |
+| thread_inheritance | 2 | 0.3% | — |
+
+**29.2% here, against 30% (42/140) in the pre-outage sample.** Two independent samples agree: about three
+in ten model runs never call `done()`. In the same window's logs, the 170 loop-ended-without-done lines
+break down as **16 "no function calls"** and the rest hitting the **5-iteration cap**. Those logs include
+some organic mail alongside the 577.
+
+These runs cost **1.5× a completed run** and account for **38% of input tokens** from 29% of emails.
+Their verdict is the default "keep" with no links, so roughly three in ten model-bound emails are paying
+for a full loop and getting no classification. Candidate causes to test, not yet investigated:
+- the prompt's "multiple search_deals calls are OK" instruction encouraging search until the cap
+- `searchDeals`' unranked ILIKE returning nothing useful, so the model keeps searching
+
+### Tokens and cost — measured
+
+| | input | output | cost ($0.30 / $2.50 per M) |
+|---|---|---|---|
+| **actual** | **7,517,268** | **495,854** | **$3.49** |
+| pre-run estimate (central / conservative) | 8.4M / 13.0M | 0.47M / 0.93M | $3.70 / $6.20 |
+
+The actual came in below the central estimate, not near the top. The no-verdict runs were long, as
+expected, but the completed runs grew less per iteration than the conservative bound assumed.
+
+### Tier-1 evidence through the re-run
+
+Of the 577, 390 carried tier-1 stubs, snapshotted before the run. **All 390 are intact, row for row.**
+235 of them were demoted during the run and now hold both a `tier1_*` stub and a `demoted` row. Under the
+old write path, those 235 would have been overwritten.
+
+### Side effects to be aware of
+
+- **104 `activity` rows** were created: 22 for deal links on 10 emails, 82 for client/contact/property
+  links. They're dated at the email's `received_at` (09-09 → 09-14). The deal board clock ignores email
+  activity since `20260905172258`, so no tiles move. No duplicate activity rows.
+- **The classifier backlog alert** fired at 22:32 UTC (backlog 572) and was emailed. Health is ok now;
+  the alert resolves on the next check and its recovery email follows.
