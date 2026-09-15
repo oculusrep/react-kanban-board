@@ -106,6 +106,68 @@ function isDropRejection(e: unknown): boolean {
   return (err?.status === 400 || /\b400\b/.test(msg)) && msg.includes('web_search');
 }
 
+/** Build request params for one model call under a search plan. */
+export function buildRequestParams(
+  baseParams: Record<string, unknown>,
+  convo: Array<Record<string, unknown>>,
+  clientTools: Array<Record<string, unknown>>,
+  webSearchTool: Record<string, unknown> | null,
+  plan: SearchPlan,
+): Record<string, unknown> {
+  const params: Record<string, unknown> = { ...baseParams, messages: convo };
+  const tools: Array<Record<string, unknown>> = [];
+  if (webSearchTool && plan.mode === 'search') tools.push({ ...webSearchTool, max_uses: plan.maxUses });
+  if (webSearchTool && plan.mode === 'lock') tools.push({ ...webSearchTool, max_uses: 1 });
+  tools.push(...clientTools);
+  if (tools.length) params.tools = tools;
+  if (webSearchTool && plan.mode === 'lock') params.tool_choice = { type: 'none' };
+  return params;
+}
+
+/** The last assistant turn in a conversation, for detecting a deferred server tool call. */
+export function lastAssistantContent(convo: Array<Record<string, unknown>>): Block[] | undefined {
+  for (let i = convo.length - 1; i >= 0; i--) {
+    if (convo[i].role === 'assistant') return convo[i].content as Block[];
+    if (convo[i].role === 'user' && typeof convo[i].content === 'string') return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * ONE model request under the run-level search budget, including the fallback when
+ * the API rejects dropping web_search. Used by the background worker (one request per
+ * invocation) and by runToolLoop (tests / synchronous callers).
+ */
+export async function requestOnce(opts: {
+  create: CreateFn;
+  baseParams: Record<string, unknown>;
+  convo: Array<Record<string, unknown>>;
+  clientTools: Array<Record<string, unknown>>;
+  webSearchTool: Record<string, unknown> | null;
+  searchBudget: number;
+  searchesUsed: number;
+  dropRejected: boolean;
+  log?: (msg: string) => void;
+}): Promise<{ resp: ModelResponse; plan: SearchPlan; dropRejected: boolean }> {
+  const log = opts.log ?? ((m) => console.log(m));
+  let dropRejected = opts.dropRejected;
+  let plan: SearchPlan = opts.webSearchTool
+    ? planSearch(opts.searchBudget, opts.searchesUsed, hasPendingServerToolUse(lastAssistantContent(opts.convo)), dropRejected)
+    : { mode: 'drop' };
+  const build = (p: SearchPlan) => buildRequestParams(opts.baseParams, opts.convo, opts.clientTools, opts.webSearchTool, p);
+  try {
+    return { resp: await opts.create(build(plan)), plan, dropRejected };
+  } catch (e) {
+    if (opts.webSearchTool && plan.mode === 'drop' && isDropRejection(e)) {
+      log('[site-research] API rejected dropping web_search from a history that contains searches; locking tool calls instead');
+      dropRejected = true;
+      plan = { mode: 'lock' };
+      return { resp: await opts.create(build(plan)), plan, dropRejected };
+    }
+    throw e;
+  }
+}
+
 export async function runToolLoop(opts: {
   create: CreateFn;
   execute: ExecuteFn;
@@ -125,43 +187,14 @@ export async function runToolLoop(opts: {
   let dropRejected = false;
   const toolsUsed: string[] = [];
 
-  const lastAssistantContent = (): Block[] | undefined => {
-    for (let i = convo.length - 1; i >= 0; i--) {
-      if (convo[i].role === 'assistant') return convo[i].content as Block[];
-      if (convo[i].role === 'user' && typeof convo[i].content === 'string') return undefined;
-    }
-    return undefined;
-  };
-
-  const buildParams = (plan: SearchPlan): Record<string, unknown> => {
-    const params: Record<string, unknown> = { ...opts.baseParams, messages: convo };
-    const tools: Array<Record<string, unknown>> = [];
-    if (opts.webSearchTool && plan.mode === 'search') tools.push({ ...opts.webSearchTool, max_uses: plan.maxUses });
-    if (opts.webSearchTool && plan.mode === 'lock') tools.push({ ...opts.webSearchTool, max_uses: 1 });
-    tools.push(...opts.clientTools);
-    if (tools.length) params.tools = tools;
-    if (opts.webSearchTool && plan.mode === 'lock') params.tool_choice = { type: 'none' };
-    return params;
-  };
-
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    let plan: SearchPlan = opts.webSearchTool
-      ? planSearch(opts.searchBudget, searches, hasPendingServerToolUse(lastAssistantContent()), dropRejected)
-      : { mode: 'drop' };
-
-    let resp: ModelResponse;
-    try {
-      resp = await opts.create(buildParams(plan));
-    } catch (e) {
-      if (opts.webSearchTool && plan.mode === 'drop' && isDropRejection(e)) {
-        log('[site-research] API rejected dropping web_search from a history that contains searches; locking tool calls instead');
-        dropRejected = true;
-        plan = { mode: 'lock' };
-        resp = await opts.create(buildParams(plan));
-      } else {
-        throw e;
-      }
-    }
+    const r = await requestOnce({
+      create: opts.create, baseParams: opts.baseParams, convo, clientTools: opts.clientTools,
+      webSearchTool: opts.webSearchTool, searchBudget: opts.searchBudget, searchesUsed: searches,
+      dropRejected, log,
+    });
+    const resp = r.resp;
+    dropRejected = r.dropRejected;
 
     if (resp.usage) {
       sawUsage = true;

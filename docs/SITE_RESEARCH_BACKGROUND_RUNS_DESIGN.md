@@ -1,6 +1,15 @@
 # Site Research — Background Runs (Design)
 
-**Status: DESIGN, for review. Nothing built.** Written 2026-09-15.
+**Status: BUILT and deployed 2026-09-15** (migration `20260915094109_site_research_background_runs`, functions `ovis-site-research` + `ovis-site-research-worker`, cron `ovis-site-research-tick`). Written 2026-09-15.
+
+## As built — changes from the design below
+
+1. **Message write idempotent per run.** `research_thread_message.run_id` with a partial unique index; `finalize_thread_run` writes the message, archetype columns, step and run state in one transaction and returns `already_final` for a repeat. A retried final iteration cannot produce a duplicate or partial seq-0 message; a worker that lost its lease gets `lease_lost` and writes nothing.
+2. **Attempt-level cost.** `research_thread_run_step` is one row per ATTEMPT with its own `cost_usd`, recorded the moment the model responds (before tools run), and an `outcome` of committed / discarded / failed. `research_thread_run.cost_usd` is everything billed including dead attempts; `retry_cost_usd` is the retried share. Both are copied onto the report message (`cost_usd`, `retry_cost_usd`, plus `web_search_requests`).
+3. **Realtime publishes `research_thread_run_step`, not `research_thread_run`.** The run row carries the full conversation and is rewritten every iteration, too heavy for realtime; steps are small and change at claim, response and commit. The UI refetches the run's summary columns on any step or thread event, and polls every 10 s while live.
+4. **No SDK retries inside an attempt** (`maxRetries: 0`, 240 s request timeout): a failed request releases the lease and the engine's attempt counter governs retries, so every retry is a visible, costed step row.
+5. **PortalChatTab realtime fixed** separately (`20260915094110_site_submit_comment_realtime_enable`).
+
 
 ## Why
 
@@ -127,8 +136,8 @@ CREATE TABLE research_thread_tool_result (    -- D1 (item 5)
 ```
 
 RLS as the existing research tables: `SELECT` to authenticated, no write policies, writes via
-service role. Add `research_thread`, `research_thread_run`, `research_thread_message` to the
-`supabase_realtime` publication (see "Realtime" below).
+service role. Add `research_thread`, `research_thread_message`, `research_thread_run_step` to the
+`supabase_realtime` publication (see "As built" item 3).
 
 ## RPCs
 

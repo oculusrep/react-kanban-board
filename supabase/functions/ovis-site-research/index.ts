@@ -1,80 +1,41 @@
 /**
- * OVIS Site Research — Edge Function
+ * OVIS Site Research — Edge Function (enqueue).
  *
- * The in-app research thread behind "Site story" on the Starbucks site_submit
- * sidebar. Calls the Anthropic API DIRECTLY — this is interactive, single-site,
- * request/response work. The OpenClaw external-agent pattern
- * (ovis-research-trigger + ovis-research-mcp) stays where it belongs: unattended
- * multi-site enumeration.
+ * The in-app research thread behind "Site story" on the Starbucks site_submit sidebar.
+ * This function validates, freezes the site snapshot, and ENQUEUES a background run;
+ * the model loop runs in ovis-site-research-worker, one iteration per invocation, so no
+ * browser request ever waits on the model. (Synchronous runs 504'd at Supabase's 150 s
+ * idle timeout on every v4/v5 call.) Design: docs/SITE_RESEARCH_BACKGROUND_RUNS_DESIGN.md.
  *
- * Two actions, both requiring a Supabase user JWT:
+ * Actions, all requiring a Supabase user JWT, all returning 202 with the ids to watch:
  *
- *   1. { action: 'create_thread', site_submit_id }
- *      Resolves the site coordinate by the documented precedence, freezes a
- *      site+property snapshot into pinned_context, inserts the thread, resolves
- *      the active prompt_template, calls the model, parses the archetype block
- *      into columns, and writes the assistant message at seq 0.
+ *   1. { action: 'create_thread', site_submit_id }  -> { thread_id, run_id }
+ *      Resolves the site coordinate by the documented precedence, freezes a site+property
+ *      snapshot into pinned_context, inserts the thread, resolves the active
+ *      prompt_template, enqueues an 'archetype' run that will write message seq 0.
  *
- *   2. { action: 'send_turn', thread_id, message }
- *      Appends the user turn, replays pinned_context + prior messages, writes
- *      the assistant reply.
+ *   2. { action: 'send_turn', thread_id, message }  -> { thread_id, run_id, seq }
+ *      Writes the user message and enqueues a 'turn' run in one transaction.
  *
- * The gate (Starbucks account family + can_run_market_research) is re-checked
- * here on every call. The UI gate is a convenience, not a control.
+ *   3. { action: 'retry_run', thread_id }            -> { thread_id, run_id }
+ *      Re-enqueues the thread's latest failed run (same kind and target message).
  *
- * See docs/SITE_RESEARCH_THREAD_PHASE1.md.
+ * The gate (Starbucks account family + can_run_market_research) is re-checked here on
+ * every call. The UI gate is a convenience, not a control.
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-// npm: specifier, NOT esm.sh. claude-cfo-agent.ts imports
-// https://esm.sh/@anthropic-ai/sdk@0.32.1, but that pin predates every parameter
-// this function needs (adaptive thinking, output_config.effort, the beta
-// fallbacks field) — and esm.sh's build service currently 500s on the modern
-// versions, so `deno check` can't even resolve their types. The npm: specifier
-// resolves and typechecks cleanly under both Deno and the Supabase edge runtime.
-import Anthropic from 'npm:@anthropic-ai/sdk@0.124.0';
-import { STEP1_SEARCH_BUDGET, TOOL_DEFINITIONS, WEB_SEARCH_TOOL, executeTool } from './tools.ts';
-import { runToolLoop, type ModelResponse } from './loop.ts';
+import { OPENING_USER_MESSAGE, replayMessages } from '../_shared/site-research/archetype.ts';
+import { kickWorker } from '../_shared/site-research/kick.ts';
+import { STEP1_SEARCH_BUDGET } from '../_shared/site-research/tools.ts';
 
-// Gates research to the Starbucks account family: the Starbucks client itself OR
-// any client whose parent_id is Starbucks (child accounts like
-// "Starbucks - JW (Coastal GA)"). Mirrors ovis-research-trigger and
-// SiteSubmitSidebar.tsx. Adding another client later is a constant change here
-// plus a prompt_template row — never a prompt rewrite.
+// Gates research to the Starbucks account family: the Starbucks client itself OR any
+// client whose parent_id is Starbucks (child accounts like "Starbucks - JW (Coastal GA)").
+// Mirrors ovis-research-trigger and SiteSubmitSidebar.tsx.
 const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
 
 const PROMPT_KEY = 'archetype_call';
-
-// Claude Opus 5. Do NOT copy 'claude-sonnet-4-20250514' from claude-cfo-agent.ts
-// — that model string is behind current releases.
-const MODEL = 'claude-opus-5';
-
-// Non-streaming ceiling. Adaptive thinking tokens count against this, so leave
-// real headroom; 16k keeps a normal turn well under the HTTP timeout. If turns
-// ever start hitting the wall clock, that is the signal to switch to streaming
-// + postgres_changes (see the Phase 1 doc).
-const MAX_TOKENS = 16000;
-
-// Tool-loop ceiling (MAX_ITERATIONS) and the run-level web search budget live in loop.ts.
-
-// Anthropic pricing, $/million tokens, verified 2026-09-10 against the Claude
-// API model table. Cache reads bill at 0.1x input, cache writes at 1.25x.
-const USD_PER_M_INPUT = 5.0;
-const USD_PER_M_OUTPUT = 25.0;
-const USD_PER_M_CACHE_READ = USD_PER_M_INPUT * 0.1;
-const USD_PER_M_CACHE_WRITE = USD_PER_M_INPUT * 1.25;
-
-// Server-side refusal fallback: on a policy decline the API re-runs the request
-// on a fallback model inside the same call, instead of just stopping. Retail
-// site analysis is about as unlikely to trip a classifier as text gets, so this
-// is insurance rather than a necessity — flip to false (one line) if the beta
-// is not enabled for the org and requests start 400ing.
-const ENABLE_REFUSAL_FALLBACK = true;
-const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
-
-const ARCHETYPES = ['GROWTH', 'MATURE', 'REDEVELOPMENT', 'RELIEF', 'WHITE_SPACE'] as const;
-type Archetype = (typeof ARCHETYPES)[number];
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -89,39 +50,24 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Retry — same shape as claude-cfo-agent.ts's withRetry, at the spec's timings.
-// ---------------------------------------------------------------------------
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  { maxRetries = 3, baseDelayMs = 2000, maxDelayMs = 30000 } = {},
-): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error: unknown) {
-      lastError = error as Error;
-      const msg = (error as Error).message ?? '';
-      // Retry only on transient failures. A 400 (bad params) retried three
-      // times is three times the latency and the same error.
-      const retryable =
-        msg.includes('429') ||
-        msg.includes('rate_limit') ||
-        msg.includes('rate limit') ||
-        msg.includes('overloaded') ||
-        msg.includes('529') ||
-        /\b5\d\d\b/.test(msg);
-      if (!retryable || attempt === maxRetries) throw error;
-
-      const delay = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
-      console.warn(`[site-research] retry ${attempt + 1}/${maxRetries} in ${delay}ms: ${msg}`);
-      await new Promise((r) => setTimeout(r, delay));
-    }
+/**
+ * Start the worker on a freshly enqueued run. Never fatal: if the kick fails, the
+ * per-minute tick picks the queued run up within about two minutes.
+ */
+async function kick(service: SupabaseClient, runId: string): Promise<boolean> {
+  try {
+    const { data: secret, error } = await service.rpc('get_site_research_worker_secret');
+    if (error || !secret) throw new Error(error?.message ?? 'worker secret unavailable');
+    await kickWorker(runId, secret as string);
+    return true;
+  } catch (e) {
+    console.warn(`[site-research] run=${runId} kick failed; the tick will start it:`, e);
+    return false;
   }
-  throw lastError;
 }
+
+/** Postgres error code of a supabase-js RPC error, if any. */
+const pgCode = (e: unknown) => (e as { code?: string } | null)?.code;
 
 // ---------------------------------------------------------------------------
 // Coordinate resolution — REQUIRED precedence.
@@ -162,146 +108,6 @@ function resolveCoordinate(
     }
   }
   return null;
-}
-
-// ---------------------------------------------------------------------------
-// Archetype block parsing — defensive, mirroring submit_research_report.
-// ---------------------------------------------------------------------------
-// The model returns prose plus a fenced JSON block. A bad parse must NEVER lose
-// the text: on any failure we return null, the caller stores the message
-// verbatim, and the columns stay NULL ("not called") rather than wrong.
-interface ParsedArchetype {
-  archetype_primary: Archetype | null;
-  archetype_secondary: Archetype | null;
-  story_carriers: string[];
-  /** The prose with the trailing JSON fence removed, for display. */
-  prose: string;
-}
-
-function isArchetype(v: unknown): v is Archetype {
-  return typeof v === 'string' && (ARCHETYPES as readonly string[]).includes(v);
-}
-
-function parseArchetypeBlock(text: string): ParsedArchetype | null {
-  // Last fenced json block wins — if the model narrated an example earlier in
-  // the message, the real answer is the one it ended on.
-  const fences = [...text.matchAll(/```json\s*([\s\S]*?)```/gi)];
-  if (fences.length === 0) return null;
-  const last = fences[fences.length - 1];
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(last[1]);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
-  const obj = parsed as Record<string, unknown>;
-
-  // Primary is the one field that must be valid — without it there is no call
-  // to record, and a thread with a wrong archetype is worse than one with none.
-  if (!isArchetype(obj.archetype_primary)) return null;
-
-  const carriers = Array.isArray(obj.story_carriers)
-    ? obj.story_carriers
-        .filter((c): c is string => typeof c === 'string')
-        .map((c) => c.trim())
-        .filter((c) => c.length > 0 && c.length <= 200)
-        .slice(0, 10)
-    : [];
-
-  return {
-    archetype_primary: obj.archetype_primary,
-    archetype_secondary: isArchetype(obj.archetype_secondary) ? obj.archetype_secondary : null,
-    story_carriers: carriers,
-    prose: (text.slice(0, last.index ?? 0) + text.slice((last.index ?? 0) + last[0].length)).trim(),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Anthropic call
-// ---------------------------------------------------------------------------
-interface TurnResult {
-  text: string;
-  input_tokens: number | null;
-  output_tokens: number | null;
-  cost_usd: number | null;
-  stop_reason: string | null;
-}
-
-async function callModel(
-  systemPrompt: string,
-  pinnedContext: unknown,
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-  toolCtx?: { service: SupabaseClient; siteSubmitId: string | null },
-): Promise<TurnResult> {
-  // Dedicated workspace key — NOT the shared ANTHROPIC_API_KEY used by
-  // cfo-query and bookkeeper-query, so this feature's spend is attributable and
-  // can carry its own workspace limit.
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY_RESEARCH');
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY_RESEARCH not configured');
-
-  const client = new Anthropic({ apiKey });
-
-  // System = the versioned prompt body, then the frozen site snapshot. Both are
-  // stable for the life of the thread, so the cache breakpoint goes on the last
-  // block and covers the whole prefix. (A short thread may fall under the model's
-  // minimum cacheable prefix, in which case this is simply a no-op.)
-  const system = [
-    { type: 'text', text: systemPrompt },
-    {
-      type: 'text',
-      text: `Frozen site snapshot for this thread (JSON):\n${JSON.stringify(pinnedContext, null, 2)}`,
-      cache_control: { type: 'ephemeral' },
-    },
-  ];
-
-  const baseParams: Record<string, unknown> = {
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system,
-    // Opus 5 runs adaptive thinking by default; stated explicitly so a future
-    // reader does not "helpfully" add budget_tokens (removed — 400 on Opus 5).
-    thinking: { type: 'adaptive' },
-    output_config: { effort: 'high' },
-  };
-  if (ENABLE_REFUSAL_FALLBACK) {
-    baseParams.betas = [FALLBACK_BETA];
-    baseParams.fallbacks = 'default';
-  }
-
-  // The loop (and its run-level web search budget) lives in loop.ts. Tools are offered
-  // only when a tool context is supplied: web_search is server-side (Anthropic runs it);
-  // the rest are client tools executed against Postgres / NCES.
-  const result = await runToolLoop({
-    // Single cast at the call boundary: `fallbacks` is a beta parameter whose types lag
-    // the pinned SDK version. withRetry covers 429/5xx only.
-    create: (params) =>
-      withRetry(() => client.beta.messages.create(params as never), {
-        maxRetries: 3, baseDelayMs: 2000, maxDelayMs: 30000,
-      }) as unknown as Promise<ModelResponse>,
-    execute: (name, input) =>
-      executeTool(toolCtx!.service, name, input, { siteSubmitId: toolCtx!.siteSubmitId }),
-    baseParams,
-    messages,
-    clientTools: toolCtx ? [...TOOL_DEFINITIONS] as unknown as Array<Record<string, unknown>> : [],
-    webSearchTool: toolCtx ? WEB_SEARCH_TOOL : null,
-    searchBudget: STEP1_SEARCH_BUDGET,
-    pricing: {
-      usdPerMInput: USD_PER_M_INPUT,
-      usdPerMOutput: USD_PER_M_OUTPUT,
-      usdPerMCacheRead: USD_PER_M_CACHE_READ,
-      usdPerMCacheWrite: USD_PER_M_CACHE_WRITE,
-    },
-  });
-
-  return {
-    text: result.text,
-    input_tokens: result.input_tokens,
-    output_tokens: result.output_tokens,
-    cost_usd: result.cost_usd,
-    stop_reason: result.stop_reason,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +220,8 @@ serve(async (req: Request) => {
 
   try {
     if (action === 'create_thread') return await createThread(service, body, userId);
-    if (action === 'send_turn') return await sendTurn(service, body);
+    if (action === 'send_turn') return await sendTurn(service, body, userId);
+    if (action === 'retry_run') return await retryRun(service, body, userId);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -542,210 +349,166 @@ async function createThread(
       prompt_template_id: template.id,
       pinned_context: pinnedContext,
       created_by: userId,
+      state: 'queued',
     })
     .select('id')
     .single();
   if (threadErr) throw new Error(`thread insert failed: ${threadErr.message}`);
   const threadId = (threadRow as { id: string }).id;
 
-  try {
-    const turn = await callModel(
-      template.body,
-      pinnedContext,
-      [
-        {
-          role: 'user',
-          content:
-            'Make the archetype call for this site and write the executive summary, following your instructions.',
-        },
-      ],
-      { service, siteSubmitId },
-    );
-
-    const parsed = parseArchetypeBlock(turn.text);
-
-    // A bad parse must never lose the text: store the raw message, leave the
-    // columns NULL. A parsed message stores the prose with the fence stripped,
-    // since the values now live in queryable columns.
-    const { error: msgErr } = await service.from('research_thread_message').insert({
-      thread_id: threadId,
-      seq: 0,
-      role: 'assistant',
-      content: parsed ? parsed.prose : turn.text,
-      model: MODEL,
-      input_tokens: turn.input_tokens,
-      output_tokens: turn.output_tokens,
-      cost_usd: turn.cost_usd,
-    });
-    if (msgErr) throw new Error(`message insert failed: ${msgErr.message}`);
-
-    if (parsed) {
-      const { error: updErr } = await service
-        .from('research_thread')
-        .update({
-          archetype_primary: parsed.archetype_primary,
-          archetype_secondary: parsed.archetype_secondary,
-          story_carriers: parsed.story_carriers,
-        })
-        .eq('id', threadId);
-      if (updErr) console.warn('[site-research] archetype column update failed:', updErr.message);
-    } else {
-      console.warn(`[site-research] thread ${threadId}: no parseable archetype block; columns left NULL`);
-    }
-
-    return jsonResponse({
-      thread_id: threadId,
-      archetype_primary: parsed?.archetype_primary ?? null,
-      archetype_secondary: parsed?.archetype_secondary ?? null,
-      story_carriers: parsed?.story_carriers ?? [],
-      parsed: !!parsed,
-      coordinate_source: coordinate.coordinate_source,
-      cost_usd: turn.cost_usd,
-    });
-  } catch (e) {
-    // The thread row is kept — state='failed' is an audit record of an attempt,
-    // and the pinned_context shows exactly what the model was given.
+  const { data: runId, error: runErr } = await service.rpc('enqueue_thread_run', {
+    p_thread_id: threadId,
+    p_kind: 'archetype',
+    p_target_seq: 0,
+    p_prompt_template_id: template.id,
+    p_convo: [{ role: 'user', content: OPENING_USER_MESSAGE }],
+    p_search_budget: STEP1_SEARCH_BUDGET,
+    p_created_by: userId,
+  });
+  if (runErr) {
+    // No run means nothing will ever write this thread's report: mark it failed now
+    // rather than leave a queued thread nobody owns.
     await service.from('research_thread').update({ state: 'failed' }).eq('id', threadId);
-    throw e;
+    throw new Error(`run enqueue failed: ${runErr.message}`);
   }
+
+  const kicked = await kick(service, runId as string);
+  return jsonResponse(
+    { thread_id: threadId, run_id: runId, state: 'queued', kicked, coordinate_source: coordinate.coordinate_source },
+    202,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Thread lookup shared by send_turn / retry_run
+// ---------------------------------------------------------------------------
+interface ThreadRecord {
+  id: string;
+  site_submit_id: string;
+  client_id: string;
+  prompt_template_id: string | null;
+  state: string;
+}
+
+async function loadThread(service: SupabaseClient, threadId: unknown): Promise<ThreadRecord | Response> {
+  if (typeof threadId !== 'string' || !threadId) return jsonResponse({ error: 'thread_id is required' }, 400);
+  const { data, error } = await service
+    .from('research_thread')
+    .select('id, site_submit_id, client_id, prompt_template_id, state')
+    .eq('id', threadId)
+    .maybeSingle();
+  if (error) throw new Error(`thread lookup failed: ${error.message}`);
+  if (!data) return jsonResponse({ error: 'thread_not_found' }, 404);
+  const thread = data as ThreadRecord;
+  if (thread.state === 'archived') return jsonResponse({ error: 'thread_archived' }, 409);
+  // Re-check the gate per call: the site's client could have changed since creation.
+  await assertStarbucksFamily(service, thread.client_id);
+  return thread;
+}
+
+/**
+ * The thread replays against the template it was CREATED with, not whatever is active
+ * now — otherwise activating a new version silently rewrites the reasoning behind every
+ * open thread mid-conversation.
+ */
+async function threadTemplateId(service: SupabaseClient, thread: ThreadRecord): Promise<string> {
+  return thread.prompt_template_id ?? (await resolvePromptTemplate(service, thread.client_id)).id;
+}
+
+async function loadMessages(service: SupabaseClient, threadId: string) {
+  const { data, error } = await service
+    .from('research_thread_message')
+    .select('seq, role, content')
+    .eq('thread_id', threadId)
+    .order('seq', { ascending: true });
+  if (error) throw new Error(`message history lookup failed: ${error.message}`);
+  return (data ?? []) as Array<{ seq: number; role: 'user' | 'assistant'; content: string }>;
 }
 
 // ---------------------------------------------------------------------------
 // Action: send_turn
 // ---------------------------------------------------------------------------
-async function sendTurn(
-  service: SupabaseClient,
-  body: Record<string, unknown>,
-): Promise<Response> {
-  const threadId = body.thread_id;
+async function sendTurn(service: SupabaseClient, body: Record<string, unknown>, userId: string): Promise<Response> {
   const message = body.message;
-  if (typeof threadId !== 'string' || !threadId) {
-    return jsonResponse({ error: 'thread_id is required' }, 400);
-  }
-  if (typeof message !== 'string' || !message.trim()) {
-    return jsonResponse({ error: 'message is required' }, 400);
-  }
+  if (typeof message !== 'string' || !message.trim()) return jsonResponse({ error: 'message is required' }, 400);
 
-  const { data: threadData, error: threadErr } = await service
-    .from('research_thread')
-    .select('id, site_submit_id, client_id, prompt_template_id, pinned_context, state')
-    .eq('id', threadId)
-    .maybeSingle();
-  if (threadErr) throw new Error(`thread lookup failed: ${threadErr.message}`);
-  if (!threadData) return jsonResponse({ error: 'thread_not_found' }, 404);
+  const loaded = await loadThread(service, body.thread_id);
+  if (loaded instanceof Response) return loaded;
+  const thread = loaded;
 
-  const thread = threadData as {
-    id: string;
-    site_submit_id: string;
-    client_id: string;
-    prompt_template_id: string | null;
-    pinned_context: unknown;
-    state: string;
-  };
-  if (thread.state === 'archived') {
-    return jsonResponse({ error: 'thread_archived' }, 409);
-  }
-
-  // Re-check the gate per turn: the site's client could have changed since the
-  // thread was created, and the UI gate is not a control.
-  await assertStarbucksFamily(service, thread.client_id);
-
-  // The thread replays against the template it was CREATED with, not whatever
-  // is active now — otherwise activating v2 silently rewrites the reasoning
-  // behind every open thread mid-conversation.
-  let systemPrompt: string;
-  if (thread.prompt_template_id) {
-    const { data: tpl, error: tplErr } = await service
-      .from('prompt_template')
-      .select('body')
-      .eq('id', thread.prompt_template_id)
-      .maybeSingle();
-    if (tplErr) throw new Error(`prompt_template lookup failed: ${tplErr.message}`);
-    systemPrompt = (tpl as { body: string } | null)?.body
-      ?? (await resolvePromptTemplate(service, thread.client_id)).body;
-  } else {
-    systemPrompt = (await resolvePromptTemplate(service, thread.client_id)).body;
-  }
-
-  const { data: priorData, error: priorErr } = await service
-    .from('research_thread_message')
-    .select('seq, role, content')
-    .eq('thread_id', threadId)
-    .order('seq', { ascending: true });
-  if (priorErr) throw new Error(`message history lookup failed: ${priorErr.message}`);
-  const prior = (priorData ?? []) as Array<{ seq: number; role: 'user' | 'assistant'; content: string }>;
-
+  const prior = await loadMessages(service, thread.id);
   const nextSeq = prior.length === 0 ? 0 : prior[prior.length - 1].seq + 1;
   const userText = message.trim();
+  const convo = [...replayMessages(prior), { role: 'user', content: userText }];
 
-  const { error: userMsgErr } = await service.from('research_thread_message').insert({
-    thread_id: threadId,
-    seq: nextSeq,
-    role: 'user',
-    content: userText,
+  const { data: runId, error } = await service.rpc('enqueue_thread_turn', {
+    p_thread_id: thread.id,
+    p_expected_seq: nextSeq,
+    p_user_content: userText,
+    p_prompt_template_id: await threadTemplateId(service, thread),
+    p_convo: convo,
+    p_search_budget: STEP1_SEARCH_BUDGET,
+    p_created_by: userId,
   });
-  // A unique violation on (thread_id, seq) means a concurrent turn won the race.
-  if (userMsgErr) {
-    if ((userMsgErr as { code?: string }).code === '23505') {
-      return jsonResponse(
-        { error: 'concurrent_turn', detail: 'Another turn was sent on this thread. Reload and retry.' },
-        409,
-      );
+  if (error) {
+    if (pgCode(error) === '23505') {
+      return jsonResponse({ error: 'run_in_progress', detail: 'A run is already in progress on this thread. Wait for it to finish.' }, 409);
     }
-    throw new Error(`user message insert failed: ${userMsgErr.message}`);
+    if (pgCode(error) === '40001') {
+      return jsonResponse({ error: 'concurrent_turn', detail: 'This thread changed while you were typing. Reload and resend.' }, 409);
+    }
+    throw new Error(`turn enqueue failed: ${error.message}`);
   }
 
-  // The API is stateless — the seq-0 archetype message must be replayed too, or
-  // the model loses its own call. messages[] must start with a user turn, so a
-  // history that opens with the assistant's seq 0 gets a short framing turn.
-  const replay: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-  if (prior.length > 0 && prior[0].role === 'assistant') {
-    replay.push({
-      role: 'user',
-      content:
-        'Make the archetype call for this site and write the executive summary, following your instructions.',
-    });
+  const kicked = await kick(service, runId as string);
+  return jsonResponse({ thread_id: thread.id, run_id: runId, seq: nextSeq, state: 'queued', kicked }, 202);
+}
+
+// ---------------------------------------------------------------------------
+// Action: retry_run
+// ---------------------------------------------------------------------------
+async function retryRun(service: SupabaseClient, body: Record<string, unknown>, userId: string): Promise<Response> {
+  const loaded = await loadThread(service, body.thread_id);
+  if (loaded instanceof Response) return loaded;
+  const thread = loaded;
+
+  const { data: last, error: lastErr } = await service
+    .from('research_thread_run')
+    .select('id, kind, target_seq, state, prompt_template_id')
+    .eq('thread_id', thread.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastErr) throw new Error(`run lookup failed: ${lastErr.message}`);
+  const run = last as { id: string; kind: 'archetype' | 'turn' | 'deep_pass'; target_seq: number; state: string; prompt_template_id: string | null } | null;
+  if (!run) return jsonResponse({ error: 'no_run_to_retry' }, 409);
+  if (run.state !== 'failed' && run.state !== 'cancelled') {
+    return jsonResponse({ error: 'not_retryable', detail: `The latest run is ${run.state}.` }, 409);
   }
-  for (const m of prior) replay.push({ role: m.role, content: m.content });
-  replay.push({ role: 'user', content: userText });
+  if (run.kind === 'deep_pass') return jsonResponse({ error: 'not_retryable', detail: 'Deep pass retry is not supported yet.' }, 409);
 
-  const turn = await callModel(systemPrompt, thread.pinned_context, replay, {
-    service,
-    siteSubmitId: thread.site_submit_id,
-  });
-  const parsed = parseArchetypeBlock(turn.text);
-
-  const { error: asstErr } = await service.from('research_thread_message').insert({
-    thread_id: threadId,
-    seq: nextSeq + 1,
-    role: 'assistant',
-    content: parsed ? parsed.prose : turn.text,
-    model: MODEL,
-    input_tokens: turn.input_tokens,
-    output_tokens: turn.output_tokens,
-    cost_usd: turn.cost_usd,
-  });
-  if (asstErr) throw new Error(`assistant message insert failed: ${asstErr.message}`);
-
-  // A follow-up turn only re-emits the JSON block when the call actually
-  // changed, so a parse here is a revision — write it through.
-  if (parsed) {
-    const { error: updErr } = await service
-      .from('research_thread')
-      .update({
-        archetype_primary: parsed.archetype_primary,
-        archetype_secondary: parsed.archetype_secondary,
-        story_carriers: parsed.story_carriers,
-      })
-      .eq('id', threadId);
-    if (updErr) console.warn('[site-research] archetype column update failed:', updErr.message);
+  const messages = await loadMessages(service, thread.id);
+  if (messages.some((m) => m.seq === run.target_seq)) {
+    return jsonResponse({ error: 'already_written', detail: 'That message already exists.' }, 409);
   }
+  // Replay exactly what the failed run was answering: everything before its target.
+  const convo = run.kind === 'archetype'
+    ? [{ role: 'user', content: OPENING_USER_MESSAGE }]
+    : replayMessages(messages.filter((m) => m.seq < run.target_seq));
 
-  return jsonResponse({
-    thread_id: threadId,
-    seq: nextSeq + 1,
-    revised: !!parsed,
-    archetype_primary: parsed?.archetype_primary ?? null,
-    cost_usd: turn.cost_usd,
+  const { data: runId, error } = await service.rpc('enqueue_thread_run', {
+    p_thread_id: thread.id,
+    p_kind: run.kind,
+    p_target_seq: run.target_seq,
+    p_prompt_template_id: run.prompt_template_id ?? (await threadTemplateId(service, thread)),
+    p_convo: convo,
+    p_search_budget: STEP1_SEARCH_BUDGET,
+    p_created_by: userId,
   });
+  if (error) {
+    if (pgCode(error) === '23505') return jsonResponse({ error: 'run_in_progress' }, 409);
+    throw new Error(`retry enqueue failed: ${error.message}`);
+  }
+  const kicked = await kick(service, runId as string);
+  return jsonResponse({ thread_id: thread.id, run_id: runId, state: 'queued', kicked }, 202);
 }

@@ -1,19 +1,21 @@
 /**
- * SiteStoryPanel — the site research thread (Phase 1).
+ * SiteStoryPanel — the site research thread.
  *
- * A chat thread on a site submit that produces the archetype call and an
- * executive summary. Lives as a collapsible section inside the DATA tab of
- * SiteSubmitSidebar, NOT as a sixth tab — the tab strip is already full at 500px
- * (see feedback_slideout_tab_overflow).
+ * A chat thread on a site submit that produces the archetype call and an executive
+ * summary. Lives as a collapsible section inside the DATA tab of SiteSubmitSidebar, NOT
+ * as a sixth tab — the tab strip is already full at 500px (feedback_slideout_tab_overflow).
  *
- * Reads research_thread / research_thread_message directly (RLS allows SELECT to
- * authenticated). Writes go exclusively through the ovis-site-research edge
- * function, which re-checks the Starbucks + permission gate server-side.
+ * Runs are BACKGROUND work (docs/SITE_RESEARCH_BACKGROUND_RUNS_DESIGN.md): the edge
+ * function answers 202 with a thread/run id and ovis-site-research-worker does the model
+ * loop. This panel watches progress two ways:
+ *   - postgres_changes on research_thread, research_thread_message and
+ *     research_thread_run_step (all in the supabase_realtime publication), and
+ *   - a 10 s poll while anything is live. Realtime can fail silently — PortalChatTab's
+ *     subscription received nothing for months because its table was never published —
+ *     so the poll guarantees the panel converges regardless.
  *
- * No realtime in Phase 1: turns are synchronous request/response, not long runs.
- * If a turn ever exceeds the edge function's wall clock, switch to writing
- * messages as they land and subscribe via postgres_changes, the way
- * PortalChatTab does.
+ * Reads go straight to the tables (RLS allows SELECT to authenticated). Writes go only
+ * through ovis-site-research, which re-checks the Starbucks + permission gate.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,6 +27,8 @@ const STEEL = '#4A6B94';
 const SLATE = '#8FA9C8';
 const TERRACOTTA = '#A27B5C';
 
+const POLL_MS = 10_000;
+
 export type Archetype = 'GROWTH' | 'MATURE' | 'REDEVELOPMENT' | 'RELIEF' | 'WHITE_SPACE';
 
 const ARCHETYPE_LABEL: Record<Archetype, string> = {
@@ -35,12 +39,15 @@ const ARCHETYPE_LABEL: Record<Archetype, string> = {
   WHITE_SPACE: 'White space',
 };
 
+type ThreadState = 'queued' | 'running' | 'complete' | 'failed' | 'archived';
+type RunState = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
+
 interface ThreadRow {
   id: string;
   archetype_primary: Archetype | null;
   archetype_secondary: Archetype | null;
   story_carriers: string[];
-  state: 'active' | 'archived' | 'failed';
+  state: ThreadState;
   created_at: string;
   pinned_context: { site?: { coordinate_source?: string } } | null;
 }
@@ -53,6 +60,29 @@ interface MessageRow {
   cost_usd: string | number | null;
   created_at: string;
 }
+
+interface RunRow {
+  id: string;
+  kind: 'archetype' | 'turn' | 'deep_pass';
+  state: RunState;
+  phase: string | null;
+  iteration: number;
+  attempts: number;
+  web_search_requests: number;
+  search_budget: number;
+  client_tool_calls: number;
+  cost_usd: string | number;
+  retry_cost_usd: string | number;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+const RUN_COLUMNS =
+  'id, kind, state, phase, iteration, attempts, web_search_requests, search_budget, client_tool_calls, cost_usd, retry_cost_usd, error, created_at, started_at, finished_at';
+
+const isLive = (s: string | null | undefined) => s === 'queued' || s === 'running';
 
 interface SiteStoryPanelProps {
   siteSubmitId: string;
@@ -75,6 +105,11 @@ function formatTimestamp(iso: string): string {
   }
 }
 
+function formatElapsed(fromIso: string, nowMs: number): string {
+  const s = Math.max(0, Math.round((nowMs - new Date(fromIso).getTime()) / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+
 /** Supabase RPC/function errors are plain objects — String(e) yields "[object Object]". */
 function toErrorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
@@ -89,8 +124,8 @@ function toErrorMessage(e: unknown): string {
 }
 
 /**
- * supabase.functions.invoke surfaces a non-2xx as an opaque FunctionsHttpError;
- * the useful text is in the JSON body, which has to be read off the response.
+ * supabase.functions.invoke surfaces a non-2xx as an opaque FunctionsHttpError; the
+ * useful text is in the JSON body, which has to be read off the response.
  */
 async function extractInvokeError(error: unknown): Promise<string> {
   const ctx = (error as { context?: Response })?.context;
@@ -108,70 +143,158 @@ async function extractInvokeError(error: unknown): Promise<string> {
   return toErrorMessage(error);
 }
 
+async function invoke(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.functions.invoke('ovis-site-research', { body });
+  if (error) throw new Error(await extractInvokeError(error));
+  return (data ?? {}) as Record<string, unknown>;
+}
+
+function StatusBadge({ state }: { state: ThreadState | RunState }) {
+  const style: Record<string, { label: string; bg: string; fg: string; border: string }> = {
+    queued: { label: 'Queued', bg: '#F8FAFC', fg: STEEL, border: SLATE },
+    running: { label: 'Running', bg: '#EEF3FA', fg: NAVY, border: STEEL },
+    failed: { label: 'Failed', bg: '#FFF7F0', fg: TERRACOTTA, border: TERRACOTTA },
+  };
+  const s = style[state];
+  if (!s) return null;
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: s.bg, color: s.fg, border: `1px solid ${s.border}` }}>
+      {s.label}
+    </span>
+  );
+}
+
 export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: SiteStoryPanelProps) {
   const [threads, setThreads] = useState<ThreadRow[] | null>(null);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [run, setRun] = useState<RunRow | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [starting, setStarting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [localRefresh, setLocalRefresh] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // ---- thread list ----
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      const { data, error: err } = await supabase
-        .from('research_thread')
-        .select('id, archetype_primary, archetype_secondary, story_carriers, state, created_at, pinned_context')
-        .eq('site_submit_id', siteSubmitId)
-        .order('created_at', { ascending: false });
-      if (cancelled) return;
-      if (err) {
-        setError(err.message);
-        setThreads([]);
-        return;
-      }
-      setThreads((data ?? []) as unknown as ThreadRow[]);
+  // ---- data loaders ----
+  const loadThreads = useCallback(async () => {
+    const { data, error: err } = await supabase
+      .from('research_thread')
+      .select('id, archetype_primary, archetype_secondary, story_carriers, state, created_at, pinned_context')
+      .eq('site_submit_id', siteSubmitId)
+      .order('created_at', { ascending: false });
+    if (err) {
+      setError(err.message);
+      setThreads((prev) => prev ?? []);
+      return;
     }
-    load();
-    return () => { cancelled = true; };
-  }, [siteSubmitId, refreshTrigger, localRefresh]);
+    setThreads((data ?? []) as unknown as ThreadRow[]);
+  }, [siteSubmitId]);
 
-  // ---- messages for the open thread ----
-  const loadMessages = useCallback(async (threadId: string) => {
-    setLoadingMessages(true);
+  const loadOpenThread = useCallback(async (threadId: string, showSpinner = false) => {
+    if (showSpinner) setLoadingMessages(true);
     try {
-      const { data, error: err } = await supabase
-        .from('research_thread_message')
-        .select('id, seq, role, content, cost_usd, created_at')
-        .eq('thread_id', threadId)
-        .order('seq', { ascending: true });
-      if (err) throw err;
-      setMessages((data ?? []) as unknown as MessageRow[]);
+      const [msgRes, runRes] = await Promise.all([
+        supabase
+          .from('research_thread_message')
+          .select('id, seq, role, content, cost_usd, created_at')
+          .eq('thread_id', threadId)
+          .order('seq', { ascending: true }),
+        supabase
+          .from('research_thread_run')
+          .select(RUN_COLUMNS)
+          .eq('thread_id', threadId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      if (msgRes.error) throw msgRes.error;
+      if (runRes.error) throw runRes.error;
+      setMessages((msgRes.data ?? []) as unknown as MessageRow[]);
+      setRun((runRes.data ?? null) as unknown as RunRow | null);
     } catch (e) {
       setError(toErrorMessage(e));
     } finally {
-      setLoadingMessages(false);
+      if (showSpinner) setLoadingMessages(false);
     }
   }, []);
 
   useEffect(() => {
+    loadThreads();
+  }, [loadThreads, refreshTrigger]);
+
+  useEffect(() => {
     if (!openThreadId) {
       setMessages([]);
+      setRun(null);
       return;
     }
-    loadMessages(openThreadId);
-  }, [openThreadId, loadMessages]);
+    loadOpenThread(openThreadId, true);
+  }, [openThreadId, loadOpenThread]);
 
-  // Scroll to the newest turn only when the thread GROWS, never on first load.
-  // The messages now live in the DATA tab's own scroll container, so an
-  // unconditional scrollIntoView would yank the whole tab down past the deal
-  // details the moment a thread is opened. After you send a turn, following the
-  // reply down is the right behaviour.
+  // ---- realtime ----
+  useEffect(() => {
+    const channel = supabase
+      .channel(`site-story-${siteSubmitId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'research_thread', filter: `site_submit_id=eq.${siteSubmitId}` },
+        () => {
+          loadThreads();
+          if (openThreadId) loadOpenThread(openThreadId);
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [siteSubmitId, openThreadId, loadThreads, loadOpenThread]);
+
+  const liveRunId = run && isLive(run.state) ? run.id : null;
+
+  useEffect(() => {
+    if (!openThreadId) return;
+    let channel = supabase
+      .channel(`site-story-thread-${openThreadId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'research_thread_message', filter: `thread_id=eq.${openThreadId}` },
+        () => loadOpenThread(openThreadId),
+      );
+    if (liveRunId) {
+      // Per-attempt steps: claim, model response, commit — the progress heartbeat.
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'research_thread_run_step', filter: `run_id=eq.${liveRunId}` },
+        () => loadOpenThread(openThreadId),
+      );
+    }
+    channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [openThreadId, liveRunId, loadOpenThread]);
+
+  // ---- poll while anything is live (realtime can fail silently) ----
+  const anyLive = !!(threads?.some((t) => isLive(t.state)) || (run && isLive(run.state)));
+  useEffect(() => {
+    if (!anyLive) return;
+    const poll = setInterval(() => {
+      loadThreads();
+      if (openThreadId) loadOpenThread(openThreadId);
+    }, POLL_MS);
+    const tick = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(tick);
+    };
+  }, [anyLive, openThreadId, loadThreads, loadOpenThread]);
+
+  // Scroll to the newest turn only when the thread GROWS, never on first load — the
+  // messages live in the DATA tab's own scroll container, so an unconditional
+  // scrollIntoView would yank the whole tab past the deal details on open.
   const prevCountRef = useRef(0);
   useEffect(() => {
     if (prevCountRef.current > 0 && messages.length > prevCountRef.current) {
@@ -180,22 +303,15 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
     prevCountRef.current = messages.length;
   }, [messages]);
 
+  // ---- actions ----
   const handleStart = async () => {
     setError(null);
     setStarting(true);
     try {
-      const { data, error: err } = await supabase.functions.invoke('ovis-site-research', {
-        body: { action: 'create_thread', site_submit_id: siteSubmitId },
-      });
-      if (err) throw new Error(await extractInvokeError(err));
-      const threadId = (data as { thread_id?: string })?.thread_id;
-      if (!threadId) throw new Error('Thread was created but no id came back.');
-      // A message that stored but did not parse is not a failure — the text is
-      // there, the columns just stay empty. Say so rather than hiding it.
-      if ((data as { parsed?: boolean })?.parsed === false) {
-        setError('Summary saved, but the archetype block could not be parsed — the call was left unset.');
-      }
-      setLocalRefresh((n) => n + 1);
+      const data = await invoke({ action: 'create_thread', site_submit_id: siteSubmitId });
+      const threadId = data.thread_id as string | undefined;
+      if (!threadId) throw new Error('The run was accepted but no thread id came back.');
+      await loadThreads();
       setOpenThreadId(threadId);
     } catch (e) {
       setError(toErrorMessage(e));
@@ -210,13 +326,9 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
     setError(null);
     setSending(true);
     try {
-      const { error: err } = await supabase.functions.invoke('ovis-site-research', {
-        body: { action: 'send_turn', thread_id: openThreadId, message: text },
-      });
-      if (err) throw new Error(await extractInvokeError(err));
+      await invoke({ action: 'send_turn', thread_id: openThreadId, message: text });
       setDraft('');
-      await loadMessages(openThreadId);
-      setLocalRefresh((n) => n + 1);
+      await Promise.all([loadOpenThread(openThreadId), loadThreads()]);
     } catch (e) {
       setError(toErrorMessage(e));
     } finally {
@@ -224,7 +336,34 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
     }
   };
 
+  const handleRetry = async () => {
+    if (!openThreadId) return;
+    setError(null);
+    setRetrying(true);
+    try {
+      await invoke({ action: 'retry_run', thread_id: openThreadId });
+      await Promise.all([loadOpenThread(openThreadId), loadThreads()]);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const openThread = threads?.find((t) => t.id === openThreadId) ?? null;
+  const runIsLive = !!run && isLive(run.state);
+
+  const progressText = (r: RunRow): string => {
+    if (r.state === 'queued') return 'Queued — starting shortly';
+    const parts = [
+      r.phase === 'researching' ? 'Researching' : r.phase === 'complete' ? 'Writing report' : 'Working',
+      `step ${r.iteration + 1}`,
+      `${r.client_tool_calls} data ${r.client_tool_calls === 1 ? 'query' : 'queries'}`,
+      `${r.web_search_requests}/${r.search_budget} web searches`,
+    ];
+    if (r.attempts > 1) parts.push(`retry ${r.attempts - 1}`);
+    return parts.join(' · ');
+  };
 
   return (
     <div className="text-sm">
@@ -245,7 +384,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
           ) : threads.length === 0 ? (
             <div className="text-xs mb-2" style={{ color: STEEL }}>
               No site story yet. Starting one makes the archetype call and writes an executive summary
-              from this site's frozen snapshot.
+              from this site's frozen snapshot. It runs in the background — you can close this panel.
             </div>
           ) : (
             <div className="space-y-1.5 mb-2">
@@ -258,11 +397,12 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                   style={{ borderColor: SLATE, backgroundColor: '#FFFFFF' }}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-xs" style={{ color: NAVY }}>
-                      {t.archetype_primary ? ARCHETYPE_LABEL[t.archetype_primary] : 'Not called'}
+                    <span className="flex items-center gap-1.5 font-medium text-xs" style={{ color: NAVY }}>
+                      {t.archetype_primary ? ARCHETYPE_LABEL[t.archetype_primary] : isLive(t.state) ? 'In progress' : 'Not called'}
                       {t.archetype_secondary && (
                         <span style={{ color: STEEL }}> / {ARCHETYPE_LABEL[t.archetype_secondary]}</span>
                       )}
+                      <StatusBadge state={t.state} />
                     </span>
                     <span className="text-[11px]" style={{ color: SLATE }}>
                       {formatTimestamp(t.created_at)}
@@ -281,11 +421,6 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                       ))}
                     </div>
                   )}
-                  {t.state === 'failed' && (
-                    <div className="mt-1 text-[11px]" style={{ color: '#8B0000' }}>
-                      Failed before the summary was written
-                    </div>
-                  )}
                 </button>
               ))}
             </div>
@@ -298,7 +433,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             className="px-3 py-1.5 rounded text-xs font-medium disabled:opacity-60"
             style={{ backgroundColor: NAVY, color: '#FFFFFF' }}
           >
-            {starting ? 'Working… (up to a minute)' : threads && threads.length > 0 ? 'New site story' : 'Start site story'}
+            {starting ? 'Starting…' : threads && threads.length > 0 ? 'New site story' : 'Start site story'}
           </button>
         </>
       )}
@@ -322,16 +457,12 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             )}
           </div>
 
-          {openThread && (
+          {openThread && (openThread.archetype_primary || openThread.story_carriers.length > 0) && (
             <div className="mb-2 px-2 py-1.5 rounded" style={{ backgroundColor: '#F8FAFC' }}>
               <div className="text-xs font-semibold" style={{ color: NAVY }}>
-                {openThread.archetype_primary
-                  ? ARCHETYPE_LABEL[openThread.archetype_primary]
-                  : 'Archetype not called'}
+                {openThread.archetype_primary ? ARCHETYPE_LABEL[openThread.archetype_primary] : 'Archetype not called'}
                 {openThread.archetype_secondary && (
-                  <span style={{ color: STEEL }}>
-                    {' '}/ {ARCHETYPE_LABEL[openThread.archetype_secondary]}
-                  </span>
+                  <span style={{ color: STEEL }}> / {ARCHETYPE_LABEL[openThread.archetype_secondary]}</span>
                 )}
               </div>
               {openThread.story_carriers.length > 0 && (
@@ -344,10 +475,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             </div>
           )}
 
-          {/* No inner scroll box. The DATA tab is a single scroll container, so
-              a nested max-height scroller here would trap a long summary in a
-              320px window inside an already-scrolling panel — two scrollbars,
-              and the composer below it hard to reach. Let the messages flow. */}
+          {/* No inner scroll box — the DATA tab is a single scroll container. */}
           <div className="space-y-2 mb-2">
             {loadingMessages && messages.length === 0 ? (
               <div className="text-xs" style={{ color: SLATE }}>Loading…</div>
@@ -367,6 +495,36 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 </div>
               ))
             )}
+
+            {/* ---- run status ---- */}
+            {run && runIsLive && (
+              <div className="px-2 py-1.5 rounded border flex items-center gap-2" style={{ borderColor: STEEL, backgroundColor: '#EEF3FA' }}>
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor: NAVY }} />
+                <div className="text-[11px]" style={{ color: NAVY }}>
+                  {progressText(run)}
+                  <span style={{ color: STEEL }}> · {formatElapsed(run.started_at ?? run.created_at, nowMs)}</span>
+                </div>
+              </div>
+            )}
+            {run && run.state === 'failed' && (
+              <div className="px-2 py-1.5 rounded border" style={{ borderColor: TERRACOTTA, backgroundColor: '#FFF7F0' }}>
+                <div className="text-[11px] font-medium" style={{ color: TERRACOTTA }}>
+                  {run.kind === 'archetype' ? 'The site story failed before the report was written.' : 'This reply failed.'}
+                </div>
+                {run.error && (
+                  <div className="text-[11px] mt-0.5 break-words" style={{ color: TERRACOTTA }}>{run.error}</div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  className="mt-1 px-2 py-0.5 rounded text-[11px] font-medium disabled:opacity-60"
+                  style={{ backgroundColor: NAVY, color: '#FFFFFF' }}
+                >
+                  {retrying ? 'Retrying…' : 'Retry'}
+                </button>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -381,15 +539,15 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 }
               }}
               rows={2}
-              placeholder="Ask a follow-up…"
-              disabled={sending}
+              placeholder={runIsLive ? 'Wait for the current run to finish…' : 'Ask a follow-up…'}
+              disabled={sending || runIsLive}
               className="flex-1 px-2 py-1.5 text-xs border rounded resize-none disabled:opacity-60"
               style={{ borderColor: SLATE }}
             />
             <button
               type="button"
               onClick={handleSend}
-              disabled={sending || !draft.trim()}
+              disabled={sending || runIsLive || !draft.trim()}
               className="px-3 rounded text-xs font-medium disabled:opacity-60"
               style={{ backgroundColor: NAVY, color: '#FFFFFF' }}
             >
