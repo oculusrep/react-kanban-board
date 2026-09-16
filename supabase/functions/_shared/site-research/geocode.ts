@@ -127,3 +127,31 @@ export function distanceIfExact(
   if (!Number.isFinite(site.latitude) || !Number.isFinite(site.longitude)) return null;
   return haversineMiles({ lat: site.latitude, lng: site.longitude }, { lat: match.latitude, lng: match.longitude });
 }
+
+/**
+ * Straight-line miles BETWEEN two addresses — the duplication test ("this brand runs units 2.4 mi
+ * apart here"). Both ends must geocode exactly, for the same reason a distance from the site does:
+ * an interpolated or ambiguous match is not a location. Distance is computed here; the model never
+ * works one out.
+ */
+export async function distanceBetweenAddressesTool(
+  addressA: string,
+  addressB: string,
+  geocode: (address: string) => Promise<GeocodeMatch | null> = censusGeocode,
+): Promise<Record<string, unknown>> {
+  const [a, b] = await Promise.all([geocode(addressA), geocode(addressB)]);
+  const usable = (m: GeocodeMatch | null) => !!m && m.match_quality === 'exact';
+  const distance = usable(a) && usable(b)
+    ? haversineMiles({ lat: a!.latitude, lng: a!.longitude }, { lat: b!.latitude, lng: b!.longitude })
+    : null;
+  const describe = (input: string, m: GeocodeMatch | null) =>
+    m ? { input_address: input, matched_address: m.matched_address, match_quality: m.match_quality } : { input_address: input, matched_address: null, match_quality: 'no_match' };
+  return {
+    address_a: describe(addressA, a),
+    address_b: describe(addressB, b),
+    distance_miles: distance === null ? null : round1(distance),
+    note: distance !== null
+      ? 'Straight-line miles between the two addresses, one decimal. Cite it as straight-line.'
+      : 'No distance: at least one address did not match exactly (no match, several candidates, a different house number, or no house number). Say the distance between these two could not be determined; do not estimate it.',
+  };
+}

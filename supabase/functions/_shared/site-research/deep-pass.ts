@@ -28,7 +28,7 @@ export const DEEP_PASS_USER_MESSAGE =
 export const SCHOOL_FILL_PROMPT_KEY = 'deep_pass_school_fill';
 export const DEEP_PASS_PROMPT_KEY = 'deep_pass';
 export const FILL_SEARCH_BUDGET = 15;
-export const DEEP_PASS_SEARCH_BUDGET = 20;
+export const DEEP_PASS_SEARCH_BUDGET = 25;
 export const BANDS = [1, 3, 5] as const;
 export type Band = (typeof BANDS)[number];
 
@@ -59,18 +59,73 @@ export const RECORD_SCHOOL_FILL_TOOL = {
   },
 };
 
+/**
+ * Employment that concentrates DAYTIME POPULATION. Customer-facing retail, QSR, grocery, big box,
+ * convenience, pharmacy and mall retail are excluded: their staff counts are small and their traffic
+ * is the same trade-area customers, so they are not an employment story (decided 2026-09-16).
+ */
+export const EMPLOYER_TYPES = [
+  'corporate_office', 'regional_office', 'distribution_warehouse', 'manufacturing', 'hospital',
+  'medical_campus', 'university_college', 'school', 'government', 'call_center', 'data_center',
+  'other_institutional',
+] as const;
+export type EmployerType = (typeof EMPLOYER_TYPES)[number];
+
+/** Types that can legitimately carry a retail brand's name (a back-of-house facility, not a store). */
+const FACILITY_TYPES = new Set<string>(['corporate_office', 'regional_office', 'distribution_warehouse', 'manufacturing', 'call_center', 'data_center']);
+
+const EXCLUDED_BRANDS = [
+  'kroger', 'publix', 'walmart', 'wal-mart', 'costco', 'target', "sam's club", 'aldi', 'lidl', 'whole foods',
+  'trader joe', 'ingles', 'food lion', 'harris teeter', 'winn-dixie', "bj's wholesale", 'sprouts',
+  "mcdonald", 'chick-fil-a', 'chickfila', 'chick fil a', 'starbucks', 'dunkin', "wendy's", 'burger king',
+  'taco bell', 'kfc', 'popeyes', 'zaxby', 'raising cane', 'chipotle', 'panera', 'subway', "arby's", 'sonic drive',
+  "culver's", 'whataburger', 'jersey mike', 'firehouse subs', 'dairy queen', 'waffle house', 'cracker barrel',
+  '7-eleven', 'quiktrip', 'racetrac', 'wawa', 'circle k', 'sheetz', "buc-ee", 'walgreens', 'cvs', 'rite aid',
+  'home depot', "lowe's", 'best buy', 'dollar general', 'dollar tree', 'family dollar', 'tj maxx', 'marshalls',
+  'ross stores', "kohl's", "macy's", "dick's sporting", 'academy sports', 'tractor supply', 'autozone',
+  "o'reilly auto", 'advance auto', 'ulta', 'sephora', 'petco', 'petsmart', 'michaels', 'hobby lobby',
+  'five below', 'big lots', 'aeropostale', 'old navy',
+];
+const EXCLUDED_KEYWORDS = [
+  'grocery', 'supermarket', 'restaurant', 'qsr', 'quick service', 'fast food', 'drive-thru', 'drive thru',
+  'coffee shop', 'cafe', 'café', 'pizzeria', 'steakhouse', 'diner', 'bakery cafe', 'food court', 'deli counter',
+  'convenience store', 'gas station', 'fuel center', 'truck stop', 'pharmacy', 'drugstore', 'drug store',
+  'big box', 'supercenter', 'superstore', 'shopping center', 'shopping mall', 'outlet mall', 'mall retail',
+  'retail store', 'storefront', 'boutique', 'car dealership', 'auto dealership', 'car wash', 'nail salon',
+  'hair salon', 'fitness center', 'liquor store',
+];
+/** Words that mark a back-of-house facility rather than a store. */
+const FACILITY_WORDS = [
+  'corporate', 'headquarters', 'hq', 'regional office', 'support center', 'operations center', 'distribution',
+  'fulfillment', 'warehouse', 'manufacturing', 'plant', 'production facility', 'processing', 'call center',
+  'contact center', 'data center', 'campus', 'back office', 'shared services',
+];
+
+const hit = (haystack: string, needles: string[]) => needles.find((n) => haystack.includes(n)) ?? null;
+
 export const RECORD_EMPLOYER_TOOL = {
   name: 'record_employer',
   description:
-    'Record one site-level employer near the site, as soon as a source states it. The street, city, state ' +
-    'and zip only as the source states them (a street must begin with its street number; leave it out ' +
-    'otherwise). headcount only when the source states a specific number for THIS site. The address is ' +
-    'geocoded here: the result carries distance_miles and ring when the address matches exactly, and ' +
-    'distance_miles null when it could not be located (then say the distance could not be determined).',
+    'Record one site-level employer near the site, as soon as a source states it. ONLY employment that ' +
+    'concentrates daytime population counts: corporate and regional offices, distribution and warehouse, ' +
+    'manufacturing, hospitals and large medical campuses, universities and colleges, government centers, ' +
+    'call centers, data centers, and schools as institutional employers. Customer-facing retail is NOT an ' +
+    'employer here and is rejected: grocery, big box, restaurants and QSR, convenience, pharmacy, mall ' +
+    'retail. A retail brand is allowed only for a back-of-house facility (its distribution center, ' +
+    'corporate office, plant), named as such. The street, city, state and zip only as the source states ' +
+    'them (a street must begin with its street number; leave it out otherwise). headcount only when the ' +
+    'source states a specific number for THIS site. The address is geocoded here: the result carries ' +
+    'distance_miles and ring when the address matches exactly, and distance_miles null when it could not ' +
+    'be located (then say the distance could not be determined).',
   input_schema: {
     type: 'object',
     properties: {
       name: { type: 'string' },
+      employer_type: {
+        type: 'string',
+        enum: [...EMPLOYER_TYPES],
+        description: 'What kind of employment site this is. Customer-facing retail has no type here and is not recorded.',
+      },
       street: { type: 'string' },
       city: { type: 'string' },
       state: { type: 'string' },
@@ -80,11 +135,11 @@ export const RECORD_EMPLOYER_TOOL = {
       source_year: { type: 'string', description: 'The year the figure refers to.' },
       notes: { type: 'string' },
     },
-    required: ['name', 'source'],
+    required: ['name', 'employer_type', 'source'],
   },
 };
 
-const DEEP_PASS_OVIS_TOOLS = ['query_nearby_starbucks', 'query_municipal_projects', 'query_traffic_counts', 'geocode_address'];
+const DEEP_PASS_OVIS_TOOLS = ['query_nearby_starbucks', 'query_municipal_projects', 'query_traffic_counts', 'geocode_address', 'distance_between_addresses'];
 
 export const SCHOOL_FILL_CLIENT_TOOLS: Array<Record<string, unknown>> = [RECORD_SCHOOL_FILL_TOOL];
 export const DEEP_PASS_CLIENT_TOOLS: Array<Record<string, unknown>> = [
@@ -396,6 +451,7 @@ export function mergeFills(fills: AcceptedFill[]): Map<string, SchoolFill> {
 
 export interface RecordedEmployer {
   name: string;
+  employer_type: EmployerType;
   street: string | null;
   city: string | null;
   state: string | null;
@@ -418,6 +474,34 @@ export async function recordEmployer(
   const source = str(input.source);
   if (!name || !source) {
     return { recorded: null, rejected: [{ field: !name ? 'name' : 'source', reason: 'required' }] };
+  }
+
+  // ---- category filter: daytime-population employment only ----
+  const employerType = str(input.employer_type) as EmployerType | null;
+  if (!employerType || !(EMPLOYER_TYPES as readonly string[]).includes(employerType)) {
+    return {
+      recorded: null,
+      rejected: [{ field: 'employer_type', reason: `must be one of: ${EMPLOYER_TYPES.join(', ')}. Customer-facing retail, QSR, grocery, big box, convenience, pharmacy and mall retail are not employers here.` }],
+      note: 'Not recorded. This tool takes only employment that concentrates daytime population.',
+    };
+  }
+  const haystack = `${name} ${str(input.notes) ?? ''}`.toLowerCase();
+  const brand = hit(haystack, EXCLUDED_BRANDS);
+  const keyword = hit(haystack, EXCLUDED_KEYWORDS);
+  const facilityWord = hit(haystack, FACILITY_WORDS);
+  if (keyword && !FACILITY_TYPES.has(employerType)) {
+    return {
+      recorded: null,
+      rejected: [{ field: 'name', reason: `"${keyword}" is customer-facing retail, restaurant or convenience: not an employment story. Record it only as a back-of-house facility (distribution centre, corporate office, plant), named as such.` }],
+      note: 'Not recorded. Customer-facing retail is excluded from employers and from every employment figure.',
+    };
+  }
+  if (brand && !(FACILITY_TYPES.has(employerType) && facilityWord)) {
+    return {
+      recorded: null,
+      rejected: [{ field: 'name', reason: `"${brand}" is a customer-facing retail or QSR brand. Record it only when the source names a back-of-house facility (for example "${brand} distribution center"), with a matching employer_type.` }],
+      note: 'Not recorded. A store of a retail brand is not an employer here; its distribution centre, plant or corporate office is.',
+    };
   }
 
   let street = str(input.street);
@@ -452,7 +536,7 @@ export async function recordEmployer(
   }
 
   const recorded: RecordedEmployer = {
-    name: clip(name, 200), street: street ? clip(street, 200) : null, city: city ? clip(city, 100) : null,
+    name: clip(name, 200), employer_type: employerType, street: street ? clip(street, 200) : null, city: city ? clip(city, 100) : null,
     state: state ? clip(state, 50) : null, zip: zip ? clip(zip, 20) : null, headcount, source: clip(source, 2000),
     source_year: str(input.source_year) ? clip(String(input.source_year), 20) : null,
     notes: notes.join('; ') || null,
@@ -568,7 +652,7 @@ export function buildEmployersCsv(recorded: RecordedEmployer[]): { csv: string; 
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push(buildEmployerRow({
-      name: e.name, street: e.street, city: e.city, state: e.state, zip: e.zip, headcount: e.headcount,
+      name: e.name, employer_type: e.employer_type, street: e.street, city: e.city, state: e.state, zip: e.zip, headcount: e.headcount,
       distance_miles: e.distance_miles_unrounded, source: e.source, source_year: e.source_year, notes: e.notes,
     }));
   }

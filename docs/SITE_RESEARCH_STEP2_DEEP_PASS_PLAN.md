@@ -71,6 +71,26 @@ Drive-time polygons are sensitive to the exact start point: the same point on di
 identical figures, while moves of 11–94 m changed the 10-minute population by −28% to +5%. Macon's July 26
 pull (27,461) and September 15 pull (19,845) started 11.3 m apart.
 
+### Employer filter and duplication analysis (2026-09-16, pending deploy)
+
+**Employers are daytime-population employment only.** `record_employer` takes a required `employer_type`
+(corporate_office, regional_office, distribution_warehouse, manufacturing, hospital, medical_campus,
+university_college, school, government, call_center, data_center, other_institutional) and rejects
+customer-facing retail in code, not just in the prompt: a brand list (Kroger, Publix, Walmart, Costco,
+Target, Chick-fil-A, CVS, QuikTrip, ...) and a keyword list (grocery, restaurant, convenience, pharmacy,
+mall retail, ...). A retail brand passes only as a back-of-house facility — a facility word in the name or
+notes (distribution, fulfillment, plant, corporate, call center, data center) plus a matching type — so
+"Publix Distribution Center" records and "Publix" does not. `employers.csv` gains an `employer_type`
+column (second, after `name`) so a hospital pin can be told from a distribution centre when the file feeds
+slide mapping. An empty `employers.csv` is a finding the report must state.
+
+**Duplication analysis** (`deep_pass` v4): when the competitive ring shows a company-operated Starbucks
+close enough to raise cannibalization, the deep pass identifies national brands running more than one unit
+in the trade area or corridor and measures each pair with the new `distance_between_addresses` tool
+(Census geocode both ends; a distance only when both match exactly). The finding is stated both ways and
+lands in **Why Here** when it supports the case, in **What's working against us** when it cuts against.
+The deep-pass search budget rises 20 -> 25.
+
 ### Differences from the approved drafts
 
 - Budget sentence in both deep-pass prompts: "When web_search is no longer available to you, the budget is

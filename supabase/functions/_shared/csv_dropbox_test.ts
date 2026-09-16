@@ -89,12 +89,13 @@ Deno.test('schools.csv header matches the spec exactly', () => {
 
 // ---------------- employers.csv row ----------------
 Deno.test('employer: headcount only as a stated integer; blank distance means unlocated', () => {
-  const r = buildEmployerRow({ name: 'Wellstar Kennestone', street: null, city: 'Marietta', state: 'GA', zip: null,
+  const r = buildEmployerRow({ name: 'Wellstar Kennestone', employer_type: 'hospital', street: null, city: 'Marietta', state: 'GA', zip: null,
     headcount: 3500.5, distance_miles: null, source: 'https://example.test', source_year: 2025 })
   assertEquals([r.headcount, r.distance_mi, r.band, r.full_address], [null, null, null, null])
+  assertEquals(r.employer_type, 'hospital') // its own column, for map pins — not buried in notes
 })
 Deno.test('employers.csv header matches the spec exactly', () => {
-  assertEquals(EMPLOYERS_COLUMNS.join(','), 'name,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
+  assertEquals(EMPLOYERS_COLUMNS.join(','), 'name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
 })
 Deno.test('sorted by distance ascending, unknown distance last', () => {
   const rows = [{ name: 'b', distance_mi: null }, { name: 'c', distance_mi: 2.1 }, { name: 'a', distance_mi: 0.4 }]

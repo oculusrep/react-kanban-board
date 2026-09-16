@@ -190,7 +190,7 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
 // ---------------------------------------------------------------------------
 
 export const EMPLOYERS_COLUMNS = [
-  'name', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
+  'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
   'distance_mi', 'band', 'source', 'source_year', 'notes',
 ] as const
 export type EmployersColumn = (typeof EMPLOYERS_COLUMNS)[number]
@@ -198,6 +198,8 @@ export type EmployersRow = Record<EmployersColumn, CsvCell>
 
 export interface EmployerInput {
   name: string | null
+  /** What kind of employment site this is (hospital, distribution_warehouse, ...): drives map pins. */
+  employer_type: string | null
   street: string | null
   city: string | null
   state: string | null
@@ -216,6 +218,7 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
   const zip = blankToNull(e.zip)
   return {
     name: blankToNull(e.name),
+    employer_type: blankToNull(e.employer_type),
     street,
     city,
     state,

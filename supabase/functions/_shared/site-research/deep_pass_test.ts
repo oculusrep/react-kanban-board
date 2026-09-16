@@ -3,7 +3,7 @@ import {
   buildFillList, buildSchoolsCsv, extractStep1Schools, isPoBox, mergeFills, recordEmployer, validateSchoolFill,
 } from './deep-pass.ts'
 import { type DeepPassDb, type DeepPassDeps, runDeepPassIteration } from './deep-pass-worker.ts'
-import { distanceIfExact, interpretCensus } from './geocode.ts'
+import { distanceBetweenAddressesTool, distanceIfExact, interpretCensus } from './geocode.ts'
 import type { ClaimedRun, WorkerDb } from './iteration.ts'
 import type { CreateFn, ModelResponse } from './loop.ts'
 import { esriDataQuality } from './snapshot.ts'
@@ -122,15 +122,15 @@ Deno.test('esriDataQuality: Macon (all null) is missing; partial and present', (
 Deno.test('recordEmployer: exact match gets a distance; a different house number or no street does not', async () => {
   const site = { latitude: 33.9921, longitude: -84.4158 }
   const exact = () => Promise.resolve({ latitude: 34.0211, longitude: -84.4158, matched_address: '100 MAIN ST', match_quality: 'exact' as const, candidates: 1 })
-  const r = await recordEmployer({ name: 'Hospital', street: '100 Main St', city: 'Macon', state: 'GA', headcount: 1200, source: 'https://h' }, site, exact)
+  const r = await recordEmployer({ name: 'Hospital', employer_type: 'hospital', street: '100 Main St', city: 'Macon', state: 'GA', headcount: 1200, source: 'https://h' }, site, exact)
   assertEquals([r.distance_miles, r.ring], [2, 3])
   const differs = () => Promise.resolve({ latitude: 34, longitude: -84, matched_address: '102 MAIN ST', match_quality: 'street_number_differs' as const, candidates: 1 })
-  const r2 = await recordEmployer({ name: 'Plant', street: '100 Main St', city: 'Macon', headcount: 500.5, source: 'https://p' }, site, differs)
+  const r2 = await recordEmployer({ name: 'Plant', employer_type: 'manufacturing', street: '100 Main St', city: 'Macon', headcount: 500.5, source: 'https://p' }, site, differs)
   assertEquals([r2.distance_miles, (r2.recorded as { headcount: unknown }).headcount], [null, null])
   assertEquals((r2.rejected as Array<{ field: string }>)[0].field, 'headcount')
-  const r3 = await recordEmployer({ name: 'Campus', source: 'https://c' }, site, () => Promise.reject(new Error('must not geocode')))
+  const r3 = await recordEmployer({ name: 'State University', employer_type: 'university_college', source: 'https://c' }, site, () => Promise.reject(new Error('must not geocode')))
   assertEquals(r3.distance_miles, null)
-  assertEquals((await recordEmployer({ name: 'No source' }, site, exact)).recorded, null)
+  assertEquals((await recordEmployer({ name: 'No source', employer_type: 'hospital' }, site, exact)).recorded, null)
 })
 
 // ---------------------------------------------------------------------------
@@ -193,8 +193,9 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
     ],
     deep_pass: [
       { stop_reason: 'tool_use', usage: { server_tool_use: { web_search_requests: 5 } }, content: [
-        { type: 'tool_use', id: 'e1', name: 'record_employer', input: { name: 'Navicent Hospital', street: '777 Hemlock St', city: 'Macon', state: 'GA', headcount: 4600, source: 'https://navicent.example', source_year: '2025' } },
-        { type: 'tool_use', id: 'e2', name: 'record_employer', input: { name: '=HYPERLINK("x")', source: 'https://evil.example' } },
+        { type: 'tool_use', id: 'e1', name: 'record_employer', input: { name: 'Navicent Hospital', employer_type: 'hospital', street: '777 Hemlock St', city: 'Macon', state: 'GA', headcount: 4600, source: 'https://navicent.example', source_year: '2025' } },
+        { type: 'tool_use', id: 'e2', name: 'record_employer', input: { name: '=HYPERLINK("x")', employer_type: 'other_institutional', source: 'https://evil.example' } },
+        { type: 'tool_use', id: 'e3', name: 'record_employer', input: { name: 'Kroger on Zebulon Rd', employer_type: 'other_institutional', headcount: 120, source: 'https://kroger.example' } },
       ] },
       { stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: '**Why Here**\nThe case.' }] },
     ],
@@ -257,7 +258,9 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(row('Future ES').includes('planned (NCES status Future)'), row('Future ES'))
 
   const employers = sim.uploads.find((u) => u.name === 'employers.csv')!.text.split('\r\n')
-  assertEquals(employers[1], 'Navicent Hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,2,3,https://navicent.example,2025,')
+  assertEquals(employers[0], 'name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
+  assertEquals(employers[1], 'Navicent Hospital,hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,2,3,https://navicent.example,2025,')
+  assertEquals(employers.filter((l) => l.toLowerCase().includes('kroger')), []) // retail rejected, never in the file
   assert(employers[2].startsWith(`"'=HYPERLINK(""x"")"`), employers[2]) // formula guard + quote doubling
 
   const msg = sim.finalized[0]
@@ -271,7 +274,7 @@ Deno.test('prepare with nothing to fill goes straight to the deep pass', async (
   const sim = simulate({ step1: clean })
   assertEquals(await sim.step(), 'chained')
   assertEquals(sim.run.pass_phase, 'deep_pass')
-  assertEquals(sim.run.search_budget, 20)
+  assertEquals(sim.run.search_budget, 25)
   assert(sim.openings[0].includes('No school needed a web fill'))
 })
 
@@ -290,4 +293,51 @@ Deno.test('prepare fails permanently when the thread has no archetype call', asy
   sim.run.archetype_primary = null
   assertEquals(await sim.step(), 'failed')
   assert(sim.log[0].startsWith('fail:deep_pass_needs_step1'))
+})
+
+Deno.test('employer filter: only daytime-population employment; retail and QSR are rejected', async () => {
+  const site = { latitude: 33.9921, longitude: -84.4158 }
+  const geo = () => Promise.resolve({ latitude: 34.0211, longitude: -84.4158, matched_address: 'X', match_quality: 'exact' as const, candidates: 1 })
+  const rec = (input: Record<string, unknown>) => recordEmployer(input, site, geo)
+  const rejectedFor = async (input: Record<string, unknown>) => {
+    const r = await rec(input)
+    assertEquals(r.recorded, null, JSON.stringify(input))
+    return (r.rejected as Array<{ field: string; reason: string }>)[0]
+  }
+  // Excluded: the categories that are customer-facing retail, whatever type is claimed.
+  assertEquals((await rejectedFor({ name: 'Kroger', employer_type: 'other_institutional', source: 'https://a' })).field, 'name')
+  for (const name of ['Publix Super Market', 'Walmart Supercenter', 'Costco', 'Target', "Chick-fil-A", 'Starbucks', 'CVS Pharmacy', 'QuikTrip', 'Cumberland Mall retail store']) {
+    await rejectedFor({ name, employer_type: 'other_institutional', source: 'https://a' })
+  }
+  await rejectedFor({ name: 'Local Italian restaurant', employer_type: 'other_institutional', source: 'https://a' })
+  // A retail brand's back-of-house facility IS employment, when named as one with a matching type.
+  const dc = await rec({ name: 'Publix Distribution Center', employer_type: 'distribution_warehouse', headcount: 1200, source: 'https://p' })
+  assertEquals((dc.recorded as { name: string; employer_type: string; headcount: number }).name, 'Publix Distribution Center')
+  assertEquals((dc.recorded as { employer_type: string }).employer_type, 'distribution_warehouse')
+  // ...but the brand alone under a facility type is still a store.
+  assertEquals((await rejectedFor({ name: 'Publix', employer_type: 'distribution_warehouse', source: 'https://p' })).field, 'name')
+  // Included categories pass.
+  for (const [name, employer_type] of [['Navicent Health', 'hospital'], ['Mercer University', 'university_college'],
+    ['Bibb County Government Center', 'government'], ['Amazon Fulfillment Center', 'distribution_warehouse'],
+    ['Geico Regional Office', 'regional_office'], ['Central High School', 'school'], ['Switch Data Center', 'data_center']]) {
+    const r = await rec({ name, employer_type, source: 'https://a' })
+    assert(r.recorded, `${name} should be recorded`)
+  }
+  // A missing or invented type is refused outright.
+  assertEquals((await rejectedFor({ name: 'Somewhere', source: 'https://a' })).field, 'employer_type')
+  assertEquals((await rejectedFor({ name: 'Somewhere', employer_type: 'retail', source: 'https://a' })).field, 'employer_type')
+})
+
+Deno.test('distance_between_addresses: exact both ends, else no distance', async () => {
+  const at = (lat: number, lng: number, quality: 'exact' | 'ambiguous' = 'exact') => ({ latitude: lat, longitude: lng, matched_address: `${lat}`, match_quality: quality, candidates: 1 })
+  const both = (a: string) => Promise.resolve(a.startsWith('1') ? at(33.9921, -84.4158) : at(34.0211, -84.4158))
+  const r = await distanceBetweenAddressesTool('1 A St, Marietta, GA', '2 B St, Marietta, GA', both)
+  assertEquals(r.distance_miles, 2)
+  const loose = (a: string) => Promise.resolve(a.startsWith('1') ? at(33.9921, -84.4158) : at(34.0211, -84.4158, 'ambiguous'))
+  const r2 = await distanceBetweenAddressesTool('1 A St', 'B St', loose)
+  assertEquals(r2.distance_miles, null)
+  assertEquals((r2.address_b as { match_quality: string }).match_quality, 'ambiguous')
+  const none = () => Promise.resolve(null)
+  const r3 = await distanceBetweenAddressesTool('x', 'y', none)
+  assertEquals([(r3.address_a as { match_quality: string }).match_quality, r3.distance_miles], ['no_match', null])
 })

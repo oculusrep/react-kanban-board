@@ -15,7 +15,7 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { NCES_ARCGIS, arcgisQueryUrl } from './nces-config.ts';
 import { haversineMiles, toRad } from './geo.ts';
-import { geocodeAddressTool } from './geocode.ts';
+import { distanceBetweenAddressesTool, geocodeAddressTool } from './geocode.ts';
 
 // Server-side web search. No domain allowlist by design — source quality is a
 // prompt concern (prefer primary sources), not a config concern.
@@ -140,6 +140,23 @@ export const TOOL_DEFINITIONS = [
         address: { type: 'string', description: 'Street address including city and state, as the source states it.' },
       },
       required: ['address'],
+    },
+  },
+  {
+    name: 'distance_between_addresses',
+    description:
+      'Straight-line miles between TWO street addresses, both geocoded with the US Census geocoder. Use it ' +
+      'for the duplication test: how far apart a brand runs two of its own units in this market. Returns ' +
+      'distance_miles (one decimal) only when both addresses match exactly; otherwise null, and the ' +
+      'distance could not be determined. Takes street addresses with city and state, not place names, and ' +
+      'never a distance you worked out yourself.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        address_a: { type: 'string', description: 'First street address, with city and state.' },
+        address_b: { type: 'string', description: 'Second street address, with city and state.' },
+      },
+      required: ['address_a', 'address_b'],
     },
   },
 ] as const;
@@ -785,6 +802,8 @@ export async function executeTool(
   switch (name) {
     case 'geocode_address':
       return await geocodeAddressTool(String(input.address ?? ''), ctx.site ?? null);
+    case 'distance_between_addresses':
+      return await distanceBetweenAddressesTool(String(input.address_a ?? ''), String(input.address_b ?? ''));
     case 'query_traffic_counts':
       return await queryTrafficCounts(service, input as never);
     case 'query_nearby_starbucks':
