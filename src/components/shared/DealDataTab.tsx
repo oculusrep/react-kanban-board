@@ -279,6 +279,9 @@ function ReadOnlyField({
   );
 }
 
+// Fields rendered on this tab that live on site_submit rather than deal.
+const SITE_SUBMIT_FIELDS = new Set(['date_submitted']);
+
 export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }: DealDataTabProps) {
   const [deal, setDeal] = useState<DealData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -342,6 +345,20 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
 
     setSaving(true);
     try {
+      // Site-submit-owned fields shown on this tab save to site_submit, not deal.
+      if (SITE_SUBMIT_FIELDS.has(fieldKey)) {
+        if (!siteSubmit.id) return;
+        const { error } = await supabase
+          .from('site_submit')
+          .update({ [fieldKey]: editValue })
+          .eq('id', siteSubmit.id);
+        if (error) throw error;
+        onUpdate({ [fieldKey]: editValue } as Partial<SiteSubmitData>);
+        setEditingField(null);
+        setEditValue(null);
+        return;
+      }
+
       const { error } = await supabase
         .from('deal')
         .update({ [fieldKey]: editValue })
@@ -358,7 +375,7 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
     } finally {
       setSaving(false);
     }
-  }, [deal, editValue]);
+  }, [deal, editValue, siteSubmit.id, onUpdate]);
 
   const handleEditValueChange = useCallback((value: any) => {
     setEditValue(value);
@@ -679,9 +696,13 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
         )}
 
         {/* Original site submit values */}
-        <ReadOnlyField
+        <Field
+          {...fieldProps}
+          isEditable={isEditable && !!siteSubmit.id}
           label="Date Submitted"
           value={siteSubmit.date_submitted}
+          type="date"
+          fieldKey="date_submitted"
         />
         <ReadOnlyField
           label="TI"
