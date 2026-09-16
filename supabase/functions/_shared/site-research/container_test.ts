@@ -1,7 +1,7 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import { SITE_RESEARCH_ALERT_PREFIX, notifySiteResearch, siteResearchBotToken } from './alerts.ts'
 import { type ClaimedRun, runOneIteration, type WorkerDb } from './iteration.ts'
-import { containerErrorMessage, type CreateFn, type ModelResponse } from './loop.ts'
+import { buildRequestParams, containerErrorMessage, type CreateFn, hasCodeExecutionArtifacts, type ModelResponse, requestOnce } from './loop.ts'
 
 // Run 623d15e7, iteration 1, as the API returned it (block shapes from the stored convo and the
 // 2026-09-15 live probe): web searches run INSIDE a code-execution container, then a direct
@@ -137,4 +137,76 @@ Deno.test('site research alerts: always prefixed; separate bot when configured, 
   await notifySiteResearch('❌ Site research run x failed', fakeFetch, env({ TELEGRAM_BOT_TOKEN: 'claw' }) as never)
   assertEquals(calls[0].url, 'https://api.telegram.org/botclaw/sendMessage')
   assert(calls[0].text.startsWith(SITE_RESEARCH_ALERT_PREFIX + '\n❌ Site research run x failed'))
+})
+
+// ---------------------------------------------------------------------------
+// Runs abf8c06f / 2b170116 (2026-09-16): budget spent at 12/12, web_search dropped, container still
+// sent -> 400 "Container identifier can only be provided when using the code execution tool".
+// ---------------------------------------------------------------------------
+const WEB_SEARCH = { type: 'web_search_20260209', name: 'web_search' }
+const CONTAINER_WITHOUT_TOOL_400 = Object.assign(
+  new Error('400 {"type":"error","error":{"type":"invalid_request_error","message":"container: Container identifier can only be provided when using the code execution tool"}}'),
+  { status: 400 },
+)
+/** The committed turn of run abf8c06f: searches run inside code execution, then direct client tools. */
+const CODE_EXEC_TURN = [
+  { type: 'server_tool_use', id: 'ce1', name: 'code_execution', input: {} },
+  { type: 'server_tool_use', id: 'ws1', name: 'web_search', input: {}, caller: { type: 'code_execution_20260120', tool_id: 'ce1' } },
+  { type: 'web_search_tool_result', tool_use_id: 'ws1', content: [], caller: { type: 'code_execution_20260120', tool_id: 'ce1' } },
+  { type: 'code_execution_tool_result', tool_use_id: 'ce1', content: {} },
+  { type: 'tool_use', id: 'g1', name: 'geocode_address', input: {}, caller: { type: 'direct' } },
+]
+const exhausted = (convo: Array<Record<string, unknown>>, containerId: string | null) => {
+  const sent: Array<Record<string, unknown>> = []
+  const create: CreateFn = (p) => { sent.push(p); return Promise.resolve({ stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: 'ok' }] }) }
+  return requestOnce({
+    create, baseParams: { model: 'm' }, convo, clientTools: [{ name: 'geocode_address' }], webSearchTool: WEB_SEARCH,
+    searchBudget: 12, searchesUsed: 12, dropRejected: false, containerId, log: () => {},
+  }).then(() => sent[0])
+}
+
+Deno.test('hasCodeExecutionArtifacts: the container-bearing turn shapes', () => {
+  assert(hasCodeExecutionArtifacts(CODE_EXEC_TURN))
+  assert(hasCodeExecutionArtifacts([{ type: 'web_search_tool_result', caller: { type: 'code_execution_20260120' } }]))
+  assert(!hasCodeExecutionArtifacts([{ type: 'text', text: 'hi' }, { type: 'tool_use', name: 'geocode_address', caller: { type: 'direct' } }]))
+  assert(!hasCodeExecutionArtifacts(undefined))
+})
+
+Deno.test('regression abf8c06f: budget spent on a code-execution turn keeps web_search declared AND the container', async () => {
+  const params = await exhausted([{ role: 'user', content: 'go' }, { role: 'assistant', content: CODE_EXEC_TURN },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'g1', content: '{}' }] }], CONTAINER)
+  const tools = params.tools as Array<Record<string, unknown>>
+  assertEquals(tools.some((t) => t.name === 'web_search'), true)       // declared, so the container is legal
+  assertEquals(params.tool_choice, { type: 'none' })                    // ...but no new search can start
+  assertEquals(params.container, CONTAINER)
+})
+
+Deno.test('budget spent with no code execution in the turn: no web_search and NO container', async () => {
+  const params = await exhausted([{ role: 'user', content: 'go' },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'g1', name: 'geocode_address', input: {}, caller: { type: 'direct' } }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'g1', content: '{}' }] }], CONTAINER)
+  assertEquals((params.tools as Array<Record<string, unknown>>).some((t) => t.name === 'web_search'), false)
+  assertEquals(params.container, undefined)
+  assertEquals(params.tool_choice, undefined)
+})
+
+Deno.test('invariant: a dropped web_search never carries a container', () => {
+  for (const plan of [{ mode: 'drop' as const }, { mode: 'lock' as const }, { mode: 'search' as const, maxUses: 3 }]) {
+    const p = buildRequestParams({ model: 'm' }, [{ role: 'user', content: 'x' }], [{ name: 'geocode_address' }], WEB_SEARCH, plan, CONTAINER)
+    const declared = ((p.tools ?? []) as Array<Record<string, unknown>>).some((t) => t.name === 'web_search')
+    assertEquals(p.container !== undefined, declared, `plan ${plan.mode}`)
+  }
+  // No web search tool at all (a phase that never searches): container is never sent.
+  assertEquals(buildRequestParams({ model: 'm' }, [], [], null, { mode: 'drop' }, CONTAINER).container, undefined)
+})
+
+Deno.test('containerErrorMessage: "can only be provided" is a request-shape bug, not an expired container', () => {
+  const m = containerErrorMessage(CONTAINER_WITHOUT_TOOL_400, CONTAINER)!
+  assert(m.startsWith('code_execution_container_without_tool'), m)
+  assert(m.includes('not an expired'), m)
+  assert(!m.includes('code_execution_container_unavailable'))
+  // The genuine cases keep their own labels.
+  assert(containerErrorMessage(MISSING_CONTAINER_400, CONTAINER)!.startsWith('code_execution_container_missing'))
+  assert(containerErrorMessage(Object.assign(new Error('404 {"error":{"message":"Container container_x not found"}}'), { status: 404 }), CONTAINER)!
+    .startsWith('code_execution_container_unavailable'))
 })

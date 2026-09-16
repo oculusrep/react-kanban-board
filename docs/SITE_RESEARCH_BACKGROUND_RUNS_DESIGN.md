@@ -28,9 +28,22 @@ the model to geocode addresses it had just searched for.
 - Parameter name verified against the code execution and programmatic tool calling docs and by a live probe
   (throwaway function, since deleted): a search-then-geocode turn resumed **without** `container`
   reproduced the 400 exactly; resumed **with** it, the turn completed.
+- **The tool and the container travel together** (fix, 2026-09-16). Runs `abf8c06f` and `2b170116` (Macon,
+  $0.94 and $0.82) died at `web_search_requests = search_budget = 12`: the loop dropped `web_search` when
+  the budget ran out but still sent the container, and the API answered *"container: Container identifier
+  can only be provided when using the code execution tool"* — the mirror image of the earlier 400. The
+  last committed turn held code-execution searches (all answered) plus three direct `geocode_address`
+  calls, so `hasPendingServerToolUse` was false and the existing `lock` fallback did not apply. Now:
+  `buildRequestParams` sends `container` only when a code-execution-backed tool is declared, and
+  `requestOnce` promotes a spent budget to `lock` (tool declared, `tool_choice: none`) whenever the turn
+  carries code-execution artifacts and a container is held. Dropping both instead would have swapped this
+  400 for the "container_id is required" one. Cost: past exhaustion a deferred search may still fire once
+  (~$0.01), the documented overshoot.
 - A container error from the API (a 4xx that mentions the container) fails the run with
-  `code_execution_container_missing` or `code_execution_container_unavailable` and "Retry the run", not
-  the raw 400. Regression tests: `_shared/site-research/container_test.ts`.
+  `code_execution_container_missing` (no container sent for pending code-execution work),
+  `code_execution_container_without_tool` (container sent with no code-execution tool declared — a
+  request-shape bug, not a dead container) or `code_execution_container_unavailable` (genuinely gone),
+  each with "Retry the run", not the raw 400. Regression tests: `_shared/site-research/container_test.ts`.
 
 **Can a container expire mid-run?** Per the docs, containers expire 30 days after creation. After about
 5 minutes idle a container is checkpointed. The code execution docs say a request with its id inside the
