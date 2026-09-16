@@ -71,7 +71,19 @@ Drive-time polygons are sensitive to the exact start point: the same point on di
 identical figures, while moves of 11–94 m changed the 10-minute population by −28% to +5%. Macon's July 26
 pull (27,461) and September 15 pull (19,845) started 11.3 m apart.
 
-### Employer filter and duplication analysis (2026-09-16, pending deploy)
+### CSV size floors (deployed 2026-09-16)
+
+`schools.csv` excludes schools under 100 enrolled (post-fill) and `employers.csv` excludes employers under
+100 staff. **Rows whose size is unknown are KEPT**, with the size blank: blank means unknown, and unknown
+is not small. The floors are inclusive — exactly 100 stays.
+
+This is a file filter for the map and slides, not an analysis filter. The narrative's banded school totals
+come from Step 1's NCES `totals`, which count every school in the band; `buildSchoolsCsv` has no path into
+them, and `deep_pass` v5 tells the model never to adjust a total to match the file. The report's Exports
+footer states the counts, e.g. "schools.csv (6 rows; 1 excluded as under 100 enrolled; 2 kept with size
+unknown)".
+
+### Employer filter and duplication analysis (deployed 2026-09-16)
 
 **Employers are daytime-population employment only.** `record_employer` takes a required `employer_type`
 (corporate_office, regional_office, distribution_warehouse, manufacturing, hospital, medical_campus,

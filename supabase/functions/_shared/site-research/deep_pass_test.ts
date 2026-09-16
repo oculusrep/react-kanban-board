@@ -1,6 +1,7 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
-  buildFillList, buildSchoolsCsv, extractStep1Schools, isPoBox, mergeFills, recordEmployer, validateSchoolFill,
+  buildEmployersCsv, buildFillList, buildSchoolsCsv, extractStep1Schools, isPoBox, mergeFills, recordEmployer,
+  type RecordedEmployer, validateSchoolFill,
 } from './deep-pass.ts'
 import { type DeepPassDb, type DeepPassDeps, runDeepPassIteration } from './deep-pass-worker.ts'
 import { distanceBetweenAddressesTool, distanceIfExact, interpretCensus } from './geocode.ts'
@@ -21,6 +22,7 @@ const priv = (id: string, name: string, d: number, enrollment: number | null, ex
   grades: 'K-8', enrollment_k12_ungraded: enrollment, address_is_mailing: true, distance_miles: d, vintage: '2023-2024', ...extra,
 })
 const A = pub('A', 'Alpha ES', 0.4, 500)
+const TINY = pub('T', 'Tiny Montessori', 0.9, 42) // under the CSV floor; still inside the 1 mi band total
 const B = pub('B', 'Bravo MS', 2.0, null)
 const R = pub('R', 'Rim HS', 1.0, 1500) // rounds to 1.0 but NCES put it outside the 1 mi call: band 3
 const F = pub('F', 'Future ES', 3.5, null, { status: 'Future' })
@@ -28,9 +30,9 @@ const P = priv('P', 'Pine Academy', 1.5, 200)
 const Q = priv('Q', 'Quail School', 4.2, null)
 const totals = (n: number) => ({ public: { enrollment_total: n }, private: { enrollment_total: 0 } })
 const STEP1 = [
-  { output: { radius_miles: 1, totals: totals(500), public_schools: [A], private_schools: [] } },
-  { output: { radius_miles: 3, totals: totals(2000), public_schools: [A, R, B], private_schools: [P] } },
-  { output: { radius_miles: 5, totals: totals(2000), public_schools: [A, R, B, F], private_schools: [P, Q] } },
+  { output: { radius_miles: 1, totals: totals(542), public_schools: [A, TINY], private_schools: [] } },
+  { output: { radius_miles: 3, totals: totals(2000), public_schools: [A, TINY, R, B], private_schools: [P] } },
+  { output: { radius_miles: 5, totals: totals(2000), public_schools: [A, TINY, R, B, F], private_schools: [P, Q] } },
 ]
 const EDGE = new Map([['P', { ppin: 'P', street: '900 PINE RD', city: 'MACON', state: 'GA', zip: '31211' }]])
 
@@ -40,8 +42,8 @@ const EDGE = new Map([['P', { ppin: 'P', street: '900 PINE RD', city: 'MACON', s
 Deno.test('extractStep1Schools: band is Step 1 call membership, not the rounded distance', () => {
   const s = extractStep1Schools(STEP1)
   const band = Object.fromEntries(s.schools.map((x) => [x.school_id, x.band]))
-  assertEquals(band, { 'public:A': 1, 'public:R': 3, 'public:B': 3, 'private:P': 3, 'public:F': 5, 'private:Q': 5 })
-  assertEquals(s.bands['1'], totals(500))
+  assertEquals(band, { 'public:A': 1, 'public:T': 1, 'public:R': 3, 'public:B': 3, 'private:P': 3, 'public:F': 5, 'private:Q': 5 })
+  assertEquals(s.bands['1'], totals(542)) // the tool's total: includes the 42-pupil school
   assertEquals(s.warnings, [])
   assertEquals(extractStep1Schools(STEP1.slice(0, 2)).warnings.length, 1)
 })
@@ -249,7 +251,10 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
 
   const schools = sim.uploads.find((u) => u.name === 'schools.csv')!.text.split('\r\n')
   assertEquals(schools[0], 'name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
+  // Tiny Montessori (42 pupils) is filtered OUT of the file but stays inside the band totals above.
   assertEquals(schools.slice(1, -1).map((l) => l.split(',')[0]), ['Alpha ES', 'Rim HS', 'Pine Academy', 'Bravo MS', 'Future ES', 'Quail School'])
+  assert(!schools.some((l) => l.startsWith('Tiny Montessori')))
+  assert(deep.includes('"enrollment_total": 542'), 'the 1 mi total still counts the filtered school')
   const row = (name: string) => schools.find((l) => l.startsWith(name))!
   assert(row('Rim HS').includes(',1,3,2023-2024,NCES,NCES,'), row('Rim HS')) // distance 1.0 → band 3 by membership
   assert(row('Bravo MS').includes(',812,') && row('Bravo MS').includes(',WEB,NCES,'), row('Bravo MS'))
@@ -266,7 +271,9 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   const msg = sim.finalized[0]
   assertEquals(msg.parsed, false) // never touches the thread's archetype columns
   assert(msg.content.startsWith('**Why Here**\nThe case.'))
-  assert(msg.content.includes('schools.csv (6 rows), employers.csv (2 rows)'))
+  assert(msg.content.includes('schools.csv (6 rows; 1 excluded as under 100 enrolled; 2 kept with size unknown)'), msg.content)
+  assert(msg.content.includes('employers.csv (2 rows; 1 kept with size unknown)'), msg.content)
+  assert(msg.content.includes('File filters do not change the banded totals above.'))
 })
 
 Deno.test('prepare with nothing to fill goes straight to the deep pass', async () => {
@@ -341,3 +348,33 @@ Deno.test('distance_between_addresses: exact both ends, else no distance', async
   const r3 = await distanceBetweenAddressesTool('x', 'y', none)
   assertEquals([(r3.address_a as { match_quality: string }).match_quality, r3.distance_miles], ['no_match', null])
 })
+
+Deno.test('CSV size floors: under 100 excluded, unknown kept, band totals untouched', () => {
+  const school = (id: string, name: string, enrollment: number | null, d: number): SchoolRecordLike => ({
+    school_id: `public:${id}`, public_private: 'public', name, street: '1 A St', city: 'Macon', state: 'GA', zip: '31210',
+    enrollment, school_level: 'Elementary', grade_low: 'PK', grade_high: '05', distance_miles: d, band: 1,
+    school_year: '2023-2024', status: 'Open', address_is_mailing: false, notes: [],
+  })
+  const built = buildSchoolsCsv([
+    school('a', 'Big ES', 500, 0.2),
+    school('b', 'Exactly One Hundred ES', 100, 0.3),   // the floor is inclusive: 100 stays
+    school('c', 'Ninety-Nine ES', 99, 0.4),            // out
+    school('d', 'Unknown ES', null, 0.5),              // unknown: kept
+  ], [])
+  assertEquals(built.rows.map((r) => r.name), ['Big ES', 'Exactly One Hundred ES', 'Unknown ES'])
+  assertEquals(built.filtered, { kept: 3, below_threshold: 1, unknown_size_kept: 1 })
+
+  // A web fill that lands under the floor is filtered like any other small school.
+  const filled = buildSchoolsCsv([school('e', 'Filled Small ES', null, 0.6)], [{ school_id: 'public:e', enrollment: 60, source_url: 'https://x' }])
+  assertEquals([filled.rows.length, filled.filtered.below_threshold], [0, 1])
+
+  const emp = (name: string, headcount: number | null): RecordedEmployer => ({
+    name, employer_type: 'hospital', street: null, city: 'Macon', state: 'GA', zip: null, headcount,
+    source: 'https://x', source_year: null, notes: null, distance_miles_unrounded: 1, geocode: null,
+  })
+  const employers = buildEmployersCsv([emp('Big Hospital', 4600), emp('Hundred Clinic', 100), emp('Small Office', 12), emp('Unsized Campus', null)])
+  assertEquals(employers.rows.map((r) => r.name), ['Big Hospital', 'Hundred Clinic', 'Unsized Campus'])
+  assertEquals(employers.filtered, { kept: 3, below_threshold: 1, unknown_size_kept: 1 })
+})
+
+type SchoolRecordLike = Parameters<typeof buildSchoolsCsv>[0][number]

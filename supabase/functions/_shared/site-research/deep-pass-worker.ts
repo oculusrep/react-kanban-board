@@ -14,7 +14,8 @@
 import {
   type AcceptedFill, buildEmployersCsv, buildFillList, buildSchoolsCsv, csvBytes, DEEP_PASS_CLIENT_TOOLS,
   DEEP_PASS_PROMPT_KEY, DEEP_PASS_SEARCH_BUDGET, deepPassOpening, type EdgeLocation, extractStep1Schools,
-  FILL_SEARCH_BUDGET, type FillItem, type RecordedEmployer, recordEmployer, SCHOOL_FILL_CLIENT_TOOLS,
+  FILL_SEARCH_BUDGET, type FillItem, MIN_EMPLOYER_HEADCOUNT, MIN_SCHOOL_ENROLLMENT,
+  type RecordedEmployer, recordEmployer, SCHOOL_FILL_CLIENT_TOOLS,
   SCHOOL_FILL_PROMPT_KEY, type SchoolRecord, schoolFillOpening, validateSchoolFill,
 } from './deep-pass.ts';
 import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentError, runModelIteration } from './iteration.ts';
@@ -198,7 +199,11 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           ]);
           exportsState = {
             status: 'uploaded',
-            files: uploaded.map((u) => ({ ...u, rows: u.name === 'schools.csv' ? schoolsCsv.rows.length : employersCsv.rows.length })),
+            files: uploaded.map((u) => ({
+              ...u,
+              ...(u.name === 'schools.csv' ? schoolsCsv.filtered : employersCsv.filtered),
+              rows: u.name === 'schools.csv' ? schoolsCsv.rows.length : employersCsv.rows.length,
+            })),
           };
         } catch (e) {
           // Retry the upload first; on the last attempt deliver the report anyway rather than lose it.
@@ -207,9 +212,13 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         }
         await deps.dp.patchState(run.id, owner, { exports: exportsState });
 
-        const files = (exportsState.files ?? []) as Array<{ name: string; path: string; rows: number }>;
+        const files = (exportsState.files ?? []) as Array<{ name: string; path: string; rows: number; below_threshold: number; unknown_size_kept: number }>;
+        const size = (f: { name: string }) => (f.name === 'schools.csv' ? `under ${MIN_SCHOOL_ENROLLMENT} enrolled` : `under ${MIN_EMPLOYER_HEADCOUNT} staff`);
         const footer = exportsState.status === 'uploaded'
-          ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.map((f) => `${f.name} (${f.rows} rows)`).join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}`
+          ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.map((f) =>
+              `${f.name} (${f.rows} rows` +
+              (f.below_threshold ? `; ${f.below_threshold} excluded as ${size(f)}` : '') +
+              (f.unknown_size_kept ? `; ${f.unknown_size_kept} kept with size unknown` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. File filters do not change the banded totals above.`
           : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.`;
 
         const result = await deps.db.finalize({
@@ -217,7 +226,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           content: report + footer, model: MODEL, parsed: false,
           archetypePrimary: null, archetypeSecondary: null, storyCarriers: null,
         });
-        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length} employers=${employersCsv.rows.length} finalize=${result.status}`);
+        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length}(-${schoolsCsv.filtered.below_threshold}) employers=${employersCsv.rows.length}(-${employersCsv.filtered.below_threshold}) finalize=${result.status}`);
         return result.status;
       });
 

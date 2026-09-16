@@ -622,9 +622,33 @@ export function deepPassOpening(a: {
 // CSVs
 // ---------------------------------------------------------------------------
 
-export function buildSchoolsCsv(schools: SchoolRecord[], fills: AcceptedFill[]): { csv: string; rows: SchoolsRow[] } {
+/**
+ * Size floors for the EXPORTED FILES ONLY (decided 2026-09-16). The CSVs feed the map and slide
+ * mapping, where a 40-pupil preschool or a 12-person office is noise. They are not analysis filters:
+ * the banded school totals in the narrative come from Step 1's NCES totals, which count every school
+ * in the band. Nothing here can reach those totals — buildSchoolsCsv has no path into them.
+ *
+ * A row whose size is UNKNOWN is kept: blank means unknown, and unknown is not the same as small.
+ * Dropping it would hide a real school or employer that may well be large.
+ */
+export const MIN_SCHOOL_ENROLLMENT = 100;
+export const MIN_EMPLOYER_HEADCOUNT = 100;
+
+export interface CsvFilterCounts {
+  /** Rows written to the file. */
+  kept: number;
+  /** Rows excluded for being under the floor. */
+  below_threshold: number;
+  /** Rows kept with no size on file. */
+  unknown_size_kept: number;
+}
+
+export function buildSchoolsCsv(
+  schools: SchoolRecord[],
+  fills: AcceptedFill[],
+): { csv: string; rows: SchoolsRow[]; filtered: CsvFilterCounts } {
   const merged = mergeFills(fills);
-  const rows = schools
+  const all = schools
     .filter((s) => s.band !== null)
     .map((s) => {
       const row = buildSchoolRow({
@@ -641,23 +665,44 @@ export function buildSchoolsCsv(schools: SchoolRecord[], fills: AcceptedFill[]):
       return row;
     })
     .sort(byDistance);
-  return { csv: toCsv(SCHOOLS_COLUMNS, rows), rows };
+  // Enrollment here is post-fill: an NCES figure, or a web fill accepted for a school that had none.
+  const small = (r: SchoolsRow) => typeof r.enrollment === 'number' && r.enrollment < MIN_SCHOOL_ENROLLMENT;
+  const rows = all.filter((r) => !small(r));
+  return {
+    csv: toCsv(SCHOOLS_COLUMNS, rows),
+    rows,
+    filtered: {
+      kept: rows.length,
+      below_threshold: all.length - rows.length,
+      unknown_size_kept: rows.filter((r) => typeof r.enrollment !== 'number').length,
+    },
+  };
 }
 
-export function buildEmployersCsv(recorded: RecordedEmployer[]): { csv: string; rows: EmployersRow[] } {
+export function buildEmployersCsv(recorded: RecordedEmployer[]): { csv: string; rows: EmployersRow[]; filtered: CsvFilterCounts } {
   const seen = new Set<string>();
-  const rows: EmployersRow[] = [];
+  const all: EmployersRow[] = [];
   for (const e of recorded) {
     const key = `${e.name.toLowerCase()}|${(e.street ?? '').toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    rows.push(buildEmployerRow({
+    all.push(buildEmployerRow({
       name: e.name, employer_type: e.employer_type, street: e.street, city: e.city, state: e.state, zip: e.zip, headcount: e.headcount,
       distance_miles: e.distance_miles_unrounded, source: e.source, source_year: e.source_year, notes: e.notes,
     }));
   }
-  rows.sort(byDistance);
-  return { csv: toCsv(EMPLOYERS_COLUMNS, rows), rows };
+  all.sort(byDistance);
+  const small = (r: EmployersRow) => typeof r.headcount === 'number' && r.headcount < MIN_EMPLOYER_HEADCOUNT;
+  const rows = all.filter((r) => !small(r));
+  return {
+    csv: toCsv(EMPLOYERS_COLUMNS, rows),
+    rows,
+    filtered: {
+      kept: rows.length,
+      below_threshold: all.length - rows.length,
+      unknown_size_kept: rows.filter((r) => typeof r.headcount !== 'number').length,
+    },
+  };
 }
 
 export { csvBytes };
