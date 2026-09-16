@@ -71,6 +71,22 @@ Drive-time polygons are sensitive to the exact start point: the same point on di
 identical figures, while moves of 11–94 m changed the 10-minute population by −28% to +5%. Macon's July 26
 pull (27,461) and September 15 pull (19,845) started 11.3 m apart.
 
+### Deep pass output rebuilt for the slide (deep_pass v6, deployed 2026-09-16)
+
+The report is now HEADLINE / WHY HERE / OBJECTIONS / GENERATOR CALLOUTS / SLIDE GUIDANCE / BACKUP. The
+callouts are slide-ready strings — "West Jackson Elem (1,258 Students)", "New K-12 Campus, 115 Acres,
+Opens 2027-2028 (3,900 Students)" — name and number only, with totals that count the callouts alone and a
+verbatim footnote saying so; those totals never touch the banded NCES totals. SLIDE GUIDANCE names the
+hero callouts, the map frame, one slide or two, leader lines, and what to leave off, specific to the site.
+Three new research signals: new school construction (district bond programs and capital plans, the
+strongest growth signal there is, and never part of an NCES total), new commercial and retail development
+(named projects only, never a count), and pipeline reported as units / name / status as stated / distance
+with no entitlement adjudication. Search budget 25 -> 30.
+
+"Competitive ring" is now "nearby Starbucks" throughout (archetype_call v10), including the canonical
+story_carriers string; migration `20260916170117_rename_competitive_ring_carrier` renamed it on the five
+existing threads that used it.
+
 ### CSV size floors (deployed 2026-09-16)
 
 `schools.csv` excludes schools under 100 enrolled (post-fill) and `employers.csv` excludes employers under

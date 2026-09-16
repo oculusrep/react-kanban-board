@@ -63,7 +63,7 @@ export const TOOL_DEFINITIONS = [
       'competition. There is no street address in this data — store_name is typically a corner name ' +
       '("Sandy Plains & Gordy"); never fabricate an address. rtm_sales is rolling-twelve-month sales ' +
       'in dollars as of snapshot_date; a value of 0 means NOT REPORTED, not zero sales — omit it ' +
-      'rather than cite it. This is the competitive-ring and cannibalization input: if this returns ' +
+      'rather than cite it. This is the nearby-Starbucks and cannibalization input: if this returns ' +
       'stores, you may not claim WHITE_SPACE.',
     input_schema: {
       type: 'object',
