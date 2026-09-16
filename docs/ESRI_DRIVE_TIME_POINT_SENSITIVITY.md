@@ -41,7 +41,7 @@ no time of day; code unchanged since 2026-06-06. The only input that differed wa
   At Macon those two points give 19,845 and 24,538.
 - The "29,000" figure does not match any pull at any of the three points.
 
-## What changed (2026-09-15, pending deploy)
+## What changed (deployed 2026-09-16)
 
 - `site_submit.client_demographics.pull_point` = `{ latitude, longitude, source }`, written on every save
   (`saveClientDemographicsToSiteSubmit`; the create form's copy-from-property path carries the property's
@@ -57,3 +57,27 @@ no time of day; code unchanged since 2026-06-06. The only input that differed wa
   (45 exact matches in `esri_enrichment_log`, 4 copies of their property's figures); 27 stay unrecorded.
   Of the 49, 39 were pulled at the site coordinate (≤ 0.1 m); 10 were pulled 13.5–683.6 m away, the
   largest `a78add63` Walker Ridge, Cartersville (684 m) and `d4323b55` Bentley, Martin Rd & Falcon Pkwy (204 m).
+
+## Records pulled away from their site coordinate (after the backfill, 2026-09-16)
+
+Nine site submits carry demographics pulled 10 m or more from the coordinate research treats as the site.
+A thread on any of them gets "Pulled away from the site coordinate" in its Data check, and at 100 m or more
+"PULLED AT A DIFFERENT LOCATION". Re-enriching from the sidebar fixes a row: it now pulls at the site point
+and records it.
+
+| Distance | Site submit | Client | Stage | 10-min pop on file |
+|---|---|---|---|---|
+| 683.6 m | Walker Ridge Development – Cartersville | Starbucks | Pursuing Ownership | 39,945 |
+| 203.5 m | Bentley – Martin Rd & Falcon Pkwy | Starbucks | Pass | 35,747 |
+| 91.7 m | Dahlonega Pad next to CFA | Starbucks | Not Available | 12,806 |
+| 88.0 m | Canton HWY Strip 1.14 Acres | Starbucks | Pre-Submittal | 58,163 |
+| 54.1 m | 11060 Alpharetta Hwy Land | Hawaiian Bros | Submitted-Reviewing | 63,000 |
+| 44.4 m | Peachtree Battle Shopping Center | Rangoni Firenze Shoes | Submitted-Reviewing | 98,031 |
+| 34.5 m | Woodlawn Square – Jeff's Bagel Run | Jeff's Bagel Run | Pursuing Ownership | 58,312 |
+| 32.1 m | 7 Brew and Valvoline Coming here | Starbucks | Not Available | 36,652 |
+| 13.5 m | Corner of Main and Pine – Huey Magoo's | Huey Magoo's | Submitted-Reviewing | 65,678 |
+
+Macon (Capital City Bank) was the tenth. It was re-pulled at `site_submit.verified` on 2026-09-16 and now
+sits at 0 m: 10-minute population **24,538** (was 19,845 from the property point 17.3 m away). Its rings
+moved slightly too — 1 mi 4,589 → 4,501 and 3 mi 23,461 → 23,531 — so ring figures are mildly
+point-sensitive as well, far less than drive times.
