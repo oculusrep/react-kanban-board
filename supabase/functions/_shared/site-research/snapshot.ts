@@ -12,6 +12,11 @@
  * 1 / 2 / 3 mi + 5 / 7 / 10 min and the property columns 1 / 3 / 5 mi + 10 min, so this recovers
  * the property's 5 mi ring for sites pulled at 1 / 2 / 3. A radius neither source has is absent,
  * never interpolated. Values inside one area are never mixed across sources.
+ *
+ * PULL POINT: every area also carries the coordinate its figures were pulled at and that point's
+ * distance from the site coordinate, or pull_point null when none was recorded. Drive-time figures
+ * move materially over a few meters (Macon: 19,845 / 24,538 / 27,599 at points within 17 m;
+ * docs/ESRI_DRIVE_TIME_POINT_SENSITIVITY.md), so an unrecorded point is flagged, not hidden.
  */
 
 export const ESRI_FIELDS = [
@@ -81,7 +86,17 @@ type Metric = keyof typeof METRICS;
 export type RingValues = Record<Metric, number | null>;
 
 export type DemographicsSource = 'site_submit.client_demographics' | 'property';
-type Sourced = { source: DemographicsSource; pulled_at: string | null };
+
+export interface PullPoint {
+  latitude: number;
+  longitude: number;
+  /** Coordinate tier used for the pull (e.g. site_submit.verified), or how the point was recovered. */
+  coordinate_source: string;
+  /** Straight-line meters from the snapshot's site coordinate; null when the site is unknown. */
+  distance_from_site_m: number | null;
+}
+
+type Sourced = { source: DemographicsSource; pulled_at: string | null; pull_point: PullPoint | null };
 
 export interface DemographicsBlock {
   /** One source, both ('mixed'), or none. */
@@ -137,8 +152,20 @@ function areasFrom(data: Record<string, unknown>) {
 export function buildDemographics(
   clientDemographics: unknown,
   property: Record<string, unknown> | null | undefined,
+  site: { latitude: number; longitude: number } | null = null,
 ): DemographicsBlock {
-  const cd = clientDemographics as { data?: Record<string, unknown>; enriched_at?: unknown; tapestry?: Record<string, unknown> } | null;
+  const cd = clientDemographics as {
+    data?: Record<string, unknown>; enriched_at?: unknown; tapestry?: Record<string, unknown>;
+    pull_point?: { latitude?: unknown; longitude?: unknown; source?: unknown } | null;
+  } | null;
+  const point = (lat: unknown, lng: unknown, coordinateSource: string): PullPoint | null => {
+    const la = numOrNull(lat), lo = numOrNull(lng);
+    if (la === null || lo === null) return null;
+    return {
+      latitude: la, longitude: lo, coordinate_source: coordinateSource,
+      distance_from_site_m: site ? Math.round(metersBetween(site.latitude, site.longitude, la, lo) * 10) / 10 : null,
+    };
+  };
   const tapestry = {
     code: strOrNull(cd?.tapestry?.code) ?? strOrNull(property?.tapestry_segment_code),
     name: strOrNull(cd?.tapestry?.name) ?? strOrNull(property?.tapestry_segment_name),
@@ -147,8 +174,14 @@ export function buildDemographics(
   const none = { rings: [], drive_times: [] } as ReturnType<typeof areasFrom>;
   const ssAreas = cd?.data && typeof cd.data === 'object' ? areasFrom(cd.data) : none;
   const pAreas = property ? areasFrom(property) : none;
-  const ss: Sourced = { source: 'site_submit.client_demographics', pulled_at: strOrNull(cd?.enriched_at) };
-  const pr: Sourced = { source: 'property', pulled_at: strOrNull(property?.esri_enriched_at) };
+  const ss: Sourced = {
+    source: 'site_submit.client_demographics', pulled_at: strOrNull(cd?.enriched_at),
+    pull_point: point(cd?.pull_point?.latitude, cd?.pull_point?.longitude, strOrNull(cd?.pull_point?.source) ?? 'unspecified'),
+  };
+  const pr: Sourced = {
+    source: 'property', pulled_at: strOrNull(property?.esri_enriched_at),
+    pull_point: point(property?.esri_enriched_latitude, property?.esri_enriched_longitude, 'property.esri_enriched'),
+  };
 
   const merge = <K extends 'radius_miles' | 'minutes'>(
     key: K,
@@ -168,6 +201,21 @@ export function buildDemographics(
   return { source, rings, drive_times: driveTimes, tapestry };
 }
 
+function metersBetween(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const r = (d: number) => (d * Math.PI) / 180;
+  const a = Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lng2 - lng1) / 2) ** 2;
+  return 2 * 6371008.8 * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * A pull point this far from the site (meters) is stated next to the figures it produced; at
+ * FAR_PULL_METERS it is describing a different location and the report must say so. Measured:
+ * 17 m moved Macon's 10-minute population by 4,693; 10 of 49 backfilled records were pulled
+ * 13.5-683.6 m away (docs/ESRI_DRIVE_TIME_POINT_SENSITIVITY.md).
+ */
+export const OFFSET_PULL_METERS = 10;
+export const FAR_PULL_METERS = 100;
+
 /** The straight-line bands the school totals use; demographics are "complete" when each has population. */
 export const SCHOOL_BAND_MILES = [1, 3, 5];
 
@@ -179,6 +227,12 @@ export interface DemographicsQuality {
   /** School bands (1 / 3 / 5 mi) with no population on file. Blank, not an error. */
   school_bands_without_population: number[];
   tapestry_on_file: boolean;
+  /** Drive times whose pull coordinate was not recorded: their start point is unknown. */
+  drive_times_without_pull_point: number[];
+  /** Rings whose pull coordinate was not recorded. */
+  rings_without_pull_point: number[];
+  /** Areas pulled OFFSET_PULL_METERS or more from the site coordinate, furthest first. */
+  areas_pulled_away_from_site: Array<{ area: string; meters: number; far: boolean }>;
   note: string;
 }
 
@@ -193,13 +247,27 @@ export function demographicsQuality(d: DemographicsBlock): DemographicsQuality {
   const withPop = new Set(d.rings.filter((r) => r.population !== null).map((r) => r.radius_miles));
   const bandsMissing = SCHOOL_BAND_MILES.filter((b) => !withPop.has(b));
   const tapestryOnFile = !!(d.tapestry.code || d.tapestry.name);
-  const label = (x: Sourced) => `${x.source === 'property' ? 'property' : 'site submit'}${x.pulled_at ? ` ${x.pulled_at.slice(0, 10)}` : ''}`;
+  const label = (x: Sourced) =>
+    `${x.source === 'property' ? 'property' : 'site submit'}${x.pulled_at ? ` ${x.pulled_at.slice(0, 10)}` : ''}` +
+    (x.pull_point
+      ? `, pulled at ${x.pull_point.coordinate_source}${x.pull_point.distance_from_site_m !== null ? ` ${x.pull_point.distance_from_site_m} m from the site` : ''}`
+      : ', pull coordinate NOT RECORDED');
+  const drivesNoPoint = d.drive_times.filter((t) => !t.pull_point).map((t) => t.minutes);
+  const ringsNoPoint = d.rings.filter((r) => !r.pull_point).map((r) => r.radius_miles);
+  const offset = [
+    ...d.drive_times.map((t) => ({ area: `${t.minutes} min drive`, m: t.pull_point?.distance_from_site_m })),
+    ...d.rings.map((r) => ({ area: `${r.radius_miles} mi ring`, m: r.pull_point?.distance_from_site_m })),
+  ]
+    .filter((x): x is { area: string; m: number } => typeof x.m === 'number' && x.m >= OFFSET_PULL_METERS)
+    .sort((a, b) => b.m - a.m)
+    .map((x) => ({ area: x.area, meters: x.m, far: x.m >= FAR_PULL_METERS }));
   const list = (xs: Array<Sourced & { name: string }>) => xs.length ? xs.map((x) => `${x.name} (${label(x)})`).join(', ') : 'none';
 
   if (!d.source) {
     return {
       status: 'missing', source: null, rings_miles: [], drive_times_minutes: [],
       school_bands_without_population: [...SCHOOL_BAND_MILES], tapestry_on_file: tapestryOnFile,
+      drive_times_without_pull_point: [], rings_without_pull_point: [], areas_pulled_away_from_site: [],
       note: 'Neither the site submit nor the property has Esri demographics. Population, households, income, daytime population and median age are empty for a data reason, not a market reason.',
     };
   }
@@ -207,10 +275,21 @@ export function demographicsQuality(d: DemographicsBlock): DemographicsQuality {
   return {
     status, source: d.source, rings_miles: ringsMiles, drive_times_minutes: drives,
     school_bands_without_population: bandsMissing, tapestry_on_file: tapestryOnFile,
+    drive_times_without_pull_point: drivesNoPoint, rings_without_pull_point: ringsNoPoint,
+    areas_pulled_away_from_site: offset,
     note: `Esri demographics on file. Rings: ${list(d.rings.map((r) => ({ ...r, name: `${r.radius_miles} mi` })))}. ` +
       `Drive times: ${list(d.drive_times.map((t) => ({ ...t, name: `${t.minutes} min` })))}.` +
       (bandsMissing.length ? ` No population ring at ${bandsMissing.map((b) => `${b} mi`).join(', ')} from either source: blank, not interpolated.` : '') +
-      (tapestryOnFile ? '' : ' Tapestry is empty.'),
+      (tapestryOnFile ? '' : ' Tapestry is empty.') +
+      (drivesNoPoint.length ? ` Drive-time figures with no recorded pull coordinate (${drivesNoPoint.map((m) => `${m} min`).join(', ')}): start point unknown, not precise for this site.` : '') +
+      (offset.length
+        ? (offset.some((o) => o.far)
+            ? ` PULLED AT A DIFFERENT LOCATION: ${offset.filter((o) => o.far).map((o) => `${o.area} ${Math.round(o.meters)} m from the site`).join(', ')}. Those figures describe that point, not this corner — say so wherever you cite them, and do not present them as this site's.`
+            : '') +
+          (offset.some((o) => !o.far)
+            ? ` Pulled away from the site coordinate: ${offset.filter((o) => !o.far).map((o) => `${o.area} ${Math.round(o.meters)} m`).join(', ')} — state the distance where you cite these.`
+            : '')
+        : ''),
   };
 }
 

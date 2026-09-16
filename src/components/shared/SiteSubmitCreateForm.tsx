@@ -15,6 +15,7 @@ import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
 import { prepareInsert } from '../../lib/supabaseHelpers';
 import { usePropertyGeoenrichment, isEnrichmentStale, haveCoordinatesChanged } from '../../hooks/usePropertyGeoenrichment';
+import { resolveSiteCoordinate } from '../../utils/resolveSiteCoordinate';
 
 interface Client {
   id: string;
@@ -133,14 +134,14 @@ export default function SiteSubmitCreateForm({
     const driveTimes = clientConfig?.demographics_drive_times || [10];
     const sidebarRadius = clientConfig?.demographics_sidebar_radius || null;
 
-    // Get property coordinates
-    const { data: propertyData } = await supabase
-      .from('property')
-      .select('latitude, longitude')
-      .eq('id', propertyId)
-      .single();
+    // Pull at the site's coordinate, by the same precedence research uses.
+    const [{ data: propertyData }, { data: siteSubmitCoords }] = await Promise.all([
+      supabase.from('property').select('latitude, longitude, verified_latitude, verified_longitude').eq('id', propertyId).single(),
+      supabase.from('site_submit').select('verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude').eq('id', siteSubmitId).single(),
+    ]);
+    const siteCoordinate = resolveSiteCoordinate(siteSubmitCoords, propertyData);
 
-    if (!propertyData?.latitude || !propertyData?.longitude) {
+    if (!siteCoordinate) {
       console.log('[SiteSubmit] No coordinates for client demographics enrichment');
       return;
     }
@@ -165,7 +166,7 @@ export default function SiteSubmitCreateForm({
           hh_income_avg_10min_drive, employees_10min_drive, median_age_10min_drive,
           daytime_pop_10min_drive,
           tapestry_segment_code, tapestry_segment_name, tapestry_segment_description, tapestry_lifemodes,
-          esri_enriched_at
+          esri_enriched_at, esri_enriched_latitude, esri_enriched_longitude
         `)
         .eq('id', propertyId)
         .single();
@@ -176,6 +177,11 @@ export default function SiteSubmitCreateForm({
           drive_times: driveTimes,
           sidebar_radius: sidebarRadius,
           enriched_at: propDemographics.esri_enriched_at,
+          // A copy of the property's figures carries the property's own pull point, if it has one.
+          pull_point:
+            propDemographics.esri_enriched_latitude != null && propDemographics.esri_enriched_longitude != null
+              ? { latitude: propDemographics.esri_enriched_latitude, longitude: propDemographics.esri_enriched_longitude, source: 'copied_from_property' }
+              : null,
           data: {
             pop_1_mile: propDemographics.pop_1_mile,
             pop_3_mile: propDemographics.pop_3_mile,
@@ -228,14 +234,16 @@ export default function SiteSubmitCreateForm({
     console.log('[SiteSubmit] Enriching with client-specific demographics:', { radii, driveTimes });
     const result = await enrichForClient(
       propertyId,
-      propertyData.latitude,
-      propertyData.longitude,
+      siteCoordinate.latitude,
+      siteCoordinate.longitude,
       radii,
       driveTimes
     );
 
     if (result) {
-      await saveClientDemographicsToSiteSubmit(siteSubmitId, result, radii, driveTimes, sidebarRadius);
+      await saveClientDemographicsToSiteSubmit(siteSubmitId, result, radii, driveTimes, sidebarRadius, {
+        latitude: siteCoordinate.latitude, longitude: siteCoordinate.longitude, source: siteCoordinate.source,
+      });
       console.log('[SiteSubmit] Client demographics saved to site_submit');
     }
   };

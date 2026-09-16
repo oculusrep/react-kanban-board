@@ -40,3 +40,20 @@ no time of day; code unchanged since 2026-06-06. The only input that differed wa
 - The sidebar pulls at the property coordinate; site research treats `site_submit.verified` as the site.
   At Macon those two points give 19,845 and 24,538.
 - The "29,000" figure does not match any pull at any of the three points.
+
+## What changed (2026-09-15, pending deploy)
+
+- `site_submit.client_demographics.pull_point` = `{ latitude, longitude, source }`, written on every save
+  (`saveClientDemographicsToSiteSubmit`; the create form's copy-from-property path carries the property's
+  pull point). The property already recorded `esri_enriched_latitude` / `esri_enriched_longitude` on every
+  save.
+- The site submit sidebar's client-demographics enrichment pulls at the site coordinate by research's
+  precedence (`site_submit.verified -> property.verified -> site_submit.sf_property -> property.lat`,
+  `src/utils/resolveSiteCoordinate.ts`), as does the create form. Property enrichment stays at the
+  property's own coordinate: those figures belong to the property and every site submit on it.
+- Research snapshots carry `pull_point` (with `distance_from_site_m`) per ring and drive time, or null
+  when not recorded; prompts `archetype_call` v8 / `deep_pass` v3 flag unrecorded and offset drive times.
+- Backfill `20260915163047_backfill_client_demographics_pull_point`: 49 of 76 existing records recovered
+  (45 exact matches in `esri_enrichment_log`, 4 copies of their property's figures); 27 stay unrecorded.
+  Of the 49, 39 were pulled at the site coordinate (≤ 0.1 m); 10 were pulled 13.5–683.6 m away, the
+  largest `a78add63` Walker Ridge, Cartersville (684 m) and `d4323b55` Bentley, Martin Rd & Falcon Pkwy (204 m).

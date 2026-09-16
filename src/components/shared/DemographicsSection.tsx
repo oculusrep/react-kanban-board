@@ -17,6 +17,7 @@ import {
   usePropertyGeoenrichment,
 } from '../../hooks/usePropertyGeoenrichment';
 import DemographicsModal from './DemographicsModal';
+import { resolveSiteCoordinate } from '../../utils/resolveSiteCoordinate';
 
 interface DemographicsSectionProps {
   siteSubmit: SiteSubmitData;
@@ -56,10 +57,16 @@ export default function DemographicsSection({
     clearError,
   } = usePropertyGeoenrichment();
 
+  // Property enrichment is PROPERTY data (shown on the property, shared by every site submit on it),
+  // so it pulls at the property's own coordinate and records it (esri_enriched_latitude/longitude).
   const enrichmentLatitude =
     siteSubmit.property?.verified_latitude ?? siteSubmit.property?.latitude;
   const enrichmentLongitude =
     siteSubmit.property?.verified_longitude ?? siteSubmit.property?.longitude;
+  // Site-submit (client) enrichment pulls at the SITE: the same precedence research uses
+  // (site_submit.verified -> property.verified -> site_submit.sf_property -> property.lat).
+  // Drive-time figures shift materially over a few meters, so this must be the point the site is.
+  const siteCoordinate = resolveSiteCoordinate(siteSubmit, siteSubmit.property);
   const hasCoordinates = !!(enrichmentLatitude && enrichmentLongitude);
   const hasEnrichmentData = !!siteSubmit.property?.esri_enriched_at;
   const dataIsStale = isEnrichmentStale(siteSubmit.property?.esri_enriched_at ?? null);
@@ -156,7 +163,7 @@ export default function DemographicsSection({
   };
 
   const handleClientEnrichDemographics = async () => {
-    if (!siteSubmit.property_id || !siteSubmit.client_id || !hasCoordinates) return;
+    if (!siteSubmit.property_id || !siteSubmit.client_id || !siteCoordinate) return;
     clearError();
 
     const { data: clientConfig } = await supabase
@@ -173,8 +180,8 @@ export default function DemographicsSection({
 
     const result = await enrichForClient(
       siteSubmit.property_id,
-      enrichmentLatitude!,
-      enrichmentLongitude!,
+      siteCoordinate.latitude,
+      siteCoordinate.longitude,
       radii,
       driveTimes
     );
@@ -186,7 +193,8 @@ export default function DemographicsSection({
       result,
       radii,
       driveTimes,
-      sidebarRadius
+      sidebarRadius,
+      { latitude: siteCoordinate.latitude, longitude: siteCoordinate.longitude, source: siteCoordinate.source }
     );
     if (!saved) return;
 
@@ -381,7 +389,7 @@ export default function DemographicsSection({
           </div>
         )}
 
-        {isEditable && hasCoordinates && siteSubmit.client_id && (
+        {isEditable && siteCoordinate && siteSubmit.client_id && (
           <div className="mt-2">
             <button
               onClick={handleClientEnrichDemographics}

@@ -74,6 +74,18 @@ export interface GeoenrichmentResult {
 }
 
 /**
+ * Where a set of stored demographic figures was pulled. Drive-time figures depend on the exact
+ * start point (Macon, 2026-09-15: three points within 17 m gave 19,845 / 24,538 / 27,599 people
+ * in 10 minutes — docs/ESRI_DRIVE_TIME_POINT_SENSITIVITY.md), so a figure without its point is not
+ * interpretable. `source` says which coordinate tier it was, or how the point was recovered.
+ */
+export interface DemographicsPullPoint {
+  latitude: number;
+  longitude: number;
+  source: string;
+}
+
+/**
  * Client-specific demographics stored as JSONB on site_submit
  */
 export interface ClientDemographicsData {
@@ -81,6 +93,8 @@ export interface ClientDemographicsData {
   drive_times: number[];
   sidebar_radius?: number | null;
   enriched_at: string;
+  /** Absent on records saved before 2026-09-15 that could not be matched to their pull. */
+  pull_point?: DemographicsPullPoint | null;
   data: Record<string, number | null>;
   tapestry: TapestrySegment;
 }
@@ -123,7 +137,8 @@ interface UsePropertyGeoenrichmentReturn {
     result: GeoenrichmentResult,
     radii: number[],
     driveTimes: number[],
-    sidebarRadius?: number | null
+    sidebarRadius: number | null,
+    pullPoint: DemographicsPullPoint
   ) => Promise<boolean>;
   clearError: () => void;
 }
@@ -337,7 +352,8 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
       result: GeoenrichmentResult,
       radii: number[],
       driveTimes: number[],
-      sidebarRadius?: number | null
+      sidebarRadius: number | null,
+      pullPoint: DemographicsPullPoint
     ): Promise<boolean> => {
       try {
         console.log('[Geoenrichment] Saving client demographics to site_submit:', siteSubmitId);
@@ -347,6 +363,8 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
           drive_times: driveTimes,
           sidebar_radius: sidebarRadius ?? null,
           enriched_at: new Date().toISOString(),
+          // The coordinate the enrichment call actually used — not whatever the record says later.
+          pull_point: pullPoint,
           data: result.demographics as unknown as Record<string, number | null>,
           tapestry: result.tapestry,
         };

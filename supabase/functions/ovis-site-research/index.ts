@@ -284,7 +284,7 @@ async function createThread(
         median_age_1_mile, median_age_3_mile, median_age_5_mile, median_age_10min_drive,
         employees_1_mile, employees_3_mile, employees_5_mile, employees_10min_drive,
         tapestry_segment_code, tapestry_segment_name, tapestry_lifemodes,
-        esri_enriched_at
+        esri_enriched_at, esri_enriched_latitude, esri_enriched_longitude
       )
     `)
     .eq('id', siteSubmitId)
@@ -318,7 +318,7 @@ async function createThread(
   // Demographics: site_submit.client_demographics first, the property's Esri columns as fallback
   // (the sidebar's order), carried on the rings that actually exist. The property block no longer
   // repeats Esri columns, so a null property field can't contradict site-submit demographics.
-  const demographics = buildDemographics(ss.client_demographics ?? null, property);
+  const demographics = buildDemographics(ss.client_demographics ?? null, property, coordinate);
 
   const pinnedContext: Record<string, unknown> = {
     site: {
