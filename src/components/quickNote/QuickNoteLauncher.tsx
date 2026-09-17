@@ -5,7 +5,8 @@ import { supabase } from '../../lib/supabaseClient';
 import { QuickNote, useQuickNotes } from './useQuickNotes';
 
 // Personal quick-capture list: a floating button (bottom right, every internal
-// page) that opens a slide-out panel over the current view. Keyboard: Alt+Q
+// page) that opens a panel above it, over the current view. The panel sizes
+// to its content (max 70vh, then the list scrolls). Keyboard: Alt+Q
 // (Option+Q on Mac) toggles it. The panel stays open until explicitly closed
 // (X button, Alt+Q, or Esc while focus is inside the panel).
 
@@ -161,6 +162,11 @@ export const QuickNoteLauncher: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle]);
 
+  // Load once on mount so the launcher badge has a count before first open.
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
   // Refresh + focus on open. Expired rows drop out on each refresh.
   useEffect(() => {
     if (!open) return;
@@ -178,6 +184,9 @@ export const QuickNoteLauncher: React.FC = () => {
     inputRef.current?.focus();
   };
 
+  const nowIso = new Date().toISOString();
+  const openCount = notes.filter((n) => !n.done && n.expires_at > nowIso).length;
+
   const onDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     reorder(result.source.index, result.destination.index);
@@ -185,33 +194,52 @@ export const QuickNoteLauncher: React.FC = () => {
 
   return (
     <>
-      {!open && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2"
-          style={{ backgroundColor: COLORS.midnight, color: COLORS.white, zIndex: Z_FAB }}
-          title="Quick note (Alt+Q)"
-          aria-label="Open quick notes"
+      <button
+        type="button"
+        onClick={toggle}
+        className="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2"
+        style={{ backgroundColor: COLORS.midnight, color: COLORS.white, zIndex: Z_FAB }}
+        title={open ? 'Close quick notes (Alt+Q)' : 'Quick note (Alt+Q)'}
+        aria-label={
+          open ? 'Close quick notes' : `Open quick notes${openCount ? ` (${openCount} open)` : ''}`
+        }
+        aria-expanded={open}
+      >
+        <svg
+          className="h-6 w-6 transition-transform duration-200"
+          style={{ transform: open ? 'rotate(45deg)' : undefined }}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
         >
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
-      )}
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        {openCount > 0 && (
+          <span
+            className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none"
+            style={{ backgroundColor: COLORS.white, color: COLORS.midnight, border: `1.5px solid ${COLORS.midnight}` }}
+            aria-hidden
+          >
+            {openCount > 99 ? '99+' : openCount}
+          </span>
+        )}
+      </button>
 
       <aside
-        className={`fixed inset-y-0 right-0 flex w-full sm:w-96 flex-col transition-transform duration-200 ease-out ${
-          open ? 'shadow-2xl' : 'pointer-events-none'
+        // bottom = launcher offset (24px) + launcher height (48px) + 12px gap.
+        // Width: sm:w-96 as before; below sm, the viewport minus both 24px gutters.
+        className={`fixed right-6 bottom-[84px] flex w-[calc(100vw-3rem)] sm:w-96 flex-col overflow-hidden rounded-lg transition-[opacity,transform] duration-150 ease-out ${
+          open ? 'shadow-2xl' : 'pointer-events-none invisible opacity-0'
         }`}
         style={{
+          maxHeight: '70vh',
           backgroundColor: COLORS.bg,
-          borderLeft: `1px solid ${COLORS.slate}`,
+          border: `1px solid ${COLORS.slate}`,
           zIndex: Z_PANEL,
-          // 'none' (not translateX(0)) when open: a transformed ancestor becomes
+          // 'none' (not translateY(0)) when open: a transformed ancestor becomes
           // the containing block for the dragged row's position:fixed and
           // offsets it from the cursor.
-          transform: open ? 'none' : 'translateX(100%)',
+          transform: open ? 'none' : 'translateY(8px)',
         }}
         aria-hidden={!open}
         aria-label="Quick notes"
@@ -223,7 +251,7 @@ export const QuickNoteLauncher: React.FC = () => {
         }}
       >
         <header
-          className="flex items-center justify-between px-4 py-3"
+          className="flex flex-shrink-0 items-center justify-between px-4 py-3"
           style={{ backgroundColor: COLORS.midnight, color: COLORS.white }}
         >
           <div>
@@ -245,7 +273,7 @@ export const QuickNoteLauncher: React.FC = () => {
           </button>
         </header>
 
-        <form onSubmit={submit} className="px-4 pt-3 pb-2" style={{ backgroundColor: COLORS.white }}>
+        <form onSubmit={submit} className="flex-shrink-0 px-4 pt-3 pb-2" style={{ backgroundColor: COLORS.white }}>
           <input
             ref={inputRef}
             type="text"
@@ -268,16 +296,16 @@ export const QuickNoteLauncher: React.FC = () => {
 
         {error && (
           <div
-            className="mx-4 mt-2 rounded px-2 py-1 text-xs"
+            className="mx-4 mt-2 flex-shrink-0 rounded px-2 py-1 text-xs"
             style={{ color: '#A27B5C', border: '1px solid #A27B5C', backgroundColor: COLORS.white }}
           >
             {error}
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-4 py-3" style={{ borderTop: `1px solid ${COLORS.slate}` }}>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" style={{ borderTop: `1px solid ${COLORS.slate}` }}>
           {notes.length === 0 ? (
-            <p className="mt-6 text-center text-sm" style={{ color: COLORS.slate }}>
+            <p className="py-2 text-center text-sm" style={{ color: COLORS.slate }}>
               {loading ? 'Loading…' : 'Nothing captured yet.'}
             </p>
           ) : (

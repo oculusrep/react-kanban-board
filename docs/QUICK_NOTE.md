@@ -1,9 +1,11 @@
 # Quick Note (personal quick-capture list)
 
-Floating button, bottom right on every internal page (not portal, not `?embedded=true`). Opens a slide-out panel over the current view; no navigation.
+Floating button, bottom right on every internal page (not portal, not `?embedded=true`). Opens a panel anchored in the bottom-right corner just above the button, over the current view; no navigation.
 
 ## Behavior
-- **Open/close:** FAB click, or **Alt+Q** (Option+Q on Mac) toggles. Closes only on an explicit action: X button, Alt+Q, or Esc while focus is inside the panel. No backdrop, no click-outside close.
+- **Launcher badge:** count of open notes (not done, not expired); hidden at zero. Notes load on mount so the badge is populated before first open.
+- **Panel size:** width 384px (`sm:w-96`; viewport minus gutters on phones). Height fits the content and grows with the list up to 70vh, then the list scrolls. Header and input stay pinned at the top.
+- **Open/close:** FAB click (toggles; its + rotates to ×), or **Alt+Q** (Option+Q on Mac) toggles. Closes only on an explicit action: X button, Alt+Q, or Esc while focus is inside the panel. No backdrop, no click-outside close.
 - **Capture:** type + Enter. Input clears and keeps focus, so you can enter several lines in a row. Inserts are optimistic.
 - **List:** newest at top; drag to reorder; click a row to toggle done (struck through, stays in the list). No priorities.
 - **Deal tag:** captured on `/deal/:dealId` → that deal; on `/site-submit/:siteSubmitId` → the site submit's `deal_id` (if any). Shown as a small label on the row, and as "Tagging: …" under the input.
