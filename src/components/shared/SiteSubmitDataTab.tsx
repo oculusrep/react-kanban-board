@@ -326,9 +326,21 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
         .eq('id', siteSubmit.id);
       if (error) throw error;
 
+      // The search result has no parent_id; fetch it so parent-account checks
+      // (e.g. isStarbucksFamily) see the new client correctly without a reload.
+      let parentId: string | null = null;
+      if (client) {
+        const { data: clientRow } = await supabase
+          .from('client')
+          .select('parent_id')
+          .eq('id', client.id)
+          .single();
+        parentId = clientRow?.parent_id ?? null;
+      }
+
       onUpdate({
         client_id: client?.id || null,
-        client: client ? { id: client.id, client_name: client.client_name } : null,
+        client: client ? { id: client.id, client_name: client.client_name, parent_id: parentId } : null,
       });
     } catch (err) {
       console.error('Error updating client:', err);
@@ -460,8 +472,11 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
               selectedAssignment={siteSubmit.assignment ? {
                 id: siteSubmit.assignment.id,
                 assignment_name: siteSubmit.assignment.assignment_name || '',
-                client_id: siteSubmit.client_id || undefined,
-                client_name: siteSubmit.client?.client_name || undefined,
+                client_id: siteSubmit.client_id || null,
+                client_name: siteSubmit.client?.client_name || null,
+                assignment_value: null,
+                due_date: null,
+                progress: null,
               } : null}
               onAssignmentSelect={handleAssignmentChange}
               onCreateNew={siteSubmit.client_id ? () => setShowCreateAssignment(true) : undefined}

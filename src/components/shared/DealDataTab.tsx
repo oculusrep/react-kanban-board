@@ -403,9 +403,21 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
         if (submitError) throw submitError;
       }
 
+      // The search result has no parent_id; fetch it so parent-account checks
+      // (e.g. isStarbucksFamily) see the new client correctly without a reload.
+      let parentId: string | null = null;
+      if (client) {
+        const { data: clientRow } = await supabase
+          .from('client')
+          .select('parent_id')
+          .eq('id', client.id)
+          .single();
+        parentId = clientRow?.parent_id ?? null;
+      }
+
       onUpdate({
         client_id: newClientId,
-        client: client ? { id: client.id, client_name: client.client_name } : null,
+        client: client ? { id: client.id, client_name: client.client_name, parent_id: parentId } : null,
       });
     } catch (err) {
       console.error('Error updating client:', err);
