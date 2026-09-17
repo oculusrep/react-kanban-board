@@ -181,11 +181,21 @@ serve(async (req) => {
                 result: tier1,
               });
               if (stub) {
+                // email_tier1_stub, NOT processed_message_ids (moved 2026-09-14,
+                // migration 20260914175119). processed_message_ids is keyed on
+                // message_id alone and email-triage's demote upserts into it, so a
+                // tier-1 message that was later demoted lost its tier-1 row --
+                // which is why the 09-14 review showed A5 at 0 stubs from 47 hits.
+                //
                 // onConflict message_id: a message visible to both mailboxes
                 // classifies identically, and the stub is per-message.
-                await supabase
-                  .from('processed_message_ids')
+                const { error: stubError } = await supabase
+                  .from('email_tier1_stub')
                   .upsert(stub, { onConflict: 'message_id' });
+                if (stubError) {
+                  // Was unchecked. A lost stub is lost tier-1 evidence; make it visible.
+                  console.error(`[Tier1] STUB WRITE FAILED for ${parsedEmail.messageId}: ${stubError.message}`);
+                }
               }
               result.tier1_bulk += tier1.verdict === 'bulk' ? 1 : 0;
               result.tier1_personal += tier1.verdict === 'personal' ? 1 : 0;
@@ -231,6 +241,10 @@ serve(async (req) => {
             // connection B in the same run. Excluding tier1_* keeps the fan-out.
             //
             // enforce mode is unaffected: it `continue`s above, before reaching here.
+            //
+            // Since 2026-09-14 tier-1 stubs live in email_tier1_stub, so this
+            // table no longer receives new tier1_* rows. The exclusion stays as a
+            // guard in case one is ever written here again.
             const isTier1Stub = (wasProcessed?.action || '').startsWith('tier1_');
 
             if (wasProcessed && !isTier1Stub) {

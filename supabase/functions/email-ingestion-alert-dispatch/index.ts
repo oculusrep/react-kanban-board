@@ -177,9 +177,97 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ------------------------------------------------------------------------
+    // CLASSIFIER HEALTH -- added 2026-09-14. A separate failure class: from
+    // 09-09 to 09-14 ingestion ran clean while every Gemini call returned 429,
+    // so the ingestion alert above could never fire. Rows come from
+    // check_email_classifier_health(); same one-email-per-incident throttle.
+    // ------------------------------------------------------------------------
+    const { data: clfRows, error: clfError } = await supabase
+      .from('email_classifier_alert')
+      .select('*')
+      .or('notified.eq.false,and(resolved_at.not.is.null,resolved_notified.eq.false)')
+      .order('fired_at', { ascending: true });
+
+    if (clfError) throw new Error(`classifier alert query failed: ${clfError.message}`);
+
+    const esc = (s: string | null) =>
+      (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    for (const row of clfRows ?? []) {
+      const needsAlert = !row.notified;
+      const needsClear = row.resolved_at && !row.resolved_notified;
+
+      if (needsAlert) {
+        const subject = `[OVIS] Email classifier failing — ${(row.reasons ?? []).join(', ')}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">Email classification is failing</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            Email is still being ingested, but it is <strong>not being classified</strong>.
+          </p>
+          <table style="font-family:system-ui,sans-serif;color:#002147;border-collapse:collapse">
+            <tr><td style="padding:4px 12px 4px 0">Reasons</td>
+                <td style="padding:4px 0"><strong>${esc((row.reasons ?? []).join(', '))}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Failed attempts (60 min)</td>
+                <td style="padding:4px 0"><strong>${row.failed_60m}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Model verdicts (60 min)</td>
+                <td style="padding:4px 0"><strong>${row.model_verdicts_60m}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Unclassified backlog</td>
+                <td style="padding:4px 0"><strong>${row.backlog_count}</strong>, oldest ${et(row.oldest_backlog_at)}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Abandoned (24 h)</td>
+                <td style="padding:4px 0">${row.abandoned_24h}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Detected</td>
+                <td style="padding:4px 0">${et(row.fired_at)}</td></tr>
+          </table>
+          <p style="font-family:system-ui,sans-serif;color:#A27B5C;border-left:3px solid #A27B5C;padding-left:8px">
+            Last error: ${esc((row.last_error ?? 'none').slice(0, 500))}
+          </p>
+          <p style="font-family:system-ui,sans-serif;color:#4A6B94">
+            Failed emails are retried automatically on a backoff and are NOT marked processed.
+            A 429 "prepayment credits are depleted" means Gemini billing.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_classifier_alert')
+            .update({ notified: true, notify_error: null,
+                      notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          sent.push(`classifier:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_classifier_alert')
+            .update({ notify_error: String(e).slice(0, 500),
+                      notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          failed.push(`classifier:${row.id}:${e}`);
+        }
+      }
+
+      if (needsClear) {
+        const subject = '[OVIS] Email classifier recovered';
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">Email classification has recovered</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            The model is returning verdicts again. The alert opened at ${et(row.fired_at)} and
+            resolved at ${et(row.resolved_at)}.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_classifier_alert')
+            .update({ resolved_notified: true, notify_error: null })
+            .eq('id', row.id);
+          sent.push(`classifier-clear:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_classifier_alert')
+            .update({ notify_error: String(e).slice(0, 500) })
+            .eq('id', row.id);
+          failed.push(`classifier-clear:${row.id}:${e}`);
+        }
+      }
+    }
+
     // Report failures as a non-200 so a silently-failing alerter is itself visible.
     return new Response(
-      JSON.stringify({ success: failed.length === 0, sent, failed, considered: rows?.length ?? 0 }),
+      JSON.stringify({ success: failed.length === 0, sent, failed, considered: (rows?.length ?? 0) + (clfRows?.length ?? 0) }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: failed.length ? 500 : 200 }
     );
