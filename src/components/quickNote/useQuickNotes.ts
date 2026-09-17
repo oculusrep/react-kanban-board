@@ -107,11 +107,15 @@ export function useQuickNotes() {
     [commit],
   );
 
-  /** Move the note at `from` to `to` (indices into the visible list). */
+  /**
+   * Move the note at `from` to `to`, both indices into `visible` (the
+   * sub-list the drag happened in, e.g. open notes only). Neighbours for the
+   * new sort_order come from that sub-list; notes outside it keep theirs.
+   */
   const reorder = useCallback(
-    async (from: number, to: number) => {
+    async (visible: QuickNote[], from: number, to: number) => {
       if (from === to) return;
-      const list = [...notesRef.current];
+      const list = [...visible];
       const [moved] = list.splice(from, 1);
       if (!moved || moved.pending) return;
       list.splice(to, 0, moved);
@@ -125,8 +129,9 @@ export function useQuickNotes() {
       else return;
 
       const previous = notesRef.current;
-      list[to] = { ...moved, sort_order: sortOrder };
-      commit(list);
+      commit(
+        previous.map((n) => (n.id === moved.id ? { ...n, sort_order: sortOrder } : n)).sort(bySortOrder),
+      );
 
       const { error: err } = await supabase
         .from('quick_note')

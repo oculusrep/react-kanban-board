@@ -84,6 +84,48 @@ const DealLabel: React.FC<{ name: string | null }> = ({ name }) => (
   </span>
 );
 
+// Only the checkbox toggles done. The row itself is the drag handle, and a
+// click-on-row toggle fired on the mouseup that ends a short drag.
+const DoneCheckbox: React.FC<{ note: QuickNote; onToggle: (id: string) => void }> = ({ note, onToggle }) => (
+  <button
+    type="button"
+    onClick={() => onToggle(note.id)}
+    disabled={!!note.pending}
+    className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2"
+    style={{
+      border: `1.5px solid ${note.done ? COLORS.steel : COLORS.slate}`,
+      backgroundColor: note.done ? COLORS.steel : 'transparent',
+    }}
+    aria-label={note.done ? 'Mark not done' : 'Mark done'}
+    title={note.done ? 'Mark not done' : 'Mark done'}
+  >
+    {note.done && (
+      <svg className="h-2.5 w-2.5" fill="none" stroke={COLORS.white} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+      </svg>
+    )}
+  </button>
+);
+
+const NoteBody: React.FC<{ note: QuickNote }> = ({ note }) => (
+  <div className="min-w-0 flex-1">
+    <p
+      className="text-sm break-words whitespace-pre-wrap"
+      style={{
+        color: note.done ? COLORS.slate : COLORS.midnight,
+        textDecoration: note.done ? 'line-through' : undefined,
+      }}
+    >
+      {note.text}
+    </p>
+    {note.deal_id && (
+      <div className="mt-1">
+        <DealLabel name={note.deal?.deal_name ?? null} />
+      </div>
+    )}
+  </div>
+);
+
 const NoteRow: React.FC<{ note: QuickNote; index: number; onToggle: (id: string) => void }> = ({
   note,
   index,
@@ -95,8 +137,7 @@ const NoteRow: React.FC<{ note: QuickNote; index: number; onToggle: (id: string)
         ref={provided.innerRef}
         {...provided.draggableProps}
         {...provided.dragHandleProps}
-        onClick={() => onToggle(note.id)}
-        className="flex items-start gap-2 rounded-md px-2 py-2 cursor-pointer select-none"
+        className="flex items-start gap-2 rounded-md px-2 py-2 cursor-grab select-none"
         style={{
           ...provided.draggableProps.style,
           backgroundColor: COLORS.white,
@@ -104,42 +145,34 @@ const NoteRow: React.FC<{ note: QuickNote; index: number; onToggle: (id: string)
           boxShadow: snapshot.isDragging ? '0 4px 12px rgba(0,33,71,0.15)' : undefined,
           opacity: note.pending ? 0.6 : 1,
         }}
-        title={note.done ? 'Click to mark not done · drag to reorder' : 'Click to mark done · drag to reorder'}
+        title="Drag to reorder"
       >
-        <span
-          className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
-          style={{
-            border: `1.5px solid ${note.done ? COLORS.steel : COLORS.slate}`,
-            backgroundColor: note.done ? COLORS.steel : 'transparent',
-          }}
-          aria-hidden
-        >
-          {note.done && (
-            <svg className="h-2.5 w-2.5" fill="none" stroke={COLORS.white} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-sm break-words whitespace-pre-wrap"
-            style={{
-              color: note.done ? COLORS.slate : COLORS.midnight,
-              textDecoration: note.done ? 'line-through' : undefined,
-            }}
-          >
-            {note.text}
-          </p>
-          {note.deal_id && (
-            <div className="mt-1">
-              <DealLabel name={note.deal?.deal_name ?? null} />
-            </div>
-          )}
-        </div>
+        <DoneCheckbox note={note} onToggle={onToggle} />
+        <NoteBody note={note} />
       </li>
     )}
   </Draggable>
 );
+
+const CompletedRow: React.FC<{ note: QuickNote; onToggle: (id: string) => void }> = ({ note, onToggle }) => (
+  <li
+    className="flex items-start gap-2 rounded-md px-2 py-2"
+    style={{ backgroundColor: COLORS.white, border: '1px solid #E2E8F0' }}
+  >
+    <DoneCheckbox note={note} onToggle={onToggle} />
+    <NoteBody note={note} />
+  </li>
+);
+
+const COMPLETE_COLLAPSED_KEY = 'quickNote.completeCollapsed';
+
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COMPLETE_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 export const QuickNoteLauncher: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -148,7 +181,19 @@ export const QuickNoteLauncher: React.FC = () => {
   const dealCtx = useCurrentDealContext();
   const { notes, loading, error, refetch, addNote, toggleDone, reorder } = useQuickNotes();
 
+  const [completeCollapsed, setCompleteCollapsed] = useState(readCollapsed);
   const toggle = useCallback(() => setOpen((o) => !o), []);
+
+  const toggleCompleteCollapsed = () => {
+    setCompleteCollapsed((c) => {
+      try {
+        window.localStorage.setItem(COMPLETE_COLLAPSED_KEY, c ? '0' : '1');
+      } catch {
+        // storage unavailable — collapse state just won't persist
+      }
+      return !c;
+    });
+  };
 
   // Global shortcut. e.code so Option+Q on Mac (which types "œ") still matches.
   useEffect(() => {
@@ -185,11 +230,14 @@ export const QuickNoteLauncher: React.FC = () => {
   };
 
   const nowIso = new Date().toISOString();
-  const openCount = notes.filter((n) => !n.done && n.expires_at > nowIso).length;
+  const openNotes = notes.filter((n) => !n.done);
+  const completedNotes = notes.filter((n) => n.done);
+  const openCount = openNotes.filter((n) => n.expires_at > nowIso).length;
 
+  // Only open notes are draggable; completed ones sit below in their own section.
   const onDragEnd = (result: DropResult) => {
     if (!result.destination) return;
-    reorder(result.source.index, result.destination.index);
+    reorder(openNotes, result.source.index, result.destination.index);
   };
 
   return (
@@ -309,18 +357,56 @@ export const QuickNoteLauncher: React.FC = () => {
               {loading ? 'Loading…' : 'Nothing captured yet.'}
             </p>
           ) : (
-            <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="quick-notes">
-                {(provided) => (
-                  <ul ref={provided.innerRef} {...provided.droppableProps} className="space-y-1.5">
-                    {notes.map((note, i) => (
-                      <NoteRow key={note.id} note={note} index={i} onToggle={toggleDone} />
-                    ))}
-                    {provided.placeholder}
-                  </ul>
-                )}
-              </Droppable>
-            </DragDropContext>
+            <>
+              {openNotes.length === 0 ? (
+                <p className="py-2 text-center text-sm" style={{ color: COLORS.slate }}>
+                  All done.
+                </p>
+              ) : (
+                <DragDropContext onDragEnd={onDragEnd}>
+                  <Droppable droppableId="quick-notes">
+                    {(provided) => (
+                      <ul ref={provided.innerRef} {...provided.droppableProps} className="space-y-1.5">
+                        {openNotes.map((note, i) => (
+                          <NoteRow key={note.id} note={note} index={i} onToggle={toggleDone} />
+                        ))}
+                        {provided.placeholder}
+                      </ul>
+                    )}
+                  </Droppable>
+                </DragDropContext>
+              )}
+
+              {completedNotes.length > 0 && (
+                <section className="mt-3 pt-2" style={{ borderTop: '1px solid #E2E8F0' }}>
+                  <button
+                    type="button"
+                    onClick={toggleCompleteCollapsed}
+                    className="flex w-full items-center gap-1.5 rounded px-1 py-1 text-xs font-semibold hover:bg-white"
+                    style={{ color: COLORS.steel }}
+                    aria-expanded={!completeCollapsed}
+                  >
+                    <svg
+                      className="h-3 w-3 transition-transform duration-150"
+                      style={{ transform: completeCollapsed ? 'rotate(-90deg)' : undefined }}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    Complete ({completedNotes.length})
+                  </button>
+                  {!completeCollapsed && (
+                    <ul className="mt-1.5 space-y-1.5">
+                      {completedNotes.map((note) => (
+                        <CompletedRow key={note.id} note={note} onToggle={toggleDone} />
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+            </>
           )}
         </div>
       </aside>
