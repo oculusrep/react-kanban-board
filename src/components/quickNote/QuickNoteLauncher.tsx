@@ -4,11 +4,14 @@ import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea
 import { supabase } from '../../lib/supabaseClient';
 import { QuickNote, useQuickNotes } from './useQuickNotes';
 
-// Personal quick-capture list: a floating button (bottom right, every internal
-// page) that opens a panel above it, over the current view. The panel sizes
-// to its content (max 70vh, then the list scrolls). Keyboard: Alt+Q
-// (Option+Q on Mac) toggles it. The panel stays open until explicitly closed
-// (X button, Alt+Q, or Esc while focus is inside the panel).
+// Personal quick-capture list: a floating button (bottom right by default, on
+// every internal page) that opens a panel next to it, over the current view.
+// The button is draggable — drag it anywhere (bottom middle, left edge, …)
+// when it covers something, and the position persists per browser; the panel
+// re-anchors to it (above/below, right/left-aligned) and sizes to the space
+// available (max 70vh, then the list scrolls). Keyboard: Alt+Q (Option+Q on
+// Mac) toggles it. The panel stays open until explicitly closed (X button,
+// Alt+Q, or Esc while focus is inside the panel).
 
 const COLORS = {
   midnight: '#002147',
@@ -22,6 +25,70 @@ const COLORS = {
 // ~10010+ always-on-top tier (true modals, toasts).
 const Z_FAB = 10006;
 const Z_PANEL = 10007;
+
+// Launcher geometry / drag persistence.
+const FAB_SIZE = 48; // h-12 w-12
+const GUTTER = 24; // default inset from the viewport edges (was bottom-6 right-6)
+const EDGE = 8; // how close to an edge a drag may park the button
+const GAP = 12; // launcher-to-panel gap
+const PANEL_WIDTH = 384; // sm:w-96
+const POS_KEY = 'quickNote.fabPos';
+const DRAG_THRESHOLD = 4; // px of movement before a press becomes a drag, not a click
+
+interface Pos {
+  left: number;
+  top: number;
+}
+
+function defaultPos(): Pos {
+  return {
+    left: Math.max(EDGE, window.innerWidth - GUTTER - FAB_SIZE),
+    top: Math.max(EDGE, window.innerHeight - GUTTER - FAB_SIZE),
+  };
+}
+
+// Keeps the button fully on screen (also re-applied on resize, so a position
+// saved on a big monitor doesn't strand the button off a laptop viewport).
+function clampPos(p: Pos): Pos {
+  const maxLeft = Math.max(EDGE, window.innerWidth - FAB_SIZE - EDGE);
+  const maxTop = Math.max(EDGE, window.innerHeight - FAB_SIZE - EDGE);
+  return {
+    left: Math.min(Math.max(EDGE, p.left), maxLeft),
+    top: Math.min(Math.max(EDGE, p.top), maxTop),
+  };
+}
+
+function readPos(): Pos {
+  try {
+    const raw = window.localStorage.getItem(POS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.left === 'number' && typeof parsed?.top === 'number') {
+        return clampPos(parsed);
+      }
+    }
+  } catch {
+    // storage unavailable / corrupt — fall through to the default corner
+  }
+  return defaultPos();
+}
+
+/**
+ * Panel box derived from where the launcher currently sits: flipped above the
+ * button when it's in the lower half of the screen, below it otherwise, and
+ * right-aligned to the button unless that would push it off screen.
+ */
+function panelBox(pos: Pos, vw: number, vh: number): React.CSSProperties {
+  const width = Math.min(PANEL_WIDTH, Math.max(240, vw - 2 * GUTTER));
+  const left = Math.min(Math.max(EDGE + 4, pos.left + FAB_SIZE - width), Math.max(EDGE + 4, vw - width - EDGE - 4));
+  const above = pos.top + FAB_SIZE / 2 > vh / 2;
+  const room = above ? pos.top - GAP - EDGE : vh - (pos.top + FAB_SIZE + GAP) - EDGE;
+  const maxHeight = Math.max(180, Math.min(vh * 0.7, room));
+
+  return above
+    ? { left, bottom: vh - pos.top + GAP, width, maxHeight }
+    : { left, top: pos.top + FAB_SIZE + GAP, width, maxHeight };
+}
 
 interface DealContext {
   dealId: string;
@@ -184,6 +251,74 @@ export const QuickNoteLauncher: React.FC = () => {
   const [completeCollapsed, setCompleteCollapsed] = useState(readCollapsed);
   const toggle = useCallback(() => setOpen((o) => !o), []);
 
+  // --- Draggable launcher -------------------------------------------------
+  const [pos, setPos] = useState<Pos>(readPos);
+  const [dragging, setDragging] = useState(false);
+  const [viewport, setViewport] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  // Pointer offset within the button + whether this press has become a drag.
+  // Held in a ref so pointerdown never triggers a re-render (a re-render on
+  // press can otherwise swallow the click entirely).
+  const dragRef = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+
+  useEffect(() => {
+    const onResize = () => {
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+      setPos((p) => clampPos(p));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Persist once the drag settles (not on every move).
+  useEffect(() => {
+    if (dragging) return;
+    try {
+      window.localStorage.setItem(POS_KEY, JSON.stringify(pos));
+    } catch {
+      // storage unavailable — position just won't persist
+    }
+  }, [pos, dragging]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    dragRef.current = { dx: e.clientX - pos.left, dy: e.clientY - pos.top, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const next = clampPos({ left: e.clientX - drag.dx, top: e.clientY - drag.dy });
+    if (!drag.moved) {
+      if (
+        Math.abs(next.left - pos.left) < DRAG_THRESHOLD &&
+        Math.abs(next.top - pos.top) < DRAG_THRESHOLD
+      ) {
+        return;
+      }
+      drag.moved = true;
+      suppressClick.current = true;
+      setDragging(true);
+    }
+    setPos(next);
+  };
+
+  const endDrag = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (drag?.moved) setDragging(false);
+  };
+
+  const onLauncherClick = () => {
+    // The click that ends a drag shouldn't also open the panel.
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    toggle();
+  };
+
   const toggleCompleteCollapsed = () => {
     setCompleteCollapsed((c) => {
       try {
@@ -244,10 +379,24 @@ export const QuickNoteLauncher: React.FC = () => {
     <>
       <button
         type="button"
-        onClick={toggle}
-        className="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2"
-        style={{ backgroundColor: COLORS.midnight, color: COLORS.white, zIndex: Z_FAB }}
-        title={open ? 'Close quick notes (Alt+Q)' : 'Quick note (Alt+Q)'}
+        onClick={onLauncherClick}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className={`fixed flex h-12 w-12 items-center justify-center rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          dragging ? '' : 'transition-transform hover:scale-105'
+        }`}
+        style={{
+          left: pos.left,
+          top: pos.top,
+          backgroundColor: COLORS.midnight,
+          color: COLORS.white,
+          zIndex: Z_FAB,
+          cursor: dragging ? 'grabbing' : 'pointer',
+          touchAction: 'none', // let a touch drag move the button instead of scrolling
+        }}
+        title={open ? 'Close quick notes (Alt+Q) · drag to move' : 'Quick note (Alt+Q) · drag to move'}
         aria-label={
           open ? 'Close quick notes' : `Open quick notes${openCount ? ` (${openCount} open)` : ''}`
         }
@@ -274,13 +423,12 @@ export const QuickNoteLauncher: React.FC = () => {
       </button>
 
       <aside
-        // bottom = launcher offset (24px) + launcher height (48px) + 12px gap.
-        // Width: sm:w-96 as before; below sm, the viewport minus both 24px gutters.
-        className={`fixed right-6 bottom-[84px] flex w-[calc(100vw-3rem)] sm:w-96 flex-col overflow-hidden rounded-lg transition-[opacity,transform] duration-150 ease-out ${
+        // Positioned off the (movable) launcher: see panelBox().
+        className={`fixed flex flex-col overflow-hidden rounded-lg transition-[opacity,transform] duration-150 ease-out ${
           open ? 'shadow-2xl' : 'pointer-events-none invisible opacity-0'
         }`}
         style={{
-          maxHeight: '70vh',
+          ...panelBox(pos, viewport.w, viewport.h),
           backgroundColor: COLORS.bg,
           border: `1px solid ${COLORS.slate}`,
           zIndex: Z_PANEL,
