@@ -5,6 +5,7 @@ import { IOSInstallPrompt } from "./components/IOSInstallPrompt";
 import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PullToRefresh } from "./components/PullToRefresh";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { QuickNoteLauncher } from "./components/quickNote/QuickNoteLauncher";
 import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
 import GmailRoute from "./components/GmailRoute";
@@ -108,6 +109,7 @@ function ProtectedLayout() {
   return (
     <ProtectedRoute>
       {!isEmbedded && <NavbarComponent />}
+      {!isEmbedded && <QuickNoteLauncher />}
     </ProtectedRoute>
   );
 }
