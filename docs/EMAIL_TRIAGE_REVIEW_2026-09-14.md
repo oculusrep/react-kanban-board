@@ -345,3 +345,31 @@ old write path, those 235 would have been overwritten.
   activity since `20260905172258`, so no tiles move. No duplicate activity rows.
 - **The classifier backlog alert** fired at 22:32 UTC (backlog 572) and was emailed. Health is ok now;
   the alert resolves on the next check and its recovery email follows.
+
+### Preserved evidence — `docs/data/email_tier1_stub_prefix_2026-09-14.csv`
+
+This file holds every tier-1 stub that survived the pre-fix write path: **503 rows**. Their
+`created_at` falls between 2026-09-07 21:32 UTC (gmail-sync v57, start of the restarted log-only week)
+and the move to `email_tier1_stub` / gmail-sync v60 at 2026-09-14 21:53:04 UTC. Stubs overwritten by
+demotes before the fix are not in it and cannot be recovered.
+
+Exported 2026-09-17 so the record survives independently of the database. Future migrations on
+`email_tier1_stub` or `emails` cannot alter it.
+
+| column | meaning |
+|---|---|
+| `message_id` | RFC 5322 Message-ID, joins to `emails.message_id` |
+| `action` | `tier1_bulk` (501) / `tier1_personal` (2) |
+| `tier1_reason` | `A1:list-unsubscribe` (495) / `A4:auto-submitted` (6); empty for personal by design |
+| `sender_email` | empty for personal by design (CHECK constraint) |
+| `mailbox` | connection that wrote the stub |
+| `email_id` | `emails.id` at export time (all 503 resolved) |
+| `in_outage_rerun_577` | `t` for the 390 stubs on emails in the 09-15 outage re-run; all 390 verified intact after it |
+| `created_at_utc`, `processed_at_utc` | as stored; none re-synced after the fix |
+
+**Bias warning when using it:** survival was not random. A stub survived only if its email was *not*
+later demoted, so the file under-represents rules whose hits the agent demoted. A5 fired 47 times and
+has 0 rows here. For volume, use the log-rebuilt counts in the Q1 section above, not this file.
+
+It contains outside sender addresses (bulk/marketing and broker blast senders), the same data already
+held in `emails`.
