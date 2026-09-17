@@ -221,6 +221,14 @@ interface SiteSubmitSidebarProps {
   initialTab?: TabType;
 }
 
+// Broadcast when a sidebar edits a site submit, so other open instances stay in sync.
+const SITE_SUBMIT_UPDATED_EVENT = 'ovis:site-submit-updated';
+interface SiteSubmitUpdatedDetail {
+  id: string;
+  updated: Partial<SiteSubmitData>;
+  source: symbol;
+}
+
 // Pipeline tab stages
 const PIPELINE_TAB_STAGES = ['LOI', 'Submitted-Reviewing', 'At Lease/PSA'];
 const SIGNED_STAGES = ['Under Contract/Contingent', 'Booked', 'Executed Payable'];
@@ -266,6 +274,7 @@ export default function SiteSubmitSidebar({
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab, siteSubmitId]);
   const [siteSubmit, setSiteSubmit] = useState<SiteSubmitData | null>(null);
+  const instanceIdRef = useRef(Symbol('site-submit-sidebar'));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
@@ -808,11 +817,31 @@ export default function SiteSubmitSidebar({
   const handleUpdate = (updated: Partial<SiteSubmitData>) => {
     if (!siteSubmit) return;
     const updatedSiteSubmit = { ...siteSubmit, ...updated };
-    setSiteSubmit(updatedSiteSubmit);
+    setSiteSubmit((prev) => (prev ? { ...prev, ...updated } : prev));
     if (onDataUpdate) {
       onDataUpdate(updatedSiteSubmit);
     }
+    // Let any other open sidebar showing the same record pick up the change live.
+    if (siteSubmit.id) {
+      window.dispatchEvent(
+        new CustomEvent<SiteSubmitUpdatedDetail>(SITE_SUBMIT_UPDATED_EVENT, {
+          detail: { id: siteSubmit.id, updated, source: instanceIdRef.current },
+        })
+      );
+    }
   };
+
+  // Merge updates made in another sidebar instance (the map can mount two at
+  // once, and they may show the same site submit) so neither shows stale values.
+  useEffect(() => {
+    const onRemoteUpdate = (e: Event) => {
+      const { id, updated, source } = (e as CustomEvent<SiteSubmitUpdatedDetail>).detail;
+      if (source === instanceIdRef.current) return;
+      setSiteSubmit((prev) => (prev && prev.id === id ? { ...prev, ...updated } : prev));
+    };
+    window.addEventListener(SITE_SUBMIT_UPDATED_EVENT, onRemoteUpdate);
+    return () => window.removeEventListener(SITE_SUBMIT_UPDATED_EVENT, onRemoteUpdate);
+  }, []);
 
   // Begin inline-edit for a header field (site submit name or deal name).
   const startHeaderEdit = (field: 'site_submit_name' | 'deal_name') => {

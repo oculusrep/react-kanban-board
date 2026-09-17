@@ -5,7 +5,7 @@
  * with a collapsible section for original site submit / property values.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { SiteSubmitData } from './SiteSubmitSidebar';
 import DemographicsSection from './DemographicsSection';
@@ -279,6 +279,13 @@ function ReadOnlyField({
   );
 }
 
+const DEAL_UPDATED_EVENT = 'ovis:deal-updated';
+interface DealUpdatedDetail {
+  id: string;
+  updated: Partial<DealData>;
+  source: symbol;
+}
+
 // Fields rendered on this tab that live on site_submit rather than deal.
 const SITE_SUBMIT_FIELDS = new Set(['date_submitted']);
 
@@ -288,6 +295,18 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
   const [saving, setSaving] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>(null);
+  const instanceIdRef = useRef(Symbol('deal-data-tab'));
+
+  // Merge deal edits made in another open instance (e.g. a second sidebar on the map).
+  useEffect(() => {
+    const onRemoteUpdate = (e: Event) => {
+      const { id, updated, source } = (e as CustomEvent<DealUpdatedDetail>).detail;
+      if (source === instanceIdRef.current) return;
+      setDeal((prev) => (prev && prev.id === id ? { ...prev, ...updated } : prev));
+    };
+    window.addEventListener(DEAL_UPDATED_EVENT, onRemoteUpdate);
+    return () => window.removeEventListener(DEAL_UPDATED_EVENT, onRemoteUpdate);
+  }, []);
 
   // Fetch deal data
   useEffect(() => {
@@ -366,8 +385,13 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
 
       if (error) throw error;
 
-      // Update local state
+      // Update local state, and tell any other open DealDataTab for this deal.
       setDeal({ ...deal, [fieldKey]: editValue });
+      window.dispatchEvent(
+        new CustomEvent<DealUpdatedDetail>(DEAL_UPDATED_EVENT, {
+          detail: { id: deal.id, updated: { [fieldKey]: editValue }, source: instanceIdRef.current },
+        })
+      );
       setEditingField(null);
       setEditValue(null);
     } catch (err) {
