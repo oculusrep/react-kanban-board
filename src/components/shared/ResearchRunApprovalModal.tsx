@@ -62,9 +62,20 @@ interface StagingRow {
   sweep_chunk_index?: number | null;
   boundary_municipality_id: string | null;
   matched_existing_id: string | null;
-  approval_state: 'pending' | 'approved' | 'rejected';
+  // 'merged' = folded into another staged row (merged_into_staging_id) — not a
+  // rejection, and never committed on its own.
+  approval_state: 'pending' | 'approved' | 'rejected' | 'merged';
   project_name: string | null;
   address: string | null;
+  // Part of the commit key (municipality, address, project_name, phase_label).
+  // The only way to tell apart two distinct projects that share a name + address.
+  phase_label: string;
+  // Staging rows the reviewer confirmed are DIFFERENT projects (keep both / not
+  // duplicates). Symmetric; the dedupe clustering skips these pairs.
+  not_duplicate_of_ids: string[];
+  merged_into_staging_id: string | null;
+  // This row is a merge survivor (has a pre-merge snapshot → Undo merge).
+  is_merge_keeper: boolean;
   location_description: string | null;
   parcel_boundary_notes: string | null;
   total_housing_units: number | null;
@@ -195,9 +206,23 @@ function diceCoefficient(a: string, b: string): number {
   return (2 * overlap) / (sizeA + sizeB);
 }
 
+// How a same-location cluster is resolved. The labels are phrased around what the
+// rows ARE, not what the button does — merge on a genuine duplicate double-counts
+// units, so it must never read as the convenient option.
+type ClusterResolution = 'keep_one' | 'keep_both' | 'merge';
+const RESOLUTION_OPTIONS: { value: ClusterResolution; label: string; detail: string }[] = [
+  { value: 'keep_one',  label: 'Same project recorded twice',       detail: 'keep one, reject the rest' },
+  { value: 'keep_both', label: 'Different projects at one address', detail: 'keep both, commit each separately' },
+  { value: 'merge',     label: 'One project reported in parts',     detail: 'merge into one record, units added together' },
+];
+
+// A reviewer edit to any of these would be silently overwritten by (or clobber)
+// the merged values, so merge refuses while one is pending.
+const MERGE_FIELDS: (keyof Edits)[] = ['total_housing_units', 'notes', 'permit_url', 'source'];
+
 // Editable subset — the fields the approval UI lets the user override per row.
 type Edits = Partial<Pick<StagingRow,
-  'project_name' | 'address' | 'location_description' | 'parcel_boundary_notes'
+  'project_name' | 'address' | 'phase_label' | 'location_description' | 'parcel_boundary_notes'
   | 'total_housing_units' | 'builder_developer'
   | 'permit_url' | 'permit_application_date' | 'source' | 'discovery_source' | 'notes'>>;
 
@@ -219,6 +244,9 @@ const DISCOVERY_SOURCE_OPTIONS: { value: string; label: string }[] = [
 const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url' | 'select'; full?: boolean; options?: { value: string; label: string }[] }[] = [
   { key: 'project_name',            label: 'Project name',     type: 'text', full: true },
   { key: 'address',                 label: 'Address (geocoded)', type: 'text', full: true },
+  // Two distinct projects with the same name + address commit as ONE record
+  // unless a phase label tells them apart.
+  { key: 'phase_label',             label: 'Phase label (tells apart projects at one address)', type: 'text', full: true },
   // Location-precision fields the agent captures from sources; reviewer reads these
   // when manually placing the pin / drawing the polygon. Neither feeds geocoding.
   { key: 'location_description',    label: 'Location description (manual-pin hint)', type: 'text', full: true },
@@ -281,10 +309,9 @@ export default function ResearchRunApprovalModal({
   const [showDecided, setShowDecided] = useState(false);
   // Per-cluster chosen keeper (stagingId). Defaults to the first member.
   const [keeperByCluster, setKeeperByCluster] = useState<Record<string, string>>({});
-  // Staging ids the reviewer pulled out of a NAME cluster ("not a duplicate" /
-  // "separate phase"). Excluded from name-clustering so they drop back into the
-  // normal flow. Name matching is fuzzy, so breaking a false group must be easy.
-  const [dismissedNameDup, setDismissedNameDup] = useState<Set<string>>(new Set());
+  // Per-location-cluster resolution. Keep-one is the default; keep-both and merge
+  // are deliberate choices.
+  const [resolutionByCluster, setResolutionByCluster] = useState<Record<string, ClusterResolution>>({});
 
   // ---- initial load ----
   useEffect(() => {
@@ -317,6 +344,10 @@ export default function ResearchRunApprovalModal({
             approval_state: r.approval_state,
             project_name: r.project_name,
             address: r.address,
+            phase_label: r.phase_label ?? '',
+            not_duplicate_of_ids: r.not_duplicate_of_ids ?? [],
+            merged_into_staging_id: r.merged_into_staging_id ?? null,
+            is_merge_keeper: !!r.is_merge_keeper,
             location_description: r.location_description,
             parcel_boundary_notes: r.parcel_boundary_notes,
             total_housing_units: r.total_housing_units,
@@ -357,10 +388,11 @@ export default function ResearchRunApprovalModal({
             .from('municipal_project_staging')
             .select(`
               id, research_run_id, boundary_municipality_id, matched_existing_id, approval_state,
-              project_name, address, location_description, parcel_boundary_notes,
+              project_name, address, phase_label, location_description, parcel_boundary_notes,
               total_housing_units, builder_developer, permit_url,
               permit_application_date, source, discovery_source, discovery_source_raw,
               reject_reason, duplicate_of_staging_id, notes,
+              not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -380,8 +412,12 @@ export default function ResearchRunApprovalModal({
           muni_name: r.boundary_municipality?.name ?? '(unknown)',
           muni_kind: r.boundary_municipality?.kind ?? '',
         })));
-        const stagingNorm: StagingRow[] = (stagingRows ?? []).map((r: any) => ({
+        const stagingNorm: StagingRow[] = (stagingRows ?? []).map(({ merge_snapshot, ...r }: any) => ({
           ...r,
+          phase_label: r.phase_label ?? '',
+          not_duplicate_of_ids: r.not_duplicate_of_ids ?? [],
+          merged_into_staging_id: r.merged_into_staging_id ?? null,
+          is_merge_keeper: merge_snapshot != null,
           muni_name: r.boundary_municipality?.name ?? null,
           muni_kind: r.boundary_municipality?.kind ?? null,
           // Single-run view has no sibling run to join against; the pointer is
@@ -560,6 +596,12 @@ export default function ResearchRunApprovalModal({
     return m;
   }, [staging]);
 
+  // Reviewer confirmed these two rows are different projects (keep both / not
+  // duplicates) — persisted, so a resolved card stays resolved across reloads.
+  const isNotDup = (a: string, b: string) =>
+    (stagingById.get(a)?.not_duplicate_of_ids.includes(b) ?? false)
+    || (stagingById.get(b)?.not_duplicate_of_ids.includes(a) ?? false);
+
   // ---- in-sweep duplicate CLUSTERS: connected components over the sibling graph
   // among still-pending rows. Two chunk windows can surface the same project 3–4×;
   // grouping them into one "keep one" card beats scattering badges across the list.
@@ -574,7 +616,7 @@ export default function ResearchRunApprovalModal({
     };
     for (const id of pendingIds) {
       for (const sib of inSweepDupes[id] ?? []) {
-        if (stagingById.get(sib)?.approval_state === 'pending') parent[find(id)] = find(sib);
+        if (stagingById.get(sib)?.approval_state === 'pending' && !isNotDup(id, sib)) parent[find(id)] = find(sib);
       }
     }
     const groups = new Map<string, StagingRow[]>();
@@ -595,6 +637,7 @@ export default function ResearchRunApprovalModal({
       }))
       .filter((c) => c.members.length >= 2)          // a lone remaining row isn't a cluster
       .sort((a, b) => b.members.length - a.members.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inSweepDupes, stagingById]);
   const clusterMemberIds = useMemo(
     () => new Set(clusters.flatMap((c) => c.members.map((m) => m.id))),
@@ -605,13 +648,14 @@ export default function ResearchRunApprovalModal({
   // name, with unit count as a secondary signal. Runs on rows the geographic check
   // didn't already pair — INCLUDING approx-location rows — so same-named copies in
   // different chunks still get grouped. Kept SEPARATE from the geographic clusters
-  // (lower confidence: phases share names) and easy to break apart (dismissedNameDup).
+  // (lower confidence: phases share names) and easy to break apart (persisted
+  // not-a-duplicate pairs, same as location keep-both).
   const NAME_STRONG = 0.82;      // near-identical name -> group regardless of units
   const NAME_WITH_UNITS = 0.6;   // moderately similar name + equal unit count -> group
   const nameClusters = useMemo(() => {
     const rows = staging.filter(
       (s) => s.approval_state === 'pending' && !s.matched_existing_id
-        && !clusterMemberIds.has(s.id) && !dismissedNameDup.has(s.id)
+        && !clusterMemberIds.has(s.id)
         && normalizeProjectName(s.project_name).length >= 4,
     );
     const norm = new Map(rows.map((r) => [r.id, normalizeProjectName(r.project_name)]));
@@ -624,6 +668,7 @@ export default function ResearchRunApprovalModal({
       a.total_housing_units != null && a.total_housing_units === b.total_housing_units;
     for (let i = 0; i < rows.length; i++) {
       for (let j = i + 1; j < rows.length; j++) {
+        if (isNotDup(rows[i].id, rows[j].id)) continue;
         const na = norm.get(rows[i].id)!, nb = norm.get(rows[j].id)!;
         const sim = diceCoefficient(na, nb);
         // Names that differ ONLY by a phase/section numeral are treated as distinct
@@ -653,7 +698,7 @@ export default function ResearchRunApprovalModal({
       .filter((c) => c.members.length >= 2)
       .sort((a, b) => b.members.length - a.members.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staging, clusterMemberIds, dismissedNameDup]);
+  }, [staging, clusterMemberIds]);
   const nameClusterMemberIds = useMemo(
     () => new Set(nameClusters.flatMap((c) => c.members.map((m) => m.id))),
     [nameClusters],
@@ -692,6 +737,7 @@ export default function ResearchRunApprovalModal({
   const pendingCount   = staging.filter((s) => s.approval_state === 'pending').length;
   const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
   const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
+  const mergedCount    = staging.filter((s) => s.approval_state === 'merged').length;
 
   // Per-row dedupe flags — drives which triage bucket a row lands in and which
   // comparison panels render. matched = hard match; possible = near a committed
@@ -701,7 +747,8 @@ export default function ResearchRunApprovalModal({
     return {
       matched,
       possible: !matched && (possibleDupes[r.id]?.length ?? 0) > 0,
-      inSweep: (inSweepDupes[r.id]?.length ?? 0) > 0,
+      // Siblings the reviewer already confirmed as different projects don't count.
+      inSweep: (inSweepDupes[r.id] ?? []).some((sib) => !isNotDup(r.id, sib)),
     };
   };
   const isFlagged = (r: StagingRow) => {
@@ -720,12 +767,14 @@ export default function ResearchRunApprovalModal({
     const clean: StagingRow[] = [];
     const approved: StagingRow[] = [];
     const rejected: StagingRow[] = [];
+    const merged: StagingRow[] = [];
     const byName = (a: StagingRow, b: StagingRow) =>
       (a.muni_name ?? '').localeCompare(b.muni_name ?? '')
       || (a.project_name ?? '').localeCompare(b.project_name ?? '');
     for (const r of staging) {
       if (r.approval_state === 'approved') { approved.push(r); continue; }
       if (r.approval_state === 'rejected') { rejected.push(r); continue; }
+      if (r.approval_state === 'merged') { merged.push(r); continue; }
       // Members of a location or name cluster render in their cluster card.
       if (clusterMemberIds.has(r.id) || nameClusterMemberIds.has(r.id)) continue;
       (isFlagged(r) ? needsAttention : clean).push(r);
@@ -735,6 +784,7 @@ export default function ResearchRunApprovalModal({
       clean: clean.sort(byName),
       approved: approved.sort(byName),
       rejected: rejected.sort(byName),
+      merged: merged.sort(byName),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staging, clusterMemberIds, nameClusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo]);
@@ -837,6 +887,191 @@ export default function ResearchRunApprovalModal({
     }
   };
 
+  // KEEP BOTH / not duplicates: persist that these rows are distinct projects so
+  // their card doesn't re-form on reload. Nothing is rejected; every row stays
+  // pending and selected. With `anchorId`, only anchor <-> each other row is marked
+  // (the name card's per-row "separate"). The server refuses rows that would share
+  // a commit key (municipality, address, name, phase label) — committing those
+  // would fold one into the other and lose its units — so the reviewer's unsaved
+  // name/address/phase edits are sent with the request.
+  const handleKeepBoth = async (ids: string[], anchorId?: string) => {
+    setError(null);
+    const rows = ids.map((id) => {
+      const e = edits[id] ?? {};
+      return {
+        staging_id: id,
+        ...(e.project_name !== undefined ? { project_name: e.project_name } : {}),
+        ...(e.address      !== undefined ? { address:      e.address      } : {}),
+        ...(e.phase_label  !== undefined ? { phase_label:  e.phase_label  } : {}),
+      };
+    });
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('mark_research_staging_not_duplicates', {
+        p_rows: rows,
+        p_anchor_id: anchorId ?? null,
+      });
+      if (rpcErr) throw rpcErr;
+      const marks = new Map(
+        ((data as { rows?: { id: string; not_duplicate_of_ids: string[] }[] } | null)?.rows ?? [])
+          .map((r) => [r.id, r.not_duplicate_of_ids ?? []]),
+      );
+      setStaging((prev) => prev.map((r) => (marks.has(r.id) ? { ...r, not_duplicate_of_ids: marks.get(r.id)! } : r)));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => { if (!stagingById.get(id)?.matched_existing_id) next.add(id); });
+        return next;
+      });
+      // The card dissolves; its rows land in the clean list with an Undo.
+      setShowClean(true);
+    } catch (e) {
+      const msg = toErrorMessage(e);
+      setError(msg);
+      // Collision: open the rows so the phase label field is right there.
+      if (msg.includes('keep_both_collision')) {
+        setExpandedRows((prev) => { const n = new Set(prev); ids.forEach((id) => n.add(id)); return n; });
+      }
+    }
+  };
+
+  // Undo keep-both for one row: clears every not-a-duplicate pair it's part of.
+  const handleUndoKeepBoth = async (rowId: string) => {
+    setError(null);
+    try {
+      const { error: rpcErr } = await supabase.rpc('clear_research_staging_not_duplicates', { p_staging_id: rowId });
+      if (rpcErr) throw rpcErr;
+      setStaging((prev) => prev.map((r) => (r.id === rowId
+        ? { ...r, not_duplicate_of_ids: [] }
+        : r.not_duplicate_of_ids.includes(rowId)
+          ? { ...r, not_duplicate_of_ids: r.not_duplicate_of_ids.filter((x) => x !== rowId) }
+          : r)));
+    } catch (e) {
+      setError(toErrorMessage(e));
+    }
+  };
+
+  // Drop stale (unchanged) edits on the merged fields — at commit an edit overrides
+  // the staged value, so a leftover "74" would silently undo a 375 merge.
+  const clearMergeFieldEdits = (ids: string[]) =>
+    setEdits((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        if (!next[id]) continue;
+        const e = { ...next[id] };
+        MERGE_FIELDS.forEach((k) => { delete e[k]; });
+        next[id] = e;
+      }
+      return next;
+    });
+
+  // "105 + 38 = 143 units" — shown BEFORE a merge is applied.
+  const mergeArithmetic = (members: StagingRow[]) => {
+    const parts = members.map((m) => m.total_housing_units);
+    const nums = parts.filter((n): n is number => n != null);
+    const sum = nums.length > 0 ? nums.reduce((a, b) => a + b, 0) : null;
+    const text = `${parts.map((p) => (p == null ? '(no count)' : String(p))).join(' + ')} = ${sum == null ? 'no unit count' : `${sum} units`}`;
+    // Equal counts are the tell of a copy, not parts of one project.
+    const tally = new Map<number, number>();
+    nums.forEach((n) => tally.set(n, (tally.get(n) ?? 0) + 1));
+    const repeated = [...tally.entries()].find(([, c]) => c >= 2) ?? null;
+    return { sum, text, repeated };
+  };
+
+  // MERGE: fold `foldIds` into `keepId` server-side (units summed, each row's
+  // source + permit kept as a dated block in notes, status from the most recent
+  // dated event). Folded rows become 'merged' — not rejected. Undo restores all.
+  const handleMerge = async (keepId: string, members: StagingRow[]) => {
+    setError(null);
+    const foldIds = members.filter((m) => m.id !== keepId).map((m) => m.id);
+    if (foldIds.length === 0) return;
+    // An edit that still equals the staged value isn't a real change.
+    const edited = members.filter((m) => MERGE_FIELDS.some((k) => {
+      const e = edits[m.id]?.[k];
+      return e !== undefined && String(e ?? '') !== String((m as any)[k] ?? '');
+    }));
+    if (edited.length > 0) {
+      setError(`Merge adds up the staged units, notes and citations, but you have unsaved edits to those fields on "${edited.map((m) => m.project_name ?? '(unnamed)').join('", "')}". Put those fields back (or make the change after merging) and try again.`);
+      return;
+    }
+    const keeper = stagingById.get(keepId);
+    const ordered = keeper ? [keeper, ...members.filter((m) => m.id !== keepId)] : members;
+    const { sum, repeated } = mergeArithmetic(ordered);
+    if (repeated) {
+      const [units, count] = repeated;
+      const who = count === members.length && count === 2 ? 'Both rows report' : `${count} of these rows report`;
+      const ok = window.confirm(
+        `${who} ${units} units — likely a copy of the same project, not parts of one.\n\n`
+        + `Merging records ${sum} units. If these are copies, cancel and choose "Same project recorded twice" to keep one at ${units}.\n\n`
+        + 'Merge anyway?',
+      );
+      if (!ok) return;
+    }
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('merge_research_staging_rows', {
+        p_keep_id: keepId,
+        p_fold_ids: foldIds,
+      });
+      if (rpcErr) throw rpcErr;
+      const res = (data ?? {}) as {
+        total_housing_units?: number | null; notes?: string | null; permit_url?: string | null;
+        source?: string | null; runs_closed?: string[];
+      };
+      setStaging((prev) => prev.map((r) => {
+        if (r.id === keepId) {
+          return {
+            ...r,
+            total_housing_units: res.total_housing_units ?? null,
+            notes: res.notes ?? null,
+            permit_url: res.permit_url ?? null,
+            source: res.source ?? r.source,
+            is_merge_keeper: true,
+          };
+        }
+        return foldIds.includes(r.id) ? { ...r, approval_state: 'merged', merged_into_staging_id: keepId } : r;
+      }));
+      setSelected((prev) => { const n = new Set(prev); foldIds.forEach((id) => n.delete(id)); n.add(keepId); return n; });
+      clearMergeFieldEdits([keepId, ...foldIds]);
+      setShowClean(true);
+      if ((res.runs_closed ?? []).length > 0) onReviewed?.();
+    } catch (e) {
+      setError(toErrorMessage(e));
+    }
+  };
+
+  // Undo a merge (only while the surviving row is still pending).
+  const handleUnmerge = async (keepId: string) => {
+    setError(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('unmerge_research_staging_rows', { p_keep_id: keepId });
+      if (rpcErr) throw rpcErr;
+      const res = (data ?? {}) as {
+        unmerged?: boolean; restored_ids?: string[]; runs_reopened?: string[];
+        total_housing_units?: number | null; notes?: string | null; permit_url?: string | null; source?: string | null;
+      };
+      if (!res.unmerged) return;
+      const restored = res.restored_ids ?? [];
+      setStaging((prev) => prev.map((r) => {
+        if (r.id === keepId) {
+          return {
+            ...r,
+            total_housing_units: res.total_housing_units ?? null,
+            notes: res.notes ?? null,
+            permit_url: res.permit_url ?? null,
+            source: res.source ?? r.source,
+            is_merge_keeper: false,
+          };
+        }
+        return restored.includes(r.id) ? { ...r, approval_state: 'pending', merged_into_staging_id: null } : r;
+      }));
+      setSelected((prev) => { const n = new Set(prev); restored.forEach((id) => n.add(id)); return n; });
+      clearMergeFieldEdits([keepId, ...restored]);
+      if ((res.runs_reopened ?? []).length > 0) {
+        setRun((prev) => (prev ? { ...prev, state: 'awaiting_review' } : prev));
+      }
+    } catch (e) {
+      setError(toErrorMessage(e));
+    }
+  };
+
   // Explicit close-out for a run sitting all-rejected (nothing left to commit).
   const handleMarkReviewed = async () => {
     if (!run) return;
@@ -911,6 +1146,7 @@ export default function ResearchRunApprovalModal({
             staging_id: id,
             ...(e.project_name        !== undefined ? { project_name:            e.project_name        } : {}),
             ...(e.address             !== undefined ? { address:                 e.address             } : {}),
+            ...(e.phase_label         !== undefined ? { phase_label:             e.phase_label         } : {}),
             ...(e.location_description  !== undefined ? { location_description:  e.location_description  } : {}),
             ...(e.parcel_boundary_notes !== undefined ? { parcel_boundary_notes: e.parcel_boundary_notes } : {}),
             ...(e.total_housing_units !== undefined ? { total_housing_units:     Number(e.total_housing_units) || null } : {}),
@@ -1041,6 +1277,25 @@ export default function ResearchRunApprovalModal({
         )}
         {r.approval_state === 'rejected' && (
           <span className="px-1.5 py-0.5 rounded-full border text-xs" style={{ borderColor: '#8FA9C8', color: '#8FA9C8' }}>REJECTED</span>
+        )}
+        {r.approval_state === 'pending' && r.not_duplicate_of_ids.length > 0 && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title={`You confirmed this is a different project from: ${r.not_duplicate_of_ids.map((id) => stagingById.get(id)?.project_name ?? '(another row)').join('; ')}`}>
+            KEPT SEPARATE
+          </span>
+        )}
+        {r.is_merge_keeper && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title="Other staged rows were merged into this one — units summed, their sources are in the notes">
+            MERGED · {1 + staging.filter((s) => s.merged_into_staging_id === r.id).length} RECORDS
+          </span>
+        )}
+        {r.approval_state === 'merged' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}>
+            MERGED INTO “{(r.merged_into_staging_id && stagingById.get(r.merged_into_staging_id)?.project_name) || 'another record'}”
+          </span>
         )}
       </>
     );
@@ -1196,7 +1451,7 @@ export default function ResearchRunApprovalModal({
     const isExpanded = expandedRows.has(r.id);
     return (
       <div key={r.id} className="px-3 py-1.5"
-           style={{ backgroundColor: r.approval_state === 'rejected' ? '#F8FAFC' : '#FFFFFF' }}>
+           style={{ backgroundColor: r.approval_state === 'rejected' || r.approval_state === 'merged' ? '#F8FAFC' : '#FFFFFF' }}>
         <div className="flex items-center gap-2">
           {isPending && !isReadOnlyRun && (
             <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)}
@@ -1221,6 +1476,22 @@ export default function ResearchRunApprovalModal({
                     className="text-xs px-2 py-1 rounded border self-start" style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
                     title="Undo — restore this row to pending">↩ Undo</button>
           )}
+          {isPending && canApprove && r.not_duplicate_of_ids.length > 0 && (
+            <button type="button" onClick={() => handleUndoKeepBoth(r.id)}
+                    className="text-xs px-2 py-1 rounded border self-start whitespace-nowrap" style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                    title="Undo keep both — put this row back in its duplicate group to decide again">↩ Undo keep both</button>
+          )}
+          {canApprove && (() => {
+            // Undo merge lives on both the survivor and the folded rows, and only
+            // while the survivor is still uncommitted.
+            const keeperId = r.is_merge_keeper ? r.id : r.approval_state === 'merged' ? r.merged_into_staging_id : null;
+            if (!keeperId || stagingById.get(keeperId)?.approval_state !== 'pending') return null;
+            return (
+              <button type="button" onClick={() => handleUnmerge(keeperId)}
+                      className="text-xs px-2 py-1 rounded border self-start whitespace-nowrap" style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                      title="Undo merge — restore every merged row as it was staged">↩ Undo merge</button>
+            );
+          })()}
         </div>
         {/* Why it was killed, on the row itself. A rejected row with no visible
             reason is indistinguishable from a mistake six months later. */}
@@ -1236,54 +1507,92 @@ export default function ResearchRunApprovalModal({
     );
   };
 
-  // A duplicate cluster: pick the keeper, reject the rest in one action.
+  // Name-cluster break-apart controls. Both persist as not-a-duplicate pairs (same
+  // column as location keep-both), so a broken-apart card stays broken on reload.
   // Pull one row out of a name cluster (it's a separate phase, not a duplicate).
-  const separateFromNameCluster = (id: string) =>
-    setDismissedNameDup((prev) => new Set(prev).add(id));
+  const separateFromNameCluster = (id: string, memberIds: string[]) => handleKeepBoth(memberIds, id);
   // Break a whole name cluster apart — none of them are duplicates.
-  const dismissNameCluster = (ids: string[]) =>
-    setDismissedNameDup((prev) => { const n = new Set(prev); ids.forEach((id) => n.add(id)); return n; });
+  const dismissNameCluster = (ids: string[]) => handleKeepBoth(ids);
 
-  // A duplicate cluster card: pick the keeper, reject the rest in one action.
-  // `kind: 'name'` renders the lower-confidence name-match variant with break-apart
-  // controls (per-row "separate" + a whole-card "not duplicates").
+  // A duplicate cluster card. Location clusters offer three resolutions — same
+  // project twice (keep one, the default), different projects at one address (keep
+  // both), one project reported in parts (merge). `kind: 'name'` renders the
+  // lower-confidence name-match variant: keep one, or break it apart.
   const clusterCard = (
     c: { id: string; members: StagingRow[] },
     opts?: { kind?: 'location' | 'name'; title?: string; reason?: string },
   ) => {
     const isName = opts?.kind === 'name';
     const accent = isName ? '#A27B5C' : '#4A6B94';
+    const resolution: ClusterResolution = isName ? 'keep_one' : (resolutionByCluster[c.id] ?? 'keep_one');
     const chosen = keeperByCluster[c.id];
     const keeperId = chosen && c.members.some((m) => m.id === chosen) ? chosen : c.members[0].id;
+    const keeper = c.members.find((m) => m.id === keeperId)!;
     const others = c.members.filter((m) => m.id !== keeperId);
+    const arithmetic = mergeArithmetic([keeper, ...others]);
+    const n = c.members.length;
+    const memberTag = (m: StagingRow) => {
+      const isKeeper = m.id === keeperId;
+      if (resolution === 'keep_both') return <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· commits as its own project</span>;
+      if (resolution === 'merge') {
+        return isKeeper
+          ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· survives (keeps this name &amp; address)</span>
+          : <span className="text-xs" style={{ color: '#4A6B94' }}>· folds in</span>;
+      }
+      return isKeeper
+        ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· keep</span>
+        : <span className="text-xs" style={{ color: '#A27B5C' }}>· will reject</span>;
+    };
     return (
       <div key={c.id} className="border rounded-md" style={{ borderColor: accent }}>
         <div className="px-3 py-2 border-b text-sm font-semibold" style={{ borderColor: '#8FA9C8', backgroundColor: isName ? '#FFF7F0' : '#F8FAFC', color: accent }}>
-          {opts?.title ?? `⚠ Same location, staged ${c.members.length}× in this sweep — keep one`}
+          {opts?.title ?? `⚠ Same location, staged ${n}× — are these the same project?`}
           {opts?.reason && (
             <div className="text-xs font-normal mt-0.5" style={{ color: '#8FA9C8' }}>{opts.reason}</div>
           )}
         </div>
+        {!isName && !isReadOnlyRun && (
+          <div className="px-3 py-2 border-b flex flex-wrap gap-2" style={{ borderColor: '#8FA9C8' }} role="radiogroup">
+            {RESOLUTION_OPTIONS.map((o) => {
+              const active = resolution === o.value;
+              return (
+                <button key={o.value} type="button" role="radio" aria-checked={active}
+                        onClick={() => setResolutionByCluster((p) => ({ ...p, [c.id]: o.value }))}
+                        className="text-left px-2.5 py-1.5 rounded border flex-1 min-w-[10rem]"
+                        style={{
+                          borderColor: active ? '#002147' : '#8FA9C8',
+                          backgroundColor: active ? '#002147' : '#FFFFFF',
+                          color: active ? '#FFFFFF' : '#002147',
+                        }}>
+                  <div className="text-xs font-semibold">{o.label}</div>
+                  <div className="text-xs" style={{ color: active ? '#8FA9C8' : '#4A6B94' }}>{o.detail}</div>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
           {c.members.map((m) => {
             const isExpanded = expandedRows.has(m.id);
+            const dim = resolution === 'keep_one' && m.id !== keeperId;
             return (
-              <div key={m.id} className="px-3 py-1.5" style={{ backgroundColor: m.id === keeperId ? '#FFFFFF' : '#F8FAFC' }}>
+              <div key={m.id} className="px-3 py-1.5" style={{ backgroundColor: dim ? '#F8FAFC' : '#FFFFFF' }}>
                 <div className="flex items-center gap-2">
-                  <input type="radio" name={`keeper-${c.id}`} checked={m.id === keeperId} disabled={isReadOnlyRun}
-                         onChange={() => setKeeperByCluster((p) => ({ ...p, [c.id]: m.id }))} title="Keep this copy" />
+                  {resolution !== 'keep_both' && (
+                    <input type="radio" name={`keeper-${c.id}`} checked={m.id === keeperId} disabled={isReadOnlyRun}
+                           onChange={() => setKeeperByCluster((p) => ({ ...p, [c.id]: m.id }))}
+                           title={resolution === 'merge' ? 'Merge into this row' : 'Keep this copy'} />
+                  )}
                   <button type="button" onClick={() => toggleExpand(m.id)} className="flex-1 text-left min-w-0">
                     <div className="flex items-center flex-wrap gap-1.5">
                       <span className="text-xs" style={{ color: '#8FA9C8' }}>{isExpanded ? '▾' : '▸'}</span>
                       <span className="text-sm font-medium" style={{ color: '#002147' }}>{m.project_name ?? '(unnamed)'}</span>
-                      {m.id === keeperId
-                        ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· keep</span>
-                        : <span className="text-xs" style={{ color: '#A27B5C' }}>· will reject</span>}
+                      {memberTag(m)}
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: '#8FA9C8' }}>{rowSummaryLine(m)}</div>
                   </button>
-                  {isName && !isReadOnlyRun && c.members.length > 2 && (
-                    <button type="button" onClick={() => separateFromNameCluster(m.id)}
+                  {isName && !isReadOnlyRun && n > 2 && (
+                    <button type="button" onClick={() => separateFromNameCluster(m.id, c.members.map((x) => x.id))}
                             className="text-xs px-1.5 py-0.5 rounded border self-start" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
                             title="Not part of this group — pull this row out (it's a separate project/phase)">✕ separate</button>
                   )}
@@ -1293,12 +1602,48 @@ export default function ResearchRunApprovalModal({
             );
           })}
         </div>
+        {!isReadOnlyRun && resolution === 'merge' && (
+          <div className="px-3 py-2 border-t text-xs space-y-1" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
+            <div style={{ color: '#002147' }}>
+              Merged record: <b style={{ color: '#4A6B94' }}>{arithmetic.text}</b>
+              <span style={{ color: '#8FA9C8' }}> · every row’s source and permit link kept in the notes</span>
+            </div>
+            {arithmetic.repeated ? (
+              <div style={{ color: '#A27B5C' }}>
+                ⚠ {arithmetic.repeated[1] === n && n === 2 ? 'Both rows report' : `${arithmetic.repeated[1]} rows report`} {arithmetic.repeated[0]} units — that’s usually the same project recorded twice. Merging would count it {arithmetic.repeated[1]}×.
+              </div>
+            ) : (
+              <div style={{ color: '#A27B5C' }}>
+                Only for parts of one project. If these are copies of the same project, merging double-counts its units — choose “Same project recorded twice”.
+              </div>
+            )}
+          </div>
+        )}
+        {!isReadOnlyRun && resolution === 'keep_both' && (
+          <div className="px-3 py-2 border-t text-xs" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#4A6B94' }}>
+            Nothing is rejected — all {n} commit as separate projects. If two share a name and address, give one a phase label first (expand the row).
+          </div>
+        )}
         {!isReadOnlyRun && (
           <div className="px-3 py-2 border-t flex flex-wrap items-center gap-2" style={{ borderColor: '#8FA9C8' }}>
-            <button type="button" onClick={() => handleKeepOne(keeperId, others.map((m) => m.id))}
-                    className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
-              Keep selected · reject the other {others.length}
-            </button>
+            {resolution === 'keep_one' && (
+              <button type="button" onClick={() => handleKeepOne(keeperId, others.map((m) => m.id))}
+                      className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+                Keep selected · reject the other {others.length}
+              </button>
+            )}
+            {resolution === 'keep_both' && (
+              <button type="button" onClick={() => handleKeepBoth(c.members.map((m) => m.id))}
+                      className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+                {n === 2 ? 'Keep both as separate projects' : `Keep all ${n} as separate projects`}
+              </button>
+            )}
+            {resolution === 'merge' && (
+              <button type="button" onClick={() => handleMerge(keeperId, c.members)}
+                      className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+                Merge into selected{arithmetic.sum != null ? ` · ${arithmetic.sum} units` : ''}
+              </button>
+            )}
             {isName && (
               <button type="button" onClick={() => dismissNameCluster(c.members.map((m) => m.id))}
                       className="text-xs px-3 py-1.5 rounded border font-medium" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
@@ -1306,7 +1651,7 @@ export default function ResearchRunApprovalModal({
                 Not duplicates — keep all
               </button>
             )}
-            <span className="text-xs" style={{ color: '#8FA9C8' }}>each reject is reversible with Undo</span>
+            <span className="text-xs" style={{ color: '#8FA9C8' }}>reversible with Undo</span>
           </div>
         )}
       </div>
@@ -1336,12 +1681,12 @@ export default function ResearchRunApprovalModal({
             <p className="text-sm mt-1" style={{ color: '#4A6B94' }}>{siteSubmitLabel}</p>
             {run && (
               <p className="text-xs mt-1" style={{ color: '#8FA9C8' }}>
-                {run.radius_miles}-mile radius · state: {run.state} · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected
+                {run.radius_miles}-mile radius · state: {run.state} · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected{mergedCount > 0 ? ` · ${mergedCount} merged` : ''}
               </p>
             )}
             {isSweep && (
               <p className="text-xs mt-1" style={{ color: '#8FA9C8' }}>
-                Deep Sweep{sweepState ? ` · ${sweepState}` : ''} · all chunks · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected
+                Deep Sweep{sweepState ? ` · ${sweepState}` : ''} · all chunks · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected{mergedCount > 0 ? ` · ${mergedCount} merged` : ''}
               </p>
             )}
             {isSweep && (gapInfo?.healable_count ?? 0) > 0 && (
@@ -1541,12 +1886,12 @@ export default function ResearchRunApprovalModal({
               )}
 
               {/* 4. Decided (approved + rejected, collapsed by default) */}
-              {(triage.approved.length + triage.rejected.length) > 0 && sectionShell(
-                `Decided — ${triage.approved.length} approved · ${triage.rejected.length} rejected`,
+              {(triage.approved.length + triage.rejected.length + triage.merged.length) > 0 && sectionShell(
+                `Decided — ${triage.approved.length} approved · ${triage.rejected.length} rejected${triage.merged.length > 0 ? ` · ${triage.merged.length} merged` : ''}`,
                 showDecided,
                 () => setShowDecided((v) => !v),
                 null,
-                [...triage.approved, ...triage.rejected].map((r) => rowCard(r)),
+                [...triage.approved, ...triage.merged, ...triage.rejected].map((r) => rowCard(r)),
               )}
 
               {/* Needs review — single-run only */}

@@ -8,7 +8,7 @@ Branch: `feature/research-dedupe-safety-net`
 
 ---
 
-## Current behavior (as of 2026-08-25)
+## Current behavior (as of 2026-09-17)
 
 All dedupe lives in the review step (`ResearchRunApprovalModal.tsx`); nothing is
 auto-rejected — every signal is surfaced for a human decision, and every reject is
@@ -43,10 +43,14 @@ purpose — the dupes we want cross city/county lines (annexation, city-in-count
 
 **Review UI (triage)** — rows render compact (one summary line, expand to edit),
 sorted into sections:
-- **Duplicates to resolve — same location** — in-sweep location clusters; pick the
-  keeper, one click rejects the rest.
-- **Possibly the same — matched by name** — name clusters; same keep-one control
-  plus break-apart (**✕ separate** a row, or **Not duplicates — keep all**).
+- **Duplicates to resolve — same location** — in-sweep location clusters with
+  three resolutions: **Same project recorded twice** (keep one, reject the rest —
+  the default), **Different projects at one address** (keep both; nothing
+  rejected), **One project reported in parts** (merge: units summed, every row's
+  source kept in notes). See the 2026-09-17 section.
+- **Possibly the same — matched by name** — name clusters; keep-one control plus
+  break-apart (**✕ separate** a row, or **Not duplicates — keep all**), persisted
+  as not-a-duplicate pairs so a broken-apart card stays broken on reload.
 - **Needs attention** — hard-match / possible-dup / approx-location rows, each
   showing the **conflicting committed record inline** (name, muni, units, permit
   link, distance/Δunits) so the call is made in place.
@@ -468,3 +472,150 @@ matches across the staged set.
 UX: when hits exist, the approx-location panel turns terracotta and lists the
 matched committed record(s) with `ΔN units` / "exact unit match", above the
 placement hints. When there are none, it's the prior grey "verify by hand" note.
+
+---
+
+# Keep both / merge on same-location clusters (2026-09-17)
+
+Branch: `feature/research-dedupe-keep-both-merge` · migration
+`20260917093017_staging_dedupe_keep_both_merge.sql` (applied to prod + recorded
+2026-09-17).
+
+**Status: SHIPPED.** Merged to `main` as `a0b703c5` on 2026-09-17 (deploys
+via Vercel). Reviewed and accepted.
+
+**Live test still open:** the Cumming City Center run (`90ac2318…`) is still
+pending. Open it, choose **Different projects at one address** on the Garden
+District (74) / Overlook (301) card, and commit. Expected result: two separate
+`municipal_project` rows at 74 and 301 units, `approved_new` = 2, and no rejected
+rows. Don't touch Hall County (Old Winder, hand-resolved at 143).
+
+## Why
+
+The location cluster card only offered "keep one". Proximity fired correctly on
+two real pairs where both rows were legitimate, so keep-one threw away real units
+and a citation:
+
+- Hall County — "Old Winder Highway Townhome Development" (105) + "Gilliam Old
+  Winder Highway Townhome Expansion" (38): two phases, one address. Hand-resolved
+  in prod to one committed record at 143 before this shipped.
+- Cumming — "Garden District at Cumming City Center" (74) + "Overlook at Cumming
+  City Center" (301): two parts of one mixed-use development. Left pending on
+  purpose as the live keep-both test.
+
+The name/address hard match can't catch these pairs (normalization can't reconcile
+the names), so the fix hangs off the proximity cluster.
+
+## The three resolutions
+
+Wording is based on what the rows *are*, not on convenience. Merge is offered on
+real duplicates too, and merging a duplicate by reflex inflates unit counts.
+
+| Option | Label | Effect |
+|---|---|---|
+| keep one (default) | Same project recorded twice | reject the others (bulk reject, reason recorded) |
+| keep both | Different projects at one address | persist not-a-duplicate pairs; every row stays pending + selected |
+| merge | One project reported in parts | fold rows into the selected survivor |
+
+Neither new path writes `reject_reason` / `rejected_by_id` / `rejected_at`.
+
+## Schema
+
+`municipal_project_staging` (additive):
+
+- `not_duplicate_of_ids uuid[] NOT NULL DEFAULT '{}'`: symmetric "different
+  project" pairs. The client clustering (location + name) skips marked pairs.
+- `merged_into_staging_id uuid` (FK to staging, `ON DELETE SET NULL`), set on folded rows.
+- `merge_snapshot jsonb` on the survivor: pre-merge unit columns, notes, status,
+  permit_url, source, folded_ids. Undo restores from it. (This is a third column
+  beyond the two planned; the snapshot needs somewhere to live.)
+- `approval_state` CHECK now allows `'merged'`. Every existing consumer filters
+  on `= 'pending'` / `<> 'pending'`, so merged rows count as reviewed and are
+  excluded from the site-research agent's pending read (no double count).
+
+## RPCs
+
+- `mark_research_staging_not_duplicates(p_rows jsonb, p_anchor_id uuid)`: keep
+  both / not duplicates / ✕ separate (anchor = only anchor↔others).
+- `clear_research_staging_not_duplicates(p_staging_id)`: Undo keep both.
+- `merge_research_staging_rows(p_keep_id, p_fold_ids uuid[])` /
+  `unmerge_research_staging_rows(p_keep_id)`: merge and Undo merge.
+- `approve_research_staging_rows`: rebuilt from the live definition with two
+  additions (marked `ADDED 20260917`): the keep-both collision guard, and stamping
+  folded rows with the survivor's committed `approved_municipal_project_id`.
+- `get_sweep_staging`: adds `phase_label`, `not_duplicate_of_ids`,
+  `merged_into_staging_id`, `is_merge_keeper`.
+
+## Collision guard (the conflict key)
+
+Commit is `INSERT … ON CONFLICT (municipality_id, address, project_name,
+phase_label) DO NOTHING`. The key uses exact strings; coordinates aren't part of
+it. On a conflict the row is marked approved, pointed at the existing project,
+and counted `approved_matched`, and its units are gone with no message. That fold-in
+is correct for a row that re-finds an already-committed project. It is wrong for two
+rows the reviewer said are different projects.
+
+- Keep both refuses (`keep_both_collision`) if any marked pair would share
+  that key, using the reviewer's unsaved name/address/phase edits. The modal
+  expands the rows so the new **Phase label** field is right there.
+- Approve raises `keep_both_collision` (whole call rolls back) if the
+  project a row would fold into was committed from a row marked not-a-duplicate
+  of it. This catches edits made *after* keep both.
+
+Neither the Cumming nor the Hall County pair collides (the names differ).
+
+## Merge rules
+
+- Each unit column is summed (NULL only when every row is NULL).
+- Notes: a header, then one dated block per row, oldest first:
+  `— name · N units · zoning approved / permit applied / staged date —`,
+  `Source: …`, `Permit: …`, then the row's own notes. `municipal_project` has one
+  `permit_url` and one `source`, so the extra citations live here.
+- Status: taken from the row with the most recent dated event (GREATEST of zoning
+  approval / permit application date), falling back to staged time. Not staging
+  order, which only reflects how the agent searched. Rows with no status are skipped.
+- permit_url / source: the survivor's own values, filled from the most recent
+  other row only if the survivor has none. Name, address and dates stay the survivor's.
+- Before applying, the card shows the sum (`105 + 38 = 143 units`). If two rows
+  share a unit count, it warns inline, and clicking Merge requires a confirm ("Both
+  rows report 74 units — likely a copy … Merging records 148").
+- Refused when: a row isn't pending, a row is already a merge survivor, a row
+  hard-matches a committed project (its values would never be written), or a
+  member has unsaved edits to units/notes/permit/source.
+- Undo merge only works while the survivor is uncommitted. After commit, edit
+  the committed project instead.
+
+## Verification
+
+Round-trip in one transaction ending in `ROLLBACK`, impersonating an approver,
+run on the Cumming pair: merge (375, dated notes, folded row `merged`, no reject
+fields) → double-merge refused → unmerge (74/301 restored) → keep both refused on
+a forced same-name collision → accepted once a phase label differs → approve with
+colliding edits raises and commits nothing → Undo keep both clears both directions
+→ merge + approve stamps the folded row with the committed project → unmerge after
+commit refused. Prod apply afterwards left Cumming pending and Hall County (143)
+untouched. The modal typechecks clean. It hasn't been clicked through in a browser
+yet; the Cumming live test above covers that.
+
+## Files
+
+- `supabase/migrations/20260917093017_staging_dedupe_keep_both_merge.sql`: columns,
+  CHECK, the four new RPCs, the rebuilt `approve_research_staging_rows` and
+  `get_sweep_staging`
+- `src/components/shared/ResearchRunApprovalModal.tsx`: `ClusterResolution` /
+  `RESOLUTION_OPTIONS`, `isNotDup` (clustering + inSweep flag), `handleKeepBoth`,
+  `handleUndoKeepBoth`, `handleMerge` (edit guard, equal-count confirm),
+  `handleUnmerge`, `mergeArithmetic`, `clearMergeFieldEdits`, the resolution chooser in
+  `clusterCard`, KEPT SEPARATE / MERGED / MERGED INTO badges with Undo buttons, the
+  Phase label field, and merged rows in Decided
+
+## Follow-ups
+
+- Merge only applies to location clusters. Name clusters (e.g. "Section I" /
+  "Section II") could want it too; not built.
+- Merge leaves the survivor's zoning/permit dates alone while status may come from
+  the other row, so the committed record can show a status newer than its dates.
+- The "Possible dup vs committed" panel (staged row vs an already-committed
+  project) still has only approve/reject. Merging into a committed project isn't
+  supported.
+
