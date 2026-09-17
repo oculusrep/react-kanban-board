@@ -1662,6 +1662,25 @@ export default function SiteSubmitSidebar({
                             showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
                           }
                         }}
+                        onSkipChunkClick={async (sweepId) => {
+                          if (!window.confirm('Skip the chunk running now? Use this when you already know the agent is dead and don\'t want to wait out the stall cooldown. Its 6-month window is marked a GAP (recoverable later with Re-run gaps), and the next chunk fires on the next tick, within a minute. The rest of the sweep continues.')) return;
+                          try {
+                            const { data, error } = await supabase.rpc('skip_sweep_chunk', { p_sweep_id: sweepId });
+                            if (error) throw error;
+                            const r = data as { skipped?: boolean; chunk_index?: number; reason?: string };
+                            showToast(
+                              r?.skipped
+                                ? `Chunk ${r.chunk_index} skipped — marked a gap. Next chunk fires within a minute.`
+                                : r?.reason === 'no_active_chunk'
+                                  ? 'No chunk is active right now — nothing to skip.'
+                                  : 'Sweep is no longer running.',
+                              { type: r?.skipped ? 'success' : 'info', duration: 4000 },
+                            );
+                            setResearchRunsRefresh((n) => n + 1);
+                          } catch (e) {
+                            showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
+                          }
+                        }}
                         onCancelClick={async (runId) => {
                           if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
                           try {

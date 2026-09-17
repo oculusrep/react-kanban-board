@@ -13,6 +13,8 @@ interface PastResearchRunsPanelProps {
   onSweepClick?: (sweepId: string) => void;
   /** Callback when the Cancel button is clicked on a still-running Deep Sweep. */
   onCancelSweepClick?: (sweepId: string) => void | Promise<void>;
+  /** Callback for Skip chunk — force-ends the active chunk and advances the sweep. */
+  onSkipChunkClick?: (sweepId: string) => void | Promise<void>;
 }
 
 interface SweepRow {
@@ -71,7 +73,7 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick, onCancelClick, onSweepClick, onCancelSweepClick }: PastResearchRunsPanelProps) {
+export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0, onRunClick, onCancelClick, onSweepClick, onCancelSweepClick, onSkipChunkClick }: PastResearchRunsPanelProps) {
   const [runs, setRuns] = useState<ResearchRunRow[] | null>(null);
   const [sweeps, setSweeps] = useState<SweepRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +189,17 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
                 Deep Sweep · {SWEEP_STATE_LABEL[s.state]}
               </span>
               <div className="flex items-center gap-2">
+                {onSkipChunkClick && s.state === 'running' && (s.running + s.stalled) > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void onSkipChunkClick(s.id); }}
+                    className="text-xs px-2 py-0.5 rounded border"
+                    style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
+                    title="Give up on the chunk running now, mark its window a gap, and start the next chunk without waiting out the cooldown"
+                  >
+                    Skip chunk
+                  </button>
+                )}
                 {onCancelSweepClick && s.state === 'running' && (
                   <button
                     type="button"

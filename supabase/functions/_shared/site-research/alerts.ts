@@ -1,9 +1,10 @@
 /**
  * Telegram alerts for site research (the in-app site story / deep pass).
  *
- * NOT the market research channel. @orep_openclaw_bot (TELEGRAM_BOT_TOKEN) is OpenClaw's bot and
- * carries market research / sweep notices; a site research failure sent through it on 2026-09-15
- * read as "OpenClaw fired". So:
+ * NOT the market research channel. TELEGRAM_BOT_TOKEN is OVISbot / @oculusrep_bot (verified via
+ * getMe 2026-09-17; this comment previously misnamed it @orep_openclaw_bot, which is OpenClaw's
+ * own bot and a different thread). That token carries market research / sweep notices, so a site
+ * research failure sent through it on 2026-09-15 read as "OpenClaw fired". So:
  *  - SITE_RESEARCH_TELEGRAM_BOT_TOKEN, when set, sends from a separate bot.
  *  - Until then it falls back to TELEGRAM_BOT_TOKEN, and every message carries the prefix below
  *    either way, so it cannot be mistaken for market research.

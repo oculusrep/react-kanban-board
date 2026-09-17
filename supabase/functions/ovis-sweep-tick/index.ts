@@ -38,6 +38,15 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// Telegram operator notifications.
+//   chat 8371575998 = Mike Minihan's private chat (verified via getChat).
+//   TELEGRAM_BOT_TOKEN resolves to OVISbot / @oculusrep_bot (id 8677673692),
+//   verified via getMe on 2026-09-17 — NOT @orep_openclaw_bot, which is
+//   OpenClaw/Prime's own bot and a separate conversation thread. Earlier
+//   comments here and in ovis-research-trigger named the wrong bot.
+//   Re-verify with: curl https://api.telegram.org/bot<token>/getMe
+// Failures are swallowed (console.warn only), so a send that fails is INVISIBLE
+// in the tick's HTTP response — a 200 means the path ran, not that it delivered.
 const TELEGRAM_CHAT_ID = '8371575998';
 async function notifyTelegram(text: string): Promise<void> {
   const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
@@ -182,6 +191,18 @@ serve(async (req) => {
       }
       await notifyTelegram(
         `⚠️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) ORPHANED — no activity through the cooldown. Marked failed; sweep advancing. Re-run it from the sweep approval view.`,
+      );
+    } else if (action === 'aborted') {
+      const a = act as {
+        sweep_state: string; skipped_count: number;
+        dead_chunks: Array<{ chunk_index: number; window_start: string; window_end: string }>;
+      };
+      // Circuit breaker: two consecutive chunks finished with no activity and no
+      // records, so the agent side is down and the rest would fail identically.
+      const named = (a.dead_chunks ?? [])
+        .map((d) => `${d.chunk_index} (${d.window_start}→${d.window_end})`).join(' and ');
+      await notifyTelegram(
+        `🛑 Deep-Sweep ABORTED — chunks ${named} both finished with zero activity and zero records, so the agent side is down (check credits / gateway / network). ${a.skipped_count} remaining chunk(s) were NOT fired and are marked as gaps. Fix the cause, then use Re-run gaps to recover every window.`,
       );
     } else if (action === 'terminal') {
       const a = act as { sweep_state: string };

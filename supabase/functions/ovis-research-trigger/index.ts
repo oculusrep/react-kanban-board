@@ -182,7 +182,11 @@ function safeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
-// Telegram operator notifications — chat ID hardcoded (Mike's @orep_openclaw_bot).
+// Telegram operator notifications — chat 8371575998 is Mike Minihan's private
+// chat. TELEGRAM_BOT_TOKEN resolves to OVISbot / @oculusrep_bot, NOT
+// @orep_openclaw_bot as this comment previously claimed (verified via getMe
+// 2026-09-17). Same bot and chat as ovis-sweep-tick, so trigger pings and sweep
+// notices land in one thread.
 // Failures here are swallowed so a notification glitch can never block the
 // trigger response.
 const TELEGRAM_CHAT_ID = '8371575998';
