@@ -481,6 +481,15 @@ Branch: `feature/research-dedupe-keep-both-merge` · migration
 `20260917093017_staging_dedupe_keep_both_merge.sql` (applied to prod + recorded
 2026-09-17).
 
+**Status: SHIPPED.** Merged to `main` as `a0b703c5` on 2026-09-17 (deploys
+via Vercel). Reviewed and accepted.
+
+**Live test still open:** the Cumming City Center run (`90ac2318…`) is still
+pending. Open it, choose **Different projects at one address** on the Garden
+District (74) / Overlook (301) card, and commit. Expected result: two separate
+`municipal_project` rows at 74 and 301 units, `approved_new` = 2, and no rejected
+rows. Don't touch Hall County (Old Winder, hand-resolved at 143).
+
 ## Why
 
 The location cluster card only offered "keep one". Proximity fired correctly on
@@ -585,5 +594,28 @@ a forced same-name collision → accepted once a phase label differs → approve
 colliding edits raises and commits nothing → Undo keep both clears both directions
 → merge + approve stamps the folded row with the committed project → unmerge after
 commit refused. Prod apply afterwards left Cumming pending and Hall County (143)
-untouched.
+untouched. The modal typechecks clean. It hasn't been clicked through in a browser
+yet; the Cumming live test above covers that.
+
+## Files
+
+- `supabase/migrations/20260917093017_staging_dedupe_keep_both_merge.sql`: columns,
+  CHECK, the four new RPCs, the rebuilt `approve_research_staging_rows` and
+  `get_sweep_staging`
+- `src/components/shared/ResearchRunApprovalModal.tsx`: `ClusterResolution` /
+  `RESOLUTION_OPTIONS`, `isNotDup` (clustering + inSweep flag), `handleKeepBoth`,
+  `handleUndoKeepBoth`, `handleMerge` (edit guard, equal-count confirm),
+  `handleUnmerge`, `mergeArithmetic`, `clearMergeFieldEdits`, the resolution chooser in
+  `clusterCard`, KEPT SEPARATE / MERGED / MERGED INTO badges with Undo buttons, the
+  Phase label field, and merged rows in Decided
+
+## Follow-ups
+
+- Merge only applies to location clusters. Name clusters (e.g. "Section I" /
+  "Section II") could want it too; not built.
+- Merge leaves the survivor's zoning/permit dates alone while status may come from
+  the other row, so the committed record can show a status newer than its dates.
+- The "Possible dup vs committed" panel (staged row vs an already-committed
+  project) still has only approve/reject. Merging into a committed project isn't
+  supported.
 
