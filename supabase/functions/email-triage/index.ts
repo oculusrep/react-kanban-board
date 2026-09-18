@@ -50,16 +50,23 @@ const RETRY_BACKOFF_MINUTES = [15, 60, 240, 720, 1440]; // after attempts 1..5
 const MAX_CLASSIFICATION_ATTEMPTS = RETRY_BACKOFF_MINUTES.length + 1; // 6th failure abandons
 
 /**
- * Failures a retry cannot fix: the model refused this content. Same email, same
- * prompt, same answer -- retrying burns 6 attempts over 41 hours to reach the
- * same place. Abandon on the first attempt instead, still counted and still
- * visible to email_classifier_health().
+ * Content blocks (PROHIBITED_CONTENT / blockReason SAFETY) retry like anything
+ * else, but on a SHORTER cap.
  *
- * Seen 2026-09-18 on an Intuit payment receipt: finishReason=PROHIBITED_CONTENT.
- * Transport-level failures (429, 503, timeouts) stay retryable -- those did
- * recover on retry during the 09-15 re-run.
+ * 2026-09-18, reverted same day: this first shipped as "abandon on attempt 1,
+ * a safety block is permanent". The only observation available contradicted
+ * that -- the Intuit receipt that prompted it had already retried under the old
+ * code and classified successfully on attempt 2. Abandoning at once would have
+ * discarded a recoverable email. See section 15.
+ *
+ * 3 attempts (~75 min: 15m, 60m) bounds the waste without throwing the email
+ * away, and produces the count that decides the question: how often is a
+ * content block transient rather than permanent? Revisit with that data.
+ * Transport failures (429/503/timeouts) keep the full 6 attempts.
  */
-function isPermanentModelFailure(message: string): boolean {
+const CONTENT_BLOCK_MAX_ATTEMPTS = 3;
+
+function isContentBlockFailure(message: string): boolean {
   return /PROHIBITED_CONTENT|blockReason=(SAFETY|PROHIBITED_CONTENT)/i.test(message || '');
 }
 
@@ -487,8 +494,9 @@ serve(async (req) => {
           // NOT processed. Record the failure and schedule a retry.
           result.classification_failed = true;
           const attempts = attemptsSoFar + 1;
-          const permanent = isPermanentModelFailure(String(emailError.message ?? emailError));
-          const abandoned = permanent || attempts >= MAX_CLASSIFICATION_ATTEMPTS;
+          const contentBlock = isContentBlockFailure(String(emailError.message ?? emailError));
+          const maxAttempts = contentBlock ? CONTENT_BLOCK_MAX_ATTEMPTS : MAX_CLASSIFICATION_ATTEMPTS;
+          const abandoned = attempts >= maxAttempts;
           const now = Date.now();
           const usage: ModelUsage | null =
             emailError instanceof ModelCallError ? emailError.usage : null;
@@ -509,8 +517,8 @@ serve(async (req) => {
             .eq('id', email.id);
 
           console.error(
-            `[Triage] CLASSIFICATION FAILED email=${email.id} attempt=${attempts}/${MAX_CLASSIFICATION_ATTEMPTS} ` +
-            `status=${abandoned ? 'abandoned' : 'failed'}${permanent ? ' (permanent: model refused content, not retried)' : ''} ` +
+            `[Triage] CLASSIFICATION FAILED email=${email.id} attempt=${attempts}/${maxAttempts} ` +
+            `status=${abandoned ? 'abandoned' : 'failed'}${contentBlock ? ' content-block' : ''} ` +
             `error="${String(emailError.message).slice(0, 200)}"` +
             (failWriteError ? ` FAILURE-WRITE-ERROR="${failWriteError.message}"` : '')
           );

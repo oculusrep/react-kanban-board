@@ -780,6 +780,28 @@ Ingestion ran clean all five days while classification had stopped, so the stale
 never see it. Each stage that can fail silently needs its own output-based signal
 (`email_classifier_health()`, migration `20260914130150`).
 
+### Shipping a change whose only supporting observation contradicted it
+
+2026-09-18. A Gemini `PROHIBITED_CONTENT` block appeared on one email (an Intuit payment receipt). I
+reasoned that a safety refusal is deterministic — same email, same prompt, same answer — and shipped
+"abandon on attempt 1" so it would not burn 6 retries over 41 hours.
+
+**The evidence to test that was already in hand and said the opposite.** That same email had retried
+under the old code and **classified successfully on attempt 2**. The one observation of a content
+block available anywhere in this system showed it was transient. The change would have discarded a
+recoverable email, and the reasoning ("a refusal is permanent") was a plausible model of the API, not
+a measurement of it.
+
+Reverted the same day to a shorter cap (3 attempts, ~75 min) instead of abandoning: it bounds the
+waste, keeps recoverable mail, and produces the count that actually decides the question — how often
+is a content block transient rather than permanent.
+
+**Rule: before shipping behaviour that discards data on a claim about an external system, check
+whether the system has already been observed doing the opposite.** This is the same family as the
+config-constant and silent-success entries above: a confident mental model shipped without the check
+that could have contradicted it — except here the contradicting observation had already been made and
+written down in this very session.
+
 ### Related, from earlier in this project
 
 - **Don't declare a finding solved on circumstantial alignment.** The Barrio Burrito seed was
