@@ -206,6 +206,42 @@ function diceCoefficient(a: string, b: string): number {
   return (2 * overlap) / (sizeA + sizeB);
 }
 
+// ---- run header: the municipality list a run was actually fired against ----
+// Sourced from the run's research_checklist_item rows — the list FROZEN at trigger
+// time — never from a live radius query, so the header keeps saying what the run
+// covered even after the site submit moves or the radius changes.
+//
+// "Cumming" (kind 'city') reads as "City of Cumming". Names that already carry
+// County or a consolidated-government suffix are left alone: Georgia files
+// Macon-Bibb County and Athens-Clarke County unified government under kind 'city',
+// and "City of Macon-Bibb County" would be wrong.
+const muniLabel = (name: string, kind: string) =>
+  (kind === 'city' && !/\bcount(y|ies)\b|government/i.test(name) ? `City of ${name}` : name);
+
+// One line, trigger order (checklist priority), deduped by municipality id — a
+// run's checklist is not guaranteed unique per municipality.
+const muniSummary = (
+  rows: { boundary_municipality_id: string; muni_name: string; muni_kind: string }[],
+) => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    if (seen.has(r.boundary_municipality_id)) continue;
+    seen.add(r.boundary_municipality_id);
+    out.push(muniLabel(r.muni_name, r.muni_kind));
+  }
+  return out.join(', ');
+};
+
+// "0", "0, 2, 5", "0–5" — a compact label for the chunks sharing one summary.
+const chunkRangeLabel = (indices: (number | null)[]) => {
+  const ns = [...new Set(indices.filter((n): n is number => n != null))].sort((a, b) => a - b);
+  if (ns.length === 0) return 'Chunks';
+  if (ns.length === 1) return `Chunk ${ns[0]}`;
+  const contiguous = ns.every((n, i) => i === 0 || n === ns[i - 1] + 1);
+  return contiguous ? `Chunks ${ns[0]}–${ns[ns.length - 1]}` : `Chunks ${ns.join(', ')}`;
+};
+
 // A duplicate cluster is resolved in TWO steps, because real clusters are mixed:
 // the same address can hold two distinct projects, one of which the sweep recorded
 // four times. Step 1 sorts the rows into groups (or marks rows to reject outright);
@@ -307,6 +343,12 @@ export default function ResearchRunApprovalModal({
   const [rerunConfirm, setRerunConfirm] = useState(false);
   const [rerunning, setRerunning] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
+  // Sweep mode: the frozen municipality line per chunk run, collapsed so chunks
+  // covering the SAME municipalities share one line. Deep Sweep chunks are time
+  // windows over one geography, so in practice every chunk carries the same list
+  // and six identical header lines would be noise; a chunk whose coverage really
+  // does differ still gets its own line. `chunks` is the label for the group.
+  const [chunkMunis, setChunkMunis] = useState<{ chunks: string; summary: string }[]>([]);
   const [staging, setStaging] = useState<StagingRow[]>([]);
   // stagingId -> sibling stagingIds within ~150m in the same sweep.
   const [inSweepDupes, setInSweepDupes] = useState<Record<string, string[]>>({});
@@ -356,11 +398,22 @@ export default function ResearchRunApprovalModal({
       try {
         if (isSweep) {
           // ---- unified sweep mode: all staged rows across the sweep's runs ----
-          const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }, { data: gaps }] = await Promise.all([
+          const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }, { data: gaps }, { data: chunkChecklist }] = await Promise.all([
             supabase.from('research_sweep').select('state').eq('id', sweepId!).single(),
             supabase.rpc('get_sweep_staging', { p_sweep_id: sweepId! }),
             // Non-blocking: a gap-lookup failure must never break the approval view.
             supabase.rpc('get_sweep_gaps', { p_sweep_id: sweepId! }),
+            // Every chunk run's frozen checklist, for the per-chunk municipality
+            // line. Also non-blocking — a header summary is never worth failing
+            // the approval view over. Bounded by chunks × municipalities per run
+            // (a 6-chunk sweep is a few dozen rows), but ranged past the default
+            // 1000 anyway so a wide sweep can't silently truncate the list.
+            supabase
+              .from('research_checklist_item')
+              .select('boundary_municipality_id, priority, research_run!inner(id, sweep_chunk_index, sweep_id), boundary_municipality(name, kind)')
+              .eq('research_run.sweep_id', sweepId!)
+              .order('priority')
+              .range(0, 4999),
           ]);
           if (swErr) throw swErr;
           if (stErr) throw stErr;
@@ -369,6 +422,33 @@ export default function ResearchRunApprovalModal({
           setGapInfo((gaps as SweepGapInfo | null) ?? null);
           setRun(null);
           setChecklist([]);
+          // Group the chunk runs' checklist rows by run, in chunk order.
+          const byRun = new Map<string, { chunkIndex: number | null; rows: { boundary_municipality_id: string; muni_name: string; muni_kind: string }[] }>();
+          for (const r of (chunkChecklist ?? []) as any[]) {
+            const rr = r.research_run;
+            if (!rr?.id) continue;
+            if (!byRun.has(rr.id)) byRun.set(rr.id, { chunkIndex: rr.sweep_chunk_index ?? null, rows: [] });
+            byRun.get(rr.id)!.rows.push({
+              boundary_municipality_id: r.boundary_municipality_id,
+              muni_name: r.boundary_municipality?.name ?? '(unknown)',
+              muni_kind: r.boundary_municipality?.kind ?? '',
+            });
+          }
+          // A chunk index can have more than one run (a re-fired chunk), so group
+          // by the summary text, not by run, and label each group with its chunks.
+          const bySummary = new Map<string, (number | null)[]>();
+          for (const v of byRun.values()) {
+            const summary = muniSummary(v.rows);
+            if (!summary) continue;
+            if (!bySummary.has(summary)) bySummary.set(summary, []);
+            bySummary.get(summary)!.push(v.chunkIndex);
+          }
+          setChunkMunis(
+            [...bySummary.entries()]
+              .map(([summary, idx]) => ({ summary, chunks: chunkRangeLabel(idx), first: Math.min(...idx.map((n) => n ?? 0)) }))
+              .sort((a, b) => a.first - b.first)
+              .map(({ summary, chunks }) => ({ summary, chunks })),
+          );
           const stagingNorm: StagingRow[] = ((stagingRows ?? []) as any[]).map((r) => ({
             id: r.id,
             research_run_id: r.research_run_id,
@@ -438,6 +518,7 @@ export default function ResearchRunApprovalModal({
 
         setRun(runRow as RunRow);
         setNeedsReview(runRow?.needs_review ?? '');
+        setChunkMunis([]);
         setChecklist((checklistRows ?? []).map((r: any) => ({
           boundary_municipality_id: r.boundary_municipality_id,
           priority: r.priority,
@@ -1319,6 +1400,8 @@ export default function ResearchRunApprovalModal({
   };
   const isReadOnlyRun = !canApprove || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
   const cleanSelectable = triage.clean.filter((r) => !r.matched_existing_id).map((r) => r.id);
+  // Single-run header line: the frozen checklist municipalities, in trigger order.
+  const runMuniSummary = useMemo(() => muniSummary(checklist), [checklist]);
 
   // ---- compact-row render helpers ----
   const toggleExpand = (id: string) =>
@@ -1910,11 +1993,25 @@ export default function ResearchRunApprovalModal({
                 {run.radius_miles}-mile radius · state: {run.state} · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected{mergedCount > 0 ? ` · ${mergedCount} merged` : ''}
               </p>
             )}
+            {/* Single run: the municipalities it was fired against, at a glance. */}
+            {run && runMuniSummary && (
+              <p className="text-xs mt-1" style={{ color: '#4A6B94' }}
+                 title="Municipalities this run was fired against, as frozen on its checklist at trigger time">
+                {runMuniSummary}
+              </p>
+            )}
             {isSweep && (
               <p className="text-xs mt-1" style={{ color: '#8FA9C8' }}>
                 Deep Sweep{sweepState ? ` · ${sweepState}` : ''} · all chunks · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected{mergedCount > 0 ? ` · ${mergedCount} merged` : ''}
               </p>
             )}
+            {/* Sweep: the chunk runs' municipalities, one line per distinct list. */}
+            {isSweep && chunkMunis.map((c) => (
+              <p key={c.chunks} className="text-xs mt-0.5" style={{ color: '#4A6B94' }}
+                 title="Municipalities these chunk runs were fired against, as frozen on their checklists at trigger time">
+                <span style={{ color: '#8FA9C8' }}>{c.chunks} · </span>{c.summary}
+              </p>
+            ))}
             {isSweep && (gapInfo?.healable_count ?? 0) > 0 && (
               <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
                 {gapInfo!.healable_count} chunk{gapInfo!.healable_count === 1 ? '' : 's'} finished after the timeout — their records are already included below and won't be re-run.
