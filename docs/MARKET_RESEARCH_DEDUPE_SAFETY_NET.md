@@ -619,3 +619,104 @@ yet; the Cumming live test above covers that.
   project) still has only approve/reject. Merging into a committed project isn't
   supported.
 
+
+---
+
+# Two-step cluster resolution: group, then decide (2026-09-18)
+
+UI-only change to `ResearchRunApprovalModal.tsx`. No migration, no RPC changes —
+every action still goes through the RPCs from the 2026-09-17 section.
+
+## Why
+
+The resolution chooser above forced ONE mode on a whole cluster. Real clusters
+are mixed. The cluster that prompted this held **two distinct projects at the
+same address**, one of which the sweep recorded **four times** across chunks:
+three rows at 74 units, one at 46 with a different address and zip. There was no
+mode that described that: keep-one would have thrown away the 46-unit project,
+keep-both would have committed the 74-unit project three times, and merge would
+have recorded 268 units for what is really 74 + 46.
+
+## The two steps
+
+**Step 1 — group.** Each member row carries an `A / B / + / ✕` control. `+`
+pulls the row into a new group; `✕` marks it for outright rejection. Assignment
+lives in `groupByRow` (keyed by staging row id, so it survives the cluster
+re-forming after a partial resolution). Groups are stored under generated keys
+(`nextGroupKey()`) and *displayed* as A, B, C by position, so an emptied group
+disappearing never leaves a gap in the letters.
+
+**Step 2 — decide per group.** A group of ≥2 rows gets its own mode chooser and
+its own action button:
+
+| mode | reads as | does |
+|---|---|---|
+| `keep_one` (default) | Same project recorded twice | `handleKeepOne` — keep the selected row, reject the rest **of that group** |
+| `merge` | One project reported in parts | `handleMerge` — fold that group's rows into its survivor, units summed |
+
+A group of one row needs no mode; it commits on its own.
+
+**"Different projects at one address" is no longer a mode** — it is what two
+groups *mean*. Once every group is down to a single live row, the footer's
+"Groups A and B are different projects — keep both" button becomes enabled and
+calls `handleKeepBoth` on the group representatives. While any group still has
+>1 row the button is disabled with a hint, because marking not-a-duplicate pairs
+while an intra-group duplicate is unresolved would leave the cluster re-forming.
+
+The one-click shortcut is kept: a cluster still sitting in a single group offers
+"Not duplicates — keep all N separately" (the old name-cluster dismiss).
+
+## Requirements this had to meet
+
+- **Rejecting a subset must not force a decision on the rest.** `✕` marks feed a
+  standalone "Reject these N rows" button in its own bucket; it prompts for a
+  reason (defaulted, editable) and touches nothing else in the cluster. Likewise
+  each group's action button only affects that group.
+- **Warn on identical unit counts before a summed merge.** `mergeArithmetic` now
+  returns the *most*-repeated count (not the first found) plus `allSame`. The
+  inline merge panel and the `handleMerge` confirm both read "near-always ONE
+  record found N×, not N parts of one project", and the confirm still lets the
+  reviewer proceed deliberately.
+- **Show the differing field values.** Each multi-row group renders a "These rows
+  differ on:" table over `DIFF_FIELDS` (units, address, project name, phase
+  label, municipality, builder, permit date, discovery source, permit URL),
+  listing each distinct value with the `#n` marks of the rows holding it —
+  e.g. `Total units  74 #1 #2 #3 · 46 #4`. `#n` marks are assigned per *cluster*
+  and stay put as rows move between groups. Values come from `effectiveValue`,
+  so an unsaved edit is what you see (that's what would commit). Fields where
+  every row agrees are omitted.
+- **Reversible.** Nothing new is persisted by grouping — it's local state until
+  an action fires, and every action is one of the existing reversible RPCs:
+  Undo reject, Undo merge, Undo keep-both.
+
+## Walkthrough of the cluster that prompted this
+
+1. Open the card: all four rows sit in group A, so the diff table is the whole
+   cluster's diff — `Total units 74 #1 #2 #3 · 46 #4`, plus the differing address.
+2. `+` on `#4` → group B (one row, "commits on its own").
+3. Group A keeps mode `keep_one`, pick which 74 to keep → "Group A: keep
+   selected · reject the other 2".
+4. The card re-forms with A (#1) and B (#4), one row each → "Groups A and B are
+   different projects — keep both".
+
+Result: two committed projects at 74 and 46 units. No mode in the old UI could
+produce that.
+
+## Also changed
+
+- `rejectRows(ids, reason)` extracted from `handleKeepOne` and shared with the
+  new `handleRejectMarked`.
+- Name clusters now use the same two-step card (they previously had only
+  keep-one plus a per-row "✕ separate"), which closes the first follow-up above:
+  merge is available on name clusters.
+- Removed: `ClusterResolution`, `RESOLUTION_OPTIONS`, `resolutionByCluster`,
+  `keeperByCluster`, `separateFromNameCluster`, `dismissNameCluster`.
+- Added: `GroupMode` / `GROUP_MODE_OPTIONS`, `REJECT_KEY`, `DEFAULT_GROUP`,
+  `nextGroupKey`, `GROUP_LABELS`, `DIFF_FIELDS`, `groupByRow`, `keeperByGroup`,
+  `modeByGroup`, `effectiveValue`, `fieldDiffs`.
+
+## Status
+
+Typechecks clean (`tsc --noEmit` reports nothing for this file) and `vite build`
+succeeds. **Not yet clicked through in a browser** — the mixed cluster described
+above is the live test.

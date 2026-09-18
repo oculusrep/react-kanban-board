@@ -206,14 +206,45 @@ function diceCoefficient(a: string, b: string): number {
   return (2 * overlap) / (sizeA + sizeB);
 }
 
-// How a same-location cluster is resolved. The labels are phrased around what the
-// rows ARE, not what the button does — merge on a genuine duplicate double-counts
-// units, so it must never read as the convenient option.
-type ClusterResolution = 'keep_one' | 'keep_both' | 'merge';
-const RESOLUTION_OPTIONS: { value: ClusterResolution; label: string; detail: string }[] = [
-  { value: 'keep_one',  label: 'Same project recorded twice',       detail: 'keep one, reject the rest' },
-  { value: 'keep_both', label: 'Different projects at one address', detail: 'keep both, commit each separately' },
-  { value: 'merge',     label: 'One project reported in parts',     detail: 'merge into one record, units added together' },
+// A duplicate cluster is resolved in TWO steps, because real clusters are mixed:
+// the same address can hold two distinct projects, one of which the sweep recorded
+// four times. Step 1 sorts the rows into groups (or marks rows to reject outright);
+// step 2 picks what to do with each group. A cluster-wide mode can't express that.
+//
+// "Different projects at one address" is no longer a mode — it's what TWO groups
+// mean. Once each group is down to a single live row, one action marks them as
+// not-duplicates of each other.
+type GroupMode = 'keep_one' | 'merge';
+const GROUP_MODE_OPTIONS: { value: GroupMode; label: string; detail: string }[] = [
+  // Phrased around what the rows ARE, not what the button does — merge on a genuine
+  // duplicate double-counts units, so it must never read as the convenient option.
+  { value: 'keep_one', label: 'Same project recorded twice', detail: 'keep one, reject the rest' },
+  { value: 'merge',    label: 'One project reported in parts', detail: 'merge into one record, units added together' },
+];
+// Row assignment within a cluster: a group key, or REJECT_KEY for "this row is
+// junk, drop it" — independent of what happens to any other row in the cluster.
+const REJECT_KEY = '__reject__';
+const DEFAULT_GROUP = 'default';
+// Monotonic ids for groups the reviewer creates. Globally unique so per-group state
+// never collides between clusters.
+let groupSeq = 0;
+const nextGroupKey = () => `g${++groupSeq}`;
+// Display label for a group — derived from its position, so a cluster always reads
+// A, B, C even after an emptied group disappears.
+const GROUP_LABELS = 'ABCDEFGH';
+
+// Fields compared across the rows of a group so the reviewer can see WHICH count or
+// address they're choosing between. Ordered by how much they decide the question.
+const DIFF_FIELDS: { key: keyof StagingRow; label: string }[] = [
+  { key: 'total_housing_units',     label: 'Total units' },
+  { key: 'address',                 label: 'Address' },
+  { key: 'project_name',            label: 'Project name' },
+  { key: 'phase_label',             label: 'Phase label' },
+  { key: 'muni_name',               label: 'Municipality' },
+  { key: 'builder_developer',       label: 'Builder' },
+  { key: 'permit_application_date', label: 'Permit date' },
+  { key: 'discovery_source',        label: 'Found by' },
+  { key: 'permit_url',              label: 'Permit URL' },
 ];
 
 // A reviewer edit to any of these would be silently overwritten by (or clobber)
@@ -307,11 +338,14 @@ export default function ResearchRunApprovalModal({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [showClean, setShowClean] = useState(false);
   const [showDecided, setShowDecided] = useState(false);
-  // Per-cluster chosen keeper (stagingId). Defaults to the first member.
-  const [keeperByCluster, setKeeperByCluster] = useState<Record<string, string>>({});
-  // Per-location-cluster resolution. Keep-one is the default; keep-both and merge
-  // are deliberate choices.
-  const [resolutionByCluster, setResolutionByCluster] = useState<Record<string, ClusterResolution>>({});
+  // Step 1 state: stagingId -> group key (or REJECT_KEY). Keyed by ROW, so an
+  // assignment survives the cluster re-forming after a partial resolution.
+  const [groupByRow, setGroupByRow] = useState<Record<string, string>>({});
+  // Step 2 state, keyed `${clusterId}::${groupKey}`: chosen keeper (stagingId) and
+  // mode for each group. Both fall back to safe defaults (first member, keep-one),
+  // so losing them when a cluster re-forms is harmless.
+  const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
+  const [modeByGroup, setModeByGroup] = useState<Record<string, GroupMode>>({});
 
   // ---- initial load ----
   useEffect(() => {
@@ -851,37 +885,66 @@ export default function ResearchRunApprovalModal({
     }
   };
 
-  // In-sweep dedupe resolver: keep the given row and reject its still-pending
-  // siblings in one action. Each reject is reversible (Undo), so this is a fast
-  // path, not a commitment. Rejects sequentially — the RPC also auto-closes the
-  // run on the last pending row, which we reflect via run_reviewed.
+  // Bulk reject with a stated reason. The reason is REQUIRED by the RPC — a batch
+  // reject with no recorded reason is the silent hole the reason field exists to
+  // close. Each reject stays reversible (Undo), so this is a fast path, not a
+  // commitment. The RPC auto-closes a run on its last pending row (run_reviewed).
+  const rejectRows = async (ids: string[], reason: string) => {
+    const targets = ids.filter((id) => stagingById.get(id)?.approval_state === 'pending');
+    if (targets.length === 0) return false;
+    const { data, error: rpcErr } = await supabase.rpc('reject_research_staging_rows', {
+      p_staging_ids: targets,
+      p_reason: reason,
+    });
+    if (rpcErr) throw rpcErr;
+    const closed = ((data as { runs_closed?: string[] } | null)?.runs_closed ?? []).length > 0;
+    setStaging((rows) => rows.map((r) => targets.includes(r.id)
+      ? { ...r, approval_state: 'rejected', reject_reason: reason } : r));
+    setSelected((prev) => { const next = new Set(prev); targets.forEach((id) => next.delete(id)); return next; });
+    if (closed) {
+      setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
+      onReviewed?.();
+    }
+    return true;
+  };
+
+  // In-sweep dedupe resolver for ONE group: keep the given row and reject its
+  // still-pending siblings in that group. Rows in other groups are untouched.
   const handleKeepOne = async (keepId: string, siblingIds: string[]) => {
     setError(null);
-    const targets = siblingIds.filter((id) => stagingById.get(id)?.approval_state === 'pending');
-    if (targets.length === 0) return;
-    // Bulk RPC: the reason is stated once for the batch rather than retyped per
-    // row, and it is REQUIRED — a batch reject with no recorded reason is the
-    // silent hole the reason field exists to close.
     const keptName = stagingById.get(keepId)?.project_name ?? 'the kept record';
-    const reason = `Duplicate — resolved in favour of "${keptName}"`;
     try {
-      const { data, error: rpcErr } = await supabase.rpc('reject_research_staging_rows', {
-        p_staging_ids: targets,
-        p_reason: reason,
-      });
-      if (rpcErr) throw rpcErr;
-      const closed = ((data as { runs_closed?: string[] } | null)?.runs_closed ?? []).length > 0;
-      setStaging((rows) => rows.map((r) => targets.includes(r.id)
-        ? { ...r, approval_state: 'rejected', reject_reason: reason } : r));
-      setSelected((prev) => { const next = new Set(prev); targets.forEach((id) => next.delete(id)); return next; });
-      if (closed) {
-        setRun((prev) => (prev ? { ...prev, state: 'archived' } : prev));
-        onReviewed?.();
-      }
+      await rejectRows(siblingIds, `Duplicate — resolved in favour of "${keptName}"`);
       // Make sure the kept row is selected for commit.
       if (stagingById.get(keepId)?.approval_state === 'pending') {
         setSelected((prev) => { const next = new Set(prev); next.add(keepId); return next; });
       }
+    } catch (e) {
+      setError(toErrorMessage(e));
+    }
+  };
+
+  // Step 1's standalone action: drop the rows marked ✕ and leave every other row in
+  // the cluster exactly as it was. Rejecting a subset must never force a decision
+  // on the rest — that's the whole point of separating the two steps.
+  const handleRejectMarked = async (ids: string[]) => {
+    setError(null);
+    const targets = ids.filter((id) => stagingById.get(id)?.approval_state === 'pending');
+    if (targets.length === 0) return;
+    const reason = window.prompt(
+      `Reason for rejecting ${targets.length === 1 ? 'this row' : `these ${targets.length} rows`}?`,
+      'Not a real record — rejected during duplicate review',
+    );
+    if (reason == null || !reason.trim()) return;
+    try {
+      await rejectRows(targets, reason.trim());
+      // Clear the marks so the card doesn't keep offering to reject rows that are
+      // already gone.
+      setGroupByRow((prev) => {
+        const next = { ...prev };
+        targets.forEach((id) => { delete next[id]; });
+        return next;
+      });
     } catch (e) {
       setError(toErrorMessage(e));
     }
@@ -963,6 +1026,29 @@ export default function ResearchRunApprovalModal({
       return next;
     });
 
+  // The value a row would COMMIT with — an unsaved edit wins over the staged value,
+  // so the diff table shows what the reviewer is actually choosing between.
+  const effectiveValue = (r: StagingRow, key: keyof StagingRow) => {
+    const e = (edits[r.id] as Record<string, unknown> | undefined)?.[key as string];
+    const v = e !== undefined ? e : (r as unknown as Record<string, unknown>)[key as string];
+    return v == null || v === '' ? null : String(v);
+  };
+
+  // Fields where the rows of a group DISAGREE, with which rows hold which value.
+  // This is the whole reason to look at a cluster: three rows at 74 units and one
+  // at 46 with a different address is not a judgement call you can make from names.
+  const fieldDiffs = (members: StagingRow[], markOf: (id: string) => string) =>
+    DIFF_FIELDS.flatMap(({ key, label }) => {
+      const byValue = new Map<string, string[]>();
+      for (const m of members) {
+        const v = effectiveValue(m, key) ?? '—';
+        if (!byValue.has(v)) byValue.set(v, []);
+        byValue.get(v)!.push(markOf(m.id));
+      }
+      if (byValue.size < 2) return [];
+      return [{ key: String(key), label, values: [...byValue.entries()].map(([text, marks]) => ({ text, marks })) }];
+    });
+
   // "105 + 38 = 143 units" — shown BEFORE a merge is applied.
   const mergeArithmetic = (members: StagingRow[]) => {
     const parts = members.map((m) => m.total_housing_units);
@@ -972,8 +1058,13 @@ export default function ResearchRunApprovalModal({
     // Equal counts are the tell of a copy, not parts of one project.
     const tally = new Map<number, number>();
     nums.forEach((n) => tally.set(n, (tally.get(n) ?? 0) + 1));
-    const repeated = [...tally.entries()].find(([, c]) => c >= 2) ?? null;
-    return { sum, text, repeated };
+    // Worst offender first: the count repeated the most times is the strongest
+    // "this is one record found twice" signal in the group.
+    const repeated = [...tally.entries()].filter(([, c]) => c >= 2)
+      .sort((a, b) => b[1] - a[1])[0] ?? null;
+    // Every row reporting the same count is the unambiguous case.
+    const allSame = nums.length === parts.length && nums.length >= 2 && new Set(nums).size === 1;
+    return { sum, text, repeated, allSame };
   };
 
   // MERGE: fold `foldIds` into `keepId` server-side (units summed, each row's
@@ -994,13 +1085,15 @@ export default function ResearchRunApprovalModal({
     }
     const keeper = stagingById.get(keepId);
     const ordered = keeper ? [keeper, ...members.filter((m) => m.id !== keepId)] : members;
-    const { sum, repeated } = mergeArithmetic(ordered);
+    const { sum, repeated, allSame } = mergeArithmetic(ordered);
     if (repeated) {
       const [units, count] = repeated;
-      const who = count === members.length && count === 2 ? 'Both rows report' : `${count} of these rows report`;
+      const who = allSame
+        ? (ordered.length === 2 ? 'Both rows report the same' : `All ${ordered.length} rows report the same`)
+        : (count === 2 ? 'Two of these rows report' : `${count} of these rows report`);
       const ok = window.confirm(
-        `${who} ${units} units — likely a copy of the same project, not parts of one.\n\n`
-        + `Merging records ${sum} units. If these are copies, cancel and choose "Same project recorded twice" to keep one at ${units}.\n\n`
+        `${who} ${units} units — that is near-always ONE record found ${count}×, not ${count} parts of one project.\n\n`
+        + `Merging would record ${sum} units. If these are copies, cancel and set this group to "Same project recorded twice" to keep one at ${units}.\n\n`
         + 'Merge anyway?',
       );
       if (!ok) return;
@@ -1507,42 +1600,132 @@ export default function ResearchRunApprovalModal({
     );
   };
 
-  // Name-cluster break-apart controls. Both persist as not-a-duplicate pairs (same
-  // column as location keep-both), so a broken-apart card stays broken on reload.
-  // Pull one row out of a name cluster (it's a separate phase, not a duplicate).
-  const separateFromNameCluster = (id: string, memberIds: string[]) => handleKeepBoth(memberIds, id);
-  // Break a whole name cluster apart — none of them are duplicates.
-  const dismissNameCluster = (ids: string[]) => handleKeepBoth(ids);
-
-  // A duplicate cluster card. Location clusters offer three resolutions — same
-  // project twice (keep one, the default), different projects at one address (keep
-  // both), one project reported in parts (merge). `kind: 'name'` renders the
-  // lower-confidence name-match variant: keep one, or break it apart.
+  // A duplicate cluster card, resolved in two steps.
+  //
+  // Step 1 — GROUP: every member is assigned to a group (or marked ✕ for reject).
+  // Real clusters are mixed: two distinct projects can share an address while one
+  // of them was recorded four times across chunks. A cluster-wide mode can't say
+  // that; groups can. Rejecting the ✕ rows is its own action and never forces a
+  // decision on the rest.
+  //
+  // Step 2 — DECIDE per group: same project recorded twice (keep one) or one
+  // project reported in parts (merge, units summed). A group already down to one
+  // row needs no mode. Once every group is a single row, one action records that
+  // the groups are different projects (the old "keep both").
+  //
+  // Every action here is reversible — Undo reject, Undo merge, Undo keep-both.
   const clusterCard = (
     c: { id: string; members: StagingRow[] },
     opts?: { kind?: 'location' | 'name'; title?: string; reason?: string },
   ) => {
     const isName = opts?.kind === 'name';
     const accent = isName ? '#A27B5C' : '#4A6B94';
-    const resolution: ClusterResolution = isName ? 'keep_one' : (resolutionByCluster[c.id] ?? 'keep_one');
-    const chosen = keeperByCluster[c.id];
-    const keeperId = chosen && c.members.some((m) => m.id === chosen) ? chosen : c.members[0].id;
-    const keeper = c.members.find((m) => m.id === keeperId)!;
-    const others = c.members.filter((m) => m.id !== keeperId);
-    const arithmetic = mergeArithmetic([keeper, ...others]);
     const n = c.members.length;
-    const memberTag = (m: StagingRow) => {
-      const isKeeper = m.id === keeperId;
-      if (resolution === 'keep_both') return <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· commits as its own project</span>;
-      if (resolution === 'merge') {
-        return isKeeper
-          ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· survives (keeps this name &amp; address)</span>
-          : <span className="text-xs" style={{ color: '#4A6B94' }}>· folds in</span>;
-      }
-      return isKeeper
-        ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· keep</span>
-        : <span className="text-xs" style={{ color: '#A27B5C' }}>· will reject</span>;
+    const gkey = (key: string) => `${c.id}::${key}`;
+    // Stable per-cluster row marks (#1..#n). They don't change as rows move between
+    // groups, so the diff table stays readable while you sort.
+    const markOf = (id: string) => `#${c.members.findIndex((m) => m.id === id) + 1}`;
+    const assignmentOf = (id: string) => groupByRow[id] ?? DEFAULT_GROUP;
+    const assign = (id: string, key: string) => setGroupByRow((p) => ({ ...p, [id]: key }));
+
+    const rejectRowsMarked = c.members.filter((m) => assignmentOf(m.id) === REJECT_KEY);
+    // Live groups in first-appearance order -> display letters A, B, C.
+    const groupKeys: string[] = [];
+    for (const m of c.members) {
+      const g = assignmentOf(m.id);
+      if (g !== REJECT_KEY && !groupKeys.includes(g)) groupKeys.push(g);
+    }
+    const groups = groupKeys.map((key, i) => ({
+      key,
+      label: GROUP_LABELS[i] ?? String(i + 1),
+      members: c.members.filter((m) => assignmentOf(m.id) === key),
+    }));
+    // Nothing left to decide within the groups — the only open question is whether
+    // the groups are the same project, and they're not (that's why they're groups).
+    const readyToSeparate = groups.length >= 2 && groups.every((g) => g.members.length === 1);
+
+    // Group-assignment control on each row: pick an existing group, split into a
+    // new one, or mark the row for rejection.
+    const assignControl = (m: StagingRow) => {
+      const cur = assignmentOf(m.id);
+      const alone = cur !== REJECT_KEY && groups.find((g) => g.key === cur)?.members.length === 1;
+      const chip = (key: string, label: string, active: boolean, title: string, onClick: () => void, disabled = false) => (
+        <button key={key} type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active}
+                className="text-xs w-6 h-6 rounded border font-semibold disabled:opacity-40"
+                style={{
+                  borderColor: active ? '#002147' : '#8FA9C8',
+                  backgroundColor: active ? '#002147' : '#FFFFFF',
+                  color: active ? '#FFFFFF' : '#4A6B94',
+                }}>{label}</button>
+      );
+      return (
+        <div className="flex items-center gap-1 shrink-0" role="group" aria-label={`Group for ${m.project_name ?? 'this row'}`}>
+          {groups.map((g) => chip(g.key, g.label, cur === g.key, `Put this row in group ${g.label}`, () => assign(m.id, g.key)))}
+          {chip('__new__', '+', false, alone ? 'Already on its own' : 'A different project — pull it into a new group',
+                () => assign(m.id, nextGroupKey()), alone || groups.length >= GROUP_LABELS.length)}
+          {chip(REJECT_KEY, '✕', cur === REJECT_KEY,
+                cur === REJECT_KEY ? 'Unmark — put this row back in group A' : 'Mark this row for rejection',
+                () => assign(m.id, cur === REJECT_KEY ? DEFAULT_GROUP : REJECT_KEY))}
+        </div>
+      );
     };
+
+    // Which fields the rows of a group disagree on, and which row holds which value.
+    const diffTable = (members: StagingRow[]) => {
+      const diffs = fieldDiffs(members, markOf);
+      if (diffs.length === 0) {
+        return (
+          <div className="px-3 py-1.5 text-xs" style={{ color: '#8FA9C8' }}>
+            These rows are identical on every compared field.
+          </div>
+        );
+      }
+      return (
+        <div className="px-3 py-2 text-xs" style={{ backgroundColor: '#F8FAFC' }}>
+          <div className="font-semibold mb-1" style={{ color: '#4A6B94' }}>These rows differ on:</div>
+          <div className="space-y-0.5">
+            {diffs.map((d) => (
+              <div key={d.key} className="flex gap-2">
+                <div className="w-28 shrink-0" style={{ color: '#8FA9C8' }}>{d.label}</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 min-w-0">
+                  {d.values.map((v) => (
+                    <span key={v.text} className="break-words">
+                      <span style={{ color: '#002147' }}>{v.text}</span>
+                      <span style={{ color: '#8FA9C8' }}> {v.marks.join(' ')}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // One member row, inside a group block or the reject bucket.
+    const memberRow = (m: StagingRow, tag: ReactNode, radio?: ReactNode) => {
+      const isExpanded = expandedRows.has(m.id);
+      const dim = assignmentOf(m.id) === REJECT_KEY;
+      return (
+        <div key={m.id} className="px-3 py-1.5" style={{ backgroundColor: dim ? '#F8FAFC' : '#FFFFFF' }}>
+          <div className="flex items-center gap-2">
+            {radio}
+            <button type="button" onClick={() => toggleExpand(m.id)} className="flex-1 text-left min-w-0">
+              <div className="flex items-center flex-wrap gap-1.5">
+                <span className="text-xs" style={{ color: '#8FA9C8' }}>{isExpanded ? '▾' : '▸'}</span>
+                <span className="text-xs font-mono" style={{ color: '#8FA9C8' }}>{markOf(m.id)}</span>
+                <span className="text-sm font-medium" style={{ color: '#002147' }}>{m.project_name ?? '(unnamed)'}</span>
+                {tag}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: '#8FA9C8' }}>{rowSummaryLine(m)}</div>
+            </button>
+            {!isReadOnlyRun && assignControl(m)}
+          </div>
+          {isExpanded && (<div className="pl-6">{conflictPanels(m)}{fieldEditor(m)}</div>)}
+        </div>
+      );
+    };
+
     return (
       <div key={c.id} className="border rounded-md" style={{ borderColor: accent }}>
         <div className="px-3 py-2 border-b text-sm font-semibold" style={{ borderColor: '#8FA9C8', backgroundColor: isName ? '#FFF7F0' : '#F8FAFC', color: accent }}>
@@ -1550,105 +1733,148 @@ export default function ResearchRunApprovalModal({
           {opts?.reason && (
             <div className="text-xs font-normal mt-0.5" style={{ color: '#8FA9C8' }}>{opts.reason}</div>
           )}
-        </div>
-        {!isName && !isReadOnlyRun && (
-          <div className="px-3 py-2 border-b flex flex-wrap gap-2" style={{ borderColor: '#8FA9C8' }} role="radiogroup">
-            {RESOLUTION_OPTIONS.map((o) => {
-              const active = resolution === o.value;
-              return (
-                <button key={o.value} type="button" role="radio" aria-checked={active}
-                        onClick={() => setResolutionByCluster((p) => ({ ...p, [c.id]: o.value }))}
-                        className="text-left px-2.5 py-1.5 rounded border flex-1 min-w-[10rem]"
-                        style={{
-                          borderColor: active ? '#002147' : '#8FA9C8',
-                          backgroundColor: active ? '#002147' : '#FFFFFF',
-                          color: active ? '#FFFFFF' : '#002147',
-                        }}>
-                  <div className="text-xs font-semibold">{o.label}</div>
-                  <div className="text-xs" style={{ color: active ? '#8FA9C8' : '#4A6B94' }}>{o.detail}</div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
-          {c.members.map((m) => {
-            const isExpanded = expandedRows.has(m.id);
-            const dim = resolution === 'keep_one' && m.id !== keeperId;
-            return (
-              <div key={m.id} className="px-3 py-1.5" style={{ backgroundColor: dim ? '#F8FAFC' : '#FFFFFF' }}>
-                <div className="flex items-center gap-2">
-                  {resolution !== 'keep_both' && (
-                    <input type="radio" name={`keeper-${c.id}`} checked={m.id === keeperId} disabled={isReadOnlyRun}
-                           onChange={() => setKeeperByCluster((p) => ({ ...p, [c.id]: m.id }))}
-                           title={resolution === 'merge' ? 'Merge into this row' : 'Keep this copy'} />
-                  )}
-                  <button type="button" onClick={() => toggleExpand(m.id)} className="flex-1 text-left min-w-0">
-                    <div className="flex items-center flex-wrap gap-1.5">
-                      <span className="text-xs" style={{ color: '#8FA9C8' }}>{isExpanded ? '▾' : '▸'}</span>
-                      <span className="text-sm font-medium" style={{ color: '#002147' }}>{m.project_name ?? '(unnamed)'}</span>
-                      {memberTag(m)}
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: '#8FA9C8' }}>{rowSummaryLine(m)}</div>
-                  </button>
-                  {isName && !isReadOnlyRun && n > 2 && (
-                    <button type="button" onClick={() => separateFromNameCluster(m.id, c.members.map((x) => x.id))}
-                            className="text-xs px-1.5 py-0.5 rounded border self-start" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
-                            title="Not part of this group — pull this row out (it's a separate project/phase)">✕ separate</button>
-                  )}
-                </div>
-                {isExpanded && (<div className="pl-6">{conflictPanels(m)}{fieldEditor(m)}</div>)}
-              </div>
-            );
-          })}
-        </div>
-        {!isReadOnlyRun && resolution === 'merge' && (
-          <div className="px-3 py-2 border-t text-xs space-y-1" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
-            <div style={{ color: '#002147' }}>
-              Merged record: <b style={{ color: '#4A6B94' }}>{arithmetic.text}</b>
-              <span style={{ color: '#8FA9C8' }}> · every row’s source and permit link kept in the notes</span>
+          {!isReadOnlyRun && (
+            <div className="text-xs font-normal mt-1" style={{ color: '#4A6B94' }}>
+              <b>1.</b> Sort the rows into groups with <b>A/B/+</b>, or mark a bad row <b>✕</b>.
+              {' '}<b>2.</b> Decide each group below. Every action is reversible.
             </div>
-            {arithmetic.repeated ? (
-              <div style={{ color: '#A27B5C' }}>
-                ⚠ {arithmetic.repeated[1] === n && n === 2 ? 'Both rows report' : `${arithmetic.repeated[1]} rows report`} {arithmetic.repeated[0]} units — that’s usually the same project recorded twice. Merging would count it {arithmetic.repeated[1]}×.
+          )}
+        </div>
+
+        {groups.map((g, gi) => {
+          const kid = keeperByGroup[gkey(g.key)];
+          const keeperId = kid && g.members.some((m) => m.id === kid) ? kid : g.members[0].id;
+          const others = g.members.filter((m) => m.id !== keeperId);
+          const mode: GroupMode = modeByGroup[gkey(g.key)] ?? 'keep_one';
+          const multi = g.members.length > 1;
+          const ordered = [g.members.find((m) => m.id === keeperId)!, ...others];
+          const arithmetic = mergeArithmetic(ordered);
+          const memberTag = (m: StagingRow) => {
+            if (!multi) return <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· commits as its own project</span>;
+            if (mode === 'merge') {
+              return m.id === keeperId
+                ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· survives (keeps this name &amp; address)</span>
+                : <span className="text-xs" style={{ color: '#4A6B94' }}>· folds in</span>;
+            }
+            return m.id === keeperId
+              ? <span className="text-xs font-medium" style={{ color: '#4A6B94' }}>· keep</span>
+              : <span className="text-xs" style={{ color: '#A27B5C' }}>· will reject</span>;
+          };
+          return (
+            <div key={g.key} className={gi === 0 ? '' : 'border-t'} style={{ borderColor: '#8FA9C8' }}>
+              <div className="px-3 py-1 text-xs font-semibold flex items-center gap-2" style={{ backgroundColor: '#F8FAFC', color: '#002147' }}>
+                <span>Group {g.label}</span>
+                <span className="font-normal" style={{ color: '#8FA9C8' }}>
+                  {g.members.length === 1 ? 'one row — commits on its own' : `${g.members.length} rows`}
+                </span>
               </div>
-            ) : (
-              <div style={{ color: '#A27B5C' }}>
-                Only for parts of one project. If these are copies of the same project, merging double-counts its units — choose “Same project recorded twice”.
+              <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
+                {g.members.map((m) => memberRow(m, memberTag(m), multi && !isReadOnlyRun ? (
+                  <input type="radio" name={`keeper-${c.id}-${g.key}`} checked={m.id === keeperId} disabled={isReadOnlyRun}
+                         onChange={() => setKeeperByGroup((p) => ({ ...p, [gkey(g.key)]: m.id }))}
+                         title={mode === 'merge' ? 'Merge into this row' : 'Keep this copy'} />
+                ) : undefined))}
+              </div>
+              {multi && diffTable(g.members)}
+              {multi && !isReadOnlyRun && (
+                <>
+                  <div className="px-3 py-2 border-t flex flex-wrap gap-2" style={{ borderColor: '#8FA9C8' }} role="radiogroup"
+                       aria-label={`What group ${g.label} is`}>
+                    {GROUP_MODE_OPTIONS.map((o) => {
+                      const active = mode === o.value;
+                      return (
+                        <button key={o.value} type="button" role="radio" aria-checked={active}
+                                onClick={() => setModeByGroup((p) => ({ ...p, [gkey(g.key)]: o.value }))}
+                                className="text-left px-2.5 py-1.5 rounded border flex-1 min-w-[10rem]"
+                                style={{
+                                  borderColor: active ? '#002147' : '#8FA9C8',
+                                  backgroundColor: active ? '#002147' : '#FFFFFF',
+                                  color: active ? '#FFFFFF' : '#002147',
+                                }}>
+                          <div className="text-xs font-semibold">{o.label}</div>
+                          <div className="text-xs" style={{ color: active ? '#8FA9C8' : '#4A6B94' }}>{o.detail}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {mode === 'merge' && (
+                    <div className="px-3 py-2 border-t text-xs space-y-1" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
+                      <div style={{ color: '#002147' }}>
+                        Merged record: <b style={{ color: '#4A6B94' }}>{arithmetic.text}</b>
+                        <span style={{ color: '#8FA9C8' }}> · every row’s source and permit link kept in the notes</span>
+                      </div>
+                      {arithmetic.repeated ? (
+                        <div style={{ color: '#A27B5C' }}>
+                          ⚠ {arithmetic.allSame
+                            ? (g.members.length === 2 ? 'Both rows report the same' : `All ${g.members.length} rows report the same`)
+                            : `${arithmetic.repeated[1]} rows report`} {arithmetic.repeated[0]} units — near-always ONE record
+                          found {arithmetic.repeated[1]}×, not {arithmetic.repeated[1]} parts of one project. Merging would count it {arithmetic.repeated[1]}×.
+                          {' '}Use “Same project recorded twice” unless you have a source saying otherwise.
+                        </div>
+                      ) : (
+                        <div style={{ color: '#A27B5C' }}>
+                          Only for parts of one project. If these are copies of the same project, merging double-counts its units — choose “Same project recorded twice”.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="px-3 py-2 border-t flex flex-wrap items-center gap-2" style={{ borderColor: '#8FA9C8' }}>
+                    {mode === 'keep_one' ? (
+                      <button type="button" onClick={() => handleKeepOne(keeperId, others.map((m) => m.id))}
+                              className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+                        Group {g.label}: keep selected · reject the other {others.length}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => handleMerge(keeperId, g.members)}
+                              className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+                        Group {g.label}: merge into selected{arithmetic.sum != null ? ` · ${arithmetic.sum} units` : ''}
+                      </button>
+                    )}
+                    <span className="text-xs" style={{ color: '#8FA9C8' }}>only affects group {g.label}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+
+        {rejectRowsMarked.length > 0 && (
+          <div className="border-t" style={{ borderColor: '#A27B5C' }}>
+            <div className="px-3 py-1 text-xs font-semibold" style={{ backgroundColor: '#FFF7F0', color: '#A27B5C' }}>
+              Marked to reject ({rejectRowsMarked.length}) — nothing else in this cluster is affected
+            </div>
+            <div className="divide-y" style={{ borderColor: '#8FA9C8' }}>
+              {rejectRowsMarked.map((m) => memberRow(m, <span className="text-xs" style={{ color: '#A27B5C' }}>· will reject</span>))}
+            </div>
+            {!isReadOnlyRun && (
+              <div className="px-3 py-2 border-t" style={{ borderColor: '#8FA9C8' }}>
+                <button type="button" onClick={() => handleRejectMarked(rejectRowsMarked.map((m) => m.id))}
+                        className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#A27B5C', color: '#FFFFFF' }}>
+                  Reject {rejectRowsMarked.length === 1 ? 'this row' : `these ${rejectRowsMarked.length} rows`}
+                </button>
               </div>
             )}
           </div>
         )}
-        {!isReadOnlyRun && resolution === 'keep_both' && (
-          <div className="px-3 py-2 border-t text-xs" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#4A6B94' }}>
-            Nothing is rejected — all {n} commit as separate projects. If two share a name and address, give one a phase label first (expand the row).
-          </div>
-        )}
+
         {!isReadOnlyRun && (
-          <div className="px-3 py-2 border-t flex flex-wrap items-center gap-2" style={{ borderColor: '#8FA9C8' }}>
-            {resolution === 'keep_one' && (
-              <button type="button" onClick={() => handleKeepOne(keeperId, others.map((m) => m.id))}
-                      className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
-                Keep selected · reject the other {others.length}
+          <div className="px-3 py-2 border-t flex flex-wrap items-center gap-2" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
+            {groups.length >= 2 && (
+              <button type="button" disabled={!readyToSeparate}
+                      onClick={() => handleKeepBoth(groups.map((g) => g.members[0].id))}
+                      title={readyToSeparate
+                        ? 'Record that these are different projects — nothing is rejected'
+                        : 'Decide each multi-row group first, so every group is down to one record'}
+                      className="text-xs px-3 py-1.5 rounded font-medium disabled:opacity-40"
+                      style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+                {groups.length === 2 ? 'Groups A and B are different projects — keep both' : `Keep all ${groups.length} groups as separate projects`}
               </button>
             )}
-            {resolution === 'keep_both' && (
-              <button type="button" onClick={() => handleKeepBoth(c.members.map((m) => m.id))}
-                      className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
-                {n === 2 ? 'Keep both as separate projects' : `Keep all ${n} as separate projects`}
-              </button>
-            )}
-            {resolution === 'merge' && (
-              <button type="button" onClick={() => handleMerge(keeperId, c.members)}
-                      className="text-xs px-3 py-1.5 rounded font-medium" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
-                Merge into selected{arithmetic.sum != null ? ` · ${arithmetic.sum} units` : ''}
-              </button>
-            )}
-            {isName && (
-              <button type="button" onClick={() => dismissNameCluster(c.members.map((m) => m.id))}
+            {groups.length === 1 && groups[0].members.length > 1 && (
+              <button type="button" onClick={() => handleKeepBoth(groups[0].members.map((m) => m.id))}
                       className="text-xs px-3 py-1.5 rounded border font-medium" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
-                      title="These aren't duplicates — keep them all as separate records">
-                Not duplicates — keep all
+                      title="None of these are duplicates — commit every row as its own project">
+                Not duplicates — keep all {groups[0].members.length} separately
               </button>
             )}
             <span className="text-xs" style={{ color: '#8FA9C8' }}>reversible with Undo</span>
