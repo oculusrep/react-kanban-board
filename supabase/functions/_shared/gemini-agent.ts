@@ -498,17 +498,60 @@ export async function searchProperties(
 /**
  * Search for user-defined rules that match the email
  */
+/**
+ * Does this rule apply to this sender?
+ *
+ * SENDER IDENTITY ONLY. Until 2026-09-18 a rule matched if ANY of
+ * [sender, domain, subject words of 4+ chars] appeared as a SUBSTRING of the
+ * rule's text or pattern, or matched match_pattern as an unanchored regex.
+ * Three ways that fired on mail the rule had nothing to do with:
+ *   - subject word inside the pattern: "Atlanta" ⊂ atlantaspeechschool.org
+ *     demoted starbucks.com "RE: Session 2 - Atlanta GA - GSS - Ops Area 39"
+ *     and the whole Barrio Burrito thread; "Meadow" ⊂ highmeadows.org took
+ *     "Meadow Glen x BWW Go"
+ *   - sender domain inside the pattern: jll.com ⊂ hello.jll.com, so every real
+ *     JLL broker matched the JLL marketing rule; costar.com ⊂ email.costar.com
+ *   - subject word inside rule_text ("business", "emails", "related"...)
+ * 297 of 529 rule demotions since 09-06 were collisions, 33 of them outbound
+ * mail from mike@/asantos@ -- real deal correspondence, hard-deleted before
+ * 2026-09-06 and demoted after.
+ *
+ * Now: the sender address must equal an address pattern, or the sender's
+ * domain must equal the pattern or be a subdomain of it (anchored suffix, so
+ * icsc.com still covers mail.icsc.com but jll.com does not match
+ * hello.jll.com). Subject keywords and rule_text are not matched at all --
+ * geographic/content rules belong in the section 6 rule model, not here.
+ *
+ * All 24 active rules are plain-domain exclusions, so none of them loses a
+ * legitimate match under this. A pattern that is neither an address nor a
+ * domain falls back to an ANCHORED regex over the full sender address.
+ */
+export function ruleMatchesSender(rule: { match_pattern: string | null }, senderEmail: string): boolean {
+  const address = (senderEmail || '').toLowerCase().trim();
+  const domain = address.split('@')[1] || '';
+  const pattern = (rule.match_pattern || '').toLowerCase().trim();
+  if (!pattern || !address) return false;
+
+  if (pattern.includes('@')) return address === pattern;
+
+  // Domain-shaped pattern: exact domain or a subdomain of it.
+  if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(pattern)) {
+    return domain === pattern || domain.endsWith('.' + pattern);
+  }
+
+  // Anything else: treat as a regex, anchored over the whole address.
+  try {
+    return new RegExp(`^(?:${rule.match_pattern})$`, 'i').test(address);
+  } catch {
+    return false;
+  }
+}
+
 export async function searchRules(
   supabase: SupabaseClient,
   senderEmail: string,
-  keywords: string[] = []
+  _keywords: string[] = [] // unused since 2026-09-18; subject keywords caused the collisions
 ): Promise<AgentRule[]> {
-  // Extract domain from sender email
-  const domain = senderEmail.split('@')[1] || '';
-
-  // Build search conditions
-  const searchTerms = [senderEmail, domain, ...keywords].filter(Boolean);
-
   // Search for matching active rules
   const { data: rules } = await supabase
     .from('agent_rules')
@@ -520,19 +563,7 @@ export async function searchRules(
     return [];
   }
 
-  // Filter rules that match any of our search terms
-  const matchingRules = rules.filter((rule: any) => {
-    // Check if rule_text mentions any of our terms
-    const ruleTextLower = rule.rule_text.toLowerCase();
-    const patternLower = (rule.match_pattern || '').toLowerCase();
-
-    return searchTerms.some(term => {
-      const termLower = term.toLowerCase();
-      return ruleTextLower.includes(termLower) ||
-             patternLower.includes(termLower) ||
-             (rule.match_pattern && new RegExp(rule.match_pattern, 'i').test(term));
-    });
-  });
+  const matchingRules = rules.filter((rule: any) => ruleMatchesSender(rule, senderEmail));
 
   return matchingRules.map((r: any) => ({
     id: r.id,
@@ -1090,17 +1121,9 @@ export async function runEmailTriageAgent(
   // ========================================================================
   console.log(`[Agent] Checking rules for sender: ${email.sender_email}`);
 
-  // Extract keywords from subject for rule matching
-  const subjectKeywords = email.subject
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(w => w.length > 3);
-
-  const matchingRules = await searchRules(
-    supabase,
-    email.sender_email,
-    subjectKeywords
-  );
+  // Rules match on sender identity only -- subject keywords are deliberately
+  // not passed (see ruleMatchesSender: they were the collision source).
+  const matchingRules = await searchRules(supabase, email.sender_email);
 
   if (matchingRules.length > 0) {
     console.log(`[Agent] Found ${matchingRules.length} matching rules`);
