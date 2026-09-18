@@ -29,9 +29,16 @@ commitment table (§4) has not been started; §2 was the prerequisite work.
 2. **(f) retry queue** — designed against measured 404 causes (Q6), not inference.
 
 **09-14 review done — see [EMAIL_TRIAGE_REVIEW_2026-09-14.md](EMAIL_TRIAGE_REVIEW_2026-09-14.md).** Precondition
-passed; nothing flipped. Three defects found: Gemini credits depleted since 09-09 11:45 ET (575
+passed; nothing flipped. Three defects found: Gemini credits depleted since 09-09 11:45 ET (577
 emails marked processed unclassified), demote upsert overwrites tier-1 stubs (Q1–Q3 undercount), and
-`searchRules` keyword collisions demoting real deal mail (184 rows).
+`searchRules` keyword collisions demoting real deal mail.
+
+**All three are fixed and live — current state: [EMAIL_TRIAGE_STATUS_2026-09-18.md](EMAIL_TRIAGE_STATUS_2026-09-18.md).**
+Migrations `20260914130150` (classification_status + classifier health) and `20260914175119`
+(`email_tier1_stub`) applied; email-triage v90, gmail-sync v60, dispatch v5. The 577 outage emails
+were re-run 09-15 (all classified, $3.49); 297 collision-demoted emails are being re-classified
+09-18. **Tier-1 flip review: 2026-09-21** — the log-only clock restarted 2026-09-14 21:53 UTC, and
+§2(a)'s queries now read `email_tier1_stub`.
 
 **Merge-order note.** `feature/email-triage`'s board-trigger migration edits
 `trg_reset_clock_on_activity_insert`, whose 10 creating migrations existed only on
