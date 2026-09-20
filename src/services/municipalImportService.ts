@@ -515,6 +515,13 @@ export async function runImport(input: ImportInput): Promise<ImportResult> {
       status_stage_id,
       geocoded_address: r.geocode?.formatted ?? null,
       centroid,
+      // Placement invariant (see the 20260920083102 migration): a row is placed
+      // (centroid + source, no reason) or unplaced (neither, with a reason). The
+      // importer's geocode has no precision signal to work from, so a successful
+      // one is recorded as an address geocode and a failed one leaves the record
+      // unplaced rather than pinned nowhere.
+      centroid_source: centroid ? 'address_geocode' : null,
+      unplaced_reason: centroid ? null : 'geocode_failed',
       source_import_id: importId,
       source_row_number: r.normalized.source_row_number,
     };
@@ -527,7 +534,14 @@ export async function runImport(input: ImportInput): Promise<ImportResult> {
       } else if (r.kind === 'UPDATE' && r.existing) {
         // Don't overwrite centroid if existing already has one (preserves drawn polygons in Phase 3).
         const updatePayload: Record<string, unknown> = { ...payload };
-        if (r.existing.centroid_set) delete updatePayload.centroid;
+        if (r.existing.centroid_set) {
+          // Leave placement entirely alone, not just the point: writing
+          // centroid_source/unplaced_reason while keeping the old centroid would
+          // break the invariant that ties the three together.
+          delete updatePayload.centroid;
+          delete updatePayload.centroid_source;
+          delete updatePayload.unplaced_reason;
+        }
         const { error } = await supabase
           .from('municipal_project')
           .update(updatePayload)

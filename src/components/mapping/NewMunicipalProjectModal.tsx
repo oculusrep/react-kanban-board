@@ -186,6 +186,9 @@ const NewMunicipalProjectModal: React.FC<Props> = ({ isOpen, coordinates, onClos
           notes: notes.trim() || null,
           status_override_id: statusOverrideId || null,
           centroid: `SRID=4326;POINT(${coordinates.lng} ${coordinates.lat})`,
+          // The user picked this point on the map, so it is a manual pin — not
+          // a geocode. Required by the placement invariant.
+          centroid_source: 'manual_pin',
           geocoded_address: geocodedAddress,
         })
         .select('id')
