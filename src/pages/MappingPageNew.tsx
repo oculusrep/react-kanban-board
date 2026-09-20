@@ -117,6 +117,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [verifyingRestaurantStoreNo, setVerifyingRestaurantStoreNo] = useState<string | null>(null);
   const [selectedMunicipalProject, setSelectedMunicipalProject] = useState<MunicipalProjectMapRow | null>(null);
   const [drawingMunicipalProjectId, setDrawingMunicipalProjectId] = useState<string | null>(null);
+  // Pin-drop mode for an unplaced municipal project: the next map click picks a
+  // point, which the slideout then confirms and writes.
+  const [pinDropMunicipalProjectId, setPinDropMunicipalProjectId] = useState<string | null>(null);
+  const [pinDropPoint, setPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [verifyingMunicipalProjectId, setVerifyingMunicipalProjectId] = useState<string | null>(null);
   const [showMunicipalProjectModal, setShowMunicipalProjectModal] = useState(false);
   const [municipalProjectContextMenu, setMunicipalProjectContextMenu] = useState<{
@@ -438,10 +442,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // onMapLoad reference changes, stacking listeners with stale closures over time — these
   // refs give all of them a consistent way to read current state.
   const drawingMunicipalProjectIdRef = useRef<string | null>(null);
+  // Same stale-listener problem as drawingMunicipalProjectId: the map click
+  // handlers stack one closure per render, so the live value must come from a ref.
+  const pinDropMunicipalProjectIdRef = useRef<string | null>(null);
   const createModeRef = useRef<typeof createMode>(null);
   useEffect(() => {
     drawingMunicipalProjectIdRef.current = drawingMunicipalProjectId;
   }, [drawingMunicipalProjectId]);
+  useEffect(() => {
+    pinDropMunicipalProjectIdRef.current = pinDropMunicipalProjectId;
+  }, [pinDropMunicipalProjectId]);
   useEffect(() => {
     createModeRef.current = createMode;
   }, [createMode]);
@@ -977,6 +987,13 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
       // Likewise, while drawing an OREP target-area polygon, clicks are vertices — don't drop pins.
       if (sbuxDrawingActiveRef.current) return;
+
+      // Placing an unplaced municipal project by hand: this click IS the pin. It
+      // must not also fall through to createMode and open the "new" modal.
+      if (pinDropMunicipalProjectIdRef.current && event.latLng) {
+        setPinDropPoint({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+        return;
+      }
 
       // Read createMode from the ref so stacked stale listeners (one per render) all see
       // the current value rather than whatever was set when their closure was captured.
@@ -4189,6 +4206,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           setSelectedMunicipalProject((prev) =>
             prev && prev.id === updated.id ? { ...prev, ...updated } : prev
           );
+          // A successful placement ends pin-drop mode; leaving it on would make
+          // the next map click silently re-pick a point.
+          if (updated.is_unplaced === false) {
+            setPinDropMunicipalProjectId(null);
+            setPinDropPoint(null);
+          }
           // Reload the layer so the pin re-colors or refreshes against the saved edits.
           refreshLayer('municipal_projects');
         }}
@@ -4198,6 +4221,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         }}
         onStartDrawingPolygon={(id) => setDrawingMunicipalProjectId(id)}
         isDrawingPolygon={drawingMunicipalProjectId === selectedMunicipalProject?.id}
+        onStartDroppingPin={(id) => { setPinDropPoint(null); setPinDropMunicipalProjectId(id); }}
+        isDroppingPin={pinDropMunicipalProjectId === selectedMunicipalProject?.id}
+        droppedPin={pinDropMunicipalProjectId === selectedMunicipalProject?.id ? pinDropPoint : null}
       />
 
       {/* Comp Database Slideout — view/edit an existing comp or create one at dropped coords */}

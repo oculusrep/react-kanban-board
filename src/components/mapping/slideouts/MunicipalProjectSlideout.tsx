@@ -3,6 +3,7 @@ import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { geocodingService } from '../../../services/geocodingService';
 import { classifyGeocode, unplacedLabel } from '../../../services/placementPrecision';
+import { adapterFor, applyParcelBoundary } from '../../../services/parcelFabric';
 import type { MunicipalProjectMapRow } from '../layers/MunicipalProjectLayer';
 import { formatUnitsLabel } from '../../../utils/municipalProjectUnitsLabel';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
@@ -123,6 +124,18 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [locDescError, setLocDescError] = useState<string>('');
   const [removingPolygon, setRemovingPolygon] = useState(false);
   const [droppingPin, setDroppingPin] = useState(false);
+  const [fetchingParcel, setFetchingParcel] = useState(false);
+  const [parcelNotice, setParcelNotice] = useState<string>('');
+  // Phase 3 is flagged off until the Forsyth adapter has been exercised on real
+  // records. Offered only where a county adapter exists, the project has parcel
+  // ids, and there is no boundary yet — re-fetching over an existing one is the
+  // thing we specifically do not do.
+  const parcelFetchAvailable =
+    import.meta.env.VITE_PARCEL_FETCH_ENABLED === 'true'
+    && !!project
+    && !project.geometry_geojson
+    && (project.parcel_numbers?.length ?? 0) > 0
+    && !!adapterFor(project.municipality_name);
   const [polygonError, setPolygonError] = useState<string>('');
 
   // Load project stages once for the override dropdown.
@@ -340,6 +353,42 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
       setPolygonError(e instanceof Error ? e.message : String(e));
     } finally {
       setRemovingPolygon(false);
+    }
+  }
+
+  // Pull the boundary from the county parcel map. Behind a flag, and only offered
+  // where a county adapter exists and the project actually has parcel ids.
+  // Deliberately a one-shot at the user's request, never an automatic refetch:
+  // the fabric refreshes nightly and a re-plat would overwrite a correct boundary.
+  async function fetchParcelBoundary() {
+    if (!project) return;
+    setFetchingParcel(true);
+    setPolygonError('');
+    setParcelNotice('');
+    try {
+      const r = await applyParcelBoundary({
+        projectId: project.id,
+        municipalityName: project.municipality_name ?? null,
+        parcelNumbers: project.parcel_numbers ?? [],
+        statedAcres: null,   // the RPC parses it from parcel_boundary_notes
+      });
+      const bits = [`Boundary set from ${r.parts} parcel${r.parts === 1 ? '' : 's'}`];
+      if (r.computedAcres != null) bits.push(`${r.computedAcres} ac`);
+      if (r.missing.length) {
+        bits.push(
+          `${r.missing.length} parcel id${r.missing.length === 1 ? '' : 's'} `
+          + `no longer in the parcel map (${r.missing.join(', ')}) — usually re-platted`,
+        );
+      }
+      if (r.needsReview && r.variancePct != null) {
+        bits.push(`acreage is ${r.variancePct > 0 ? '+' : ''}${r.variancePct}% against the ${r.statedAcres} ac stated — check it`);
+      }
+      setParcelNotice(bits.join(' · '));
+      onProjectUpdated?.({ id: project.id, is_unplaced: false, unplaced_reason: null });
+    } catch (e) {
+      setPolygonError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetchingParcel(false);
     }
   }
 
@@ -884,6 +933,28 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                   </button>
                 )}
               </div>
+              {parcelFetchAvailable && (
+                <div className="mt-2">
+                  <button type="button" onClick={fetchParcelBoundary}
+                          disabled={fetchingParcel || isDrawingPolygon}
+                          className="px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 border"
+                          style={{ borderColor: BRAND.steel, color: BRAND.steel }}
+                          title={`Pull the boundary for ${(project.parcel_numbers ?? []).join(', ')} from the county parcel map`}>
+                    {fetchingParcel
+                      ? 'Fetching parcel boundary…'
+                      : `Fetch boundary from ${(project.parcel_numbers ?? []).length} parcel`
+                        + `${(project.parcel_numbers ?? []).length === 1 ? '' : 's'}`}
+                  </button>
+                  <div className="text-xs mt-0.5" style={{ color: BRAND.slate }}>
+                    Fetched once, on request — never refreshed, so a re-plat can&rsquo;t overwrite it.
+                  </div>
+                </div>
+              )}
+              {parcelNotice && (
+                <div className="mt-1.5 text-xs" style={{ color: BRAND.steel }}>
+                  {parcelNotice}
+                </div>
+              )}
               {polygonError && (
                 <div className="mt-1.5 text-xs" style={{ color: BRAND.terracotta }}>
                   {polygonError}
