@@ -6,6 +6,7 @@ import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PullToRefresh } from "./components/PullToRefresh";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { QuickNoteLauncher } from "./components/quickNote/QuickNoteLauncher";
+import { KnowledgeCaptureLauncher } from "./components/knowledgeCapture/KnowledgeCaptureLauncher";
 import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
 import GmailRoute from "./components/GmailRoute";
@@ -110,6 +111,8 @@ function ProtectedLayout() {
     <ProtectedRoute>
       {!isEmbedded && <NavbarComponent />}
       {!isEmbedded && <QuickNoteLauncher />}
+      {/* Knowledge Capture gates itself to internal users (coach shares this layout). */}
+      {!isEmbedded && <KnowledgeCaptureLauncher />}
     </ProtectedRoute>
   );
 }
