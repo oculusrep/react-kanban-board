@@ -25,6 +25,20 @@ const BRAND = {
   terracotta: '#A27B5C',
 };
 
+// Interior rings across every part of a Polygon / MultiPolygon. GeoJSON:
+// Polygon coordinates = ring[]; MultiPolygon coordinates = polygon[][]; ring 0 of
+// each polygon is the outer boundary, the rest are holes.
+function countInteriorRings(g: { type: string; coordinates: unknown } | null): number {
+  if (!g) return 0;
+  const c = g.coordinates as unknown[];
+  if (!Array.isArray(c)) return 0;
+  if (g.type === 'Polygon') return Math.max(0, c.length - 1);
+  if (g.type === 'MultiPolygon') {
+    return c.reduce<number>((n, poly) => n + Math.max(0, (poly as unknown[]).length - 1), 0);
+  }
+  return 0;
+}
+
 /**
  * Owns the terra-draw lifecycle for capturing or editing a project's polygon
  * (municipal_project.geometry). Mounted by MappingPageNew when the user clicks
@@ -42,14 +56,36 @@ const MunicipalProjectDrawer: React.FC<Props> = ({
   const drawRef = useRef<TerraDraw | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
-  // We only enter edit mode if a Polygon was pre-loaded; MultiPolygon isn't
-  // currently editable (the writer only produces single Polygons anyway).
-  const isEditing = !!(
-    existingGeometryGeoJson && existingGeometryGeoJson.type === 'Polygon'
-  );
+  // terra-draw's polygon mode edits ONE simple ring set. Two shapes it cannot
+  // represent, both of which now reach this component since parcel boundaries are
+  // fetched from a county fabric:
+  //
+  //   * MultiPolygon — a non-contiguous multi-parcel union;
+  //   * interior rings (holes) — parcel 161-001 has two.
+  //
+  // Loading either into the editor and saving what comes back would silently
+  // discard the parts it can't hold. Silent loss is worse than a refused edit, so
+  // these open read-only with an explanation instead. (The database refuses the
+  // ring-dropping save too — belt and braces, since that guard also covers any
+  // other caller.)
+  const geomType = existingGeometryGeoJson?.type;
+  const ringCount = countInteriorRings(existingGeometryGeoJson);
+  const uneditableReason: string | null =
+    !existingGeometryGeoJson ? null
+    : geomType === 'MultiPolygon'
+      ? 'This boundary is made of several separate pieces, which the editor can’t hold in one shape.'
+    : ringCount > 0
+      ? `This boundary has ${ringCount} hole${ringCount === 1 ? '' : 's'} cut out of it, which the editor can’t hold.`
+    : geomType !== 'Polygon'
+      ? `Unsupported geometry type (${geomType}).`
+      : null;
+  const isEditing = !!existingGeometryGeoJson && !uneditableReason;
 
   useEffect(() => {
     if (!map) return;
+    // Don't mount the editor at all for a shape it can't represent — otherwise it
+    // opens in fresh-draw mode and whatever gets drawn replaces the real boundary.
+    if (uneditableReason) return;
 
     let alive = true;
     try {
@@ -131,11 +167,13 @@ const MunicipalProjectDrawer: React.FC<Props> = ({
     // existingGeometryGeoJson are captured at mount; parent unmounts the whole
     // drawer if you switch projects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, projectId]);
+    // uneditableReason gates whether the editor mounts at all; it derives from
+    // existingGeometryGeoJson, which is fixed for the life of this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, projectId, uneditableReason]);
 
   async function persistPolygon(rings: number[][][]) {
     // GeoJSON Polygon: rings[0] = outer ring, rings[1..] = holes. Coords are [lng, lat].
-    // Build WKT: POLYGON((lng lat, lng lat, ...), (hole...), ...)
     if (!rings.length || rings[0].length < 4) {
       setError('Polygon needs at least 3 points.');
       return;
@@ -143,23 +181,21 @@ const MunicipalProjectDrawer: React.FC<Props> = ({
     setSaving(true);
     setError('');
     try {
-      const wktRings = rings
-        .map((ring) => '(' + ring.map(([lng, lat]) => `${lng} ${lat}`).join(', ') + ')')
-        .join(', ');
-      const wkt = `SRID=4326;POLYGON(${wktRings})`;
-
-      // Centroid = average of outer ring vertices (skip closing duplicate).
-      const outer = rings[0].slice(0, -1);
-      const sum = outer.reduce<[number, number]>(([sx, sy], [x, y]) => [sx + x, sy + y], [0, 0]);
-      const cLng = sum[0] / outer.length;
-      const cLat = sum[1] / outer.length;
-      const centroidWkt = `SRID=4326;POINT(${cLng} ${cLat})`;
-
-      const { error: updateErr } = await supabase
-        .from('municipal_project')
-        .update({ geometry: wkt, centroid: centroidWkt })
-        .eq('id', projectId);
-      if (updateErr) throw updateErr;
+      // set_municipal_project_polygon owns the rules this used to duplicate:
+      //
+      //  * the pin comes from ST_PointOnSurface, which is guaranteed to lie
+      //    INSIDE the shape. The vertex average this replaced is not a centroid —
+      //    it is weighted by where the points happen to be dense, and on a concave
+      //    or holed parcel it can land outside the boundary entirely;
+      //  * an edit to a fetched boundary is recorded as parcel_fetch_adjusted, so
+      //    a hand-tuned shape is never mistaken for what the fabric says;
+      //  * a save that would drop interior rings is refused.
+      const { error: rpcErr } = await supabase.rpc('set_municipal_project_polygon', {
+        p_id: projectId,
+        p_geojson: { type: 'Polygon', coordinates: rings },
+        p_source: 'hand_drawn',
+      });
+      if (rpcErr) throw rpcErr;
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -186,21 +222,23 @@ const MunicipalProjectDrawer: React.FC<Props> = ({
       style={{ backgroundColor: '#FFFFFF', border: `2px solid ${BRAND.midnight}` }}
     >
       <span className="text-sm font-semibold" style={{ color: BRAND.midnight }}>
-        {isEditing ? 'Editing polygon' : 'Drawing polygon'}
+        {uneditableReason ? 'Can’t edit this boundary' : isEditing ? 'Editing polygon' : 'Drawing polygon'}
       </span>
-      <span className="text-xs" style={{ color: BRAND.steel }}>
-        {saving
-          ? 'Saving…'
-          : isEditing
-            ? 'Drag corners or midpoints • click Save when done'
-            : 'Click to add corners • double-click last point to finish'}
+      <span className="text-xs" style={{ color: uneditableReason ? BRAND.terracotta : BRAND.steel }}>
+        {uneditableReason
+          ? `${uneditableReason} Editing it here would throw that detail away, so it’s left as it is.`
+          : saving
+            ? 'Saving…'
+            : isEditing
+              ? 'Drag corners or midpoints • click Save when done'
+              : 'Click to add corners • double-click last point to finish'}
       </span>
       {error && (
         <span className="text-xs" style={{ color: BRAND.terracotta }}>
           {error}
         </span>
       )}
-      {isEditing && (
+      {isEditing && !uneditableReason && (
         <button
           type="button"
           onClick={saveEdits}

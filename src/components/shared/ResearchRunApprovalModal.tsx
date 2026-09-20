@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { geocodingService } from '../../services/geocodingService';
+import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../services/placementPrecision';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface ResearchRunApprovalModalProps {
@@ -364,6 +365,10 @@ export default function ResearchRunApprovalModal({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
+  // Rows that committed without a pin, grouped by why. Shown after a commit so
+  // a record silently missing from the map is never a surprise.
+  const [unplacedNotice, setUnplacedNotice] = useState<
+    { reason: UnplacedReason; count: number; sample: string[] }[]>([]);
   // Soft dedupe: stagingId -> nearby committed projects, plus an in-flight flag.
   const [possibleDupes, setPossibleDupes] = useState<Record<string, NearbyProject[]>>({});
   const [checkingDupes, setCheckingDupes] = useState(false);
@@ -1291,29 +1296,34 @@ export default function ResearchRunApprovalModal({
         if (nrErr) console.warn('needs_review update skipped (RLS):', nrErr.message);
       }
 
-      // Geocode each selected row before submitting so the new municipal_project
-      // rows land with a centroid + geocoded_address — without those the
-      // Municipal Projects map layer can't render a pin. Mirrors the importer's
-      // pre-insert geocode pass.
+      // Geocode each selected row before submitting.
+      //
+      // A PRECISE geocode (ROOFTOP / RANGE_INTERPOLATED) becomes the project's
+      // centroid. A coarse one does NOT: a county/city centroid or a road centre
+      // is not a location, and writing it puts a pin somewhere the project isn't.
+      // Those rows commit UNPLACED, with the reason recorded, and are placed by
+      // hand from the project card. See services/placementPrecision.ts.
       const geocodeFailures: string[] = [];
+      const unplacedOnCommit: { name: string; reason: UnplacedReason }[] = [];
       const payload = await Promise.all(
         ids.map(async (id) => {
           const row = staging.find((s) => s.id === id);
           const e = edits[id] ?? {};
           const finalAddress = (e.address ?? row?.address ?? '').trim();
 
-          let lat: number | null = null;
-          let lng: number | null = null;
-          let formatted: string | null = null;
-          if (finalAddress) {
-            const g = await geocodingService.geocodeAddress(finalAddress);
-            if ('latitude' in g && 'longitude' in g) {
-              lat = g.latitude;
-              lng = g.longitude;
-              formatted = g.formatted_address ?? null;
-            } else {
-              geocodeFailures.push(`${row?.project_name ?? id}: ${('error' in g) ? g.error : 'geocode failed'}`);
+          const g = finalAddress ? await geocodingService.geocodeAddress(finalAddress) : null;
+          const placement = classifyGeocode(g, !!finalAddress);
+          const lat = placement.latitude;
+          const lng = placement.longitude;
+          const formatted = placement.formattedAddress;
+          if (!placement.placed) {
+            if (placement.reason === 'geocode_failed' && g && 'error' in g) {
+              geocodeFailures.push(`${row?.project_name ?? id}: ${g.error}`);
             }
+            unplacedOnCommit.push({
+              name: row?.project_name ?? '(unnamed)',
+              reason: placement.reason!,
+            });
           }
 
           return {
@@ -1333,13 +1343,30 @@ export default function ResearchRunApprovalModal({
             ...(e.notes               !== undefined ? { notes:                   e.notes               } : {}),
             ...(lat !== null && lng !== null ? { latitude: lat, longitude: lng } : {}),
             ...(formatted ? { geocoded_address: formatted } : {}),
+            // Only sent when no coordinate is: the RPC's placement invariant
+            // requires a reason for every row that commits without a pin.
+            ...(placement.placed ? {} : { unplaced_reason: placement.reason }),
           };
         }),
       );
 
       if (geocodeFailures.length > 0) {
-        // Surface but don't block — backfill script can fill these in later.
-        console.warn('Geocoding failed for some rows; they will land without a centroid:', geocodeFailures);
+        console.warn('Geocoding failed for some rows:', geocodeFailures);
+      }
+      if (unplacedOnCommit.length > 0) {
+        // Not an error and not blocking — these are complete records that simply
+        // have no trustworthy coordinate yet. Say so plainly, because a pin
+        // quietly missing from the map is exactly what went unnoticed before.
+        const byReason = new Map<UnplacedReason, string[]>();
+        for (const u of unplacedOnCommit) {
+          if (!byReason.has(u.reason)) byReason.set(u.reason, []);
+          byReason.get(u.reason)!.push(u.name);
+        }
+        setUnplacedNotice(
+          [...byReason.entries()].map(([reason, names]) => ({
+            reason, count: names.length, sample: names.slice(0, 3),
+          })),
+        );
       }
 
       // Fan out per research_run — approve_research_staging_rows rejects a batch
@@ -2085,6 +2112,28 @@ export default function ResearchRunApprovalModal({
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
               {error}
+            </div>
+          )}
+          {unplacedNotice.length > 0 && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#8FA9C8', color: '#002147', backgroundColor: '#F8FAFC' }}>
+              <div className="font-semibold mb-1">
+                {unplacedNotice.reduce((n, u) => n + u.count, 0)} record
+                {unplacedNotice.reduce((n, u) => n + u.count, 0) === 1 ? '' : 's'} committed without a pin
+              </div>
+              <div className="text-xs mb-2" style={{ color: '#4A6B94' }}>
+                Everything else about them was saved. They&rsquo;re on the unplaced list on the map,
+                where you can draw the boundary or drop a pin.
+              </div>
+              <ul className="text-xs space-y-0.5" style={{ color: '#4A6B94' }}>
+                {unplacedNotice.map((u) => (
+                  <li key={u.reason}>
+                    <b style={{ color: '#002147' }}>{u.count}</b> · {unplacedLabel(u.reason)}
+                    <span style={{ color: '#8FA9C8' }}> — {u.sample.join(', ')}
+                      {u.count > u.sample.length ? `, +${u.count - u.sample.length} more` : ''}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {!loading && !canApprove && (

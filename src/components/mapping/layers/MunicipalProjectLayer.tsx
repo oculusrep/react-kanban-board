@@ -33,11 +33,26 @@ export interface MunicipalProjectMapRow {
   // Joined in client-side from project_stage.abbreviation (municipal_project_v
   // doesn't expose it). Used to compose the on-map units label (e.g. "+80 RC").
   effective_stage_abbreviation: string | null;
-  centroid_lat: number;
-  centroid_lng: number;
+  // Null exactly when the record is unplaced — see is_unplaced.
+  centroid_lat: number | null;
+  centroid_lng: number | null;
   geocoded_address: string | null;
   // GeoJSON Polygon (or MultiPolygon) when the user has drawn one in Phase 3; null otherwise.
   geometry_geojson: { type: string; coordinates: unknown } | null;
+  // Placement (see the 20260920083102 migration). A record with no trustworthy
+  // coordinate is UNPLACED: complete in every other respect, but deliberately
+  // absent from the map rather than pinned to a county centroid.
+  is_unplaced?: boolean;
+  unplaced_reason?: string | null;
+  // Polygon provenance + the acreage cross-check.
+  geometry_source?: 'hand_drawn' | 'parcel_fetch' | 'parcel_fetch_adjusted' | null;
+  geometry_source_parcels?: string[] | null;
+  geometry_stated_acres?: number | null;
+  geometry_computed_acres?: number | null;
+  geometry_area_variance_pct?: number | null;
+  geometry_needs_review?: boolean;
+  // A fetched boundary nobody has looked at yet — drawn dashed until reviewed.
+  geometry_unreviewed?: boolean;
   // Source / provenance (Phase B additions — populated by the market research agent
   // on agent-promoted rows; nullable on importer + manually-created rows).
   builder_developer: string | null;
@@ -265,6 +280,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const labelMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const polygonsRef = useRef<Map<string, google.maps.Polygon>>(new Map());
+  // Google Maps can't dash a Polygon outline — `icons` is a Polyline property.
+  // An unreviewed fetched boundary therefore gets its polygon stroke hidden and
+  // a dashed Polyline traced over each ring. One entry per project.
+  const dashOutlinesRef = useRef<Map<string, google.maps.Polyline[]>>(new Map());
   // Increments on map zoom so labels re-derive their lat/lng from stored pixel
   // offsets whenever the projection changes.
   const [zoomTick, setZoomTick] = useState(0);
@@ -350,10 +369,22 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         existingPolys.delete(id);
       }
     }
+    for (const [id, lines] of dashOutlinesRef.current) {
+      if (!rows.find((r) => r.id === id)) {
+        lines.forEach((l) => l.setMap(null));
+        dashOutlinesRef.current.delete(id);
+      }
+    }
 
     const unitsFilterActive = municipalProjectsMinUnits != null || municipalProjectsMaxUnits != null;
 
     for (const row of rows) {
+      // Unplaced: a complete record with no trustworthy coordinate. Deliberately
+      // absent from the map rather than pinned to a county centroid — it lives on
+      // the unplaced worklist until someone draws a boundary or drops a pin.
+      const lat = row.centroid_lat;
+      const lng = row.centroid_lng;
+      if (lat == null || lng == null) continue;
       const stageHidden = municipalProjectsHiddenStageIds.has(row.effective_stage_id ?? null);
       const muniHidden = municipalProjectsHiddenMunicipalityIds.has(row.municipality_id);
       let unitsHidden = false;
@@ -387,7 +418,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       let marker = existing.get(row.id);
       if (!marker) {
         marker = new google.maps.Marker({
-          position: { lat: row.centroid_lat, lng: row.centroid_lng },
+          position: { lat, lng },
           icon: makeIcon(pinColor, isSelected || isBeingVerified),
           title: row.project_name || row.address,
           map: showPin ? map : null,
@@ -406,7 +437,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         });
         existing.set(row.id, marker);
       } else {
-        marker.setPosition({ lat: row.centroid_lat, lng: row.centroid_lng });
+        marker.setPosition({ lat, lng });
         marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified));
         marker.setMap(showPin ? map : null);
         marker.setDraggable(isBeingVerified);
@@ -434,8 +465,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const offsetY = row.label_offset_y_px ?? 0;
       const labelPos = offsetToLatLng(
         map,
-        row.centroid_lat,
-        row.centroid_lng,
+        lat,
+        lng,
         offsetX,
         offsetY,
       );
@@ -463,8 +494,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
           if (!e.latLng) return;
           const { x, y } = latLngToOffset(
             map,
-            row.centroid_lat,
-            row.centroid_lng,
+            lat,
+            lng,
             e.latLng.lat(),
             e.latLng.lng(),
           );
@@ -505,17 +536,28 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       if (polyPaths) {
         const baseWeight = polygonStyle.strokeWeight;
         const weight = isSelected ? baseWeight + 1 : baseWeight;
+        // A fetched boundary is dashed until someone has looked at it — same
+        // colour as a hand-drawn one, because it is if anything MORE trustworthy;
+        // the dashes say "nobody has confirmed this yet", not "this is suspect".
+        // Google Maps draws a dashed line by hiding the stroke and repeating an
+        // icon along the path, so it is set via `icons`, not a stroke property.
+        const dashed = !!row.geometry_unreviewed;
+        // The polygon's own stroke is hidden when dashed; the dashes are drawn by
+        // the companion polylines below.
+        const dashOptions: Partial<google.maps.PolygonOptions> = {
+          strokeOpacity: dashed ? 0 : polygonStyle.strokeOpacity,
+        };
         if (!poly) {
           poly = new google.maps.Polygon({
             paths: polyPaths,
             strokeColor: polyStrokeColor,
-            strokeOpacity: polygonStyle.strokeOpacity,
             strokeWeight: weight,
             fillColor: polyColor,
             fillOpacity: polygonStyle.fillOpacity,
             clickable: true,
             zIndex: isSelected ? 999 : undefined,
             map: showPoly ? map : null,
+            ...dashOptions,
           });
           poly.addListener('click', () => onPinClick?.(row));
           existingPolys.set(row.id, poly);
@@ -523,18 +565,46 @@ const MunicipalProjectLayer: React.FC<Props> = ({
           poly.setPaths(polyPaths);
           poly.setOptions({
             strokeColor: polyStrokeColor,
-            strokeOpacity: polygonStyle.strokeOpacity,
             strokeWeight: weight,
             fillColor: polyColor,
             fillOpacity: polygonStyle.fillOpacity,
             zIndex: isSelected ? 999 : undefined,
+            ...dashOptions,
           });
           poly.setMap(showPoly ? map : null);
+        }
+        // ---- dashed outline for an unreviewed fetched boundary --------------
+        const prevLines = dashOutlinesRef.current.get(row.id) ?? [];
+        prevLines.forEach((l) => l.setMap(null));
+        if (dashed && showPoly) {
+          const lines = polyPaths.map((ring) => new google.maps.Polyline({
+            path: ring,
+            map,
+            clickable: false,
+            zIndex: isSelected ? 999 : undefined,
+            strokeOpacity: 0,   // the dashes come entirely from the repeated icon
+            icons: [{
+              icon: {
+                path: 'M 0,-1 0,1',
+                strokeColor: polyStrokeColor,
+                strokeOpacity: polygonStyle.strokeOpacity,
+                strokeWeight: weight,
+                scale: 3,
+              },
+              offset: '0',
+              repeat: '12px',
+            }],
+          }));
+          dashOutlinesRef.current.set(row.id, lines);
+        } else {
+          dashOutlinesRef.current.delete(row.id);
         }
       } else if (poly) {
         // Project no longer has geometry — remove the polygon.
         poly.setMap(null);
         existingPolys.delete(row.id);
+        (dashOutlinesRef.current.get(row.id) ?? []).forEach((l) => l.setMap(null));
+        dashOutlinesRef.current.delete(row.id);
       }
     }
   }, [
@@ -564,6 +634,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   // Cleanup on unmount.
   useEffect(() => {
     return () => {
+      for (const [, lines] of dashOutlinesRef.current) lines.forEach((l) => l.setMap(null));
+      dashOutlinesRef.current.clear();
       for (const [, marker] of markersRef.current) marker.setMap(null);
       markersRef.current.clear();
       for (const [, labelMarker] of labelMarkersRef.current) labelMarker.setMap(null);
