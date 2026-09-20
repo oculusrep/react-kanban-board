@@ -7,7 +7,17 @@ interface InlinePropertyCreationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (property: any) => void;
-  coordinates: { lat: number; lng: number };
+  /**
+   * Where the property sits, when the caller knows (a dropped map pin). Optional:
+   * callers outside the map — e.g. the Intel panel creating a property named in a
+   * note — have no coordinates, and the property is created without them. Verify
+   * it on the map afterwards.
+   */
+  coordinates?: { lat: number; lng: number } | null;
+  /** Prefills Property Name, e.g. the name a note referred to. */
+  initialName?: string;
+  /** Stacking override; the default sits in the map slideout band. */
+  zIndex?: number;
 }
 
 interface PropertyFormData {
@@ -25,10 +35,12 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
   onClose,
   onSave,
   coordinates,
+  initialName,
+  zIndex = 10001,
 }) => {
   const [formData, setFormData] = useState<PropertyFormData>({
     property_record_type_id: null,
-    property_name: '',
+    property_name: initialName ?? '',
     address: '',
     city: '',
     state: '',
@@ -42,6 +54,13 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
 
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
   const { createProperty } = useProperty();
+
+  // Prefill the name on open. Keyed on isOpen so re-opening with a different
+  // name works, without overwriting what the user types mid-edit.
+  useEffect(() => {
+    if (!isOpen || !initialName) return;
+    setFormData((prev) => ({ ...prev, property_name: prev.property_name || initialName }));
+  }, [isOpen]);
 
   // Auto-populate address from coordinates when modal opens
   useEffect(() => {
@@ -96,8 +115,10 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
         state: formData.state,
         zip: formData.zip,
         property_notes: formData.property_notes,
-        verified_latitude: coordinates.lat,
-        verified_longitude: coordinates.lng,
+        // Explicit nulls when the caller had no coordinates: that leaves the
+        // property unmapped, rather than pinning it at 0,0.
+        verified_latitude: coordinates ? coordinates.lat : null,
+        verified_longitude: coordinates ? coordinates.lng : null,
       };
 
       const createdProperty = await createProperty(propertyData);
@@ -142,16 +163,20 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[10001]" onClick={onClose} />
+      <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex }} onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed inset-4 bg-white rounded-lg shadow-xl z-[10002] flex flex-col max-w-2xl mx-auto">
+      <div className="fixed inset-4 bg-white rounded-lg shadow-xl flex flex-col max-w-2xl mx-auto" style={{ zIndex: zIndex + 1 }}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Create Property from Pin</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              {coordinates ? 'Create Property from Pin' : 'Create Property'}
+            </h3>
             <p className="text-sm text-gray-500 mt-1">
-              Location: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
+              {coordinates
+                ? `Location: ${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`
+                : 'No location yet — verify this property on the map afterwards.'}
             </p>
           </div>
           <button

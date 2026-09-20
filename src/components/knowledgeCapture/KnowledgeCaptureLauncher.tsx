@@ -1,15 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ObjectPicker } from './ObjectPicker';
+import ContactFormModal from '../ContactFormModal';
+import InlinePropertyCreationModal from '../mapping/InlinePropertyCreationModal';
 import {
   type FiledEntry,
   type KnowledgeLink,
   type ObjectType,
   type Proposal,
+  type UnresolvedName,
   useKnowledgeCapture,
 } from './useKnowledgeCapture';
 
-// Knowledge Capture: a floating button on every internal page that opens a panel
+// Intel (internally "knowledge capture" — table, function and file names use that
+// prefix): a floating button on every internal page that opens a panel
 // for capturing ad hoc facts — "the Starbucks work letter says drywall on the
 // Bridge prototype runs $18/sf". The AI proposes which OVIS records and topics it
 // belongs to, the user confirms or corrects in conversation, and it is filed
@@ -43,6 +47,20 @@ const FAB_BOTTOM = 24 + FAB_SIZE + 12;
 const FAB_RIGHT = 24;
 
 const PANEL_WIDTH = 460;
+
+// The create overlays default to the map band (z 60 / 10001), i.e. BELOW this
+// panel, so they're pushed above it explicitly.
+const Z_CREATE_MODAL = Z_PANEL + 1;
+
+/** Only these two have a create flow reachable from here. See UnresolvedRow. */
+const CREATABLE: ObjectType[] = ['contact', 'property'];
+
+/** "Nick Lukens" -> first/last for the contact form, which requires both. */
+export function splitPersonName(name: string): { first_name: string; last_name: string } {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return { first_name: parts[0], last_name: '' };
+  return { first_name: parts.slice(0, -1).join(' '), last_name: parts[parts.length - 1] };
+}
 
 /** ovis_role values that is_internal_user() accepts. Coach and portal users are excluded. */
 const INTERNAL_ROLES = ['admin', 'broker_full', 'broker_lite', 'va'];
@@ -101,12 +119,26 @@ const SmallButton: React.FC<{ onClick: () => void; children: React.ReactNode }> 
 const ProposalEditor: React.FC<{
   proposal: Proposal;
   rawText: string;
+  unresolved: UnresolvedName[];
   onEditCleanText: (t: string) => void;
   onAddLink: (l: KnowledgeLink) => void;
   onRemoveLink: (t: ObjectType, id: string) => void;
+  onCreateUnresolved: (item: UnresolvedName) => void;
+  onDismissUnresolved: (name: string) => void;
   onAddTag: (t: string) => void;
   onRemoveTag: (t: string) => void;
-}> = ({ proposal, rawText, onEditCleanText, onAddLink, onRemoveLink, onAddTag, onRemoveTag }) => {
+}> = ({
+  proposal,
+  rawText,
+  unresolved,
+  onEditCleanText,
+  onAddLink,
+  onRemoveLink,
+  onCreateUnresolved,
+  onDismissUnresolved,
+  onAddTag,
+  onRemoveTag,
+}) => {
   const [picking, setPicking] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
   const [showRaw, setShowRaw] = useState(false);
@@ -163,6 +195,19 @@ const ProposalEditor: React.FC<{
         {picking && <ObjectPicker onPick={onAddLink} onClose={() => setPicking(false)} />}
       </div>
 
+      {unresolved.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {unresolved.map((item) => (
+            <UnresolvedRow
+              key={`${item.object_type}:${item.name}`}
+              item={item}
+              onCreate={onCreateUnresolved}
+              onDismiss={onDismissUnresolved}
+            />
+          ))}
+        </ul>
+      )}
+
       <div className="mt-2.5">
         <label className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: COLORS.steel }}>
           Tags
@@ -191,6 +236,49 @@ const ProposalEditor: React.FC<{
     </section>
   );
 };
+
+/**
+ * A name the AI found in the note but not in OVIS. Contacts and properties get a
+ * create button; accounts and deals don't have a create flow that works from here
+ * (both need more than a name — see docs/KNOWLEDGE_CAPTURE.md), so they're shown
+ * so the user knows nothing was linked.
+ */
+const UnresolvedRow: React.FC<{
+  item: UnresolvedName;
+  onCreate: (item: UnresolvedName) => void;
+  onDismiss: (name: string) => void;
+}> = ({ item, onCreate, onDismiss }) => (
+  <li
+    className="flex flex-wrap items-center gap-1.5 rounded px-2 py-1.5 text-[11px]"
+    style={{ backgroundColor: COLORS.white, border: `1px dashed ${COLORS.terracotta}` }}
+  >
+    <span style={{ color: COLORS.midnight }}>
+      Not in OVIS: <strong>{item.name}</strong>
+    </span>
+    {CREATABLE.includes(item.object_type) ? (
+      <button
+        type="button"
+        onClick={() => onCreate(item)}
+        className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+        style={{ backgroundColor: COLORS.steel, color: COLORS.white }}
+      >
+        Create {item.object_type}: {item.name}
+      </button>
+    ) : (
+      <span style={{ color: COLORS.steel }}>
+        (create the {item.object_type} in OVIS first, then add the link)
+      </span>
+    )}
+    <button
+      type="button"
+      onClick={() => onDismiss(item.name)}
+      className="ml-auto underline"
+      style={{ color: COLORS.slate }}
+    >
+      ignore
+    </button>
+  </li>
+);
 
 const RecentList: React.FC<{ entries: FiledEntry[] }> = ({ entries }) => {
   if (entries.length === 0) return null;
@@ -241,6 +329,11 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The unresolved name currently being created, if any. Held here (not in
+  // ProposalEditor) because the create overlays must render OUTSIDE the panel:
+  // the panel carries a transform, which would become the containing block for
+  // their position:fixed and misplace them entirely.
+  const [creating, setCreating] = useState<UnresolvedName | null>(null);
 
   const capture = useKnowledgeCapture(user?.id ?? null);
   const toggle = useCallback(() => setOpen((o) => !o), []);
@@ -302,8 +395,8 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           color: COLORS.white,
           zIndex: Z_FAB,
         }}
-        title={open ? 'Close knowledge capture (Alt+K)' : 'Capture knowledge (Alt+K)'}
-        aria-label={open ? 'Close knowledge capture' : 'Capture knowledge'}
+        title={open ? 'Close Intel (Alt+K)' : 'Capture intel (Alt+K)'}
+        aria-label={open ? 'Close Intel' : 'Capture intel'}
         aria-expanded={open}
       >
         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -328,7 +421,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           transform: open ? 'translateX(0)' : 'translateX(100%)',
         }}
         aria-hidden={!open}
-        aria-label="Knowledge capture"
+        aria-label="Intel"
         onKeyDown={(e) => {
           // stopPropagation so Esc here doesn't also close a map slideout behind us.
           if (e.key === 'Escape') {
@@ -342,7 +435,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           style={{ backgroundColor: COLORS.steel, color: COLORS.white }}
         >
           <div>
-            <h2 className="text-sm font-semibold">Knowledge Capture</h2>
+            <h2 className="text-sm font-semibold">Intel</h2>
             <p className="text-[11px]" style={{ color: '#D6E0EC' }}>
               Shared with the team · kept permanently
             </p>
@@ -351,7 +444,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
             type="button"
             onClick={() => setOpen(false)}
             className="rounded p-1 hover:bg-white/10"
-            aria-label="Close knowledge capture"
+            aria-label="Close Intel"
             title="Close (Alt+K)"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -429,9 +522,12 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
               <ProposalEditor
                 proposal={capture.proposal}
                 rawText={capture.rawText}
+                unresolved={capture.unresolved}
                 onEditCleanText={capture.editCleanText}
                 onAddLink={capture.addLink}
                 onRemoveLink={capture.removeLink}
+                onCreateUnresolved={setCreating}
+                onDismissUnresolved={capture.dismissUnresolved}
                 onAddTag={capture.addTag}
                 onRemoveTag={capture.removeTag}
               />
@@ -456,6 +552,50 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           <RecentList entries={capture.recent} />
         </div>
       </aside>
+
+      {/*
+        Create flows for names the AI couldn't find. Rendered as siblings of the
+        panel, never inside it (see `creating` above). Both are the app's existing
+        overlays, reused as-is apart from the prefill and stacking props: the new
+        record is created by them, and we only link what they hand back.
+      */}
+      {creating?.object_type === 'contact' && (
+        <ContactFormModal
+          isOpen
+          zIndex={Z_CREATE_MODAL}
+          initialValues={splitPersonName(creating.name)}
+          onClose={() => setCreating(null)}
+          onSave={(contact) => {
+            const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim();
+            capture.resolveWith(creating.name, {
+              object_type: 'contact',
+              object_id: contact.id,
+              object_name: name || creating.name,
+            });
+            setCreating(null);
+          }}
+        />
+      )}
+
+      {creating?.object_type === 'property' && (
+        <InlinePropertyCreationModal
+          isOpen
+          zIndex={Z_CREATE_MODAL}
+          initialName={creating.name}
+          // No coordinates: a note names a property, it doesn't place it. The
+          // modal says so and the property is created unmapped.
+          coordinates={null}
+          onClose={() => setCreating(null)}
+          onSave={(property) => {
+            capture.resolveWith(creating.name, {
+              object_type: 'property',
+              object_id: property.id,
+              object_name: property.property_name || property.address || creating.name,
+            });
+            setCreating(null);
+          }}
+        />
+      )}
     </>
   );
 };

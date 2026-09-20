@@ -1,17 +1,20 @@
-# Knowledge Capture
+# Intel (knowledge capture)
+
+**"Intel" is what the user sees** — panel header, launcher tooltip. The table, edge function and file names all use the `knowledge_*` / `knowledge-capture` prefix, and this doc keeps that name for anything code-facing.
 
 **Status (2026-09-20):** built on branch `feature/knowledge-capture` (worktree `../react-kanban-board-knowledge-capture`). Migration applied and recorded on the shared production database; edge function `ovis-knowledge-capture` deployed. Typechecks, builds, 20 unit tests pass. **Not yet exercised in a real browser session** — see [Before this ships](#before-this-ships).
 
 An always-available way to capture ad hoc facts that arrive by phone call, text or scribbled note — "the Starbucks work letter says drywall on the Bridge prototype runs $18/sf". You type the note, the AI tidies it into one fact and proposes which OVIS records and topics it belongs to, you confirm or correct in conversation, and it's filed permanently for the whole company.
 
-**This is not Quick Notes.** Quick Notes ([docs/QUICK_NOTE.md](QUICK_NOTE.md)) is a personal 7-day sticky list: no AI, no tags, private to you, gone in a week. Knowledge Capture is shared, permanent, AI-linked company knowledge. Nothing here touches `quick_note`, and the two are deliberately different colours and icons so they can't be confused.
+**Intel is not Quick Notes.** Quick Notes ([docs/QUICK_NOTE.md](QUICK_NOTE.md)) is a personal 7-day sticky list: no AI, no tags, private to you, gone in a week. Knowledge Capture is shared, permanent, AI-linked company knowledge. Nothing here touches `quick_note`, and the two are deliberately different colours and icons so they can't be confused.
 
 ## Behaviour
 
-- **Launcher:** steel-blue button with a lightbulb, bottom right, stacked directly above the Quick Notes button (navy `+`). Every internal page; not the portal, not `?embedded=true`, not coach users.
+- **Launcher:** steel-blue button with a lightbulb, tooltip "Capture intel (Alt+K)", bottom right, stacked directly above the Quick Notes button (navy `+`). Every internal page; not the portal, not `?embedded=true`, not coach users.
 - **Shortcut:** Alt+K (Option+K on Mac) toggles. Matched on `e.code === 'KeyK'` so Option+K, which types "˚", still works.
-- **Panel:** slides in from the right edge, full height, 460px. No backdrop — you keep working behind it. Closes only on an explicit action (X, Alt+K, or Esc while focus is inside).
+- **Panel:** header reads "Intel". Slides in from the right edge, full height, 460px. No backdrop — you keep working behind it. Closes only on an explicit action (X, Alt+K, or Esc while focus is inside).
 - **Capture:** type the note, Enter sends (Shift+Enter for a newline). The AI replies with what it found, what it's unsure about, and at most one question.
+- **Names it couldn't find:** when the AI pulls a name out of the note and no OVIS record matches, it says so and the panel shows `Not in OVIS: Nick Lukens` with a **Create contact: Nick Lukens** button (same for properties). Clicking opens the app's existing create overlay with the name prefilled; on save the new record is linked to the entry. **Nothing is auto-created** — no click, no record. "ignore" dismisses the offer. Accounts and deals are shown but have no create button (both need more than a name: a deal needs a client and stage, and there is no account-create overlay in the app).
 - **Editing before filing:** `clean_text` is editable inline. Link and tag chips can be removed; "+ link" opens a picker that searches accounts, deals, properties and contacts. `raw_text` is never editable — "Show what I typed" reveals it read-only.
 - **Filing:** the "File it" button is the only thing that files. When the AI's `ready_to_file` is true (you said yes in conversation) the button fills in solid navy; it does not file on its own.
 - **After filing:** the panel resets for the next note and stays open. The entry appears in "Recently filed" immediately, before the write completes.
@@ -28,8 +31,11 @@ Migration `supabase/migrations/20260920084255_knowledge_capture.sql` (applied + 
 | `knowledge_entry_tag` | free-form lowercase topic tags, unique per `(entry, tag)` |
 | `knowledge_capture_correction` | `proposed` / `accepted` / `proposal_model` — the training signal |
 
+Unresolved names are **not** stored: they exist only for the life of the conversation. A name nobody creates simply never becomes a link.
+
 - **`user_id` is the login id** (`auth.users.id` / `auth.uid()`), like `quick_note.user_id` — *not* `public.user.id`. `ON DELETE RESTRICT`, because company knowledge outlives the account that typed it: reassign an author's entries before deleting their login.
 - **`object_id` is deliberately not a foreign key** — one column points at four tables. The edge function verifies every id against the live table instead.
+- **Tags describe subject matter, never the kind of statement.** The prompt forbids `estimate`, `quote`, `note`, `update`, `info` and friends — every entry here is a note containing information, so those tags separate nothing. `STATEMENT_TYPE_TAGS` in `proposal.ts` is the safety net for when the model slips; it matches whole tags only, so "vendor quotes" survives and a bare "quote" doesn't.
 - **`account` means `public.client`.** OVIS has no `account` table; the name is Salesforce heritage.
 - **Embedding provenance is all-or-nothing.** A CHECK constraint keeps `embedding`, `embedding_model` and `embedding_dims` set together or all null, so you can always tell what produced a vector. A null embedding is expected (provider was down) and `knowledge_entry_embedding_missing_idx` is the backfill queue.
 - **No vector index yet** — nothing searches `embedding`, and the right index depends on the row count when search is actually built.
@@ -69,6 +75,21 @@ Both models are config, not code. `_shared/knowledge-capture/config.ts` is the o
 
 **Every embedding goes through one function**, `createEmbedding(text)` in `embedding.ts`, returning `{ vector, model, dimensions }`. Swapping providers means editing that one function plus the two constants. It records the model the *provider* reports, not the one we asked for, since an alias can resolve to a dated snapshot. Needs the `OPENAI_API_KEY` secret.
 
+### Reused create overlays (item 3 plumbing)
+
+The "Create contact/property" buttons reuse the app's own overlays rather than inserting anything themselves — the new record is created by the same code path as everywhere else, and Intel only links what comes back:
+
+| | component | what was added for this |
+|---|---|---|
+| contact | `src/components/ContactFormModal.tsx` | optional `initialValues` (create mode only) + `zIndex` |
+| property | `src/components/mapping/InlinePropertyCreationModal.tsx` | `coordinates` made optional/nullable, optional `initialName` + `zIndex` |
+
+Both additions are optional props, so every existing call site behaves exactly as before. Three things to know:
+
+- **Stacking.** Those overlays default to `z 60` and `z 10001` — *below* the Intel panel at 10008 — so the panel passes `zIndex` explicitly. Without it the form opens behind the panel and looks like nothing happened.
+- **They must render OUTSIDE the panel.** The panel carries a `transform`, which would become the containing block for their `position: fixed` and misplace them. The `creating` state therefore lives in the launcher, and the overlays are siblings of the `<aside>`, not children. (Same class of bug as the Quick Notes dnd `transform: none` note.)
+- **A property created this way has no coordinates** (a note names a property, it doesn't place it). The modal says so, and it still requires a property type and address — verify the location on the map afterwards.
+
 ### Implementation notes (read before editing)
 
 - **Ids are verified twice, and never trusted from the model.** `verifyLinks` looks up every proposed id in the live table and replaces the name with what the database holds. It runs on each turn *and* again at filing time, because by then the proposal has round-tripped through the browser and is user input. Unverified ids are dropped and reported in the reply, not silently discarded.
@@ -97,11 +118,12 @@ Both models are config, not code. `_shared/knowledge-capture/config.ts` is the o
 
 The whole path — model turn, tool calls, structured output, filing, embedding — has never run end to end, because no Anthropic credential is available outside the Supabase secret and the function requires a real user JWT. The first browser session should check:
 
-1. Alt+K opens the panel; the two FABs don't overlap.
+1. Alt+K opens the panel; the header says "Intel" and the two FABs don't overlap.
 2. A note like the Starbucks example returns a reply with proposed links and tags — this is the first real test of **structured output alongside tool use**. If the logs show "API rejected the structured output format; retrying without it", the fallback worked and the schema combination should be revisited.
 3. `OPENAI_API_KEY` is set, and a filed entry has `embedding_dims = 1536` and `embedding_model = 'text-embedding-3-small'`. If entries file with "no embedding", the key is missing or wrong.
 4. Correcting the AI (e.g. "no, just the Hoschton deal") then filing writes one `knowledge_capture_correction` row with `proposal_model = 'claude-sonnet-5'`.
-5. Cost per turn: watch `cost_usd` in the function logs; Sonnet 5 at `low` effort with a cached system prompt should be well under a cent.
+5. Mention a person who isn't in OVIS ("spoke to Nick Lukens about it") and confirm the create-contact button appears, opens the contact form **above** the panel with the name split into first/last, and links the new contact on save.
+6. Cost per turn: watch `cost_usd` in the function logs; Sonnet 5 at `low` effort with a cached system prompt should be well under a cent.
 
 ## Explicitly out of scope
 
@@ -112,6 +134,8 @@ The whole path — model turn, tool calls, structured output, filing, embedding 
 
 ## Known gaps
 
+- Accounts and deals get no create button when unresolved (see above).
+- A created property is unmapped until someone verifies it on the map.
 - The launcher isn't draggable, unlike the Quick Notes one. If Quick Notes is dragged elsewhere, this button stays bottom-right.
 - Link chips are text, not links to the record.
 - Recently filed shows only *your* last five entries, with no way to see the rest — there's no browse UI until the retrieval spec lands.

@@ -17,6 +17,18 @@ interface ContactFormModalProps {
   propertyId?: string;
   rightOffset?: number; // Offset from right edge in pixels
   showBackdrop?: boolean; // Whether to show the backdrop (default true)
+  /**
+   * Create mode only: fields to start the form with, e.g. a name lifted from
+   * somewhere else in the UI. Ignored when contactId is set (that loads the
+   * existing contact instead).
+   */
+  initialValues?: Partial<Pick<FormData, 'first_name' | 'last_name' | 'email' | 'company' | 'title'>>;
+  /**
+   * Stacking override. The default (60) sits above normal page content but BELOW
+   * the ~10000 overlay band used by map slideouts and the Intel panel, so a
+   * caller in that band must pass its own value.
+   */
+  zIndex?: number;
 }
 
 interface FormData {
@@ -52,7 +64,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   contactId,
   propertyId,
   rightOffset = 0,
-  showBackdrop = true
+  showBackdrop = true,
+  initialValues,
+  zIndex = 60,
 }) => {
   const { user } = useAuth();
   const [formData, setFormData] = useState<FormData>({
@@ -163,6 +177,16 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     if (isOpen) {
       loadData();
     }
+  }, [isOpen, contactId]);
+
+  // Prefill on open, create mode only. Runs after the close-reset below has
+  // cleared the form, and never fights the contactId load above (which owns the
+  // form in edit mode).
+  useEffect(() => {
+    if (!isOpen || contactId || !initialValues) return;
+    setFormData((prev) => ({ ...prev, ...initialValues }));
+    // Intentionally keyed on isOpen only: re-applying mid-edit would overwrite
+    // what the user has typed.
   }, [isOpen, contactId]);
 
   // Reset form when modal closes
@@ -289,15 +313,16 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     <>
       {/* Backdrop - Only show if showBackdrop is true */}
       {showBackdrop && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={onClose} />
+        <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex }} onClick={onClose} />
       )}
 
       {/* Modal */}
       <div
-        className={`fixed left-0 lg:left-auto w-full lg:w-[450px] bg-white shadow-xl transform transition-transform duration-300 z-[60] ${
+        className={`fixed left-0 lg:left-auto w-full lg:w-[450px] bg-white shadow-xl transform transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         } flex flex-col`}
         style={{
+          zIndex,
           right: `${rightOffset}px`,
           top: '64px', // Align with navbar height
           bottom: 0, // Extend to bottom of viewport

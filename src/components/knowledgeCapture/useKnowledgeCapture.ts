@@ -23,6 +23,16 @@ export interface Proposal {
   is_general: boolean;
 }
 
+/**
+ * A name the AI found in the note but couldn't find in OVIS. The panel offers to
+ * create the record; it is NOT part of the filed proposal, so an unresolved name
+ * that's never created simply doesn't become a link.
+ */
+export interface UnresolvedName {
+  object_type: ObjectType;
+  name: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -48,6 +58,7 @@ interface TurnResponse {
   proposal: Proposal;
   ready_to_file: boolean;
   model: string;
+  unresolved?: UnresolvedName[];
 }
 
 interface FileResponse {
@@ -87,6 +98,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
   const [filing, setFiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<FiledEntry[]>([]);
+  const [unresolved, setUnresolved] = useState<UnresolvedName[]>([]);
 
   // The model's FIRST proposal for this note, and the model that produced it.
   // The correction row is the difference between this and what's actually filed,
@@ -126,6 +138,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
     setProposal(null);
     setReadyToFile(false);
     setError(null);
+    setUnresolved([]);
     baselineRef.current = null;
     proposalModelRef.current = null;
   }, []);
@@ -155,6 +168,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
         setMessages([...next, { role: 'assistant', content: result.reply }]);
         setProposal(result.proposal);
         setReadyToFile(result.ready_to_file);
+        setUnresolved(result.unresolved ?? []);
         if (!baselineRef.current) {
           baselineRef.current = result.proposal;
           proposalModelRef.current = result.model;
@@ -193,6 +207,20 @@ export function useKnowledgeCapture(authUserId: string | null) {
       }
       return { ...p, links: [...p.links, link], is_general: false };
     });
+  }, []);
+
+  /**
+   * A record the user just created for an unresolved name: link it and drop the
+   * offer. Matching on the name the AI reported, not the saved record's name —
+   * the user may have corrected the spelling in the create form.
+   */
+  const resolveWith = useCallback((unresolvedName: string, link: KnowledgeLink) => {
+    addLink(link);
+    setUnresolved((u) => u.filter((n) => n.name !== unresolvedName));
+  }, [addLink]);
+
+  const dismissUnresolved = useCallback((name: string) => {
+    setUnresolved((u) => u.filter((n) => n.name !== name));
   }, []);
 
   const removeTag = useCallback((tag: string) => {
@@ -262,6 +290,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
     messages,
     rawText,
     proposal,
+    unresolved,
     readyToFile,
     thinking,
     filing,
@@ -271,6 +300,8 @@ export function useKnowledgeCapture(authUserId: string | null) {
     editCleanText,
     addLink,
     removeLink,
+    resolveWith,
+    dismissUnresolved,
     addTag,
     removeTag,
     fileIt,

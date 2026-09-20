@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import { type CreateFn, isOutputFormatRejection, type ModelResponse, runToolLoop } from './loop.ts'
 import {
-  cleanProposedLinks, cleanTags, cleanText, normalizeProposal, parseModelJson, type Proposal, proposalsDiffer,
+  cleanProposedLinks, cleanTags, cleanText, cleanUnresolved, normalizeProposal, parseModelJson, type Proposal, proposalsDiffer,
 } from './proposal.ts'
 import { normalizeMessages } from './messages.ts'
 
@@ -297,4 +297,45 @@ Deno.test('a 400 that is not about the format is not retried', async () => {
     Error, 'credit balance too low',
   )
   assertEquals(calls, 1)
+})
+
+Deno.test('tags describing the KIND of statement are dropped, subject tags survive', () => {
+  assertEquals(
+    cleanTags(['estimate', 'Quote', 'notes', 'update', 'info', 'fyi', 'construction costs']),
+    ['construction costs'],
+  )
+  // Compound tags are doing real work even when they contain one of those words.
+  assertEquals(
+    cleanTags(['vendor quotes', 'rent estimates for 2027', 'work letter']),
+    ['vendor quotes', 'rent estimates for 2027', 'work letter'],
+  )
+})
+
+// ---------------------------------------------------------------------------
+// unresolved names (the "create it?" offer)
+// ---------------------------------------------------------------------------
+Deno.test('unresolved names are shape-checked, trimmed, de-duplicated and capped', () => {
+  const u = cleanUnresolved([
+    { object_type: 'contact', name: '  Nick   Lukens ' },
+    { object_type: 'contact', name: 'nick lukens' },
+    { object_type: 'property', name: '100 Main St' },
+    { object_type: 'site_submit', name: 'nope' },
+    { object_type: 'contact', name: '' },
+    { object_type: 'contact' },
+    'nope',
+  ])
+  assertEquals(u, [
+    { object_type: 'contact', name: 'Nick Lukens' },
+    { object_type: 'property', name: '100 Main St' },
+  ])
+})
+
+Deno.test('a name that WAS linked is never also reported unresolved', () => {
+  const linked = [{ object_type: 'contact' as const, object_id: '11111111-1111-1111-1111-111111111111', object_name: 'Nick Lukens' }]
+  assertEquals(cleanUnresolved([{ object_type: 'contact', name: 'nick lukens' }], linked), [])
+  // A different name still comes through.
+  assertEquals(
+    cleanUnresolved([{ object_type: 'contact', name: 'Dana Reyes' }], linked),
+    [{ object_type: 'contact', name: 'Dana Reyes' }],
+  )
 })

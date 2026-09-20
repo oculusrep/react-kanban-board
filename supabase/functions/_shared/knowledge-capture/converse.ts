@@ -9,7 +9,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0
 import { anthropicCreate, buildBaseParams, CHAT_MODEL, CHAT_PRICING } from './config.ts';
 import { runToolLoop } from './loop.ts';
 import { PROPOSAL_OUTPUT_FORMAT, SYSTEM_PROMPT } from './prompt.ts';
-import { cleanProposedLinks, cleanTags, cleanText, type ModelAnswer, parseModelJson } from './proposal.ts';
+import { cleanProposedLinks, cleanTags, cleanText, cleanUnresolved, type ModelAnswer, parseModelJson } from './proposal.ts';
 import { createExecutor, TOOL_DEFINITIONS, verifyLinks } from './tools.ts';
 import type { TurnMessage } from './messages.ts';
 
@@ -26,6 +26,8 @@ export interface TurnResult {
   ready_to_file: boolean;
   /** Proposed links that don't exist in OVIS; shown, never filed. */
   dropped_links: Array<{ object_type?: string; object_id?: string }>;
+  /** Names the model couldn't find — the panel offers to create these. */
+  unresolved: Array<{ object_type: string; name: string }>;
   model: string;
   cost_usd: number | null;
 }
@@ -68,6 +70,7 @@ export async function runTurn(opts: {
     },
     ready_to_file: answer.ready_to_file,
     dropped_links: answer.dropped_links,
+    unresolved: answer.unresolved,
     model: CHAT_MODEL,
     cost_usd: result.cost_usd,
   };
@@ -100,6 +103,7 @@ async function hydrate(
     reply,
     clean_text: cleanText(parsed.clean_text, rawText),
     links,
+    unresolved: cleanUnresolved(parsed.unresolved, links),
     tags: cleanTags(parsed.tags),
     is_general: isGeneral,
     ready_to_file: parsed.ready_to_file === true,

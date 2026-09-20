@@ -31,6 +31,18 @@ export interface CleanLink {
   object_name?: string;
 }
 
+/**
+ * A name the model picked out of the note that it could NOT find in OVIS. Carried
+ * so the panel can offer to create the record instead of silently dropping the
+ * reference — a note naming a contact who isn't in OVIS yet is the normal way a
+ * new contact first appears.
+ */
+export interface UnresolvedName {
+  /** The type the model expected this name to be. */
+  object_type: ObjectType;
+  name: string;
+}
+
 /** A link confirmed to exist, carrying the name the database holds right now. */
 export interface VerifiedLink {
   object_type: ObjectType;

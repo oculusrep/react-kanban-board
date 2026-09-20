@@ -42,6 +42,25 @@ links — the OVIS records this fact is about.
 tags — short lowercase topic tags, the terms someone would search months later:
   "construction costs", "prototype: bridge", "work letter", "rent". Two to four is
   usually right. Tags are how general knowledge gets found, so never skip them.
+  * Tags describe SUBJECT MATTER — what the fact is about. They never describe the
+    KIND of statement it is. "estimate", "quote", "note", "update", "info",
+    "detail", "data point", "fyi" are all wrong: every entry here is a note
+    containing information, so those tags separate nothing and just add noise.
+    A fact that someone estimated drywall at $18/sf is about drywall and
+    construction costs, not about estimating.
+  * The test: would anyone ever search for this word to find facts on a topic? If
+    the word would match half the knowledge base, it isn't a tag.
+
+unresolved — names the note refers to that you searched for and could NOT find.
+  * If the note names a person, property, deal or account and your search comes back
+    with nothing that matches, put the name here with the type you expected, exactly
+    as the note gives it ("Nick Lukens", not "nick" or "Mr Lukens").
+  * Say so in your reply, plainly: "I couldn't find Nick Lukens in OVIS." The panel
+    turns each of these into a button the user can click to create the record — so
+    never invent an id, and never link a near-miss you aren't confident about just
+    to avoid an empty result.
+  * A name you DID find goes in links, not here. Only put a name here once.
+  * This is not a failure and not a question to ask about. Mention it and move on.
 
 is_general — true when the fact belongs to no OVIS record: a market rule of thumb, a
   code requirement, how a landlord's approval process works. This is a perfectly good
@@ -78,7 +97,8 @@ Answer with a single JSON object and nothing else — no prose around it, no cod
 fence:
 
 {"reply": "...", "clean_text": "...", "links": [{"object_type": "account|deal|property|contact",
-"object_id": "the uuid a search returned", "object_name": "..."}], "tags": ["..."],
+"object_id": "the uuid a search returned", "object_name": "..."}],
+"unresolved": [{"object_type": "contact", "name": "Nick Lukens"}], "tags": ["..."],
 "is_general": false, "ready_to_file": false}
 
 (The API normally enforces this shape for you. State it correctly regardless — the
@@ -116,6 +136,19 @@ export const PROPOSAL_OUTPUT_FORMAT: Record<string, unknown> = {
           additionalProperties: false,
         },
       },
+      unresolved: {
+        type: 'array',
+        description: 'Names from the note you searched for and could not find in OVIS, with the type you expected. Never an id.',
+        items: {
+          type: 'object',
+          properties: {
+            object_type: { type: 'string', enum: OBJECT_TYPES },
+            name: { type: 'string', description: 'The name as the note gives it.' },
+          },
+          required: ['object_type', 'name'],
+          additionalProperties: false,
+        },
+      },
       tags: {
         type: 'array',
         description: 'Short lowercase topic tags. Always propose some, including for general knowledge.',
@@ -130,7 +163,7 @@ export const PROPOSAL_OUTPUT_FORMAT: Record<string, unknown> = {
         description: 'True only when the user has explicitly confirmed. Never on the first proposal.',
       },
     },
-    required: ['reply', 'clean_text', 'links', 'tags', 'is_general', 'ready_to_file'],
+    required: ['reply', 'clean_text', 'links', 'unresolved', 'tags', 'is_general', 'ready_to_file'],
     additionalProperties: false,
   },
 };

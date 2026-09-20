@@ -3,7 +3,7 @@
  * network and no Supabase client, so they're unit-tested in
  * knowledge_capture_test.ts.
  */
-import { type CleanLink, isObjectType, type ProposedLink, type VerifiedLink } from './types.ts';
+import { type CleanLink, isObjectType, type ProposedLink, type UnresolvedName, type VerifiedLink } from './types.ts';
 
 export interface Proposal {
   clean_text: string;
@@ -17,12 +17,29 @@ export interface ModelAnswer extends Proposal {
   ready_to_file: boolean;
   /** Links the model proposed that don't exist; surfaced, never filed. */
   dropped_links: ProposedLink[];
+  /** Names it couldn't find, which the panel offers to create. */
+  unresolved: UnresolvedName[];
 }
+
+/**
+ * Tags that describe the KIND of statement rather than its subject. The prompt
+ * forbids these; this is the safety net for when the model slips. Matched only as
+ * a whole tag (with a naive plural), so "construction costs" survives and a bare
+ * "costs"-style type word doesn't — a compound tag is doing real work even when it
+ * contains one of these words ("vendor quotes" stays, "quote" goes).
+ */
+const STATEMENT_TYPE_TAGS = new Set([
+  'estimate', 'quote', 'note', 'update', 'info', 'information', 'detail', 'details',
+  'data point', 'fyi', 'general', 'general info', 'misc', 'miscellaneous', 'comment',
+  'remark', 'fact',
+]);
 
 /** Guard rails on what we'll store, independent of what the model or client sends. */
 const MAX_TAGS = 10;
 const MAX_TAG_LENGTH = 80;
 const MAX_LINKS = 25;
+const MAX_UNRESOLVED = 5;
+const MAX_NAME_LENGTH = 200;
 const MAX_TEXT_LENGTH = 4000;
 
 /**
@@ -64,6 +81,8 @@ export function cleanTags(raw: unknown): string[] {
     // "Construction Costs" and "construction costs" must not become two tags.
     const tag = item.trim().replace(/\s+/g, ' ').toLowerCase().slice(0, MAX_TAG_LENGTH);
     if (!tag || seen.has(tag)) continue;
+    // Describes the kind of statement, not its subject — see STATEMENT_TYPE_TAGS.
+    if (STATEMENT_TYPE_TAGS.has(tag) || STATEMENT_TYPE_TAGS.has(tag.replace(/s$/, ''))) continue;
     seen.add(tag);
     out.push(tag);
     if (out.length >= MAX_TAGS) break;
@@ -91,6 +110,30 @@ export function cleanProposedLinks(raw: unknown): CleanLink[] {
       object_name: typeof link.object_name === 'string' ? link.object_name : undefined,
     });
     if (out.length >= MAX_LINKS) break;
+  }
+  return out;
+}
+
+/**
+ * Shape-check the names the model couldn't find. Anything already linked is
+ * dropped: a name can't be both resolved and unresolved, and the model
+ * occasionally reports both.
+ */
+export function cleanUnresolved(raw: unknown, linked: VerifiedLink[] = []): UnresolvedName[] {
+  if (!Array.isArray(raw)) return [];
+  const linkedNames = new Set(linked.map((l) => l.object_name.trim().toLowerCase()));
+  const seen = new Set<string>();
+  const out: UnresolvedName[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const u = item as Record<string, unknown>;
+    const name = typeof u.name === 'string' ? u.name.trim().replace(/\s+/g, ' ').slice(0, MAX_NAME_LENGTH) : '';
+    if (!isObjectType(u.object_type) || !name) continue;
+    const key = `${u.object_type}:${name.toLowerCase()}`;
+    if (seen.has(key) || linkedNames.has(name.toLowerCase())) continue;
+    seen.add(key);
+    out.push({ object_type: u.object_type, name });
+    if (out.length >= MAX_UNRESOLVED) break;
   }
   return out;
 }
