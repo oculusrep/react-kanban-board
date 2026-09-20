@@ -10,6 +10,7 @@ import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../component
 import MunicipalProjectInlineFilters from '../components/mapping/layers/MunicipalProjectInlineFilters';
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
+import MunicipalProjectUnplacedPanel from '../components/mapping/layers/MunicipalProjectUnplacedPanel';
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
@@ -121,6 +122,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // point, which the slideout then confirms and writes.
   const [pinDropMunicipalProjectId, setPinDropMunicipalProjectId] = useState<string | null>(null);
   const [pinDropPoint, setPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
+  // Bumped after a placement so the unplaced worklist re-reads itself.
+  const [unplacedRefreshToken, setUnplacedRefreshToken] = useState(0);
   const [verifyingMunicipalProjectId, setVerifyingMunicipalProjectId] = useState<string | null>(null);
   const [showMunicipalProjectModal, setShowMunicipalProjectModal] = useState(false);
   const [municipalProjectContextMenu, setMunicipalProjectContextMenu] = useState<{
@@ -4197,6 +4200,14 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         />
       )}
 
+      {/* Unplaced worklist — records deliberately absent from the map because they
+          have no trustworthy coordinate. Opens the same card a pin click opens. */}
+      <MunicipalProjectUnplacedPanel
+        onSelect={(row) => setSelectedMunicipalProject(row)}
+        selectedId={selectedMunicipalProject?.id ?? null}
+        refreshToken={unplacedRefreshToken}
+      />
+
       {/* Municipal Project Slideout */}
       <MunicipalProjectSlideout
         isOpen={!!selectedMunicipalProject}
@@ -4212,6 +4223,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             setPinDropMunicipalProjectId(null);
             setPinDropPoint(null);
           }
+          // Any change to placement moves a record on or off the worklist.
+          if (updated.is_unplaced !== undefined) setUnplacedRefreshToken((n) => n + 1);
           // Reload the layer so the pin re-colors or refreshes against the saved edits.
           refreshLayer('municipal_projects');
         }}
