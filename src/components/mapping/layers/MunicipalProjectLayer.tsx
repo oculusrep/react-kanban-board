@@ -53,6 +53,15 @@ export interface MunicipalProjectMapRow {
   geometry_needs_review?: boolean;
   // A fetched boundary nobody has looked at yet — drawn dashed until reviewed.
   geometry_unreviewed?: boolean;
+  // Amendment: this record CHANGES an existing approval rather than describing a
+  // new development. units_basis says how to read total_housing_units —
+  // 'delta' = units added, 'total' = the new total. Amendments are deliberately
+  // NOT hidden from the map: the two in the data are the only record of their
+  // development, and their parents were approved before any research window.
+  is_amendment?: boolean;
+  units_basis?: 'delta' | 'total' | null;
+  amends_case_number?: string | null;
+  prior_total?: number | null;
   // Source / provenance (Phase B additions — populated by the market research agent
   // on agent-promoted rows; nullable on importer + manually-created rows).
   builder_developer: string | null;

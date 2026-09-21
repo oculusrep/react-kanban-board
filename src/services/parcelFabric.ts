@@ -174,3 +174,68 @@ export async function applyParcelBoundary(opts: {
     parts: resolved.length,
   };
 }
+
+export interface AutoPlaceOutcome {
+  placed: { name: string; acres: number | null; variancePct: number | null; flagged: boolean }[];
+  /** Resolved nothing — every parcel id is gone from the fabric (re-platted). */
+  failed: { name: string; reason: string }[];
+  /** Has parcel ids but no county adapter, so nothing was attempted. */
+  skipped: { name: string; municipality: string | null }[];
+}
+
+/**
+ * Place records from their parcel boundaries automatically, right after approve.
+ *
+ * Only touches records that are UNPLACED — a precise address geocode already gave
+ * them a location and is not second-guessed. FETCH ONCE: a record that already has
+ * a boundary is never re-fetched, here or anywhere, because the county fabric
+ * refreshes nightly and a re-plat would overwrite a correct boundary.
+ *
+ * A partial resolution still places: the RPC unions whatever parcels came back and
+ * flags the acreage variance, which is exactly the retired-parcel-id signal. A
+ * flagged record is placed AND left flagged for review rather than held back — a
+ * boundary that is probably right beats no boundary, as long as it says so.
+ */
+export async function autoPlaceFromParcels(
+  runIds: string[],
+  signal?: AbortSignal,
+): Promise<AutoPlaceOutcome> {
+  const out: AutoPlaceOutcome = { placed: [], failed: [], skipped: [] };
+  if (runIds.length === 0) return out;
+
+  const { data, error } = await supabase
+    .from('municipal_project_v')
+    .select('id, project_name, municipality_name, parcel_numbers, is_unplaced')
+    .in('source_research_run_id', runIds)
+    .eq('is_unplaced', true)
+    .range(0, 4999);
+  if (error) throw error;
+
+  for (const row of (data ?? []) as {
+    id: string; project_name: string | null; municipality_name: string | null;
+    parcel_numbers: string[] | null;
+  }[]) {
+    const name = row.project_name ?? '(unnamed)';
+    if (!row.parcel_numbers?.length) continue;   // nothing to look up
+    if (!adapterFor(row.municipality_name)) {
+      out.skipped.push({ name, municipality: row.municipality_name });
+      continue;
+    }
+    try {
+      const r = await applyParcelBoundary({
+        projectId: row.id,
+        municipalityName: row.municipality_name,
+        parcelNumbers: row.parcel_numbers,
+        statedAcres: null,          // the RPC parses it from parcel_boundary_notes
+        signal,
+      });
+      out.placed.push({
+        name, acres: r.computedAcres, variancePct: r.variancePct, flagged: r.needsReview,
+      });
+    } catch (e) {
+      // Left unplaced, on the worklist, with the manual Fetch button still available.
+      out.failed.push({ name, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return out;
+}

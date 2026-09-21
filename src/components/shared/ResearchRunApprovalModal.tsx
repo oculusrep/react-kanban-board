@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { geocodingService } from '../../services/geocodingService';
 import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../services/placementPrecision';
+import { autoPlaceFromParcels, type AutoPlaceOutcome } from '../../services/parcelFabric';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface ResearchRunApprovalModalProps {
@@ -369,6 +370,8 @@ export default function ResearchRunApprovalModal({
   // a record silently missing from the map is never a surprise.
   const [unplacedNotice, setUnplacedNotice] = useState<
     { reason: UnplacedReason; count: number; sample: string[] }[]>([]);
+  // What automatic parcel placement did, shown after a commit.
+  const [autoPlaceNotice, setAutoPlaceNotice] = useState<AutoPlaceOutcome | null>(null);
   // Soft dedupe: stagingId -> nearby committed projects, plus an in-flight flag.
   const [possibleDupes, setPossibleDupes] = useState<Record<string, NearbyProject[]>>({});
   const [checkingDupes, setCheckingDupes] = useState(false);
@@ -1387,8 +1390,29 @@ export default function ResearchRunApprovalModal({
         approved_matched           += (data as any)?.approved_matched           ?? 0;
         created_municipality_count += (data as any)?.created_municipality_count ?? 0;
       }
+      // Automatic parcel placement. A record that committed UNPLACED but carries
+      // parcel ids in a county we have an adapter for can be placed from the
+      // parcel fabric without anyone pressing anything. Only unplaced records are
+      // touched: a precise address geocode is not second-guessed, and a record
+      // that already has a boundary is never re-fetched.
+      //
+      // Non-blocking and non-fatal: the rows are already committed, and a county
+      // GIS server being down must not turn a successful approve into an error.
+      let autoPlace: AutoPlaceOutcome | null = null;
+      try {
+        autoPlace = await autoPlaceFromParcels([...byRun.keys()]);
+      } catch (e) {
+        console.warn('Automatic parcel placement failed; records stay on the unplaced list:', e);
+      }
+
       onDone({ approved_new, approved_matched, created_municipality_count });
-      onClose();
+      // Keep the modal open when there is something to report about placement —
+      // a flagged boundary is exactly the thing that should not scroll past.
+      if (autoPlace && (autoPlace.placed.length > 0 || autoPlace.failed.length > 0)) {
+        setAutoPlaceNotice(autoPlace);
+      } else {
+        onClose();
+      }
     } catch (e) {
       setError(toErrorMessage(e));
     } finally {
@@ -2112,6 +2136,48 @@ export default function ResearchRunApprovalModal({
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
               {error}
+            </div>
+          )}
+          {autoPlaceNotice && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#4A6B94', color: '#002147', backgroundColor: '#F8FAFC' }}>
+              <div className="font-semibold mb-1">
+                Parcel boundaries fetched for {autoPlaceNotice.placed.length} record
+                {autoPlaceNotice.placed.length === 1 ? '' : 's'}
+              </div>
+              <ul className="text-xs space-y-0.5" style={{ color: '#4A6B94' }}>
+                {autoPlaceNotice.placed.map((p) => (
+                  <li key={p.name}>
+                    {p.flagged ? <span style={{ color: '#A27B5C' }}>⚠ </span> : '· '}
+                    <b style={{ color: '#002147' }}>{p.name}</b>
+                    {p.acres != null && <> — {p.acres} ac</>}
+                    {p.variancePct != null && (
+                      <span style={{ color: p.flagged ? '#A27B5C' : '#8FA9C8' }}>
+                        {' '}({p.variancePct > 0 ? '+' : ''}{p.variancePct}% vs stated)
+                      </span>
+                    )}
+                    {p.flagged && (
+                      <span style={{ color: '#A27B5C' }}> — acreage doesn’t match, check the boundary</span>
+                    )}
+                  </li>
+                ))}
+                {autoPlaceNotice.failed.map((f) => (
+                  <li key={f.name} style={{ color: '#8FA9C8' }}>
+                    · <b style={{ color: '#002147' }}>{f.name}</b> — no boundary fetched, still on the
+                    unplaced list. {f.reason}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex items-center gap-2">
+                <button type="button" onClick={onClose}
+                        className="text-xs px-3 py-1.5 rounded font-medium"
+                        style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>
+                  Done
+                </button>
+                <span className="text-xs" style={{ color: '#8FA9C8' }}>
+                  Flagged boundaries stay flagged on the project card until you review them.
+                </span>
+              </div>
             </div>
           )}
           {unplacedNotice.length > 0 && (

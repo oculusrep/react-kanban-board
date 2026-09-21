@@ -730,6 +730,38 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                 </span>
               )}
             </div>
+
+            {/* Amendment. This record changes an existing approval rather than
+                describing a new development, and units_basis decides whether the
+                unit count above is ADDED to that approval or REPLACES it — which
+                cannot be recovered from the prose reliably, so it is stated. */}
+            {project.is_amendment && (
+              <div className="mt-2 text-xs px-2 py-1.5 rounded"
+                   style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight,
+                            borderLeft: `3px solid ${BRAND.steel}` }}>
+                <span className="font-semibold uppercase tracking-wide block mb-0.5"
+                      style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
+                  Amendment
+                </span>
+                {project.units_basis === 'delta' ? (
+                  <>Changes an existing approval. The {project.total_housing_units ?? '—'} units
+                    above are <b>added</b> to it, not the project total.</>
+                ) : project.units_basis === 'total' ? (
+                  <>Changes an existing approval. The {project.total_housing_units ?? '—'} units
+                    above are the <b>new total</b>, replacing the previous count.</>
+                ) : (
+                  <>Changes an existing approval. The source doesn&rsquo;t say whether the
+                    units above are added or a new total &mdash; check before relying on them.</>
+                )}
+                <div className="mt-0.5" style={{ color: BRAND.steel }}>
+                  {project.amends_case_number && <>Amends case {project.amends_case_number}. </>}
+                  {project.prior_total != null && <>Previously {project.prior_total} units. </>}
+                  <span style={{ color: BRAND.slate }}>
+                    The amended approval isn&rsquo;t in OVIS as its own record.
+                  </span>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Zoning */}
