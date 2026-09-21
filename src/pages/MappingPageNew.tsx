@@ -158,6 +158,31 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     if (typeof data.centroid_lat === 'number' && typeof data.centroid_lng === 'number') {
       mapInstance.panTo({ lat: data.centroid_lat, lng: data.centroid_lng });
       mapInstance.setZoom(17);
+      return;
+    }
+
+    // Still unplaced: frame its municipality as orientation, so the reviewer can
+    // see roughly where to look while placing it. VIEW STATE ONLY — nothing is
+    // written, the record stays unplaced, and no coordinate is ever derived from
+    // this. The RPC returns nothing for a record that is already placed, so a
+    // placed project is never framed by its whole municipality.
+    // Cast: database-schema.ts predates this RPC, so the generated types infer {}.
+    const { data: rpcData } = await supabase
+      .rpc('municipal_project_orientation_bounds', { p_id: id })
+      .maybeSingle();
+    const b = rpcData as {
+      min_lat: number; min_lng: number; max_lat: number; max_lng: number;
+    } | null;
+    if (b
+        && typeof b.min_lat === 'number' && typeof b.min_lng === 'number'
+        && typeof b.max_lat === 'number' && typeof b.max_lng === 'number') {
+      mapInstance.fitBounds(
+        new google.maps.LatLngBounds(
+          { lat: b.min_lat, lng: b.min_lng },
+          { lat: b.max_lat, lng: b.max_lng },
+        ),
+        60,
+      );
     }
   }, [mapInstance]);
 
