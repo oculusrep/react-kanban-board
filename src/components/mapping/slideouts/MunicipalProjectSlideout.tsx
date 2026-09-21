@@ -35,6 +35,8 @@ interface Props {
     centroid_lng?: number | null;
     is_unplaced?: boolean;
     unplaced_reason?: string | null;
+    geometry_unreviewed?: boolean;
+    geometry_needs_review?: boolean;
   }) => void;
   onProjectDeleted?: (id: string) => void;
   // Phase 3: invoked when the user clicks "Draw polygon" — the parent activates terra-draw
@@ -124,6 +126,7 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [locDescError, setLocDescError] = useState<string>('');
   const [removingPolygon, setRemovingPolygon] = useState(false);
   const [droppingPin, setDroppingPin] = useState(false);
+  const [markingReviewed, setMarkingReviewed] = useState(false);
   const [fetchingParcel, setFetchingParcel] = useState(false);
   const [parcelNotice, setParcelNotice] = useState<string>('');
   // Phase 3 is flagged off until the Forsyth adapter has been exercised on real
@@ -389,6 +392,34 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
       setPolygonError(e instanceof Error ? e.message : String(e));
     } finally {
       setFetchingParcel(false);
+    }
+  }
+
+  // Confirm a fetched boundary. Until this happens the polygon renders dashed —
+  // the dashes mean "nobody has checked this yet", not "this is suspect".
+  //
+  // Editing a fetched boundary ALSO counts as review and needs no button: the
+  // write RPC stamps geometry_reviewed_at on anything that isn't a fresh
+  // parcel_fetch, because having reshaped it by hand you have plainly looked at
+  // it. This button is for the case where the fetched shape was already right.
+  async function markBoundaryReviewed() {
+    if (!project) return;
+    setMarkingReviewed(true);
+    setPolygonError('');
+    try {
+      const { error } = await supabase.rpc('mark_municipal_project_geometry_reviewed', {
+        p_id: project.id,
+      });
+      if (error) throw error;
+      onProjectUpdated?.({
+        id: project.id,
+        geometry_unreviewed: false,
+        geometry_needs_review: false,
+      });
+    } catch (e) {
+      setPolygonError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMarkingReviewed(false);
     }
   }
 
@@ -921,6 +952,18 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                         ? 'Draw boundary to place it'
                         : 'Draw boundary'}
                 </button>
+                {project.geometry_unreviewed && (
+                  <button
+                    type="button"
+                    onClick={markBoundaryReviewed}
+                    disabled={markingReviewed || isDrawingPolygon}
+                    className="px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 border"
+                    style={{ borderColor: BRAND.midnight, color: BRAND.midnight }}
+                    title="Confirm this fetched boundary is right — it stops rendering dashed"
+                  >
+                    {markingReviewed ? 'Marking…' : 'Mark boundary reviewed'}
+                  </button>
+                )}
                 {project.geometry_geojson && (
                   <button
                     type="button"
