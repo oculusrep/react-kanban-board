@@ -735,8 +735,10 @@ The check that mattered was one that could come back negative:
 -- are the messages tier 1 says it "would have filtered" actually still being ingested?
 select count(*) filter (where not exists (
   select 1 from emails e where e.message_id = p.message_id)) missing
-from processed_message_ids p where p.action like 'tier1_%';
+from email_tier1_stub p where p.action like 'tier1_%';
 ```
+(Tier-1 stubs moved from `processed_message_ids` to `email_tier1_stub` at gmail-sync v60,
+2026-09-14 21:53 UTC. Against the old table this query returns 0 — a false negative.)
 
 **Rule: a shadow or log-only mode is not verified until a query has been run that would fail if the
 mode were being ignored.** Presence of a flag, a log line saying `WOULD FILTER`, or a matching
