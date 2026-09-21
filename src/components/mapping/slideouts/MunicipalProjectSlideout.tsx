@@ -395,6 +395,22 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     }
   }
 
+  // The slideout is REUSED across records — it is not unmounted between them — so
+  // every transient bit of placement state has to be cleared when the record
+  // changes. Without this, a fetch result carried over: fetching a boundary on one
+  // project and then opening an unplaced one showed that project's
+  // "Boundary set from 2 parcels · 32.19 ac" under "Not on the map yet".
+  // (Nothing was ever written to the wrong record — confirmed in the database —
+  // but the panel said otherwise, which is just as bad.)
+  useEffect(() => {
+    setParcelNotice('');
+    setPolygonError('');
+    setRemovingPolygon(false);
+    setDroppingPin(false);
+    setFetchingParcel(false);
+    setMarkingReviewed(false);
+  }, [project?.id]);
+
   // Confirm a fetched boundary. Until this happens the polygon renders dashed —
   // the dashes mean "nobody has checked this yet", not "this is suspect".
   //

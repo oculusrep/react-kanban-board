@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
@@ -122,6 +122,45 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // point, which the slideout then confirms and writes.
   const [pinDropMunicipalProjectId, setPinDropMunicipalProjectId] = useState<string | null>(null);
   const [pinDropPoint, setPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
+  // Move the map to a municipal project so the user can see what just happened.
+  // Re-reads the row rather than trusting whatever the caller has in hand, because
+  // after a fetch or a draw the geometry is newer than any cached copy. An
+  // UNPLACED record has nothing to move to — panning somewhere plausible would be
+  // inventing a location, which is the whole thing this work removed — so it is a
+  // deliberate no-op until the record is actually placed.
+  const focusMunicipalProject = useCallback(async (id: string) => {
+    if (!mapInstance) return;
+    const { data, error } = await supabase
+      .from('municipal_project_v')
+      .select('centroid_lat, centroid_lng, geometry_geojson')
+      .eq('id', id)
+      .maybeSingle();
+    if (error || !data) return;
+
+    const gj = data.geometry_geojson as { type?: string; coordinates?: unknown } | null;
+    if (gj?.coordinates) {
+      // Fit the whole boundary, so a large parcel set doesn't land half off-screen.
+      const bounds = new google.maps.LatLngBounds();
+      const rings: unknown[] =
+        gj.type === 'MultiPolygon'
+          ? (gj.coordinates as unknown[][]).flat()
+          : (gj.coordinates as unknown[]);
+      for (const ring of rings) {
+        for (const pt of ring as [number, number][]) {
+          bounds.extend({ lat: pt[1], lng: pt[0] });
+        }
+      }
+      if (!bounds.isEmpty()) {
+        mapInstance.fitBounds(bounds, 80);
+        return;
+      }
+    }
+    if (typeof data.centroid_lat === 'number' && typeof data.centroid_lng === 'number') {
+      mapInstance.panTo({ lat: data.centroid_lat, lng: data.centroid_lng });
+      mapInstance.setZoom(17);
+    }
+  }, [mapInstance]);
+
   // Bumped after a placement so the unplaced worklist re-reads itself.
   const [unplacedRefreshToken, setUnplacedRefreshToken] = useState(0);
   const [verifyingMunicipalProjectId, setVerifyingMunicipalProjectId] = useState<string | null>(null);
@@ -3125,6 +3164,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                             // Close the menu, otherwise it covers the card the
                             // user just asked to open.
                             setShowCustomLayersMenu(false);
+                            // No-op while the record is genuinely unplaced; it
+                            // matters for a row that has since been placed and is
+                            // still listed from a stale read.
+                            void focusMunicipalProject(row.id);
                           }}
                           selectedId={selectedMunicipalProject?.id ?? null}
                           refreshToken={unplacedRefreshToken}
@@ -4234,6 +4277,10 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           }
           // Any change to placement moves a record on or off the worklist.
           if (updated.is_unplaced !== undefined) setUnplacedRefreshToken((n) => n + 1);
+          // Just placed (fetch or pin) — show the result rather than leaving the
+          // user to hunt for it. refreshLayer below re-reads the layer; this
+          // re-reads the one row and moves the viewport to it.
+          if (updated.is_unplaced === false) void focusMunicipalProject(updated.id);
           // Reload the layer so the pin re-colors or refreshes against the saved edits.
           refreshLayer('municipal_projects');
         }}
@@ -4279,8 +4326,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           }
           onCancel={() => setDrawingMunicipalProjectId(null)}
           onSaved={() => {
+            const drawnId = drawingMunicipalProjectId;
             setDrawingMunicipalProjectId(null);
             refreshLayer('municipal_projects');
+            // Drawing can also place a previously unplaced record.
+            setUnplacedRefreshToken((n) => n + 1);
+            if (drawnId) void focusMunicipalProject(drawnId);
           }}
         />
       )}
