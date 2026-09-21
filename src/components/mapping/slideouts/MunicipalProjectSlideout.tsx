@@ -175,6 +175,26 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     project?.location_description,
   ]);
 
+  // The slideout is REUSED across records — it is not unmounted between them — so
+  // every transient bit of placement state has to be cleared when the record
+  // changes. Without this, a fetch result carried over: fetching a boundary on one
+  // project and then opening an unplaced one showed that project's
+  // "Boundary set from 2 parcels · 32.19 ac" under "Not on the map yet".
+  //
+  // MUST stay above the `if (!isOpen || !project) return null` below. It was
+  // originally placed after it, which made the hook count differ between the
+  // closed and open renders and crashed the whole Mapping page with React error
+  // #310 ("rendered more hooks than during the previous render"). Hooks go before
+  // every early return, always.
+  useEffect(() => {
+    setParcelNotice('');
+    setPolygonError('');
+    setRemovingPolygon(false);
+    setDroppingPin(false);
+    setFetchingParcel(false);
+    setMarkingReviewed(false);
+  }, [project?.id]);
+
   if (!isOpen || !project) return null;
 
   const computedStage = stages.find((s) => s.id === project.status_stage_id) ?? null;
@@ -394,22 +414,6 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
       setFetchingParcel(false);
     }
   }
-
-  // The slideout is REUSED across records — it is not unmounted between them — so
-  // every transient bit of placement state has to be cleared when the record
-  // changes. Without this, a fetch result carried over: fetching a boundary on one
-  // project and then opening an unplaced one showed that project's
-  // "Boundary set from 2 parcels · 32.19 ac" under "Not on the map yet".
-  // (Nothing was ever written to the wrong record — confirmed in the database —
-  // but the panel said otherwise, which is just as bad.)
-  useEffect(() => {
-    setParcelNotice('');
-    setPolygonError('');
-    setRemovingPolygon(false);
-    setDroppingPin(false);
-    setFetchingParcel(false);
-    setMarkingReviewed(false);
-  }, [project?.id]);
 
   // Confirm a fetched boundary. Until this happens the polygon renders dashed —
   // the dashes mean "nobody has checked this yet", not "this is suspect".
