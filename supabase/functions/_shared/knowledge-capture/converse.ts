@@ -26,8 +26,15 @@ export interface TurnResult {
   ready_to_file: boolean;
   /** Proposed links that don't exist in OVIS; shown, never filed. */
   dropped_links: Array<{ object_type?: string; object_id?: string }>;
-  /** Names the model couldn't find — the panel offers to create these. */
-  unresolved: Array<{ object_type: string; name: string }>;
+  /**
+   * Names the model couldn't find — the panel offers to create these, prefilled
+   * with any details verified against the note text.
+   */
+  unresolved: Array<{
+    object_type: string;
+    name: string;
+    details?: Record<string, string>;
+  }>;
   model: string;
   cost_usd: number | null;
 }
@@ -103,7 +110,9 @@ async function hydrate(
     reply,
     clean_text: cleanText(parsed.clean_text, rawText),
     links,
-    unresolved: cleanUnresolved(parsed.unresolved, links),
+    // rawText is the note the user actually typed: the only source a detail may
+    // come from. verifyDetails() drops anything not found in it.
+    unresolved: cleanUnresolved(parsed.unresolved, links, rawText),
     tags: cleanTags(parsed.tags),
     is_general: isGeneral,
     ready_to_file: parsed.ready_to_file === true,

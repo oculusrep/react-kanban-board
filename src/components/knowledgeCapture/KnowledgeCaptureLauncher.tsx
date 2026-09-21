@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ObjectPicker } from './ObjectPicker';
 import ContactFormModal from '../ContactFormModal';
 import InlinePropertyCreationModal from '../mapping/InlinePropertyCreationModal';
+import { geocodingService } from '../../services/geocodingService';
 import {
   type FiledEntry,
   type KnowledgeLink,
@@ -334,6 +335,40 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
   // the panel carries a transform, which would become the containing block for
   // their position:fixed and misplace them entirely.
   const [creating, setCreating] = useState<UnresolvedName | null>(null);
+  // Coordinates for a property whose address the note stated, geocoded on the way
+  // into the modal. Null when there was no address to geocode or it failed.
+  const [geocoded, setGeocoded] = useState<{ lat: number; lng: number; precision: string | null } | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
+
+  /**
+   * Open the create overlay for an unresolved name. For a property whose note gave
+   * a street address, geocode it first so the modal opens with coordinates and a
+   * visible precision. A bare property name is NEVER geocoded — "Hoschton
+   * Crossing" alone would resolve to the middle of a town and look authoritative.
+   */
+  const startCreate = useCallback(async (item: UnresolvedName) => {
+    setGeocoded(null);
+    if (item.object_type !== 'property' || !item.details?.address) {
+      setCreating(item);
+      return;
+    }
+    const d = item.details;
+    const query = [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
+    setCreating(item);
+    setGeocoding(true);
+    try {
+      const result = await geocodingService.geocodeAddress(query);
+      if ('latitude' in result) {
+        // location_type is undefined on the OSM fallback: null here means
+        // "geocoded, precision unknown", which the modal labels as such.
+        setGeocoded({ lat: result.latitude, lng: result.longitude, precision: result.location_type ?? null });
+      }
+    } catch {
+      // Non-fatal: the property is created unmapped, exactly as before.
+    } finally {
+      setGeocoding(false);
+    }
+  }, []);
 
   const capture = useKnowledgeCapture(user?.id ?? null);
   const toggle = useCallback(() => setOpen((o) => !o), []);
@@ -526,7 +561,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
                 onEditCleanText={capture.editCleanText}
                 onAddLink={capture.addLink}
                 onRemoveLink={capture.removeLink}
-                onCreateUnresolved={setCreating}
+                onCreateUnresolved={startCreate}
                 onDismissUnresolved={capture.dismissUnresolved}
                 onAddTag={capture.addTag}
                 onRemoveTag={capture.removeTag}
@@ -563,7 +598,16 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
         <ContactFormModal
           isOpen
           zIndex={Z_CREATE_MODAL}
-          initialValues={splitPersonName(creating.name)}
+          // Name from the AI's reading of the note; the rest only if the note
+          // literally contained it (verified server-side).
+          initialValues={{
+            ...splitPersonName(creating.name),
+            ...(creating.details?.email ? { email: creating.details.email } : {}),
+            ...(creating.details?.phone ? { phone: creating.details.phone } : {}),
+            ...(creating.details?.mobile_phone ? { mobile_phone: creating.details.mobile_phone } : {}),
+            ...(creating.details?.title ? { title: creating.details.title } : {}),
+            ...(creating.details?.company ? { company: creating.details.company } : {}),
+          }}
           onClose={() => setCreating(null)}
           onSave={(contact) => {
             const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim();
@@ -582,10 +626,14 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           isOpen
           zIndex={Z_CREATE_MODAL}
           initialName={creating.name}
-          // No coordinates: a note names a property, it doesn't place it. The
-          // modal says so and the property is created unmapped.
-          coordinates={null}
-          onClose={() => setCreating(null)}
+          initialAddress={creating.details?.address}
+          initialCity={creating.details?.city}
+          initialState={creating.details?.state}
+          initialZip={creating.details?.zip}
+          // Only ever from a geocoded street address the note actually stated.
+          coordinates={geocoded ? { lat: geocoded.lat, lng: geocoded.lng } : null}
+          geocodePrecision={geocoded ? geocoded.precision : undefined}
+          onClose={() => { setCreating(null); setGeocoded(null); }}
           onSave={(property) => {
             capture.resolveWith(creating.name, {
               object_type: 'property',
@@ -593,8 +641,18 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
               object_name: property.property_name || property.address || creating.name,
             });
             setCreating(null);
+            setGeocoded(null);
           }}
         />
+      )}
+
+      {geocoding && (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-xs shadow-lg"
+          style={{ backgroundColor: COLORS.midnight, color: COLORS.white, zIndex: Z_CREATE_MODAL + 2 }}
+        >
+          Looking up the address…
+        </div>
       )}
     </>
   );

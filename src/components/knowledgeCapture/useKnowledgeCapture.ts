@@ -31,6 +31,22 @@ export interface Proposal {
 export interface UnresolvedName {
   object_type: ObjectType;
   name: string;
+  /**
+   * Details the AI found LITERALLY in the note (a pasted signature, an address).
+   * The edge function verifies every field against the note text before sending
+   * it, so anything here was really written by the user — see verifyDetails().
+   */
+  details?: {
+    email?: string;
+    phone?: string;
+    mobile_phone?: string;
+    title?: string;
+    company?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  };
 }
 
 export interface ChatMessage {

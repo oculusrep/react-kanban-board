@@ -16,9 +16,36 @@ interface InlinePropertyCreationModalProps {
   coordinates?: { lat: number; lng: number } | null;
   /** Prefills Property Name, e.g. the name a note referred to. */
   initialName?: string;
+  /**
+   * Prefills the address fields. Callers outside the map pass what a note stated
+   * literally; the reverse-geocode below is skipped when an address is supplied.
+   */
+  initialAddress?: string;
+  initialCity?: string;
+  initialState?: string;
+  initialZip?: string;
+  /**
+   * Google's precision for coordinates the CALLER geocoded (`location_type`).
+   * Shown in the header so a street-centroid match is obvious rather than looking
+   * as exact as a dropped pin. Undefined on the OSM fallback path.
+   */
+  geocodePrecision?: string | null;
   /** Stacking override; the default sits in the map slideout band. */
   zIndex?: number;
 }
+
+/**
+ * How to read Google's location_type. ROOFTOP / RANGE_INTERPOLATED are
+ * address-level; the other two are a street or region centroid, which puts every
+ * address on that road at one point — the user needs to see that difference.
+ */
+const PRECISION: Record<string, { label: string; color: string }> = {
+  ROOFTOP: { label: 'Geocoded from the note · exact address match', color: '#4A6B94' },
+  RANGE_INTERPOLATED: { label: 'Geocoded from the note · interpolated along the street', color: '#4A6B94' },
+  GEOMETRIC_CENTER: { label: 'Geocoded from the note · STREET CENTROID only — verify on the map', color: '#A27B5C' },
+  APPROXIMATE: { label: 'Geocoded from the note · APPROXIMATE (city/region) — verify on the map', color: '#A27B5C' },
+  UNKNOWN: { label: 'Geocoded from the note · precision unknown — verify on the map', color: '#A27B5C' },
+};
 
 interface PropertyFormData {
   property_record_type_id: string | null;
@@ -36,15 +63,20 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
   onSave,
   coordinates,
   initialName,
+  initialAddress,
+  initialCity,
+  initialState,
+  initialZip,
+  geocodePrecision,
   zIndex = 10001,
 }) => {
   const [formData, setFormData] = useState<PropertyFormData>({
     property_record_type_id: null,
     property_name: initialName ?? '',
-    address: '',
-    city: '',
-    state: '',
-    zip: '',
+    address: initialAddress ?? '',
+    city: initialCity ?? '',
+    state: initialState ?? '',
+    zip: initialZip ?? '',
     property_notes: '',
   });
 
@@ -58,8 +90,15 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
   // Prefill the name on open. Keyed on isOpen so re-opening with a different
   // name works, without overwriting what the user types mid-edit.
   useEffect(() => {
-    if (!isOpen || !initialName) return;
-    setFormData((prev) => ({ ...prev, property_name: prev.property_name || initialName }));
+    if (!isOpen) return;
+    setFormData((prev) => ({
+      ...prev,
+      property_name: prev.property_name || (initialName ?? ''),
+      address: prev.address || (initialAddress ?? ''),
+      city: prev.city || (initialCity ?? ''),
+      state: prev.state || (initialState ?? ''),
+      zip: prev.zip || (initialZip ?? ''),
+    }));
   }, [isOpen]);
 
   // Auto-populate address from coordinates when modal opens
@@ -178,6 +217,11 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
                 ? `Location: ${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`
                 : 'No location yet — verify this property on the map afterwards.'}
             </p>
+            {coordinates && geocodePrecision !== undefined && (
+              <p className="text-xs mt-0.5" style={{ color: PRECISION[geocodePrecision ?? 'UNKNOWN']?.color ?? '#A27B5C' }}>
+                {PRECISION[geocodePrecision ?? 'UNKNOWN']?.label ?? 'Geocoded — precision unknown, verify on the map'}
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}

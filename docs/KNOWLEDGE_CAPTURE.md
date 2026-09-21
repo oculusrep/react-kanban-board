@@ -14,6 +14,7 @@ An always-available way to capture ad hoc facts that arrive by phone call, text 
 - **Shortcut:** Alt+K (Option+K on Mac) toggles. Matched on `e.code === 'KeyK'` so Option+K, which types "˚", still works.
 - **Panel:** header reads "Intel". Slides in from the right edge, full height, 460px. No backdrop — you keep working behind it. Closes only on an explicit action (X, Alt+K, or Esc while focus is inside).
 - **Capture:** type the note, Enter sends (Shift+Enter for a newline). The AI replies with what it found, what it's unsure about, and at most one question.
+- **Details from the note:** if the note contains contact details for an unresolved name — typically a pasted signature block — they prefill the create form too: email, phone/mobile, title, company for a contact; address, city, state, zip for a property. **Only what the note literally says.** See [Detail extraction](#detail-extraction-only-what-the-note-says) — this is enforced in code, not just asked for in the prompt.
 - **Names it couldn't find:** when the AI pulls a name out of the note and no OVIS record matches, it says so and the panel shows `Not in OVIS: Nick Lukens` with a **Create contact: Nick Lukens** button (same for properties). Clicking opens the app's existing create overlay with the name prefilled; on save the new record is linked to the entry. **Nothing is auto-created** — no click, no record. "ignore" dismisses the offer. Accounts and deals are shown but have no create button (both need more than a name: a deal needs a client and stage, and there is no account-create overlay in the app).
 - **Editing before filing:** `clean_text` is editable inline. Link and tag chips can be removed; "+ link" opens a picker that searches accounts, deals, properties and contacts. `raw_text` is never editable — "Show what I typed" reveals it read-only.
 - **Filing:** the "File it" button is the only thing that files. When the AI's `ready_to_file` is true (you said yes in conversation) the button fills in solid navy; it does not file on its own.
@@ -75,14 +76,40 @@ Both models are config, not code. `_shared/knowledge-capture/config.ts` is the o
 
 **Every embedding goes through one function**, `createEmbedding(text)` in `embedding.ts`, returning `{ vector, model, dimensions }`. Swapping providers means editing that one function plus the two constants. It records the model the *provider* reports, not the one we asked for, since an alias can resolve to a dated snapshot. Needs the `OPENAI_API_KEY` secret.
 
+### Detail extraction — only what the note says
+
+The prompt tells the model to copy contact details only when they appear literally in the note, and never to infer an email, phone, title, company or address from a name, an employer or anything it knows. **That instruction alone is not the mechanism.** A model follows a rule like that 99 times and quietly breaks it on the hundredth, and a plausible-but-wrong email address on a real contact record survives for years — so `verifyDetails()` in `proposal.ts` re-checks every field against `raw_text` and silently drops anything not found there. The model proposes; the note decides.
+
+How each field is matched:
+
+| field | test | why |
+|---|---|---|
+| `email` | case-insensitive literal | senders capitalise their own addresses inconsistently |
+| `phone`, `mobile_phone` | the value's **digits** must appear as a run in the note's digits, min 7 | a literal test would reject a correct value the model reformatted — `(904) 598-7000` → `904.598.7000`. The 7-digit floor stops `$18/sf` becoming a phone number |
+| `title`, `company`, `address`, `city`, `state`, `zip` | case-insensitive substring, whitespace-collapsed; values under 4 chars need a **word boundary** | so a `state` of "GA" cannot be lifted out of "Gary" |
+
+`mobile_phone` gets the number when the note labels it mobile / cell / M: / C:, otherwise `phone`; two labelled numbers fill both. If the turn has no `raw_text`, no detail survives at all.
+
+The tests are the specification here — `knowledge_capture_test.ts` covers the pasted-signature case, the invented-but-plausible email (`nlukens@…` built from name + employer domain, dropped), the reformatted phone, the price-as-phone, and the "GA" in "Gary" case.
+
+### Property geocoding
+
+When the note states a street address for an unresolved property, the launcher geocodes it with the existing `geocodingService` before opening the modal, and the modal shows Google's `location_type` so a coarse match is obvious:
+
+- `ROOFTOP` / `RANGE_INTERPOLATED` — address-level, shown in steel blue.
+- `GEOMETRIC_CENTER` / `APPROXIMATE` — a street or region centroid, shown in terracotta with "verify on the map". Every address on a road collapses to one point at this precision, which must not look as authoritative as a dropped pin.
+- OSM fallback returns no `location_type`; that renders as "precision unknown — verify on the map".
+
+**A bare property name is never geocoded.** "Hoschton Crossing" with no address would resolve to the middle of a town and look exact. No address in the note means the property is created unmapped, as before. A geocode failure is non-fatal — same outcome.
+
 ### Reused create overlays (item 3 plumbing)
 
 The "Create contact/property" buttons reuse the app's own overlays rather than inserting anything themselves — the new record is created by the same code path as everywhere else, and Intel only links what comes back:
 
 | | component | what was added for this |
 |---|---|---|
-| contact | `src/components/ContactFormModal.tsx` | optional `initialValues` (create mode only) + `zIndex` |
-| property | `src/components/mapping/InlinePropertyCreationModal.tsx` | `coordinates` made optional/nullable, optional `initialName` + `zIndex` |
+| contact | `src/components/ContactFormModal.tsx` | optional `initialValues` (create mode only; `first_name`, `last_name`, `email`, `phone`, `mobile_phone`, `title`, `company`) + `zIndex` |
+| property | `src/components/mapping/InlinePropertyCreationModal.tsx` | `coordinates` made optional/nullable, optional `initialName` / `initialAddress` / `initialCity` / `initialState` / `initialZip` / `geocodePrecision` + `zIndex` |
 
 Both additions are optional props, so every existing call site behaves exactly as before. Three things to know:
 
@@ -100,6 +127,7 @@ Both additions are optional props, so every existing call site behaves exactly a
 - **The tool loop is its own module, not site-research's.** `_shared/site-research/loop.ts` is mostly web-search budget and code-execution container handling, neither of which exists here, and its tool-failure wording ("report this category as not determinable") is specific to that feature. The shape is the same: check `stop_reason` before reading content, echo a paused turn verbatim, return every `tool_result` in ONE user message, cap iterations (6).
 - **A failed embedding never loses the note.** The entry is filed with a null embedding, the panel marks it "no embedding", and the failure is logged. Losing a captured fact because a provider was down is the worse failure.
 - **The prompt lives in code, not `prompt_template`.** One prompt, no per-client variants, and a capture conversation lasts under a minute so nothing needs to replay against the version it started with. Move it if that changes.
+- **`prompt.ts` is imported by the test on purpose.** A stray backtick inside `SYSTEM_PROMPT`'s template literal is a parse error that only surfaces at `supabase functions deploy` — it happened once, because no other test imported that module. Two tests now assert the prompt parses, carries the extraction rule, and contains no backticks.
 - **Tests avoid the npm SDK on purpose.** `types.ts` and `messages.ts` exist so the pure modules can be type-checked by a bare `deno test`; `config.ts` (Anthropic SDK) and `tools.ts` (supabase-js) pull in npm type trees that break it. Run: `deno test --allow-net --allow-env supabase/functions/_shared/knowledge-capture/`.
 - **Don't run `deno check --node-modules-dir=auto` in this repo** — it replaces `node_modules` with a Deno symlink farm and breaks `tsc` until you `rm -rf node_modules && npm ci`.
 
@@ -123,7 +151,9 @@ The whole path — model turn, tool calls, structured output, filing, embedding 
 3. `OPENAI_API_KEY` is set, and a filed entry has `embedding_dims = 1536` and `embedding_model = 'text-embedding-3-small'`. If entries file with "no embedding", the key is missing or wrong.
 4. Correcting the AI (e.g. "no, just the Hoschton deal") then filing writes one `knowledge_capture_correction` row with `proposal_model = 'claude-sonnet-5'`.
 5. Mention a person who isn't in OVIS ("spoke to Nick Lukens about it") and confirm the create-contact button appears, opens the contact form **above** the panel with the name split into first/last, and links the new contact on save.
-6. Cost per turn: watch `cost_usd` in the function logs; Sonnet 5 at `low` effort with a cached system prompt should be well under a cent.
+6. Paste a signature block into a note for someone not in OVIS and confirm the contact form opens with email/phone/title/company filled — and that a field the note *didn't* contain is left blank rather than guessed.
+7. Give a note a street address for an unknown property and confirm the geocode precision line appears, and that a name-only property still opens with no coordinates.
+8. Cost per turn: watch `cost_usd` in the function logs; Sonnet 5 at `low` effort with a cached system prompt should be well under a cent.
 
 ## Explicitly out of scope
 
@@ -135,7 +165,7 @@ The whole path — model turn, tool calls, structured output, filing, embedding 
 ## Known gaps
 
 - Accounts and deals get no create button when unresolved (see above).
-- A created property is unmapped until someone verifies it on the map.
+- A created property is unmapped unless the note stated an address; when it did, the coordinates are a geocode, not a verified pin.
 - The launcher isn't draggable, unlike the Quick Notes one. If Quick Notes is dragged elsewhere, this button stays bottom-right.
 - Link chips are text, not links to the record.
 - Recently filed shows only *your* last five entries, with no way to see the rest — there's no browse UI until the retrieval spec lands.

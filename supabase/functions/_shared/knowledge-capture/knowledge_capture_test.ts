@@ -1,9 +1,10 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import { type CreateFn, isOutputFormatRejection, type ModelResponse, runToolLoop } from './loop.ts'
 import {
-  cleanProposedLinks, cleanTags, cleanText, cleanUnresolved, normalizeProposal, parseModelJson, type Proposal, proposalsDiffer,
+  cleanProposedLinks, cleanTags, cleanText, cleanUnresolved, normalizeProposal, parseModelJson, type Proposal, proposalsDiffer, verifyDetails,
 } from './proposal.ts'
 import { normalizeMessages } from './messages.ts'
+import { PROPOSAL_OUTPUT_FORMAT, SYSTEM_PROMPT } from './prompt.ts'
 
 const pricing = { usdPerMInput: 2, usdPerMOutput: 10, usdPerMCacheRead: 0.2, usdPerMCacheWrite: 2.5 }
 const tool = { name: 'search_deals', input_schema: { type: 'object', properties: {} } }
@@ -338,4 +339,124 @@ Deno.test('a name that WAS linked is never also reported unresolved', () => {
     cleanUnresolved([{ object_type: 'contact', name: 'Dana Reyes' }], linked),
     [{ object_type: 'contact', name: 'Dana Reyes' }],
   )
+})
+
+// ---------------------------------------------------------------------------
+// detail extraction — ONLY what is literally in the note
+// ---------------------------------------------------------------------------
+const SIG_NOTE = `spoke to Nick Lukens at Regency about the Bridge prototype
+Nick Lukens
+VP of Real Estate | Regency Centers
+nick.lukens@regencycenters.com
+O: (904) 598-7000  M: 904-555-8123`
+
+Deno.test('a pasted signature is extracted field by field', () => {
+  const d = verifyDetails({
+    email: 'nick.lukens@regencycenters.com',
+    phone: '(904) 598-7000',
+    mobile_phone: '904-555-8123',
+    title: 'VP of Real Estate',
+    company: 'Regency Centers',
+  }, SIG_NOTE)
+  assertEquals(d, {
+    email: 'nick.lukens@regencycenters.com',
+    phone: '(904) 598-7000',
+    mobile_phone: '904-555-8123',
+    title: 'VP of Real Estate',
+    company: 'Regency Centers',
+  })
+})
+
+Deno.test('an INVENTED email is dropped even when it looks plausible', () => {
+  // The classic failure: name + employer domain, never actually written down.
+  const d = verifyDetails({ email: 'nlukens@regencycenters.com', company: 'Regency Centers' }, SIG_NOTE)
+  assertEquals(d, { company: 'Regency Centers' })
+})
+
+Deno.test('an invented phone, title and city are dropped', () => {
+  assertEquals(verifyDetails({ phone: '904-555-0000' }, SIG_NOTE), undefined)
+  assertEquals(verifyDetails({ title: 'Senior Vice President' }, SIG_NOTE), undefined)
+  assertEquals(verifyDetails({ city: 'Jacksonville' }, SIG_NOTE), undefined)
+})
+
+Deno.test('a reformatted phone still counts — digits are compared, not punctuation', () => {
+  // The note says "(904) 598-7000"; the model returns it differently.
+  assertEquals(verifyDetails({ phone: '904.598.7000' }, SIG_NOTE)?.phone, '904.598.7000')
+  assertEquals(verifyDetails({ phone: '9045987000' }, SIG_NOTE)?.phone, '9045987000')
+})
+
+Deno.test('a number too short to be a phone cannot be lifted from a price', () => {
+  assertEquals(verifyDetails({ phone: '18' }, 'drywall runs $18/sf on the Bridge prototype'), undefined)
+  assertEquals(verifyDetails({ phone: '555-12' }, 'call 555-12'), undefined)
+})
+
+Deno.test('email case is normalised but still has to be present', () => {
+  assertEquals(
+    verifyDetails({ email: 'Nick.Lukens@RegencyCenters.com' }, SIG_NOTE)?.email,
+    'nick.lukens@regencycenters.com',
+  )
+  assertEquals(verifyDetails({ email: 'not-an-email' }, SIG_NOTE), undefined)
+})
+
+Deno.test('property address fields are verified the same way', () => {
+  const note = 'new pad site at 1425 Peachtree St NE, Atlanta GA 30309 — owner wants $42/sf'
+  const d = verifyDetails({ address: '1425 Peachtree St NE', city: 'Atlanta', state: 'GA', zip: '30309' }, note)
+  assertEquals(d, { address: '1425 Peachtree St NE', city: 'Atlanta', state: 'GA', zip: '30309' })
+  // A city the note never mentions is dropped, even though it's the right metro.
+  assertEquals(verifyDetails({ city: 'Sandy Springs' }, note), undefined)
+})
+
+Deno.test('a short value needs a word boundary, so "GA" cannot come from "Gary"', () => {
+  assertEquals(verifyDetails({ state: 'GA' }, 'talked to Gary about the site'), undefined)
+  assertEquals(verifyDetails({ state: 'GA' }, 'site is in Duluth, GA'), { state: 'GA' })
+})
+
+Deno.test('cleanUnresolved attaches verified details and strips unverified ones', () => {
+  const u = cleanUnresolved(
+    [{
+      object_type: 'contact',
+      name: 'Nick Lukens',
+      details: { email: 'nick.lukens@regencycenters.com', title: 'Chief Executive Officer' },
+    }],
+    [],
+    SIG_NOTE,
+  )
+  assertEquals(u.length, 1)
+  assertEquals(u[0].details, { email: 'nick.lukens@regencycenters.com' })
+})
+
+Deno.test('with no note text, no details survive at all', () => {
+  const u = cleanUnresolved(
+    [{ object_type: 'contact', name: 'Nick Lukens', details: { email: 'nick.lukens@regencycenters.com' } }],
+    [],
+  )
+  assertEquals(u[0].details, undefined)
+})
+
+// ---------------------------------------------------------------------------
+// prompt module — imported here ON PURPOSE
+// ---------------------------------------------------------------------------
+// A stray backtick inside SYSTEM_PROMPT's template literal is a parse error that
+// only surfaces at `supabase functions deploy` (it happened once). No other test
+// imports this module, so nothing local caught it. These do.
+Deno.test('the prompt module parses and states the extraction rule', () => {
+  assert(SYSTEM_PROMPT.length > 500)
+  assertStringIncludes(SYSTEM_PROMPT, 'ONLY what appears LITERALLY')
+  assertStringIncludes(SYSTEM_PROMPT, 'mobile_phone')
+  // Backticks inside the template literal would have ended the string early.
+  assert(!SYSTEM_PROMPT.includes('`'), 'SYSTEM_PROMPT must not contain backticks')
+})
+
+Deno.test('the output schema requires every field the code reads', () => {
+  const schema = PROPOSAL_OUTPUT_FORMAT.schema as Record<string, unknown>
+  assertEquals(schema.additionalProperties, false)
+  const required = schema.required as string[]
+  for (const key of ['reply', 'clean_text', 'links', 'unresolved', 'tags', 'is_general', 'ready_to_file']) {
+    assert(required.includes(key), `schema must require ${key}`)
+  }
+  // Structured outputs reject these keywords; keep them out of the schema.
+  const json = JSON.stringify(PROPOSAL_OUTPUT_FORMAT)
+  for (const banned of ['minLength', 'maxLength', 'minimum', 'maximum', 'multipleOf']) {
+    assert(!json.includes(banned), `schema must not use ${banned}`)
+  }
 })

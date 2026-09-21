@@ -61,6 +61,30 @@ unresolved — names the note refers to that you searched for and could NOT find
     to avoid an empty result.
   * A name you DID find goes in links, not here. Only put a name here once.
   * This is not a failure and not a question to ask about. Mention it and move on.
+  * **details** — if, and only if, the note itself contains contact details for that
+    name, copy them into 'details' so the create form can be prefilled. This
+    happens most often when the user pastes an email signature block.
+
+    THE ABSOLUTE RULE: copy ONLY what appears LITERALLY in the note text above.
+    Never infer, recall or generate an email address, phone number, title, company
+    or address — not from the person's name, not from their employer, not from
+    anything you know. If a field is not in the note, leave it out. An empty field
+    is CORRECT. A plausible-looking wrong one is a permanent error on a real
+    record, and it is the worst thing you can do here.
+      - Do not construct an email from a name and a company domain.
+      - Do not complete a partial address, add a city you assume, or expand a
+        state you weren't given.
+      - Do not copy a detail from one person onto another. If the note has two
+        signatures, keep each person's details with that person.
+    Every field is checked against the note text before it is used, and anything
+    that isn't found there is discarded — so guessing gains nothing and costs
+    accuracy.
+
+    For a contact: email, phone, mobile_phone, title, company. Put a number in
+    'mobile_phone' when the note labels it mobile, cell, M: or C:; otherwise use
+    'phone'. If the note gives two labelled numbers, fill both.
+    For a property: address, city, state, zip. Copy the street address only if the
+    note actually states one — a property name is not an address.
 
 is_general — true when the fact belongs to no OVIS record: a market rule of thumb, a
   code requirement, how a landlord's approval process works. This is a perfectly good
@@ -98,7 +122,9 @@ fence:
 
 {"reply": "...", "clean_text": "...", "links": [{"object_type": "account|deal|property|contact",
 "object_id": "the uuid a search returned", "object_name": "..."}],
-"unresolved": [{"object_type": "contact", "name": "Nick Lukens"}], "tags": ["..."],
+"unresolved": [{"object_type": "contact", "name": "Nick Lukens",
+"details": {"email": "only if literally in the note", "mobile_phone": "only if literally in the note"}}],
+"tags": ["..."],
 "is_general": false, "ready_to_file": false}
 
 (The API normally enforces this shape for you. State it correctly regardless — the
@@ -144,6 +170,25 @@ export const PROPOSAL_OUTPUT_FORMAT: Record<string, unknown> = {
           properties: {
             object_type: { type: 'string', enum: OBJECT_TYPES },
             name: { type: 'string', description: 'The name as the note gives it.' },
+            details: {
+              type: 'object',
+              description:
+                'Details for this record that appear LITERALLY in the note (e.g. a pasted signature). ' +
+                'Omit any field the note does not state. Never infer or generate a value.',
+              properties: {
+                email: { type: 'string', description: 'Only if the note contains this exact address.' },
+                phone: { type: 'string', description: 'A number with no mobile/cell label.' },
+                mobile_phone: { type: 'string', description: 'A number labelled mobile, cell, M: or C:.' },
+                title: { type: 'string' },
+                company: { type: 'string' },
+                address: { type: 'string', description: 'Street address, for a property. Not the property name.' },
+                city: { type: 'string' },
+                state: { type: 'string' },
+                zip: { type: 'string' },
+              },
+              required: [],
+              additionalProperties: false,
+            },
           },
           required: ['object_type', 'name'],
           additionalProperties: false,

@@ -41,6 +41,29 @@ export interface UnresolvedName {
   /** The type the model expected this name to be. */
   object_type: ObjectType;
   name: string;
+  /**
+   * Details for this record that appear LITERALLY in the user's note — typically
+   * because they pasted a signature block. Every field here has been checked
+   * against the note text by verifyDetails(); anything the model produced that
+   * isn't in the note is dropped before this is built. A missing field is
+   * correct; a plausible invented one would be a durable error on a real record.
+   */
+  details?: UnresolvedDetails;
+}
+
+/** Contact fields (from a signature) and property fields (from an address). */
+export interface UnresolvedDetails {
+  email?: string;
+  /** Desk/main number: the note gave a number with no mobile label. */
+  phone?: string;
+  /** The note labelled it mobile / cell / M: / C:. */
+  mobile_phone?: string;
+  title?: string;
+  company?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
 }
 
 /** A link confirmed to exist, carrying the name the database holds right now. */

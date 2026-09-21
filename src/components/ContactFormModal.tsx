@@ -22,7 +22,9 @@ interface ContactFormModalProps {
    * somewhere else in the UI. Ignored when contactId is set (that loads the
    * existing contact instead).
    */
-  initialValues?: Partial<Pick<FormData, 'first_name' | 'last_name' | 'email' | 'company' | 'title'>>;
+  initialValues?: Partial<
+    Pick<FormData, 'first_name' | 'last_name' | 'email' | 'phone' | 'mobile_phone' | 'company' | 'title'>
+  >;
   /**
    * Stacking override. The default (60) sits above normal page content but BELOW
    * the ~10000 overlay band used by map slideouts and the Intel panel, so a
