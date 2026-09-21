@@ -3114,6 +3114,23 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </span>
                       </div>
 
+                      {/* Unplaced worklist. Deliberately OUTSIDE the isVisible
+                          guard below: these records are absent from the map by
+                          design, so if the count only appeared when the layer was
+                          switched on, the queue could grow unnoticed. */}
+                      <div className="pl-11 pr-1">
+                        <MunicipalProjectUnplacedPanel
+                          onSelect={(row) => {
+                            setSelectedMunicipalProject(row);
+                            // Close the menu, otherwise it covers the card the
+                            // user just asked to open.
+                            setShowCustomLayersMenu(false);
+                          }}
+                          selectedId={selectedMunicipalProject?.id ?? null}
+                          refreshToken={unplacedRefreshToken}
+                        />
+                      </div>
+
                       {/* Filters appear when the layer is on */}
                       {layerState.municipal_projects?.isVisible && (
                         <div className="mt-2 pl-11 pr-1">
@@ -4199,14 +4216,6 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           topOffset={showPropertySearch ? 45 : 0}
         />
       )}
-
-      {/* Unplaced worklist — records deliberately absent from the map because they
-          have no trustworthy coordinate. Opens the same card a pin click opens. */}
-      <MunicipalProjectUnplacedPanel
-        onSelect={(row) => setSelectedMunicipalProject(row)}
-        selectedId={selectedMunicipalProject?.id ?? null}
-        refreshToken={unplacedRefreshToken}
-      />
 
       {/* Municipal Project Slideout */}
       <MunicipalProjectSlideout
