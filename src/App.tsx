@@ -123,8 +123,8 @@ function RoleBasedRedirect() {
     return <Navigate to="/coach-dashboard" replace />;
   }
 
-  // All other users go to master pipeline
-  return <Navigate to="/master-pipeline" replace />;
+  // All other users land on the map
+  return <Navigate to="/mapping" replace />;
 }
 
 function App() {
