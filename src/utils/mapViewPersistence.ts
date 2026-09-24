@@ -17,6 +17,7 @@ const VIEW_KEY_PREFIX = 'ovis_map_view:';
 const LAYER_VISIBILITY_KEY = 'ovis_map_layer_visibility';
 const LAYER_VISIBILITY_VERSION_KEY = 'ovis_map_layer_visibility_version';
 const CUSTOM_LAYER_VISIBILITY_KEY = 'ovis_map_custom_layer_visibility';
+const SELECTED_CLIENT_KEY = 'ovis_map_selected_client';
 
 /**
  * Bump this to force-reset every user's persisted system-layer visibility.
@@ -114,6 +115,57 @@ export function loadCustomLayerVisibility(): Record<string, boolean> {
 export function saveCustomLayerVisibility(visibility: Record<string, boolean>): void {
   try {
     localStorage.setItem(CUSTOM_LAYER_VISIBILITY_KEY, JSON.stringify(visibility));
+  } catch {
+    // non-fatal
+  }
+}
+
+/**
+ * Selected client on the map workspace.
+ *
+ * Stored alongside the view + layer prefs so leaving the map and coming back
+ * doesn't force the user to re-pick the client they were working in. We keep
+ * the whole ClientSearchResult (not just the id) so the selector can render
+ * the name immediately without a round-trip; the counts are display-only and
+ * a stale value is harmless.
+ */
+export interface SavedMapClient {
+  id: string;
+  client_name: string;
+  type: string | null;
+  phone: string | null;
+  deal_count: number;
+  site_submit_count: number;
+}
+
+export function loadSelectedClient(): SavedMapClient | null {
+  try {
+    const raw = localStorage.getItem(SELECTED_CLIENT_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (v && typeof v.id === 'string' && typeof v.client_name === 'string') {
+      return {
+        id: v.id,
+        client_name: v.client_name,
+        type: typeof v.type === 'string' ? v.type : null,
+        phone: typeof v.phone === 'string' ? v.phone : null,
+        deal_count: typeof v.deal_count === 'number' ? v.deal_count : 0,
+        site_submit_count: typeof v.site_submit_count === 'number' ? v.site_submit_count : 0,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSelectedClient(client: SavedMapClient | null): void {
+  try {
+    if (client) {
+      localStorage.setItem(SELECTED_CLIENT_KEY, JSON.stringify(client));
+    } else {
+      localStorage.removeItem(SELECTED_CLIENT_KEY);
+    }
   } catch {
     // non-fatal
   }

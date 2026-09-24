@@ -320,7 +320,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     return new Set(allStages);
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
-  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  // Start expanded when a client is already selected at mount (restored from a
+  // previous visit), matching what handleClientSelection does on a fresh pick.
+  const [isLegendExpanded, setIsLegendExpanded] = useState(() => !!selectedClient);
 
   // Clustering configuration
   const [clusterConfig, setClusterConfig] = useState({
