@@ -274,3 +274,49 @@ Flip criteria from spec §2(a): enforce a rule only when Q2 returns zero rows fo
 | A5 atlantaspeechschool.org | 0 / 11 | Clean by the criteria, but the mail is personal 1:1 correspondence with replies. **Move to the B (personal) list** rather than enforce as bulk |
 | A5 other 11 domains | no traffic | nothing to decide |
 | B1/B2 personal | Q3 = 0 | **STAY LOG-ONLY.** The list is not from the §7 harvest |
+
+---
+
+## Addendum (2026-09-21) — A1 sender-exemption measurement
+
+Measured after the review, read-only, same clean window. The exemption tested: **do not stub if the
+sender is a CRM contact (`contact.email` or `contact.personal_email`) OR mike@/asantos@ has ever
+sent mail to that address.**
+
+| | Before | With exemption |
+|---|---|---|
+| A1 stubs | 651 | **582 (89.4%)**, 217 senders |
+| A1 false positives | 66 | **11** |
+| Model runs A1 would skip | 577 / 840 | **509 / 840 — 60.6% of runs, 58.5% of input tokens** (~76/day) |
+| Plus the three clean A5 domains | — | 510 / 840 |
+
+58 stubs were exempted by the contact test and 39 by the sent-to test; 69 distinct after overlap.
+Restricting the sent-to test to mail sent *before* the stub changes the exemption by one stub and
+does not change the false-positive count. The exemption is **not circular**: none of the 28 contacts
+behind it was created after that sender's first A1 email.
+
+### The 66, split
+
+| group | emails | note |
+|---|---|---|
+| Broker listing blasts, exempted | **55** (25 senders) | Covers every property and client link: Eagle Village, Village Grand, Ponce City Market, Uptown Square, Denmark Station |
+| Broker listing blasts, **not** exempted | **3** | info@halpernent.com → contact Dan Gagne · doug.holtzman@tscg.com → Jeremy Kral · michelle.lawrence@colliers.com → Tyler Mouchet. Sender not in the CRM; each linked to a *different* contact, probably a co-listing broker |
+| Matcher errors / not business | **7** | poshmark ×2 and oura → Bob Aiken (whose contact record carried `mike@mikeminihan.com`) · dropbox → property Southlake Festival · supabase → Noree Corias · cciminstitute → April Lawson · connect.media news digest → two people named in the article |
+| Unclear | **1** | fred@fireflies.ai "Your meeting recap – Mike and Noree" → contact Noree Corias. The link is plausibly right, but it is a generated summary, not correspondence |
+
+**Conclusion: the exemption does not qualify A1 for enforcement** — 11 ≠ 0 — though the 3 real
+misses are all contact-level, never deal-level.
+
+### Superseded 2026-09-24 — the requirement changed
+
+**A1 is not going to be enforced, with or without the exemption.** Broker property blasts are how
+new sites are found: they must be **kept and routed**, not excluded. A1 can only report that a
+message was mass-sent; it cannot tell a property blast from a newsletter. Tier 1 was designed to
+exclude on a cheap header signal, and what is now needed is routing on content. That is a design
+change, not a tuning change, and it belongs in the §4 / §6 work rather than in `TIER1_MODE`.
+
+The measurement above stands as evidence of the split (about 88% of A1's Q2 hits are broker
+listing blasts — exactly the mail that must be kept), not as a flip recommendation.
+
+The three clean A5 domains (hello.jll.com, franchise.org, message.att-mail.com) remain safe to
+enforce: they are pure junk, and none produced a link.
