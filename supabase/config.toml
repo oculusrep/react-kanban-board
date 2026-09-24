@@ -5,11 +5,11 @@
 [functions.quickbooks-callback]
 verify_jwt = false
 
-# Cron-driven queue drainer. Takes no parameters, has no side effects beyond
-# sending already-queued portal-comment alerts. Skipping JWT verification
-# avoids needing a vault-stored service_role_key for the pg_cron job.
-[functions.send-portal-comment-alert]
-verify_jwt = false
+# send-portal-comment-alert: verify_jwt back ON (2026-09-22). It used to be
+# disabled so the pg_cron drain could call it without a service-role key in
+# vault, which left it callable by anyone on the internet. The cron now sends a
+# gateway-valid JWT plus X-Cron-Secret, and the function rejects anything else
+# (_shared/caller-auth.ts, service-only). No [functions.*] block = default true.
 
 # MCP server consumed by the OpenClaw market-research subagent. Auth is via the
 # Authorization: Bearer <OVIS_MCP_BEARER_TOKEN> header, validated inside the
