@@ -29,6 +29,7 @@ import {
   applyLabelToMessage,
 } from '../_shared/gmail.ts';
 import { authorizeCaller } from '../_shared/caller-auth.ts';
+import { PERSONAL_SENDER_DOMAINS, PERSONAL_SENDER_ADDRESSES } from '../_shared/tier1.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,6 +44,7 @@ const LABEL = {
   personal: 'OVIS/Personal',
   junk: 'OVIS/Junk',
   property: 'OVIS/Property',
+  events: 'OVIS/Events',
   business: 'OVIS/Business',
   unsorted: 'OVIS/Unsorted',
 } as const;
@@ -51,6 +53,16 @@ type LabelName = typeof LABEL[keyof typeof LABEL];
 
 /** Listing vocabulary. Deliberately narrow: a false "property" costs more than
  *  an unsorted message, because unsorted is reviewable and mislabelled is not. */
+/**
+ * Event vocabulary. Broad on purpose: the owner's instruction is to
+ * over-collect, because an industry invitation lost inside a 381-message Junk
+ * folder is never seen, whereas a false positive in a small Events folder costs
+ * one glance. Ranked below property, so a listing blast that also plugs an
+ * event still routes as property.
+ */
+const EVENT_RE =
+  /(save the date|you'?re invited|invitation|\brsvp\b|register (now|today|here)|registration|webinar|conference|summit|symposium|golf (tournament|outing)|networking|reception|happy hour|luncheon|\bgala\b|seminar|\bexpo\b|trade show|deal ?making|annual meeting|sponsorship|\btickets?\b|join us|workshop|\bmixer\b|open house|groundbreaking|ribbon cutting)/i;
+
 const LISTING_RE =
   /(\bsf\b|square feet|for lease|for sale|ground lease|end ?cap|pad site|outparcel|\bacres?\b|drive.?thru|shopping cent|sublease|\bnnn\b|cap rate|just listed|just sold|available)/i;
 
@@ -90,8 +102,23 @@ function decide(row: {
   classification_outcome: string | null;
   is_relevant: boolean | null;
   subject: string | null;
+  sender_email: string | null;
   has_link: boolean;
+  personal_thread: boolean;
 }): { label: LabelName; sourceVerdict: string } {
+  // Ladder B by sender identity, plus thread membership. The thread test is
+  // what catches a reply IN a personal thread that is not itself from the
+  // personal domain -- including the owner's own sent mail, whose sender is
+  // oculusrep.com and which no sender-domain rule can ever match.
+  const sender = (row.sender_email ?? '').toLowerCase().trim();
+  const senderDomain = sender.split('@')[1] ?? '';
+  if (PERSONAL_SENDER_ADDRESSES.has(sender) || PERSONAL_SENDER_DOMAINS.has(senderDomain)) {
+    return { label: LABEL.personal, sourceVerdict: 'personal:sender_domain' };
+  }
+  if (row.personal_thread) {
+    return { label: LABEL.personal, sourceVerdict: 'personal:thread' };
+  }
+
   if (row.tier1_action === 'tier1_personal') {
     // No sender, no reason: the tier-1 stub carries none by CHECK constraint.
     return { label: LABEL.personal, sourceVerdict: 'tier1:personal' };
@@ -110,6 +137,10 @@ function decide(row: {
         ? `tier1:${row.tier1_reason ?? 'bulk'}+listing_subject`
         : 'listing_subject',
     };
+  }
+
+  if (EVENT_RE.test(row.subject ?? '')) {
+    return { label: LABEL.events, sourceVerdict: 'event_subject' };
   }
 
   if (row.classification_outcome === 'rule_exclusion') {
@@ -231,6 +262,26 @@ serve(async (req) => {
 
       const inboxIds = await listInboxIds(accessToken);
 
+      // Threads that contain at least one message from a personal sender. Built
+      // once per run: any message in such a thread is Personal, which is the
+      // only way a reply from outside the personal domain -- the owner's own
+      // sent mail included -- can be caught.
+      const personalThreads = new Set<string>();
+      const personalSenders = [...PERSONAL_SENDER_DOMAINS].map((d) => `%@${d}`);
+      for (const pattern of personalSenders) {
+        const { data: rows } = await supabase
+          .from('emails')
+          .select('thread_id')
+          .ilike('sender_email', pattern)
+          .not('thread_id', 'is', null);
+        for (const r of rows ?? []) personalThreads.add(r.thread_id as string);
+      }
+      for (const addr of PERSONAL_SENDER_ADDRESSES) {
+        const { data: rows } = await supabase
+          .from('emails').select('thread_id').ilike('sender_email', addr).not('thread_id', 'is', null);
+        for (const r of rows ?? []) personalThreads.add(r.thread_id as string);
+      }
+
       // Resolve what OVIS knows, in chunks (one .in() per 200 ids).
       const known = new Map<string, Decision>();
       let unknownToOvis = 0;
@@ -238,7 +289,7 @@ serve(async (req) => {
         const chunk = inboxIds.slice(i, i + 200);
         const { data: rows, error: rowErr } = await supabase
           .from('emails')
-          .select('id, gmail_id, message_id, subject, is_relevant, classification_outcome')
+          .select('id, gmail_id, message_id, subject, sender_email, thread_id, is_relevant, classification_outcome')
           .in('gmail_id', chunk);
         if (rowErr) throw new Error(`emails lookup: ${rowErr.message}`);
 
@@ -260,7 +311,9 @@ serve(async (req) => {
             classification_outcome: r.classification_outcome,
             is_relevant: r.is_relevant,
             subject: r.subject,
+            sender_email: r.sender_email,
             has_link: linked.has(r.id),
+            personal_thread: r.thread_id ? personalThreads.has(r.thread_id) : false,
           });
           known.set(r.gmail_id, {
             gmailId: r.gmail_id,
@@ -282,7 +335,7 @@ serve(async (req) => {
           if (!mid) continue;
           const { data: rows } = await supabase
             .from('emails')
-            .select('id, gmail_id, message_id, subject, is_relevant, classification_outcome')
+            .select('id, gmail_id, message_id, subject, sender_email, thread_id, is_relevant, classification_outcome')
             .eq('message_id', mid)
             .limit(1);
           const r = rows?.[0];
@@ -298,7 +351,9 @@ serve(async (req) => {
             classification_outcome: r.classification_outcome,
             is_relevant: r.is_relevant,
             subject: r.subject,
+            sender_email: r.sender_email,
             has_link: (links ?? []).length > 0,
+            personal_thread: r.thread_id ? personalThreads.has(r.thread_id) : false,
           });
           // NB: keyed by THIS mailbox's gmail_id, which is the id a label must
           // be applied to here -- not r.gmail_id, which belongs to the mailbox

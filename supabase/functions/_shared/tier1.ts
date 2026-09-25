@@ -115,11 +115,11 @@ const BULK_SENDER_DOMAINS = new Set<string>([
 // Applies to every connected account, not just Mike's.
 // ---------------------------------------------------------------------------
 
-const PERSONAL_SENDER_DOMAINS = new Set<string>([
+export const PERSONAL_SENDER_DOMAINS = new Set<string>([
   'email.teamsnap.com',
 ]);
 
-const PERSONAL_SENDER_ADDRESSES = new Set<string>([]);
+export const PERSONAL_SENDER_ADDRESSES = new Set<string>([]);
 
 // ---------------------------------------------------------------------------
 
