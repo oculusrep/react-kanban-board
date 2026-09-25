@@ -71,15 +71,19 @@ export interface ParsedEmail {
     email: string;
     name: string | null;
     type: 'to' | 'cc' | 'bcc';
-    /** Raw headers tier 1 classifies on. Present in the payload already --
-   *  getMessage() requests format='full' -- these were simply never extracted. */
+  }>;
+  /** Raw headers tier 1 classifies on. Present in the payload already --
+   *  getMessage() requests format='full' -- these were simply never extracted.
+   *  Declared on ParsedEmail itself: a misplaced brace had nested it inside
+   *  recipientList's element type, so `parsedEmail.tier1Headers` did not
+   *  typecheck even though parseGmailMessage has always returned it. Type-only
+   *  fix -- runtime behaviour is unchanged. */
   tier1Headers: {
     listUnsubscribe: string | null;
     listId: string | null;
     precedence: string | null;
     autoSubmitted: string | null;
   };
-}>;
   receivedAt: Date;
   labelIds: string[];
   attachments: EmailAttachment[];
@@ -167,44 +171,115 @@ async function gmailRequest<T>(
  * List messages using history API (incremental sync)
  * Gets all new messages since last sync, regardless of label
  */
+/** A message from the history feed, tagged with the history record it arrived in. */
+export interface HistoryMessageRef {
+  id: string;
+  threadId: string;
+  /** id of the history record this message came from; '' for full-sync results. */
+  historyId: string;
+}
+
+/** Gmail's max page size for history.list. */
+const HISTORY_PAGE_SIZE = 500;
+
+/** Safety stop, so one pathological catch-up can't run the function to timeout. */
+const MAX_HISTORY_PAGES = 20;
+
 export async function listMessageHistory(
   accessToken: string,
   startHistoryId: string
 ): Promise<{
-  messages: Array<{ id: string; threadId: string }>;
+  messages: HistoryMessageRef[];
   historyId: string;
+  truncated: boolean;
 }> {
-  const params = new URLSearchParams({
-    startHistoryId,
-    historyTypes: 'messageAdded',
-  });
+  // PAGINATION. Before 2026-09-25 this read page 1 only: nextPageToken was
+  // declared in the response type and never followed, so anything past the
+  // first page was never seen -- while gmail-sync advanced last_history_id to
+  // response.historyId regardless, putting those messages permanently behind
+  // the watermark. Each message now carries the id of the history record it
+  // came from, so the caller can advance the watermark to the last record it
+  // actually consumed instead of to the newest one Gmail knows about.
+  const messages: HistoryMessageRef[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+  let historyId = startHistoryId;
+  let truncated = false;
 
-  // Don't filter by label - get ALL new messages
-  const response = await gmailRequest<{
-    history?: Array<{
-      id: string;
-      messagesAdded?: Array<{ message: { id: string; threadId: string } }>;
-    }>;
-    historyId: string;
-    nextPageToken?: string;
-  }>(`/users/me/history?${params}`, accessToken);
+  do {
+    const params = new URLSearchParams({
+      startHistoryId,
+      historyTypes: 'messageAdded',
+      maxResults: String(HISTORY_PAGE_SIZE),
+    });
+    if (pageToken) params.set('pageToken', pageToken);
 
-  const messages: Array<{ id: string; threadId: string }> = [];
+    // Don't filter by label - get ALL new messages
+    const response = await gmailRequest<{
+      history?: Array<{
+        id: string;
+        messagesAdded?: Array<{ message: { id: string; threadId: string } }>;
+      }>;
+      historyId: string;
+      nextPageToken?: string;
+    }>(`/users/me/history?${params}`, accessToken);
 
-  if (response.history) {
-    for (const historyItem of response.history) {
-      if (historyItem.messagesAdded) {
-        for (const added of historyItem.messagesAdded) {
-          messages.push(added.message);
+    if (response.history) {
+      for (const historyItem of response.history) {
+        if (historyItem.messagesAdded) {
+          for (const added of historyItem.messagesAdded) {
+            messages.push({ ...added.message, historyId: historyItem.id });
+          }
         }
       }
     }
-  }
 
-  return {
-    messages,
-    historyId: response.historyId,
-  };
+    historyId = response.historyId ?? historyId;
+    pageToken = response.nextPageToken;
+    pages++;
+
+    if (pageToken && pages >= MAX_HISTORY_PAGES) {
+      // Stop fetching, but tell the caller the list is incomplete so it does
+      // NOT advance the watermark past what it received.
+      truncated = true;
+      console.warn(
+        `[gmail-sync] history truncated at ${pages} pages ` +
+        `(${messages.length} messages) from startHistoryId=${startHistoryId}`
+      );
+      break;
+    }
+  } while (pageToken);
+
+  return { messages, historyId, truncated };
+}
+
+/**
+ * The newest history id whose record was FULLY consumed by this run.
+ *
+ * A single history record can carry several messages. If the batch limit cut
+ * through the middle of one, advancing to that record's id would skip its
+ * remaining messages, because history.list returns records AFTER the id it is
+ * given. So we walk back to the last record boundary that is entirely behind
+ * the cut. Returns null when not even one record was completed, meaning the
+ * watermark must not move at all.
+ */
+export function lastFullyConsumedHistoryId(
+  messages: Array<{ historyId: string }>,
+  processedCount: number
+): string | null {
+  if (processedCount <= 0) return null;
+
+  const lastProcessed = messages[processedCount - 1]?.historyId;
+  if (!lastProcessed) return null;
+
+  // Is the record that straddles the cut finished, or does it continue?
+  const straddles = messages[processedCount]?.historyId === lastProcessed;
+  if (!straddles) return lastProcessed;
+
+  for (let i = processedCount - 2; i >= 0; i--) {
+    if (messages[i].historyId !== lastProcessed) return messages[i].historyId;
+  }
+  return null;
 }
 
 /**
@@ -521,9 +596,11 @@ export async function syncEmailsForConnection(
   connection: GmailConnection,
   accessToken: string
 ): Promise<{
-  messages: Array<{ id: string; threadId: string }>;
+  messages: HistoryMessageRef[];
   newHistoryId: string;
   isFullSync: boolean;
+  /** true when the history feed had more pages than MAX_HISTORY_PAGES. */
+  truncated: boolean;
 }> {
   // Try incremental sync if we have a history ID
   if (connection.last_history_id) {
@@ -536,6 +613,7 @@ export async function syncEmailsForConnection(
         messages: historyResult.messages,
         newHistoryId: historyResult.historyId,
         isFullSync: false,
+        truncated: historyResult.truncated,
       };
     } catch (error: any) {
       if (error.status === 404) {
@@ -551,10 +629,16 @@ export async function syncEmailsForConnection(
   const profile = await getGmailProfile(accessToken);
   const messagesResult = await listMessages(accessToken, 50);
 
+  // Full sync is a bootstrap: listMessages returns the newest 50 and the
+  // watermark jumps to the profile's historyId by design. Messages older than
+  // those 50 are not "missed" here -- they were never in scope for a resync.
+  // Left deliberately unchanged; the pagination fix is about the incremental
+  // path, where the watermark was outrunning what had been processed.
   return {
-    messages: messagesResult.messages,
+    messages: messagesResult.messages.map((m) => ({ ...m, historyId: '' })),
     newHistoryId: profile.historyId,
     isFullSync: true,
+    truncated: false,
   };
 }
 

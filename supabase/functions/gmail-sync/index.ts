@@ -24,6 +24,7 @@ import {
   getMessage,
   parseGmailMessage,
   ParsedEmail,
+  lastFullyConsumedHistoryId,
 } from '../_shared/gmail.ts';
 
 const corsHeaders = {
@@ -49,6 +50,10 @@ interface SyncResult {
   skipped_deleted: number;
   errors: string[];
   is_full_sync: boolean;
+  /** true when this run left last_history_id short of Gmail's newest id
+   *  because it could not consume the whole feed. The remainder is picked up
+   *  by the next run instead of being stepped over. */
+  watermark_held: boolean;
 }
 
 serve(async (req) => {
@@ -117,6 +122,7 @@ serve(async (req) => {
         skipped_deleted: 0,
         errors: [],
         is_full_sync: false,
+        watermark_held: false,
       };
 
       try {
@@ -359,11 +365,49 @@ serve(async (req) => {
           }
         }
 
-        // Update connection with new history ID and sync time
+        // ================================================================
+        // WATERMARK. Before 2026-09-25 this always wrote syncResult.newHistoryId
+        // -- the newest history id Gmail reported -- even though the loop above
+        // only ever processes the first MAX_MESSAGES_PER_SYNC messages and the
+        // history feed was read one page deep. Anything beyond either limit was
+        // stepped over and could never be fetched again: the watermark had
+        // already passed it.
+        //
+        // The watermark may only advance to a point everything before which has
+        // been consumed. When the batch was complete, that is Gmail's newest id.
+        // When it was not, it is the last history record we fully consumed, so
+        // the next run resumes at the first message we did not.
+        //
+        // Per-message failures deliberately do NOT hold the watermark back:
+        // that matches the previous behaviour (they are counted in
+        // result.errors) and avoids one poison message stalling ingestion
+        // forever. Only unconsumed messages hold it.
+        // ================================================================
+        const consumedAll =
+          !syncResult.truncated &&
+          syncResult.messages.length <= MAX_MESSAGES_PER_SYNC;
+
+        const safeHistoryId = consumedAll
+          ? syncResult.newHistoryId
+          : lastFullyConsumedHistoryId(syncResult.messages, messagesToProcess.length);
+
+        if (!consumedAll) {
+          result.watermark_held = true;
+          console.warn(
+            `${connection.google_email}: held watermark -- ` +
+            `${syncResult.messages.length} messages in feed` +
+            `${syncResult.truncated ? ' (truncated, more pages exist)' : ''}, ` +
+            `${messagesToProcess.length} processed this run. ` +
+            `last_history_id ${safeHistoryId ? `-> ${safeHistoryId}` : 'unchanged'}`
+          );
+        }
+
         await supabase
           .from('gmail_connection')
           .update({
-            last_history_id: syncResult.newHistoryId,
+            // safeHistoryId is null when not even one history record was fully
+            // consumed -- leave the watermark exactly where it was.
+            ...(safeHistoryId ? { last_history_id: safeHistoryId } : {}),
             last_sync_at: new Date().toISOString(),
             sync_error: null,
             sync_error_at: null,
