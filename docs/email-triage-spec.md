@@ -809,6 +809,32 @@ config-constant and silent-success entries above: a confident mental model shipp
 that could have contradicted it — except here the contradicting observation had already been made and
 written down in this very session.
 
+### A privacy guarantee that only holds in a mode that has never been on
+
+**2026-09-25. The fifth instance, and the most expensive one.**
+
+Ladder B's whole promise is that personal mail is never stored and never modelled. The artifacts all
+exist and all look right: `buildTier1Stub` writes a personal stub carrying only `message_id`,
+`gmail_connection_id` and `processed_at` ([tier1.ts:182-206](../supabase/functions/_shared/tier1.ts#L182-L206)),
+and the CHECK constraint `pmi_personal_stub_carries_no_sender` enforces it *at the database level*,
+so a future bug cannot quietly start logging personal correspondents.
+
+None of that does anything. The code path that *skips the insert* is the `TIER1_MODE === 'enforce'`
+branch ([gmail-sync/index.ts:207-210](../supabase/functions/gmail-sync/index.ts#L207-L210)), and
+`TIER1_MODE` has never left `'log_only'`. In log_only the message falls through and is stored in
+full — body, sender, subject — and goes to the model like any other mail. The stub's carefully
+minimal shape describes a row that sits *next to* the complete copy.
+
+So for the whole measurement period, school and family mail has been stored in full and sent to
+Gemini. The constraint protects a row nobody needed protecting; the mail it was written to protect
+was never withheld.
+
+**Rule: a guarantee inherits the weakest condition on the path that delivers it.** A CHECK
+constraint, a minimal row shape and a named privacy invariant are all downstream of one `if`. Ask
+which mode the guarantee lives in, and whether that mode is on — the artifacts will look identical
+either way. This is the config-constant entry again, one level up: there the constant shipped but the
+path ignored it; here the constraint holds perfectly over data that was never the exposure.
+
 ### Related, from earlier in this project
 
 - **Don't declare a finding solved on circumstantial alignment.** The Barrio Burrito seed was

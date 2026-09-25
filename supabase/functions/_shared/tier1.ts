@@ -117,7 +117,32 @@ const BULK_SENDER_DOMAINS = new Set<string>([
 
 export const PERSONAL_SENDER_DOMAINS = new Set<string>([
   'email.teamsnap.com',
+  // Schools and the apps they send through (owner-supplied 2026-09-25 -- not
+  // inferred from mailbox contents).
+  'cobbk12.org',
+  'atlantaspeechschool.org',
+  'atlantaspeechschoolorg.myenotice.com',
+  'pikmykid.com',
+  'playupward.org',
 ]);
+
+/**
+ * Anchored suffix match: the domain itself, or a subdomain of it.
+ *
+ * NOT a substring test. 'Atlanta' is a substring of 'atlantaspeechschool.org',
+ * and that exact collision class already demoted 184 real deal emails once
+ * (searchRules, fixed 2026-09-18 by matching sender identity only). A boundary
+ * is the whole point: 'playupward.org' must match 'mail.playupward.org' and
+ * must not match 'notplayupward.org'.
+ */
+export function matchesPersonalDomain(senderDomain: string): boolean {
+  const d = senderDomain.toLowerCase().trim();
+  if (!d) return false;
+  for (const listed of PERSONAL_SENDER_DOMAINS) {
+    if (d === listed || d.endsWith(`.${listed}`)) return true;
+  }
+  return false;
+}
 
 export const PERSONAL_SENDER_ADDRESSES = new Set<string>([]);
 

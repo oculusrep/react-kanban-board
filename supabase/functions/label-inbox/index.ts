@@ -29,7 +29,7 @@ import {
   applyLabelToMessage,
 } from '../_shared/gmail.ts';
 import { authorizeCaller } from '../_shared/caller-auth.ts';
-import { PERSONAL_SENDER_DOMAINS, PERSONAL_SENDER_ADDRESSES } from '../_shared/tier1.ts';
+import { PERSONAL_SENDER_DOMAINS, PERSONAL_SENDER_ADDRESSES, matchesPersonalDomain } from '../_shared/tier1.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -112,7 +112,7 @@ function decide(row: {
   // oculusrep.com and which no sender-domain rule can ever match.
   const sender = (row.sender_email ?? '').toLowerCase().trim();
   const senderDomain = sender.split('@')[1] ?? '';
-  if (PERSONAL_SENDER_ADDRESSES.has(sender) || PERSONAL_SENDER_DOMAINS.has(senderDomain)) {
+  if (PERSONAL_SENDER_ADDRESSES.has(sender) || matchesPersonalDomain(senderDomain)) {
     return { label: LABEL.personal, sourceVerdict: 'personal:sender_domain' };
   }
   if (row.personal_thread) {
@@ -139,7 +139,10 @@ function decide(row: {
     };
   }
 
-  if (EVENT_RE.test(row.subject ?? '')) {
+  // LinkedIn's "invitation" is a connection request, never an event, and it is
+  // 22% of what the event vocabulary catches. Carved out by sender, measured.
+  const isLinkedIn = /(^|\.)linkedin\.com$/.test(senderDomain);
+  if (!isLinkedIn && EVENT_RE.test(row.subject ?? '')) {
     return { label: LABEL.events, sourceVerdict: 'event_subject' };
   }
 
@@ -267,7 +270,7 @@ serve(async (req) => {
       // only way a reply from outside the personal domain -- the owner's own
       // sent mail included -- can be caught.
       const personalThreads = new Set<string>();
-      const personalSenders = [...PERSONAL_SENDER_DOMAINS].map((d) => `%@${d}`);
+      const personalSenders = [...PERSONAL_SENDER_DOMAINS].flatMap((d) => [`%@${d}`, `%.${d}`]);
       for (const pattern of personalSenders) {
         const { data: rows } = await supabase
           .from('emails')
