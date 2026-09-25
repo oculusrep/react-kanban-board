@@ -590,6 +590,38 @@ export function parseGmailMessage(
 }
 
 /**
+ * Remove a label from a message.
+ *
+ * Deliberately NOT the mirror of applyLabelToMessage: it resolves the label by
+ * name and, if that label does not exist in the mailbox, returns success having
+ * done nothing. It never creates a label in order to remove it, and it never
+ * touches INBOX -- the caller passes an OVIS label name, and the caller is
+ * expected to have checked email_label first, so that only labels OVIS applied
+ * can be taken away. A label the owner made by hand has no email_label row and
+ * so is never a candidate.
+ */
+export async function removeLabelFromMessage(
+  accessToken: string,
+  messageId: string,
+  labelName: string,
+): Promise<{ success: boolean; error?: string; missing?: boolean }> {
+  try {
+    const label = await findLabelByName(accessToken, labelName);
+    if (!label) {
+      // Nothing to remove. Not an error: the end state is what was asked for.
+      return { success: true, missing: true };
+    }
+    await modifyMessageLabels(accessToken, messageId, [], [label.id]);
+    return { success: true };
+  } catch (error: any) {
+    if (error?.status === 403) {
+      return { success: false, error: 'Permission denied - gmail.modify scope required' };
+    }
+    return { success: false, error: error?.message ?? String(error) };
+  }
+}
+
+/**
  * Sync emails for a connection with proper 404 handling
  */
 export async function syncEmailsForConnection(

@@ -27,6 +27,7 @@ import {
   refreshAccessToken,
   isTokenExpired,
   applyLabelToMessage,
+  removeLabelFromMessage,
 } from '../_shared/gmail.ts';
 import { authorizeCaller } from '../_shared/caller-auth.ts';
 import { PERSONAL_SENDER_DOMAINS, PERSONAL_SENDER_ADDRESSES, matchesPersonalDomain } from '../_shared/tier1.ts';
@@ -219,6 +220,7 @@ serve(async (req) => {
   let onlyLabels: Set<string> | null = null;
   let resolveUnknown = false;
   let maxApplies = 250;
+  let reconcile = false;
   try {
     const body = await req.json();
     // Writes require saying so. Anything else, including an empty body, is a dry run.
@@ -234,6 +236,10 @@ serve(async (req) => {
     // resumable: already-applied rows are skipped and each run does at most this
     // many applies. Re-invoke until remaining_to_apply is 0.
     if (typeof body?.max_applies === 'number') maxApplies = body.max_applies;
+    // Reconcile: remove OVIS labels that no longer match the current decision.
+    // Only labels email_label records as applied-and-not-removed are eligible,
+    // so a hand-made label -- which has no row -- can never be a candidate.
+    reconcile = body?.reconcile === true;
   } catch {
     // no body — dry run
   }
@@ -434,6 +440,53 @@ serve(async (req) => {
         }
       }
 
+      // ----------------------------------------------------------------
+      // RECONCILE. For each message, any label OVIS applied that is not the
+      // label OVIS would apply now is stale and comes off. Scoped twice over:
+      // the candidate set is read from email_label (so only OVIS's own writes
+      // are touchable), and each removal is matched to a decision for that
+      // exact message.
+      // ----------------------------------------------------------------
+      let staleFound = 0;
+      let removed = 0;
+      let removeFailed = 0;
+      const staleExamples: Array<Record<string, unknown>> = [];
+      if (reconcile) {
+        const current = new Map(decisions.map((d) => [d.gmailId, d.label as string]));
+        const { data: live, error: liveErr } = await supabase
+          .from('email_label')
+          .select('id, gmail_id, label')
+          .eq('gmail_connection_id', connection.id)
+          .not('applied_at', 'is', null)
+          .is('removed_at', null);
+        if (liveErr) throw new Error(`email_label read: ${liveErr.message}`);
+
+        for (const row of live ?? []) {
+          const want = current.get(row.gmail_id);
+          // Not in this run's enumeration (e.g. archived since) -> leave alone.
+          if (!want) continue;
+          if (row.label === want) continue;
+          staleFound++;
+          if (staleExamples.length < 10) {
+            staleExamples.push({ gmail_id: row.gmail_id, remove: row.label, keep: want });
+          }
+          if (dryRun) continue;
+          if (removed + removeFailed >= maxApplies) continue;
+          const res = await removeLabelFromMessage(accessToken, row.gmail_id, row.label);
+          if (res.success) {
+            removed++;
+            await supabase.from('email_label')
+              .update({ removed_at: new Date().toISOString(), remove_error: null })
+              .eq('id', row.id);
+          } else {
+            removeFailed++;
+            await supabase.from('email_label')
+              .update({ remove_error: res.error ?? 'unknown' })
+              .eq('id', row.id);
+          }
+        }
+      }
+
       perMailbox.push({
         mailbox: connection.google_email,
         inbox_total: inboxIds.length,
@@ -446,6 +499,10 @@ serve(async (req) => {
         apply_failed: failed,
         already_applied: alreadyApplied,
         remaining_to_apply: remaining,
+        stale_found: staleFound,
+        removed,
+        remove_failed: removeFailed,
+        stale_examples: staleExamples,
       });
     }
 
