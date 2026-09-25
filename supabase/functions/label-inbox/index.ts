@@ -424,8 +424,14 @@ serve(async (req) => {
           if (onlyLabels && !onlyLabels.has(d.label)) continue;
           if (done.has(`${d.gmailId}|${d.label}`)) { alreadyApplied++; continue; }
           if (applied + failed >= maxApplies) { remaining++; continue; }
-          const res = await applyLabelToMessage(accessToken, d.gmailId, d.label);
-          if (res.success) applied++; else failed++;
+
+          // INTENT ROW FIRST, then the Gmail call. The label watcher attributes
+          // a label change by looking for OVIS's own row; writing the row after
+          // the call leaves a window in which Gmail knows about a label the
+          // database does not, and an event observed in that window would be
+          // credited to the owner as a correction. Writing first inverts the
+          // race into a harmless one: a row with applied_at null, which is
+          // already the shape of a failed apply.
           await supabase.from('email_label').upsert({
             email_id: d.emailId,
             gmail_id: d.gmailId,
@@ -433,10 +439,20 @@ serve(async (req) => {
             gmail_connection_id: connection.id,
             label: d.label,
             source_verdict: d.sourceVerdict,
-            applied_at: res.success ? new Date().toISOString() : null,
-            apply_error: res.success ? null : (res.error ?? 'unknown'),
+            applied_at: null,
+            apply_error: null,
             dry_run: false,
           }, { onConflict: 'gmail_id,gmail_connection_id,label' });
+
+          const res = await applyLabelToMessage(accessToken, d.gmailId, d.label);
+          if (res.success) applied++; else failed++;
+
+          await supabase.from('email_label').update({
+            applied_at: res.success ? new Date().toISOString() : null,
+            apply_error: res.success ? null : (res.error ?? 'unknown'),
+          }).eq('gmail_id', d.gmailId)
+            .eq('gmail_connection_id', connection.id)
+            .eq('label', d.label);
         }
       }
 

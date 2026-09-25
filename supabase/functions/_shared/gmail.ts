@@ -282,6 +282,88 @@ export function lastFullyConsumedHistoryId(
   return null;
 }
 
+/** A label change from the history feed. */
+export interface LabelHistoryEvent {
+  gmailId: string;
+  threadId: string;
+  labelIds: string[];
+  type: 'added' | 'removed';
+  historyId: string;
+}
+
+/**
+ * Label changes since a history id.
+ *
+ * Separate from listMessageHistory on purpose: it asks for different
+ * historyTypes and it runs off its OWN watermark. Sharing last_history_id with
+ * message ingestion would let one consumer drag the cursor past events the
+ * other has not read -- the same class of bug as the watermark overrun fixed
+ * 2026-09-25, and the reason that fix had to land first.
+ */
+export async function listLabelHistory(
+  accessToken: string,
+  startHistoryId: string,
+): Promise<{ events: LabelHistoryEvent[]; historyId: string; truncated: boolean }> {
+  const events: LabelHistoryEvent[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+  let historyId = startHistoryId;
+  let truncated = false;
+
+  do {
+    const params = new URLSearchParams({
+      startHistoryId,
+      maxResults: String(HISTORY_PAGE_SIZE),
+    });
+    // Repeated key: the API takes historyTypes more than once, not a CSV.
+    params.append('historyTypes', 'labelAdded');
+    params.append('historyTypes', 'labelRemoved');
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const response = await gmailRequest<{
+      history?: Array<{
+        id: string;
+        labelsAdded?: Array<{ message: { id: string; threadId: string }; labelIds: string[] }>;
+        labelsRemoved?: Array<{ message: { id: string; threadId: string }; labelIds: string[] }>;
+      }>;
+      historyId: string;
+      nextPageToken?: string;
+    }>(`/users/me/history?${params}`, accessToken);
+
+    for (const item of response.history ?? []) {
+      for (const added of item.labelsAdded ?? []) {
+        events.push({
+          gmailId: added.message.id,
+          threadId: added.message.threadId,
+          labelIds: added.labelIds ?? [],
+          type: 'added',
+          historyId: item.id,
+        });
+      }
+      for (const removed of item.labelsRemoved ?? []) {
+        events.push({
+          gmailId: removed.message.id,
+          threadId: removed.message.threadId,
+          labelIds: removed.labelIds ?? [],
+          type: 'removed',
+          historyId: item.id,
+        });
+      }
+    }
+
+    historyId = response.historyId ?? historyId;
+    pageToken = response.nextPageToken;
+    pages++;
+    if (pageToken && pages >= MAX_HISTORY_PAGES) {
+      truncated = true;
+      console.warn(`[label-watcher] history truncated at ${pages} pages (${events.length} events)`);
+      break;
+    }
+  } while (pageToken);
+
+  return { events, historyId, truncated };
+}
+
 /**
  * List recent messages (full sync fallback)
  * Fetches all recent messages without label filtering to capture:
