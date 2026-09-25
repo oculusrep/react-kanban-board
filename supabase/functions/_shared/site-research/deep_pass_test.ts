@@ -1,10 +1,12 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
-  buildEmployersCsv, buildFillList, buildSchoolsCsv, extractStep1Schools, isPoBox, mergeFills, recordEmployer,
-  type RecordedEmployer, validateSchoolFill,
+  type AtlasCoffeeRow, buildCompetitorsCsv, buildEmployersCsv, buildFillList, buildSchoolsCsv, densityCountable,
+  extractStep1Schools, isPoBox, mergeFills, recordCoffeeCompetitor, type RecordedCompetitor, recordEmployer,
+  type RecordedEmployer, streetKey, validateSchoolFill,
 } from './deep-pass.ts'
 import { type DeepPassDb, type DeepPassDeps, runDeepPassIteration } from './deep-pass-worker.ts'
 import { distanceBetweenAddressesTool, distanceIfExact, interpretCensus } from './geocode.ts'
+import { sanitizeModelText } from './loop.ts'
 import type { ClaimedRun, WorkerDb } from './iteration.ts'
 import type { CreateFn, ModelResponse } from './loop.ts'
 import { esriDataQuality } from './snapshot.ts'
@@ -214,6 +216,12 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
     webSearchTool: { type: 'web_search_20260209', name: 'web_search' },
     chain: () => Promise.resolve(),
     edgePrivate: () => Promise.resolve(EDGE),
+    atlasCoffee: () => Promise.resolve([{
+      name: 'Zebulon & Bass', brand: 'Starbucks', operator_type: 'national_dt' as const, street: null,
+      city: 'Macon', state: 'GA', zip: null, latitude: 33.99, longitude: -84.41, distance_miles: 3.1,
+      drive_thru: true, company_operated: true, rtm_sales: 2543370, sales_as_of: '2026-07-08',
+      source: 'Starbucks Atlas', notes: 'store_type DT',
+    }]),
     recordEmployer: (input, site) => recordEmployer(input, site, () =>
       Promise.resolve({ latitude: 34.0211, longitude: -84.4158, matched_address: '777 HEMLOCK ST, MACON, GA', match_quality: 'exact' as const, candidates: 1 })),
     exportFiles: (_ss, files) => {
@@ -250,12 +258,13 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(!deep.includes('https://x.example'))
 
   const schools = sim.uploads.find((u) => u.name === 'schools.csv')!.text.split('\r\n')
-  assertEquals(schools[0], 'name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
+  assert(sim.uploads.some((u) => u.name === 'competitors.csv'), 'competitors.csv is exported')
+  assertEquals(schools[0], 'flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
   // Tiny Montessori (42 pupils) is filtered OUT of the file but stays inside the band totals above.
-  assertEquals(schools.slice(1, -1).map((l) => l.split(',')[0]), ['Alpha ES', 'Rim HS', 'Pine Academy', 'Bravo MS', 'Future ES', 'Quail School'])
-  assert(!schools.some((l) => l.startsWith('Tiny Montessori')))
+  // Nothing is filtered now: the 42-pupil school is exported like every other row.
+  assertEquals(schools.slice(1, -1).map((l) => l.split(',')[1]), ['Alpha ES', 'Tiny Montessori', 'Rim HS', 'Pine Academy', 'Bravo MS', 'Future ES', 'Quail School'])
   assert(deep.includes('"enrollment_total": 542'), 'the 1 mi total still counts the filtered school')
-  const row = (name: string) => schools.find((l) => l.startsWith(name))!
+  const row = (name: string) => schools.find((l) => l.split(',')[1] === name || l.startsWith(`,${name}`))!
   assert(row('Rim HS').includes(',1,3,2023-2024,NCES,NCES,'), row('Rim HS')) // distance 1.0 → band 3 by membership
   assert(row('Bravo MS').includes(',812,') && row('Bravo MS').includes(',WEB,NCES,'), row('Bravo MS'))
   assert(row('Pine Academy').includes('900 PINE RD,MACON,GA,31211,"900 PINE RD, MACON, GA 31211"'), row('Pine Academy'))
@@ -263,17 +272,18 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(row('Future ES').includes('planned (NCES status Future)'), row('Future ES'))
 
   const employers = sim.uploads.find((u) => u.name === 'employers.csv')!.text.split('\r\n')
-  assertEquals(employers[0], 'name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
-  assertEquals(employers[1], 'Navicent Hospital,hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,2,3,https://navicent.example,2025,')
+  assertEquals(employers[0], 'flag,name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
+  assertEquals(employers[1], ',Navicent Hospital,hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,2,3,https://navicent.example,2025,')
   assertEquals(employers.filter((l) => l.toLowerCase().includes('kroger')), []) // retail rejected, never in the file
-  assert(employers[2].startsWith(`"'=HYPERLINK(""x"")"`), employers[2]) // formula guard + quote doubling
+  assert(employers[2].startsWith(`CHECK,"'=HYPERLINK(""x"")"`), employers[2]) // flag, then formula guard + quote doubling
 
   const msg = sim.finalized[0]
   assertEquals(msg.parsed, false) // never touches the thread's archetype columns
   assert(msg.content.startsWith('**Why Here**\nThe case.'))
-  assert(msg.content.includes('schools.csv (6 rows; 1 excluded as under 100 enrolled; 2 kept with size unknown)'), msg.content)
-  assert(msg.content.includes('employers.csv (2 rows; 1 kept with size unknown)'), msg.content)
-  assert(msg.content.includes('File filters do not change the banded totals above.'))
+  assert(msg.content.includes('schools.csv (7 rows; 2 flagged CHECK)'), msg.content)
+  assert(msg.content.includes('employers.csv (2 rows; 1 flagged CHECK)'), msg.content)
+  assert(msg.content.includes('competitors.csv (1 rows)'), msg.content)
+  assert(msg.content.includes('Nothing is filtered out of an export'))
 })
 
 Deno.test('prepare with nothing to fill goes straight to the deep pass', async () => {
@@ -349,7 +359,7 @@ Deno.test('distance_between_addresses: exact both ends, else no distance', async
   assertEquals([(r3.address_a as { match_quality: string }).match_quality, r3.distance_miles], ['no_match', null])
 })
 
-Deno.test('CSV size floors: under 100 excluded, unknown kept, band totals untouched', () => {
+Deno.test('exports filter nothing: every row is written, small and unknown alike, flagged CHECK', () => {
   const school = (id: string, name: string, enrollment: number | null, d: number): SchoolRecordLike => ({
     school_id: `public:${id}`, public_private: 'public', name, street: '1 A St', city: 'Macon', state: 'GA', zip: '31210',
     enrollment, school_level: 'Elementary', grade_low: 'PK', grade_high: '05', distance_miles: d, band: 1,
@@ -357,24 +367,118 @@ Deno.test('CSV size floors: under 100 excluded, unknown kept, band totals untouc
   })
   const built = buildSchoolsCsv([
     school('a', 'Big ES', 500, 0.2),
-    school('b', 'Exactly One Hundred ES', 100, 0.3),   // the floor is inclusive: 100 stays
-    school('c', 'Ninety-Nine ES', 99, 0.4),            // out
-    school('d', 'Unknown ES', null, 0.5),              // unknown: kept
+    school('c', 'Ninety-Nine ES', 99, 0.4),   // used to be dropped; now exported
+    school('d', 'Unknown ES', null, 0.5),     // exported, flagged
   ], [])
-  assertEquals(built.rows.map((r) => r.name), ['Big ES', 'Exactly One Hundred ES', 'Unknown ES'])
-  assertEquals(built.filtered, { kept: 3, below_threshold: 1, unknown_size_kept: 1 })
-
-  // A web fill that lands under the floor is filtered like any other small school.
-  const filled = buildSchoolsCsv([school('e', 'Filled Small ES', null, 0.6)], [{ school_id: 'public:e', enrollment: 60, source_url: 'https://x' }])
-  assertEquals([filled.rows.length, filled.filtered.below_threshold], [0, 1])
+  assertEquals(built.rows.map((r) => r.name), ['Big ES', 'Ninety-Nine ES', 'Unknown ES'])
+  assertEquals(built.filtered, { kept: 3, flagged: 1 })
+  assertEquals(built.rows.map((r) => r.flag), [null, null, 'CHECK'])
 
   const emp = (name: string, headcount: number | null): RecordedEmployer => ({
-    name, employer_type: 'hospital', street: null, city: 'Macon', state: 'GA', zip: null, headcount,
-    source: 'https://x', source_year: null, notes: null, distance_miles_unrounded: 1, geocode: null,
+    name, employer_type: 'hospital', distance_source: 'census_geocode', street: null, city: 'Macon',
+    state: 'GA', zip: null, headcount, source: 'https://x', source_year: null, notes: null,
+    distance_miles_unrounded: 1, geocode: null,
   })
-  const employers = buildEmployersCsv([emp('Big Hospital', 4600), emp('Hundred Clinic', 100), emp('Small Office', 12), emp('Unsized Campus', null)])
-  assertEquals(employers.rows.map((r) => r.name), ['Big Hospital', 'Hundred Clinic', 'Unsized Campus'])
-  assertEquals(employers.filtered, { kept: 3, below_threshold: 1, unknown_size_kept: 1 })
+  const employers = buildEmployersCsv([emp('Big Hospital', 4600), emp('Small Office', 12), emp('Unsized Campus', null)])
+  assertEquals(employers.rows.map((r) => r.name), ['Big Hospital', 'Small Office', 'Unsized Campus'])
+  assertEquals(employers.filtered, { kept: 3, flagged: 1 })
 })
 
 type SchoolRecordLike = Parameters<typeof buildSchoolsCsv>[0][number]
+
+// ---------------------------------------------------------------------------
+// One generator, one distance (Macon 2026-09-16: Carter Elementary 0.3 mi in schools.csv, 0.2 mi in
+// employers.csv and the prose, because recording a school as an employer re-geocoded its street).
+// ---------------------------------------------------------------------------
+Deno.test('a school recorded as an employer keeps its NCES distance and is not re-geocoded', async () => {
+  const site = { latitude: 32.880362, longitude: -83.760908 }
+  const schools: SchoolRecordLike[] = [{
+    school_id: 'public:A', public_private: 'public', name: 'Carter Elementary School', street: '5910 Zebulon Rd',
+    city: 'Macon', state: 'GA', zip: '31210', enrollment: 520, school_level: 'Elementary', grade_low: 'PK',
+    grade_high: '05', distance_miles: 0.3, band: 1, school_year: '2024-2025', status: 'Open',
+    address_is_mailing: false, notes: [],
+  }]
+  let geocoded = 0
+  const geo = () => { geocoded++; return Promise.resolve({ latitude: 32.8818, longitude: -83.7586, matched_address: '5910 ZEBULON RD', match_quality: 'exact' as const, candidates: 1 }) }
+
+  const r = await recordEmployer(
+    { name: 'Sonny Carter Elementary School', employer_type: 'school', street: '5910 ZEBULON ROAD', city: 'Macon', state: 'GA', source: 'https://x' },
+    site, geo, schools,
+  )
+  const rec = r.recorded as { distance_miles_unrounded: number; distance_source: string; notes: string }
+  assertEquals([rec.distance_miles_unrounded, rec.distance_source, r.distance_miles], [0.3, 'school_on_file', 0.3])
+  assertEquals(geocoded, 0) // never re-geocoded
+  assert(rec.notes.includes('not re-geocoded'), rec.notes)
+
+  // An employer that is NOT a school on file still geocodes normally.
+  const other = await recordEmployer(
+    { name: 'Piedmont Macon North', employer_type: 'hospital', street: '400 Charter Blvd', city: 'Macon', state: 'GA', source: 'https://y' },
+    site, geo, schools,
+  )
+  assertEquals((other.recorded as { distance_source: string }).distance_source, 'census_geocode')
+  assertEquals(geocoded, 1)
+})
+
+Deno.test('streetKey normalises the spellings that produced the double distance', () => {
+  assertEquals(streetKey('5910 ZEBULON ROAD'), streetKey('5910 Zebulon Rd.'))
+  assertEquals(streetKey('5671 Calvin Drive'), streetKey('5671 CALVIN DR'))
+  assertEquals(streetKey('  '), null)
+})
+
+// ---------------------------------------------------------------------------
+// Coffee competitors: classification governs claims, never inclusion.
+// ---------------------------------------------------------------------------
+Deno.test('record_coffee_competitor: operator_type required; institutional is exported but not countable', async () => {
+  const site = { latitude: 32.880362, longitude: -83.760908 }
+  const geo = () => Promise.resolve({ latitude: 32.8812, longitude: -83.7588, matched_address: 'X', match_quality: 'exact' as const, candidates: 1 })
+  const bad = await recordCoffeeCompetitor({ name: 'Somewhere Coffee', operator_type: 'drive_thru', source: 'https://x' }, site, geo)
+  assertEquals(bad.recorded, null)
+  assertEquals((bad.rejected as Array<{ field: string }>)[0].field, 'operator_type')
+
+  // Cathedral Coffee, inside Northway Church — counted as a drive-thru competitor on 2026-09-16.
+  const inst = await recordCoffeeCompetitor(
+    { name: 'Cathedral Coffee', operator_type: 'institutional', street: '5915 Zebulon Rd', city: 'Macon', state: 'GA', drive_thru: true, source: 'https://x', notes: 'inside Northway Church' },
+    site, geo)
+  assertEquals(inst.counts_toward_density, false)
+  assert((inst.recorded as { latitude: number }).latitude !== null) // still mapped
+  assert(String(inst.note).includes('may NOT be counted'))
+
+  const nat = await recordCoffeeCompetitor(
+    { name: 'Dutch Bros Zebulon', brand: 'Dutch Bros', operator_type: 'national_dt', street: '5781 Zebulon Rd', city: 'Macon', state: 'GA', drive_thru: true, source: 'https://y' },
+    site, geo)
+  assertEquals(nat.counts_toward_density, true)
+})
+
+Deno.test('competitors.csv: Atlas rows plus recorded rows, deduped; density counts only dt types', () => {
+  const atlas: AtlasCoffeeRow[] = [{
+    name: 'Zebulon & Bass', brand: 'Starbucks', operator_type: 'national_dt', street: null, city: 'Macon',
+    state: 'GA', zip: null, latitude: 32.92, longitude: -83.75, distance_miles: 3.1, drive_thru: true,
+    company_operated: true, rtm_sales: 2543370, sales_as_of: '2026-07-08', source: 'Atlas', notes: 'store_type DT',
+  }, {
+    name: 'Target Macon 1394', brand: 'Starbucks', operator_type: 'institutional', street: '5080 Riverside Dr',
+    city: 'Macon', state: 'GA', zip: null, latitude: 32.9, longitude: -83.72, distance_miles: 4.2, drive_thru: null,
+    company_operated: false, rtm_sales: null, sales_as_of: null, source: 'Atlas', notes: 'Target',
+  }]
+  const recorded: RecordedCompetitor[] = [{
+    name: 'Cathedral Coffee', brand: null, operator_type: 'institutional', street: '5915 Zebulon Rd', city: 'Macon',
+    state: 'GA', zip: '31210', latitude: 32.881, longitude: -83.759, distance_miles_unrounded: 0.2,
+    drive_thru: true, source: 'https://x', notes: 'inside Northway Church',
+  }, {
+    name: 'Dutch Bros Zebulon', brand: 'Dutch Bros', operator_type: 'national_dt', street: '5781 Zebulon Rd',
+    city: 'Macon', state: 'GA', zip: '31210', latitude: 32.884, longitude: -83.769, distance_miles_unrounded: 0.63,
+    drive_thru: true, source: 'https://y', notes: null,
+  }]
+  const built = buildCompetitorsCsv(atlas, [...recorded, recorded[0]]) // duplicate ignored
+  assertEquals(built.rows.map((r) => r.name), ['Cathedral Coffee', 'Dutch Bros Zebulon', 'Zebulon & Bass', 'Target Macon 1394'])
+  assertEquals(built.rows.map((r) => r.distance_mi), [0.2, 0.6, 3.1, 4.2])
+  assertEquals(built.filtered, { kept: 4, flagged: 0 })
+  // "drive-thru competitors within 1 mi" counts Dutch Bros only — not Cathedral Coffee.
+  assertEquals(densityCountable(built.rows, 1).map((r) => r.name), ['Dutch Bros Zebulon'])
+  assertEquals(densityCountable(built.rows, 5).length, 2)
+})
+
+Deno.test('sanitizeModelText strips the citation markup that leaked into the 09-16 report', () => {
+  const dirty = 'described by the operator as a <cite index="0-0">103-bed not-for-profit community hospital</parameter> (piedmont.org)'
+  assertEquals(sanitizeModelText(dirty), 'described by the operator as a 103-bed not-for-profit community hospital (piedmont.org)')
+  assertEquals(sanitizeModelText('plain text  with   spaces '), 'plain text with spaces')
+})

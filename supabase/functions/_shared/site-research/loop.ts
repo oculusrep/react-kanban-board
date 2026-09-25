@@ -218,6 +218,21 @@ export async function requestOnce(opts: {
  * A clear message for an API rejection about the code-execution container, or null when the
  * error is not about the container. Used so a run fails with an explanation, not a raw 400.
  */
+/**
+ * Strip citation/quoting markup the model sometimes emits around web-search quotes. The 2026-09-16
+ * Macon report shipped three fragments like `<cite index="0-0">103-bed ... hospital</parameter>` —
+ * opening and closing tags that do not even match, straight into the committee-facing prose. The text
+ * inside the tags is real content and is kept; only the markup goes.
+ */
+export function sanitizeModelText(text: string): string {
+  return text
+    .replace(/<\/?(?:cite|parameter|antml:[a-z_-]+)\b[^>]*>/gi, '')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 export function containerErrorMessage(e: unknown, containerId: string | null | undefined): string | null {
   const status = (e as { status?: number })?.status;
   const msg = String((e as { message?: string })?.message ?? e);

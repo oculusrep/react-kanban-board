@@ -104,8 +104,16 @@ export function byDistance<T extends { distance_mi: CsvCell; name: CsvCell }>(a:
 // schools.csv
 // ---------------------------------------------------------------------------
 
+/**
+ * First column of every export. Blank when the row needs nothing; CHECK when a value the mapper will
+ * care about is missing or unverified (no enrollment or headcount on file, an address NCES could not
+ * confirm as physical, a competitor that would not geocode). NOTHING is ever filtered out of an
+ * export because of it — filtering happens at the mapping step, not here (decided 2026-09-25).
+ */
+export const FLAG_CHECK = 'CHECK'
+
 export const SCHOOLS_COLUMNS = [
-  'name', 'street', 'city', 'state', 'zip', 'full_address', 'enrollment',
+  'flag', 'name', 'street', 'city', 'state', 'zip', 'full_address', 'enrollment',
   'school_level', 'grade_low', 'grade_high', 'public_private', 'distance_mi',
   'band', 'school_year', 'enrollment_source', 'address_source', 'notes',
 ] as const
@@ -165,6 +173,8 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
     .filter(Boolean).join('; ')
 
   return {
+    // CHECK when the mapper needs to look: no enrollment on file, or no confirmed physical street.
+    flag: enrollment === null || street === null ? FLAG_CHECK : null,
     name: blankToNull(s.name),
     street,
     city,
@@ -190,7 +200,7 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
 // ---------------------------------------------------------------------------
 
 export const EMPLOYERS_COLUMNS = [
-  'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
+  'flag', 'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
   'distance_mi', 'band', 'source', 'source_year', 'notes',
 ] as const
 export type EmployersColumn = (typeof EMPLOYERS_COLUMNS)[number]
@@ -216,7 +226,9 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
   const city = blankToNull(e.city)
   const state = blankToNull(e.state)
   const zip = blankToNull(e.zip)
+  const headcount = typeof e.headcount === 'number' && Number.isInteger(e.headcount) && e.headcount >= 0 ? e.headcount : null
   return {
+    flag: headcount === null ? FLAG_CHECK : null,
     name: blankToNull(e.name),
     employer_type: blankToNull(e.employer_type),
     street,
@@ -224,11 +236,85 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
     state,
     zip,
     full_address: fullAddress(street, city, state, zip),
-    headcount: typeof e.headcount === 'number' && Number.isInteger(e.headcount) && e.headcount >= 0 ? e.headcount : null,
+    headcount,
     distance_mi: oneDecimal(e.distance_miles),
     band: bandFor(e.distance_miles),
     source: blankToNull(e.source),
     source_year: e.source_year === null || e.source_year === undefined || e.source_year === '' ? null : e.source_year,
     notes: blankToNull(e.notes),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// competitors.csv — every coffee operation within 5 mi, mapped in Sites USA
+// ---------------------------------------------------------------------------
+
+export const COMPETITORS_COLUMNS = [
+  'flag', 'name', 'brand', 'operator_type', 'street', 'city', 'state', 'zip', 'lat', 'lng',
+  'distance_mi', 'drive_thru', 'company_operated', 'rtm_sales', 'sales_as_of', 'source', 'notes',
+] as const
+export type CompetitorsColumn = (typeof COMPETITORS_COLUMNS)[number]
+export type CompetitorsRow = Record<CompetitorsColumn, CsvCell>
+
+/**
+ * How a coffee operation competes, which is not the same question as whether it has a lane:
+ *   national_dt   national or regional drive-thru brand (Dutch Bros, 7 Brew, Scooter's, Dunkin', Caribou)
+ *   local_dt      independent or local operator with a drive-thru
+ *   institutional coffee inside a church, school, hospital, grocery, campus or office building,
+ *                 with or without a lane — Cathedral Coffee inside Northway Church is the case that
+ *                 made this necessary (counted as a drive-thru competitor on 2026-09-16; it is not)
+ *   cafe          no drive-thru
+ * Only national_dt and local_dt may support a competitive-density claim; every type is exported.
+ */
+export const COMPETITOR_OPERATOR_TYPES = ['national_dt', 'local_dt', 'institutional', 'cafe'] as const
+export type CompetitorOperatorType = (typeof COMPETITOR_OPERATOR_TYPES)[number]
+/** The types a "N drive-thru competitors within X mi" claim may count. */
+export const DENSITY_COUNTING_TYPES: readonly CompetitorOperatorType[] = ['national_dt', 'local_dt']
+
+export interface CompetitorInput {
+  name: string | null
+  brand: string | null
+  operator_type: CompetitorOperatorType | string | null
+  street: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  latitude: number | null
+  longitude: number | null
+  distance_miles: number | null // unrounded
+  drive_thru: boolean | null
+  company_operated: boolean | null
+  rtm_sales: number | null
+  sales_as_of: string | null
+  source: string | null
+  notes?: string | null
+}
+
+export function buildCompetitorRow(c: CompetitorInput): CompetitorsRow {
+  const street = blankToNull(c.street)
+  const city = blankToNull(c.city)
+  const state = blankToNull(c.state)
+  const zip = blankToNull(c.zip)
+  const located = typeof c.latitude === 'number' && typeof c.longitude === 'number'
+  return {
+    // CHECK when it could not be placed on a map, or when its operator type is unknown.
+    flag: !located || !blankToNull(String(c.operator_type ?? '')) ? FLAG_CHECK : null,
+    name: blankToNull(c.name),
+    brand: blankToNull(c.brand),
+    operator_type: blankToNull(String(c.operator_type ?? '')),
+    street,
+    city,
+    state,
+    zip,
+    lat: located ? c.latitude : null,
+    lng: located ? c.longitude : null,
+    distance_mi: oneDecimal(c.distance_miles),
+    drive_thru: c.drive_thru === null || c.drive_thru === undefined ? null : c.drive_thru,
+    company_operated: c.company_operated === null || c.company_operated === undefined ? null : c.company_operated,
+    // 0 upstream means NOT REPORTED, never zero sales.
+    rtm_sales: typeof c.rtm_sales === 'number' && c.rtm_sales > 0 ? c.rtm_sales : null,
+    sales_as_of: blankToNull(c.sales_as_of),
+    source: blankToNull(c.source),
+    notes: blankToNull(c.notes),
   }
 }

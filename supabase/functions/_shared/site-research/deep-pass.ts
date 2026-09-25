@@ -14,10 +14,11 @@
  */
 
 import {
-  buildEmployerRow, buildSchoolRow, byDistance, csvBytes, EMPLOYERS_COLUMNS, type EmployersRow,
-  SCHOOLS_COLUMNS, type SchoolFill, type SchoolsRow, toCsv,
+  buildCompetitorRow, buildEmployerRow, buildSchoolRow, byDistance, COMPETITOR_OPERATOR_TYPES,
+  COMPETITORS_COLUMNS, type CompetitorsRow, csvBytes, DENSITY_COUNTING_TYPES, EMPLOYERS_COLUMNS, type EmployersRow,
+  FLAG_CHECK, SCHOOLS_COLUMNS, type SchoolFill, type SchoolsRow, toCsv,
 } from '../csv.ts';
-import { ringFor, round1 } from './geo.ts';
+import { haversineMiles, ringFor, round1 } from './geo.ts';
 import { censusGeocode, distanceIfExact, type GeocodeMatch } from './geocode.ts';
 import { arcgisQuery, TOOL_DEFINITIONS } from './tools.ts';
 import { NCES_ARCGIS } from './nces-config.ts';
@@ -139,12 +140,121 @@ export const RECORD_EMPLOYER_TOOL = {
   },
 };
 
+export const RECORD_COFFEE_COMPETITOR_TOOL = {
+  name: 'record_coffee_competitor',
+  description:
+    'Record one coffee operation within 5 mi that is not a Starbucks (Starbucks come from the Atlas data ' +
+    'and are added to the export automatically). operator_type says how it competes, which is a different ' +
+    'question from whether it has a lane: national_dt (national or regional drive-thru brand — Dutch Bros, ' +
+    '7 Brew, Scooter\'s, Dunkin\', Caribou), local_dt (independent or local operator with a drive-thru), ' +
+    'institutional (coffee inside a church, school, hospital, grocery, campus or office building, with or ' +
+    'without a lane), cafe (no drive-thru). Every type is exported and mapped; only national_dt and ' +
+    'local_dt may be counted in a drive-thru competitive-density claim. The address is geocoded here for ' +
+    'the map: give the street as the source states it.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      brand: { type: 'string', description: 'The chain or brand, when it belongs to one.' },
+      operator_type: { type: 'string', enum: [...COMPETITOR_OPERATOR_TYPES] },
+      street: { type: 'string' },
+      city: { type: 'string' },
+      state: { type: 'string' },
+      zip: { type: 'string' },
+      drive_thru: { type: 'boolean', description: 'Does this location have a drive-thru lane?' },
+      source: { type: 'string' },
+      notes: { type: 'string', description: 'For institutional: the host (church, school, hospital, grocery).' },
+    },
+    required: ['name', 'operator_type', 'source'],
+  },
+};
+
+export interface RecordedCompetitor {
+  name: string;
+  brand: string | null;
+  operator_type: string;
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distance_miles_unrounded: number | null;
+  drive_thru: boolean | null;
+  source: string;
+  notes: string | null;
+}
+
+export async function recordCoffeeCompetitor(
+  input: Record<string, unknown>,
+  site: { latitude: number; longitude: number } | null,
+  geocode: (address: string) => Promise<GeocodeMatch | null> = censusGeocode,
+): Promise<Record<string, unknown>> {
+  const rejected: Array<{ field: string; reason: string }> = [];
+  const name = str(input.name);
+  const source = str(input.source);
+  const operatorType = str(input.operator_type);
+  if (!name || !source) return { recorded: null, rejected: [{ field: !name ? 'name' : 'source', reason: 'required' }] };
+  if (!operatorType || !(COMPETITOR_OPERATOR_TYPES as readonly string[]).includes(operatorType)) {
+    return {
+      recorded: null,
+      rejected: [{ field: 'operator_type', reason: `must be one of: ${COMPETITOR_OPERATOR_TYPES.join(', ')}` }],
+      note: 'Not recorded. Classify it: coffee inside a church, school, hospital, grocery or office building is institutional even when it has a lane.',
+    };
+  }
+
+  let street = str(input.street);
+  if (street && !STREET_WITH_NUMBER.test(street)) { rejected.push({ field: 'street', reason: 'must begin with the street number the source states' }); street = null; }
+  const city = str(input.city), state = str(input.state), zip = str(input.zip);
+  const notes: string[] = [];
+  const given = str(input.notes);
+  if (given) notes.push(clip(given, 500));
+
+  let match: GeocodeMatch | null = null;
+  let distance: number | null = null;
+  if (street && (city || zip)) {
+    const oneLine = [street, city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    try {
+      match = await geocode(oneLine);
+      distance = distanceIfExact(match, site);
+      if (!match) notes.push('Census geocoder found no match; not placed on the map');
+      else if (distance === null) notes.push(`Census geocoder match was ${match.match_quality} (${match.matched_address}); not placed on the map`);
+    } catch (e) {
+      notes.push(`Census geocoder unavailable (${e instanceof Error ? e.message : String(e)})`);
+    }
+  } else {
+    notes.push('no street address with a city or zip; not placed on the map');
+  }
+
+  const counts = (DENSITY_COUNTING_TYPES as readonly string[]).includes(operatorType);
+  const recorded: RecordedCompetitor = {
+    name: clip(name, 200), brand: str(input.brand) ? clip(str(input.brand)!, 120) : null,
+    operator_type: operatorType, street: street ? clip(street, 200) : null,
+    city: city ? clip(city, 100) : null, state: state ? clip(state, 50) : null, zip: zip ? clip(zip, 20) : null,
+    latitude: distance !== null && match ? match.latitude : null,
+    longitude: distance !== null && match ? match.longitude : null,
+    distance_miles_unrounded: distance,
+    drive_thru: typeof input.drive_thru === 'boolean' ? input.drive_thru : null,
+    source: clip(source, 2000), notes: notes.join('; ') || null,
+  };
+  return {
+    recorded,
+    distance_miles: distance === null ? null : round1(distance),
+    counts_toward_density: counts,
+    rejected,
+    note: counts
+      ? 'Recorded, and it counts toward a drive-thru competitive-density claim — say which types you counted.'
+      : `Recorded as ${operatorType}: exported and mapped, but it may NOT be counted in a "drive-thru competitors within X mi" statement.`,
+  };
+}
+
 const DEEP_PASS_OVIS_TOOLS = ['query_nearby_starbucks', 'query_municipal_projects', 'query_traffic_counts', 'geocode_address', 'distance_between_addresses'];
 
 export const SCHOOL_FILL_CLIENT_TOOLS: Array<Record<string, unknown>> = [RECORD_SCHOOL_FILL_TOOL];
 export const DEEP_PASS_CLIENT_TOOLS: Array<Record<string, unknown>> = [
   ...(TOOL_DEFINITIONS as unknown as Array<Record<string, unknown>>).filter((t) => DEEP_PASS_OVIS_TOOLS.includes(String(t.name))),
   RECORD_EMPLOYER_TOOL,
+  RECORD_COFFEE_COMPETITOR_TOOL,
 ];
 
 // ---------------------------------------------------------------------------
@@ -452,6 +562,8 @@ export function mergeFills(fills: AcceptedFill[]): Map<string, SchoolFill> {
 export interface RecordedEmployer {
   name: string;
   employer_type: EmployerType;
+  /** Where distance_miles_unrounded came from: the school row already on file, or this geocode. */
+  distance_source: 'school_on_file' | 'census_geocode' | null;
   street: string | null;
   city: string | null;
   state: string | null;
@@ -464,10 +576,38 @@ export interface RecordedEmployer {
   geocode: { match_quality: string; matched_address: string } | null;
 }
 
+/** Normalized street key: "5910 Zebulon Rd" and "5910 ZEBULON ROAD" are the same place. */
+export function streetKey(street: string | null | undefined): string | null {
+  const t = (street ?? '').trim().toLowerCase().replace(/[.,]/g, '');
+  if (!t) return null;
+  return t
+    .replace(/\b(road|rd)\b/g, 'rd').replace(/\b(drive|dr)\b/g, 'dr').replace(/\b(street|st)\b/g, 'st')
+    .replace(/\b(avenue|ave)\b/g, 'ave').replace(/\b(boulevard|blvd)\b/g, 'blvd')
+    .replace(/\b(parkway|pkwy)\b/g, 'pkwy').replace(/\b(lane|ln)\b/g, 'ln').replace(/\s+/g, ' ');
+}
+
+/**
+ * A generator has ONE distance. Schools arrive with NCES's own physical geocode; recording the same
+ * school as an institutional employer used to geocode its street again through Census and produce a
+ * second, different number (Macon 2026-09-16: Carter Elementary 0.3 mi in schools.csv, 0.2 mi in
+ * employers.csv and the prose). When the street matches a school already on file, that school's
+ * distance is reused and nothing is re-geocoded.
+ */
+export function knownSchoolDistance(
+  street: string | null | undefined,
+  schools: SchoolRecord[],
+): { school: SchoolRecord; distance_miles: number } | null {
+  const key = streetKey(street);
+  if (!key) return null;
+  const hit = schools.find((s) => streetKey(s.street) === key && s.distance_miles !== null);
+  return hit ? { school: hit, distance_miles: hit.distance_miles as number } : null;
+}
+
 export async function recordEmployer(
   input: Record<string, unknown>,
   site: { latitude: number; longitude: number } | null,
   geocode: (address: string) => Promise<GeocodeMatch | null> = censusGeocode,
+  schoolsOnFile: SchoolRecord[] = [],
 ): Promise<Record<string, unknown>> {
   const rejected: Array<{ field: string; reason: string }> = [];
   const name = str(input.name);
@@ -521,11 +661,20 @@ export async function recordEmployer(
 
   let match: GeocodeMatch | null = null;
   let distance: number | null = null;
-  if (street && (city || zip)) {
+  let distanceSource: RecordedEmployer['distance_source'] = null;
+
+  // A school already on file keeps its NCES distance: one generator, one distance.
+  const known = knownSchoolDistance(street, schoolsOnFile);
+  if (known) {
+    distance = known.distance_miles;
+    distanceSource = 'school_on_file';
+    notes.push(`distance from the NCES school row already on file (${known.school.name ?? known.school.school_id}), not re-geocoded`);
+  } else if (street && (city || zip)) {
     const oneLine = [street, city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
     try {
       match = await geocode(oneLine);
       distance = distanceIfExact(match, site);
+      if (distance !== null) distanceSource = 'census_geocode';
       if (!match) notes.push('Census geocoder found no match; distance not determined');
       else if (distance === null) notes.push(`Census geocoder match was ${match.match_quality} (${match.matched_address}); distance not determined`);
     } catch (e) {
@@ -536,7 +685,7 @@ export async function recordEmployer(
   }
 
   const recorded: RecordedEmployer = {
-    name: clip(name, 200), employer_type: employerType, street: street ? clip(street, 200) : null, city: city ? clip(city, 100) : null,
+    name: clip(name, 200), employer_type: employerType, distance_source: distanceSource, street: street ? clip(street, 200) : null, city: city ? clip(city, 100) : null,
     state: state ? clip(state, 50) : null, zip: zip ? clip(zip, 20) : null, headcount, source: clip(source, 2000),
     source_year: str(input.source_year) ? clip(String(input.source_year), 20) : null,
     notes: notes.join('; ') || null,
@@ -623,24 +772,17 @@ export function deepPassOpening(a: {
 // ---------------------------------------------------------------------------
 
 /**
- * Size floors for the EXPORTED FILES ONLY (decided 2026-09-16). The CSVs feed the map and slide
- * mapping, where a 40-pupil preschool or a 12-person office is noise. They are not analysis filters:
- * the banded school totals in the narrative come from Step 1's NCES totals, which count every school
- * in the band. Nothing here can reach those totals — buildSchoolsCsv has no path into them.
- *
- * A row whose size is UNKNOWN is kept: blank means unknown, and unknown is not the same as small.
- * Dropping it would hide a real school or employer that may well be large.
+ * NOTHING IS FILTERED OUT OF AN EXPORT (decided 2026-09-25, replacing the 100-enrolled / 100-staff
+ * floors). Every school, employer and coffee operation found is exported with its number, blank when
+ * unknown, and flagged CHECK when the mapper needs to look. Classification governs what the NARRATIVE
+ * may claim — small schools are not generators, institutional coffee is not a drive-thru competitor —
+ * never what reaches the file. Filtering is the mapping step's job.
  */
-export const MIN_SCHOOL_ENROLLMENT = 100;
-export const MIN_EMPLOYER_HEADCOUNT = 100;
-
 export interface CsvFilterCounts {
-  /** Rows written to the file. */
+  /** Rows written to the file (every row found). */
   kept: number;
-  /** Rows excluded for being under the floor. */
-  below_threshold: number;
-  /** Rows kept with no size on file. */
-  unknown_size_kept: number;
+  /** Rows written with a CHECK flag: no number on file, or not placeable on a map. */
+  flagged: number;
 }
 
 export function buildSchoolsCsv(
@@ -665,17 +807,10 @@ export function buildSchoolsCsv(
       return row;
     })
     .sort(byDistance);
-  // Enrollment here is post-fill: an NCES figure, or a web fill accepted for a school that had none.
-  const small = (r: SchoolsRow) => typeof r.enrollment === 'number' && r.enrollment < MIN_SCHOOL_ENROLLMENT;
-  const rows = all.filter((r) => !small(r));
   return {
-    csv: toCsv(SCHOOLS_COLUMNS, rows),
-    rows,
-    filtered: {
-      kept: rows.length,
-      below_threshold: all.length - rows.length,
-      unknown_size_kept: rows.filter((r) => typeof r.enrollment !== 'number').length,
-    },
+    csv: toCsv(SCHOOLS_COLUMNS, all),
+    rows: all,
+    filtered: { kept: all.length, flagged: all.filter((r) => r.flag === FLAG_CHECK).length },
   };
 }
 
@@ -692,17 +827,152 @@ export function buildEmployersCsv(recorded: RecordedEmployer[]): { csv: string; 
     }));
   }
   all.sort(byDistance);
-  const small = (r: EmployersRow) => typeof r.headcount === 'number' && r.headcount < MIN_EMPLOYER_HEADCOUNT;
-  const rows = all.filter((r) => !small(r));
   return {
-    csv: toCsv(EMPLOYERS_COLUMNS, rows),
-    rows,
-    filtered: {
-      kept: rows.length,
-      below_threshold: all.length - rows.length,
-      unknown_size_kept: rows.filter((r) => typeof r.headcount !== 'number').length,
-    },
+    csv: toCsv(EMPLOYERS_COLUMNS, all),
+    rows: all,
+    filtered: { kept: all.length, flagged: all.filter((r) => r.flag === FLAG_CHECK).length },
   };
 }
 
 export { csvBytes };
+
+// ---------------------------------------------------------------------------
+// competitors.csv
+// ---------------------------------------------------------------------------
+
+/** Every coffee operation within this many miles goes in competitors.csv. */
+export const COMPETITOR_RADIUS_MILES = 5;
+
+export interface AtlasCoffeeRow {
+  name: string | null;
+  brand: string;
+  operator_type: CompetitorOperatorTypeLike;
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  latitude: number;
+  longitude: number;
+  distance_miles: number;
+  drive_thru: boolean | null;
+  company_operated: boolean;
+  rtm_sales: number | null;
+  sales_as_of: string | null;
+  source: string;
+  notes: string | null;
+}
+type CompetitorOperatorTypeLike = 'national_dt' | 'local_dt' | 'institutional' | 'cafe';
+
+/**
+ * Starbucks within COMPETITOR_RADIUS_MILES, straight from the Atlas tables — the export never depends
+ * on the model having called a tool. Company-operated store_type DT / DTO is a drive-thru; a licensed
+ * kiosk inside a host business is institutional whatever its lane, which is the same rule applied to
+ * everyone else's coffee.
+ */
+// deno-lint-ignore no-explicit-any
+export async function atlasCoffeeWithin(service: any, site: { latitude: number; longitude: number }): Promise<AtlasCoffeeRow[]> {
+  const pt = { lat: site.latitude, lng: site.longitude };
+  const out: AtlasCoffeeRow[] = [];
+
+  const { data: stores, error: sErr } = await service
+    .from('starbucks_store')
+    .select('store_number, store_name, city, state, latitude, longitude')
+    .not('latitude', 'is', null).not('longitude', 'is', null);
+  if (sErr) throw new Error(`starbucks_store lookup failed: ${sErr.message}`);
+  const near = ((stores ?? []) as Array<Record<string, unknown>>)
+    .map((r) => ({ r, d: haversineMiles(pt, { lat: Number(r.latitude), lng: Number(r.longitude) }) }))
+    .filter((x) => x.d <= COMPETITOR_RADIUS_MILES);
+
+  if (near.length) {
+    const { data: snaps, error: nErr } = await service
+      .from('starbucks_snapshot')
+      .select('store_number, snapshot_date, store_type, rtm_sales')
+      .in('store_number', near.map((x) => String(x.r.store_number)))
+      .order('snapshot_date', { ascending: false });
+    if (nErr) throw new Error(`starbucks_snapshot lookup failed: ${nErr.message}`);
+    const latest = new Map<string, Record<string, unknown>>();
+    for (const row of (snaps ?? []) as Array<Record<string, unknown>>) {
+      const k = String(row.store_number);
+      if (!latest.has(k)) latest.set(k, row);
+    }
+    for (const { r, d } of near) {
+      const snap = latest.get(String(r.store_number));
+      const type = (snap?.store_type as string) ?? null;
+      const driveThru = type ? /^DT/i.test(type) : null;
+      out.push({
+        name: (r.store_name as string) ?? `Starbucks ${r.store_number}`,
+        brand: 'Starbucks',
+        operator_type: driveThru ? 'national_dt' : 'cafe',
+        // Company-operated Atlas rows carry no street address — never invent one.
+        street: null, city: (r.city as string) ?? null, state: (r.state as string) ?? null, zip: null,
+        latitude: Number(r.latitude), longitude: Number(r.longitude), distance_miles: d,
+        drive_thru: driveThru, company_operated: true,
+        rtm_sales: typeof snap?.rtm_sales === 'number' && (snap.rtm_sales as number) > 0 ? (snap.rtm_sales as number) : null,
+        sales_as_of: (snap?.snapshot_date as string) ?? null,
+        source: 'Starbucks Atlas (starbucks_store + starbucks_snapshot)',
+        notes: type ? `store_type ${type}` : null,
+      });
+    }
+  }
+
+  const { data: licensed, error: lErr } = await service
+    .from('starbucks_licensed_store')
+    .select('store_number, store_name, licensee_name, segment, store_type, address, city, state, postal_code, latitude, longitude, verified_latitude, verified_longitude')
+    .limit(1000);
+  if (lErr) throw new Error(`starbucks_licensed_store lookup failed: ${lErr.message}`);
+  for (const l of (licensed ?? []) as Array<Record<string, unknown>>) {
+    const lat = Number(l.verified_latitude ?? l.latitude), lng = Number(l.verified_longitude ?? l.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    const d = haversineMiles(pt, { lat, lng });
+    if (d > COMPETITOR_RADIUS_MILES) continue;
+    out.push({
+      name: (l.store_name as string) ?? `Starbucks licensed ${l.store_number}`,
+      brand: 'Starbucks',
+      operator_type: 'institutional', // a kiosk inside a host business, lane or not
+      street: (l.address as string) ?? null, city: (l.city as string) ?? null, state: (l.state as string) ?? null,
+      zip: (l.postal_code as string) ?? null, latitude: lat, longitude: lng, distance_miles: d,
+      drive_thru: null, company_operated: false, rtm_sales: null, sales_as_of: null,
+      source: 'Starbucks Atlas (starbucks_licensed_store)',
+      notes: [l.licensee_name as string, l.segment as string].filter(Boolean).join(' / ') || null,
+    });
+  }
+  return out;
+}
+
+export function buildCompetitorsCsv(
+  atlas: AtlasCoffeeRow[],
+  recorded: RecordedCompetitor[],
+): { csv: string; rows: CompetitorsRow[]; filtered: CsvFilterCounts } {
+  const rows: CompetitorsRow[] = [];
+  const seen = new Set<string>();
+  const push = (r: CompetitorsRow) => {
+    const key = `${String(r.name ?? '').toLowerCase()}|${streetKey(String(r.street ?? '')) ?? ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(r);
+  };
+  for (const a of atlas) {
+    push(buildCompetitorRow({ ...a, rtm_sales: a.rtm_sales, distance_miles: a.distance_miles }));
+  }
+  for (const c of recorded) {
+    push(buildCompetitorRow({
+      name: c.name, brand: c.brand, operator_type: c.operator_type, street: c.street, city: c.city,
+      state: c.state, zip: c.zip, latitude: c.latitude, longitude: c.longitude,
+      distance_miles: c.distance_miles_unrounded, drive_thru: c.drive_thru, company_operated: false,
+      rtm_sales: null, sales_as_of: null, source: c.source, notes: c.notes,
+    }));
+  }
+  rows.sort(byDistance);
+  return {
+    csv: toCsv(COMPETITORS_COLUMNS, rows),
+    rows,
+    filtered: { kept: rows.length, flagged: rows.filter((r) => r.flag === FLAG_CHECK).length },
+  };
+}
+
+/** Rows a "N drive-thru competitors within X mi" claim may count. */
+export function densityCountable(rows: CompetitorsRow[], withinMiles: number): CompetitorsRow[] {
+  return rows.filter((r) =>
+    (DENSITY_COUNTING_TYPES as readonly string[]).includes(String(r.operator_type)) &&
+    typeof r.distance_mi === 'number' && (r.distance_mi as number) <= withinMiles);
+}

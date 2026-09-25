@@ -28,7 +28,7 @@ import { anthropicCreate } from '../_shared/site-research/model.ts';
 import { executeTool, TOOL_DEFINITIONS, WEB_SEARCH_TOOL } from '../_shared/site-research/tools.ts';
 import { kickWorker } from '../_shared/site-research/kick.ts';
 import { runDeepPassIteration, supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
-import { edgePrivateLocations } from '../_shared/site-research/deep-pass.ts';
+import { atlasCoffeeWithin, edgePrivateLocations } from '../_shared/site-research/deep-pass.ts';
 import { resolveSiteSubmitFolder, uploadFile } from '../_shared/dropbox.ts';
 import { notifySiteResearch } from '../_shared/site-research/alerts.ts';
 
@@ -88,6 +88,7 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
         dp: supabaseDeepPassDb(service),
         webSearchTool: WEB_SEARCH_TOOL,
         edgePrivate: edgePrivateLocations,
+        atlasCoffee: (site) => atlasCoffeeWithin(service, site),
         exportFiles: async (siteSubmitId, files) => {
           const folder = await resolveSiteSubmitFolder(service, siteSubmitId);
           const out = [];

@@ -17,6 +17,7 @@
 import { parseArchetypeBlock } from './archetype.ts';
 import {
   type Block, containerErrorMessage, type CreateFn, type ExecuteFn, MAX_ITERATIONS, type ModelResponse, requestOnce,
+  sanitizeModelText,
   tokenCostUsd, USD_PER_WEB_SEARCH, webSearchRequests,
 } from './loop.ts';
 import { buildBaseParams, isPermanentApiError, MODEL, PRICING } from './model.ts';
@@ -218,11 +219,12 @@ export async function runModelIteration(run: ClaimedRun, owner: string, deps: It
     }
 
     // end_turn / max_tokens: the final iteration.
-    const text = resp.content
-      .filter((b) => b.type === 'text' && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .join('\n')
-      .trim();
+    const text = sanitizeModelText(
+      resp.content
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text as string)
+        .join('\n'),
+    );
     if (!text) throw new PermanentError(`empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'})`);
 
     if (deps.onEndTurn) {

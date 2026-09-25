@@ -12,11 +12,11 @@
  */
 
 import {
-  type AcceptedFill, buildEmployersCsv, buildFillList, buildSchoolsCsv, csvBytes, DEEP_PASS_CLIENT_TOOLS,
-  DEEP_PASS_PROMPT_KEY, DEEP_PASS_SEARCH_BUDGET, deepPassOpening, type EdgeLocation, extractStep1Schools,
-  FILL_SEARCH_BUDGET, type FillItem, MIN_EMPLOYER_HEADCOUNT, MIN_SCHOOL_ENROLLMENT,
-  type RecordedEmployer, recordEmployer, SCHOOL_FILL_CLIENT_TOOLS,
-  SCHOOL_FILL_PROMPT_KEY, type SchoolRecord, schoolFillOpening, validateSchoolFill,
+  type AcceptedFill, type AtlasCoffeeRow, buildCompetitorsCsv, buildEmployersCsv, buildFillList,
+  buildSchoolsCsv, csvBytes, DEEP_PASS_CLIENT_TOOLS, DEEP_PASS_PROMPT_KEY, DEEP_PASS_SEARCH_BUDGET,
+  deepPassOpening, type EdgeLocation, extractStep1Schools, FILL_SEARCH_BUDGET, type FillItem,
+  type RecordedCompetitor, recordCoffeeCompetitor, type RecordedEmployer, recordEmployer,
+  SCHOOL_FILL_CLIENT_TOOLS, SCHOOL_FILL_PROMPT_KEY, type SchoolRecord, schoolFillOpening, validateSchoolFill,
 } from './deep-pass.ts';
 import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentError, runModelIteration } from './iteration.ts';
 import { isPermanentApiError, MODEL } from './model.ts';
@@ -41,7 +41,10 @@ export interface DeepPassDeps extends Omit<IterationDeps, 'clientTools' | 'webSe
   dp: DeepPassDb;
   webSearchTool: Record<string, unknown>;
   edgePrivate: (ppins: string[]) => Promise<Map<string, EdgeLocation>>;
+  /** Starbucks within 5 mi from the Atlas tables, for competitors.csv. */
+  atlasCoffee: (site: { latitude: number; longitude: number }) => Promise<AtlasCoffeeRow[]>;
   recordEmployer?: typeof recordEmployer;
+  recordCoffeeCompetitor?: typeof recordCoffeeCompetitor;
   /** Upload the CSVs to the site submit's Dropbox folder; returns where they landed. */
   exportFiles: (siteSubmitId: string, files: Array<{ name: string; bytes: Uint8Array }>) => Promise<Array<{ name: string; path: string; size: number }>>;
 }
@@ -165,12 +168,16 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
 
     case 'deep_pass': {
       const record = deps.recordEmployer ?? recordEmployer;
+      const recordCompetitor = deps.recordCoffeeCompetitor ?? recordCoffeeCompetitor;
+      const schoolsOnFile = (state.schools ?? []) as SchoolRecord[];
       return await runModelIteration(run, owner, {
         ...deps,
         clientTools: DEEP_PASS_CLIENT_TOOLS,
         webSearchTool: deps.webSearchTool,
         execute: async (name, input, r) => {
-          if (name === 'record_employer') return await record(input, siteOf(r));
+          // schoolsOnFile: a school recorded as an employer keeps its NCES distance, never a second one.
+          if (name === 'record_employer') return await record(input, siteOf(r), undefined, schoolsOnFile);
+          if (name === 'record_coffee_competitor') return await recordCompetitor(input, siteOf(r));
           if (name === 'query_nearby_schools') throw new Error('query_nearby_schools is not available in the deep pass; the school bands are already computed');
           return await deps.execute(name, input, r);
         },
@@ -188,22 +195,28 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           .map((o) => (o as { accepted?: AcceptedFill | null }).accepted).filter((a): a is AcceptedFill => !!a);
         const employers = (await deps.dp.committedToolOutputs(run.id, 'record_employer'))
           .map((o) => (o as { recorded?: RecordedEmployer | null }).recorded).filter((e): e is RecordedEmployer => !!e);
+        const competitors = (await deps.dp.committedToolOutputs(run.id, 'record_coffee_competitor'))
+          .map((o) => (o as { recorded?: RecordedCompetitor | null }).recorded).filter((c): c is RecordedCompetitor => !!c);
+        const site = siteOf(run);
+        // Atlas coffee is code-sourced: competitors.csv never depends on the model having called a tool.
+        const atlas = site ? await deps.atlasCoffee(site) : [];
         const schoolsCsv = buildSchoolsCsv((state.schools ?? []) as SchoolRecord[], fills);
         const employersCsv = buildEmployersCsv(employers);
+        const competitorsCsv = buildCompetitorsCsv(atlas, competitors);
 
         let exportsState: Record<string, unknown>;
         try {
           const uploaded = await deps.exportFiles(run.site_submit_id, [
             { name: 'schools.csv', bytes: csvBytes(schoolsCsv.csv) },
             { name: 'employers.csv', bytes: csvBytes(employersCsv.csv) },
+            { name: 'competitors.csv', bytes: csvBytes(competitorsCsv.csv) },
           ]);
           exportsState = {
             status: 'uploaded',
-            files: uploaded.map((u) => ({
-              ...u,
-              ...(u.name === 'schools.csv' ? schoolsCsv.filtered : employersCsv.filtered),
-              rows: u.name === 'schools.csv' ? schoolsCsv.rows.length : employersCsv.rows.length,
-            })),
+            files: uploaded.map((u) => {
+              const built = u.name === 'schools.csv' ? schoolsCsv : u.name === 'employers.csv' ? employersCsv : competitorsCsv;
+              return { ...u, ...built.filtered, rows: built.rows.length };
+            }),
           };
         } catch (e) {
           // Retry the upload first; on the last attempt deliver the report anyway rather than lose it.
@@ -212,13 +225,10 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         }
         await deps.dp.patchState(run.id, owner, { exports: exportsState });
 
-        const files = (exportsState.files ?? []) as Array<{ name: string; path: string; rows: number; below_threshold: number; unknown_size_kept: number }>;
-        const size = (f: { name: string }) => (f.name === 'schools.csv' ? `under ${MIN_SCHOOL_ENROLLMENT} enrolled` : `under ${MIN_EMPLOYER_HEADCOUNT} staff`);
+        const files = (exportsState.files ?? []) as Array<{ name: string; path: string; rows: number; flagged: number }>;
         const footer = exportsState.status === 'uploaded'
           ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.map((f) =>
-              `${f.name} (${f.rows} rows` +
-              (f.below_threshold ? `; ${f.below_threshold} excluded as ${size(f)}` : '') +
-              (f.unknown_size_kept ? `; ${f.unknown_size_kept} kept with size unknown` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. File filters do not change the banded totals above.`
+              `${f.name} (${f.rows} rows` + (f.flagged ? `; ${f.flagged} flagged CHECK` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. Nothing is filtered out of an export; the banded totals above are unchanged by it.`
           : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.`;
 
         const result = await deps.db.finalize({
@@ -226,7 +236,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           content: report + footer, model: MODEL, parsed: false,
           archetypePrimary: null, archetypeSecondary: null, storyCarriers: null,
         });
-        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length}(-${schoolsCsv.filtered.below_threshold}) employers=${employersCsv.rows.length}(-${employersCsv.filtered.below_threshold}) finalize=${result.status}`);
+        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length} employers=${employersCsv.rows.length} competitors=${competitorsCsv.rows.length} finalize=${result.status}`);
         return result.status;
       });
 
