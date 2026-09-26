@@ -17,3 +17,11 @@ verify_jwt = false
 [functions.ovis-research-mcp]
 verify_jwt = false
 
+
+# label-watcher: pg_cron calls it with X-Cron-Secret only, deliberately NOT with
+# the legacy anon JWT that jobs 1 and 2 still carry. The gateway's verify_jwt
+# gate would reject a header-only call before the function ran (10 x 401,
+# 2026-09-25), and verify_jwt proves nothing here anyway -- any logged-in JWT
+# passes it. Authorization is enforced inside, by _shared/caller-auth.ts.
+[functions.label-watcher]
+verify_jwt = false

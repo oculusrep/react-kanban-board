@@ -51,6 +51,20 @@ const LAG_SECONDS = 60;
  *  too tight (crediting the owner with OVIS's write) is worse than being loose. */
 const OVIS_MATCH_WINDOW_MINUTES = 30;
 
+/**
+ * How far apart a removal and an addition may be and still be one gesture.
+ *
+ * A move in the Gmail UI is two history records milliseconds apart; a manual
+ * remove-then-add is seconds. 10 minutes is far wider than either and far
+ * narrower than the gap between work sessions. It must also exceed LAG_SECONDS,
+ * or a removal would be classified before its partner addition was attributed.
+ *
+ * Biased wide deliberately: too narrow loses a correction silently (it reads as
+ * 'handled'), too wide merges two gestures into one, which is visible in the
+ * timestamps and recoverable.
+ */
+const PAIR_WINDOW_MINUTES = 10;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -226,8 +240,80 @@ serve(async (req) => {
       counts[attribution]++;
     }
 
+    // ------------------------------------------------------------------
+    // GESTURE PASS — what the change MEANT. Runs only on events whose pairing
+    // window has closed, so a bare removal is genuinely bare and not just a
+    // removal whose partner addition has yet to be observed.
+    // ------------------------------------------------------------------
+    const pairCutoff = new Date(Date.now() - PAIR_WINDOW_MINUTES * 60_000).toISOString();
+    const { data: unclassified } = await supabase
+      .from('gmail_label_event')
+      .select('id, gmail_id, label, event_type, attribution, observed_at, gmail_connection_id')
+      .eq('gesture', 'pending')
+      .not('attribution', 'eq', 'pending')
+      .lt('observed_at', pairCutoff)
+      .limit(500);
+
+    const gestures = { handled: 0, correction: 0, superseded: 0, ovis_write: 0 };
+    for (const ev of unclassified ?? []) {
+      let gesture: 'handled' | 'correction' | 'superseded' | 'ovis_write' = 'handled';
+      let note = '';
+      let pairedId: string | null = null;
+
+      if (ev.attribution !== 'owner') {
+        gesture = 'ovis_write';
+        note = `attributed ${ev.attribution}`;
+      } else if (ev.event_type === 'added') {
+        // The owner put an OVIS label on. Either OVIS had it wrong, or OVIS had
+        // nothing (Unsorted) and was just told. Both are training signal.
+        const { data: live } = await supabase
+          .from('email_label')
+          .select('label')
+          .eq('gmail_id', ev.gmail_id)
+          .not('applied_at', 'is', null)
+          .is('removed_at', null)
+          .limit(1);
+        note = live?.[0]?.label
+          ? `owner added ${ev.label}; OVIS had ${live[0].label}`
+          : `owner added ${ev.label}; OVIS had no label (Unsorted)`;
+        gesture = 'correction';
+      } else {
+        // A removal. Bare = handled. Paired with the owner adding a DIFFERENT
+        // OVIS label = the removal half of a correction, which the addition
+        // already records, so this row is superseded rather than counted twice.
+        const lo = new Date(new Date(ev.observed_at).getTime() - PAIR_WINDOW_MINUTES * 60_000).toISOString();
+        const hi = new Date(new Date(ev.observed_at).getTime() + PAIR_WINDOW_MINUTES * 60_000).toISOString();
+        const { data: partner } = await supabase
+          .from('gmail_label_event')
+          .select('id, label')
+          .eq('gmail_id', ev.gmail_id)
+          .eq('event_type', 'added')
+          .eq('attribution', 'owner')
+          .neq('label', ev.label)
+          .gte('observed_at', lo)
+          .lte('observed_at', hi)
+          .limit(1);
+        if (partner?.[0]) {
+          gesture = 'superseded';
+          pairedId = partner[0].id;
+          note = `paired with owner adding ${partner[0].label} -- one correction, not two events`;
+        } else {
+          gesture = 'handled';
+          note = `bare removal of ${ev.label}: queue cleared, no OVIS label added within ${PAIR_WINDOW_MINUTES} min`;
+        }
+      }
+
+      await supabase.from('gmail_label_event').update({
+        gesture,
+        gesture_note: note,
+        gesture_at: new Date().toISOString(),
+        paired_event_id: pairedId,
+      }).eq('id', ev.id);
+      gestures[gesture]++;
+    }
+
     return new Response(JSON.stringify({
-      success: true, mailboxes: results, attributed: counts,
+      success: true, mailboxes: results, attributed: counts, gestures,
     }, null, 2), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e: any) {
     console.error('[label-watcher]', e?.message ?? e);
