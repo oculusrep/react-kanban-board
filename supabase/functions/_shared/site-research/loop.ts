@@ -227,13 +227,16 @@ export async function requestOnce(opts: {
  */
 export function sanitizeModelText(text: string): string {
   return text
-    // Well-formed tags: <cite index="0-0">, </cite>, </parameter>.
-    .replace(/<\/?(?:cite|parameter|antml:[a-z_:-]+)\b[^>]*>/gi, '')
-    // ...and the malformed opener the model actually emitted: (cite index="0-0">
-    .replace(/\(\s*\/?(?:cite|parameter)\b[^)>]*>/gi, '')
+    // Remove the markup AND the whitespace it sat in, so a quote that was split across its own
+    // lines rejoins the sentence instead of leaving a mid-sentence break. Paragraph breaks that
+    // had no markup in them are untouched.
+    .replace(/[ \t]*\n?[ \t]*<\/?(?:cite|parameter|antml:[a-z_:-]+)\b[^>]*>[ \t]*\n?[ \t]*/gi, ' ')
+    .replace(/[ \t]*\n?[ \t]*\(\s*\/?(?:cite|parameter)\b[^)>]*>[ \t]*\n?[ \t]*/gi, ' ')
     .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[ \t]+([,;.])/g, '$1')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 

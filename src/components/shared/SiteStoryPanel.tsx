@@ -44,6 +44,9 @@ type RunState = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
 
 interface ThreadRow {
   id: string;
+  /** Written by brief_pass from the finished record; shown open, above the collapsed record. */
+  brief_text: string | null;
+  brief_generated_at: string | null;
   archetype_primary: Archetype | null;
   archetype_secondary: Archetype | null;
   story_carriers: string[];
@@ -63,7 +66,7 @@ interface MessageRow {
 
 interface RunRow {
   id: string;
-  kind: 'archetype' | 'turn' | 'deep_pass';
+  kind: 'archetype' | 'turn' | 'deep_pass' | 'brief' | 'record_qa';
   state: RunState;
   phase: string | null;
   iteration: number;
@@ -93,6 +96,29 @@ const PASS_PHASE_LABEL: Record<NonNullable<RunRow['pass_phase']>, string> = {
 };
 
 const isLive = (s: string | null | undefined) => s === 'queued' || s === 'running';
+
+/**
+ * Split a deep pass record into its **SECTION** blocks so the panel can collapse it section by
+ * section. Mirrors splitRecordSections in _shared/site-research/brief.ts — the edge function cannot
+ * import from src/, so the two are kept in step by hand.
+ */
+function splitRecordSections(record: string): Array<{ heading: string; body: string }> {
+  const re = /^\*\*([A-Z][A-Z '\u2019-]+)\*\*\s*$/gm;
+  const marks: Array<{ heading: string; start: number; end: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(record)) !== null) marks.push({ heading: m[1].trim(), start: m.index, end: re.lastIndex });
+  const out: Array<{ heading: string; body: string }> = [];
+  for (let i = 0; i < marks.length; i++) {
+    const body = record.slice(marks[i].end, i + 1 < marks.length ? marks[i + 1].start : record.length).trim();
+    if (body) out.push({ heading: marks[i].heading, body });
+  }
+  return out;
+}
+
+/** The deep pass record on this thread: the assistant message a completed deep pass wrote. */
+const DEEP_PASS_MARKERS = ['**VERDICT**', '**HEADLINE**', '**GENERATOR CALLOUTS**'];
+const isRecordMessage = (m: { role: string; content: string }) =>
+  m.role === 'assistant' && DEEP_PASS_MARKERS.some((k) => m.content.includes(k));
 
 interface SiteStoryPanelProps {
   siteSubmitId: string;
@@ -184,6 +210,10 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
   const [sending, setSending] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [startingDeepPass, setStartingDeepPass] = useState(false);
+  const [writingBrief, setWritingBrief] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -193,7 +223,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
   const loadThreads = useCallback(async () => {
     const { data, error: err } = await supabase
       .from('research_thread')
-      .select('id, archetype_primary, archetype_secondary, story_carriers, state, created_at, pinned_context')
+      .select('id, archetype_primary, archetype_secondary, story_carriers, state, created_at, pinned_context, brief_text, brief_generated_at')
       .eq('site_submit_id', siteSubmitId)
       .order('created_at', { ascending: false });
     if (err) {
@@ -381,6 +411,36 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
     }
   };
 
+  const handleBrief = async () => {
+    if (!openThreadId) return;
+    setError(null);
+    setWritingBrief(true);
+    try {
+      await invoke({ action: 'start_brief', thread_id: openThreadId });
+      await Promise.all([loadOpenThread(openThreadId), loadThreads()]);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setWritingBrief(false);
+    }
+  };
+
+  const handleAsk = async () => {
+    const q = question.trim();
+    if (!q || !openThreadId) return;
+    setError(null);
+    setAsking(true);
+    try {
+      await invoke({ action: 'ask_record', thread_id: openThreadId, question: q });
+      setQuestion('');
+      await Promise.all([loadOpenThread(openThreadId), loadThreads()]);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setAsking(false);
+    }
+  };
+
   const openThread = threads?.find((t) => t.id === openThreadId) ?? null;
   const runIsLive = !!run && isLive(run.state);
 
@@ -508,6 +568,17 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 </ul>
               )}
               {openThread.archetype_primary && (
+                <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleBrief}
+                  disabled={writingBrief || runIsLive}
+                  className="mt-1.5 mr-1.5 px-2 py-0.5 rounded text-[11px] font-medium disabled:opacity-60"
+                  style={{ backgroundColor: 'transparent', color: NAVY, border: `1px solid ${NAVY}` }}
+                  title="Write the under-200-word brief from the finished record. No research, no searches."
+                >
+                  {writingBrief ? 'Writing brief…' : openThread.brief_text ? 'Rewrite brief' : 'Write brief'}
+                </button>
                 <button
                   type="button"
                   onClick={handleDeepPass}
@@ -518,7 +589,30 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 >
                   {startingDeepPass ? 'Starting…' : 'Run deep pass'}
                 </button>
+                </div>
               )}
+            </div>
+          )}
+
+          {/* The brief is what gets read first; the record below it stays collapsed. */}
+          {openThread?.brief_text && (
+            <div className="mb-2 px-2 py-2 rounded border" style={{ borderColor: NAVY, backgroundColor: '#FFFFFF' }}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: NAVY }}>Brief</span>
+                <span className="text-[11px]" style={{ color: SLATE }}>
+                  {openThread.brief_generated_at ? formatTimestamp(openThread.brief_generated_at) : ''}
+                </span>
+              </div>
+              <div className="text-xs whitespace-pre-wrap break-words" style={{ color: '#1f2937' }}>{openThread.brief_text}</div>
+              <button
+                type="button"
+                onClick={handleBrief}
+                disabled={writingBrief || runIsLive}
+                className="mt-1.5 text-[11px] hover:underline disabled:opacity-60"
+                style={{ color: STEEL }}
+              >
+                {writingBrief ? 'Rewriting…' : 'Rewrite brief from this record'}
+              </button>
             </div>
           )}
 
@@ -527,20 +621,54 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             {loadingMessages && messages.length === 0 ? (
               <div className="text-xs" style={{ color: SLATE }}>Loading…</div>
             ) : (
-              messages.map((m) => (
-                <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : ''}>
-                  <div
-                    className="px-2 py-1.5 rounded max-w-[92%]"
-                    style={
-                      m.role === 'user'
-                        ? { backgroundColor: NAVY, color: '#FFFFFF' }
-                        : { backgroundColor: '#FFFFFF', border: `1px solid ${SLATE}`, color: '#1f2937' }
-                    }
-                  >
-                    <div className="text-xs whitespace-pre-wrap break-words">{m.content}</div>
+              messages.map((m) => {
+                const sections = isRecordMessage(m) ? splitRecordSections(m.content) : [];
+                if (sections.length > 0) {
+                  // The record: collapsed by default, expandable one section at a time.
+                  return (
+                    <div key={m.id} className="rounded border" style={{ borderColor: SLATE, backgroundColor: '#FFFFFF' }}>
+                      <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: STEEL, backgroundColor: '#F8FAFC' }}>
+                        Record · {formatTimestamp(m.created_at)}
+                      </div>
+                      {sections.map((sec) => {
+                        const key = `${m.id}:${sec.heading}`;
+                        const open = !!openSections[key];
+                        return (
+                          <div key={key} className="border-t" style={{ borderColor: '#E2E8F0' }}>
+                            <button
+                              type="button"
+                              onClick={() => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }))}
+                              className="w-full flex items-center justify-between px-2 py-1.5 text-left hover:opacity-80"
+                            >
+                              <span className="text-[11px] font-medium" style={{ color: NAVY }}>{sec.heading}</span>
+                              <span className="text-[11px]" style={{ color: SLATE }}>{open ? '−' : '+'}</span>
+                            </button>
+                            {open && (
+                              <div className="px-2 pb-2 text-xs whitespace-pre-wrap break-words" style={{ color: '#1f2937' }}>
+                                {sec.body}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : ''}>
+                    <div
+                      className="px-2 py-1.5 rounded max-w-[92%]"
+                      style={
+                        m.role === 'user'
+                          ? { backgroundColor: NAVY, color: '#FFFFFF' }
+                          : { backgroundColor: '#FFFFFF', border: `1px solid ${SLATE}`, color: '#1f2937' }
+                      }
+                    >
+                      <div className="text-xs whitespace-pre-wrap break-words">{m.content}</div>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
 
             {/* ---- run status ---- */}
@@ -578,6 +706,30 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Ask the record: answered from what is stored, with the section cited. No research. */}
+          {openThread?.brief_text && (
+            <div className="flex gap-1.5 mb-1.5">
+              <input
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAsk(); } }}
+                placeholder={runIsLive ? 'Wait for the current run to finish…' : 'Ask the record a question…'}
+                disabled={asking || runIsLive}
+                className="flex-1 px-2 py-1.5 text-xs border rounded disabled:opacity-60"
+                style={{ borderColor: SLATE }}
+              />
+              <button
+                type="button"
+                onClick={handleAsk}
+                disabled={asking || runIsLive || !question.trim()}
+                className="px-3 rounded text-xs font-medium disabled:opacity-60"
+                style={{ backgroundColor: 'transparent', color: NAVY, border: `1px solid ${NAVY}` }}
+              >
+                {asking ? '…' : 'Ask'}
+              </button>
+            </div>
+          )}
 
           <div className="flex gap-1.5">
             <textarea

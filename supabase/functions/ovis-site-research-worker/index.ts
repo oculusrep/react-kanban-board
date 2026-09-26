@@ -29,6 +29,7 @@ import { executeTool, TOOL_DEFINITIONS, WEB_SEARCH_TOOL } from '../_shared/site-
 import { kickWorker } from '../_shared/site-research/kick.ts';
 import { runDeepPassIteration, supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
 import { atlasCoffeeWithin, edgePrivateLocations } from '../_shared/site-research/deep-pass.ts';
+import { BRIEF_MAX_WORDS, wordCount } from '../_shared/site-research/brief.ts';
 import { resolveSiteSubmitFolder, uploadFile } from '../_shared/dropbox.ts';
 import { notifySiteResearch } from '../_shared/site-research/alerts.ts';
 
@@ -81,6 +82,28 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
     },
     onFailed: (id: string, error: string) => notifySiteResearch(`❌ Site research run ${id} failed: ${error.slice(0, 300)}`),
   };
+
+  // brief and record_qa read the finished record: no client tools, no web search, nothing to spend.
+  if (run.kind === 'brief' || run.kind === 'record_qa') {
+    const outcome = await runModelIteration(run, owner, {
+      ...common,
+      clientTools: [],
+      webSearchTool: null,
+      onEndTurn: run.kind === 'record_qa' ? undefined : async ({ text, convo }) => {
+        const words = wordCount(text);
+        if (words > BRIEF_MAX_WORDS * 1.25) {
+          console.warn(`[site-research] run=${run.id} brief is ${words} words, over the ${BRIEF_MAX_WORDS}-word brief`);
+        }
+        const result = await db.finalizeBrief!({
+          runId: run.id, owner, iteration: run.iteration, attempt: run.attempt, convo, briefText: text,
+        });
+        console.log(`[site-research] run=${run.id} brief finalize=${result.status} words=${words}`);
+        return result.status;
+      },
+    });
+    console.log(`[site-research] run=${runId} invocation outcome=${outcome}`);
+    return;
+  }
 
   const outcome = run.kind === 'deep_pass'
     ? await runDeepPassIteration(run, owner, {

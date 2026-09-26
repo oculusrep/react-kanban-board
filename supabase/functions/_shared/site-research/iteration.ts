@@ -27,7 +27,7 @@ export const LEASE_SECONDS = 420; // 400 s edge wall clock + margin
 export interface ClaimedRun {
   id: string;
   thread_id: string;
-  kind: 'archetype' | 'turn' | 'deep_pass';
+  kind: 'archetype' | 'turn' | 'deep_pass' | 'brief' | 'record_qa';
   target_seq: number;
   prompt_template_id: string | null;
   iteration: number;
@@ -72,6 +72,11 @@ export interface WorkerDb {
     content: string; model: string; parsed: boolean;
     archetypePrimary: string | null; archetypeSecondary: string | null; storyCarriers: string[] | null;
   }): Promise<{ status: 'finalized' | 'already_final' | 'lease_lost'; message_id?: string | null }>;
+  /** brief runs only: writes the brief onto the thread and completes the run — no thread message. */
+  finalizeBrief?(a: {
+    runId: string; owner: string; iteration: number; attempt: number;
+    convo: Array<Record<string, unknown>>; briefText: string;
+  }): Promise<{ status: 'finalized' | 'already_final' | 'lease_lost' }>;
   release(runId: string, owner: string, iteration: number, attempt: number, error: string): Promise<void>;
   fail(runId: string, error: string): Promise<void>;
   promptBody(promptTemplateId: string | null): Promise<string>;
@@ -287,6 +292,10 @@ export function supabaseWorkerDb(service: Rpc): WorkerDb {
       p_run_id: a.runId, p_owner: a.owner, p_iteration: a.iteration, p_attempt: a.attempt, p_convo: a.convo,
       p_content: a.content, p_model: a.model, p_parsed: a.parsed,
       p_archetype_primary: a.archetypePrimary, p_archetype_secondary: a.archetypeSecondary, p_story_carriers: a.storyCarriers,
+    }),
+    finalizeBrief: (a) => call('finalize_brief_run', {
+      p_run_id: a.runId, p_owner: a.owner, p_iteration: a.iteration, p_attempt: a.attempt,
+      p_convo: a.convo, p_brief_text: a.briefText,
     }),
     release: (runId, owner, iteration, attempt, error) =>
       call('release_thread_run', { p_run_id: runId, p_owner: owner, p_iteration: iteration, p_attempt: attempt, p_error: error }),

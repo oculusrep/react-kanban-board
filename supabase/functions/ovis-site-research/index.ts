@@ -26,6 +26,13 @@
  *      (school fill → deep pass → CSV exports). Requires a completed Step 1 run on the thread,
  *      because the deep pass reads its persisted school results.
  *
+ *   5. { action: 'start_brief', thread_id }          -> { thread_id, run_id }
+ *      Writes the under-200-word brief from the FINISHED record onto research_thread.brief_text.
+ *      No tools, no search: re-runnable against a stored record without repeating the research.
+ *
+ *   6. { action: 'ask_record', thread_id, question } -> { thread_id, run_id, seq }
+ *      Answers a question from the stored record, citing the section. No tools, no search.
+ *
  * The gate (Starbucks account family + can_run_market_research) is re-checked here on
  * every call. The UI gate is a convenience, not a control.
  */
@@ -37,6 +44,9 @@ import { kickWorker } from '../_shared/site-research/kick.ts';
 import { STEP1_SEARCH_BUDGET } from '../_shared/site-research/tools.ts';
 import { DEEP_PASS_PROMPT_KEY, DEEP_PASS_USER_MESSAGE } from '../_shared/site-research/deep-pass.ts';
 import { buildDemographics, dataQualityFor } from '../_shared/site-research/snapshot.ts';
+import {
+  BRIEF_PROMPT_KEY, briefOpening, RECORD_QA_PROMPT_KEY, type RecordForBrief, recordQaOpening,
+} from '../_shared/site-research/brief.ts';
 
 // Gates research to the Starbucks account family: the Starbucks client itself OR any
 // client whose parent_id is Starbucks (child accounts like "Starbucks - JW (Coastal GA)").
@@ -231,6 +241,8 @@ serve(async (req: Request) => {
     if (action === 'send_turn') return await sendTurn(service, body, userId);
     if (action === 'retry_run') return await retryRun(service, body, userId);
     if (action === 'start_deep_pass') return await startDeepPass(service, body, userId);
+    if (action === 'start_brief') return await startBrief(service, body, userId);
+    if (action === 'ask_record') return await askRecord(service, body, userId);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -587,6 +599,106 @@ async function startDeepPass(service: SupabaseClient, body: Record<string, unkno
       return jsonResponse({ error: 'concurrent_turn', detail: 'This thread changed. Reload and try again.' }, 409);
     }
     throw new Error(`deep pass enqueue failed: ${error.message}`);
+  }
+  const kicked = await kick(service, runId as string);
+  return jsonResponse({ thread_id: thread.id, run_id: runId, seq: nextSeq, state: 'queued', kicked }, 202);
+}
+
+// ---------------------------------------------------------------------------
+// Actions: start_brief / ask_record — both read the finished record, neither researches
+// ---------------------------------------------------------------------------
+async function activeTemplateId(service: SupabaseClient, key: string): Promise<string> {
+  const { data, error } = await service
+    .from('prompt_template').select('id')
+    .eq('key', key).eq('is_active', true).is('client_id', null)
+    .order('version', { ascending: false }).limit(1);
+  if (error) throw new Error(`prompt_template lookup failed: ${error.message}`);
+  const id = (data as Array<{ id: string }> | null)?.[0]?.id;
+  if (!id) throw new Error(`no active prompt_template for key '${key}'`);
+  return id;
+}
+
+/** The finished record: the newest completed deep pass message, plus the first pass report. */
+async function loadRecord(service: SupabaseClient, thread: ThreadRecord): Promise<RecordForBrief | null> {
+  const { data: t, error: tErr } = await service
+    .from('research_thread')
+    .select('archetype_primary, archetype_secondary, story_carriers, site_submit:site_submit_id ( site_submit_name )')
+    .eq('id', thread.id).maybeSingle();
+  if (tErr) throw new Error(`thread lookup failed: ${tErr.message}`);
+
+  const { data: runs, error: rErr } = await service
+    .from('research_thread_run').select('target_seq, finished_at')
+    .eq('thread_id', thread.id).eq('kind', 'deep_pass').eq('state', 'complete')
+    .order('finished_at', { ascending: false }).limit(1);
+  if (rErr) throw new Error(`deep pass lookup failed: ${rErr.message}`);
+  const targetSeq = (runs as Array<{ target_seq: number }> | null)?.[0]?.target_seq;
+  if (targetSeq === undefined) return null;
+
+  const { data: msgs, error: mErr } = await service
+    .from('research_thread_message').select('seq, content, created_at')
+    .eq('thread_id', thread.id).in('seq', [0, targetSeq]);
+  if (mErr) throw new Error(`message lookup failed: ${mErr.message}`);
+  const rows = (msgs ?? []) as Array<{ seq: number; content: string; created_at: string }>;
+  const record = rows.find((m) => m.seq === targetSeq);
+  if (!record) return null;
+  const row = t as {
+    archetype_primary: string | null; archetype_secondary: string | null; story_carriers: string[];
+    site_submit: { site_submit_name: string | null } | null;
+  } | null;
+  return {
+    site_submit_name: row?.site_submit?.site_submit_name ?? null,
+    archetype_primary: row?.archetype_primary ?? null,
+    archetype_secondary: row?.archetype_secondary ?? null,
+    story_carriers: row?.story_carriers ?? [],
+    record: record.content,
+    first_pass: rows.find((m) => m.seq === 0)?.content ?? null,
+    record_written_at: record.created_at,
+  };
+}
+
+async function startBrief(service: SupabaseClient, body: Record<string, unknown>, userId: string): Promise<Response> {
+  const loaded = await loadThread(service, body.thread_id);
+  if (loaded instanceof Response) return loaded;
+  const thread = loaded;
+
+  const record = await loadRecord(service, thread);
+  if (!record) {
+    return jsonResponse({ error: 'no_record', detail: 'This thread has no completed deep pass yet, so there is no record to write a brief from.' }, 409);
+  }
+  const { data: runId, error } = await service.rpc('enqueue_brief_run', {
+    p_thread_id: thread.id, p_prompt_template_id: await activeTemplateId(service, BRIEF_PROMPT_KEY),
+    p_convo: [{ role: 'user', content: briefOpening(record) }], p_created_by: userId,
+  });
+  if (error) {
+    if (pgCode(error) === '23505') return jsonResponse({ error: 'run_in_progress', detail: 'A run is already in progress on this thread.' }, 409);
+    throw new Error(`brief enqueue failed: ${error.message}`);
+  }
+  const kicked = await kick(service, runId as string);
+  return jsonResponse({ thread_id: thread.id, run_id: runId, state: 'queued', kicked }, 202);
+}
+
+async function askRecord(service: SupabaseClient, body: Record<string, unknown>, userId: string): Promise<Response> {
+  const question = body.question;
+  if (typeof question !== 'string' || !question.trim()) return jsonResponse({ error: 'question is required' }, 400);
+  const loaded = await loadThread(service, body.thread_id);
+  if (loaded instanceof Response) return loaded;
+  const thread = loaded;
+
+  const record = await loadRecord(service, thread);
+  if (!record) {
+    return jsonResponse({ error: 'no_record', detail: 'This thread has no completed deep pass yet, so there is no record to answer from.' }, 409);
+  }
+  const prior = await loadMessages(service, thread.id);
+  const nextSeq = prior.length === 0 ? 0 : prior[prior.length - 1].seq + 1;
+  const { data: runId, error } = await service.rpc('enqueue_record_qa', {
+    p_thread_id: thread.id, p_expected_seq: nextSeq, p_question: question.trim(),
+    p_prompt_template_id: await activeTemplateId(service, RECORD_QA_PROMPT_KEY),
+    p_convo: [{ role: 'user', content: recordQaOpening(question.trim(), record) }], p_created_by: userId,
+  });
+  if (error) {
+    if (pgCode(error) === '23505') return jsonResponse({ error: 'run_in_progress', detail: 'A run is already in progress on this thread.' }, 409);
+    if (pgCode(error) === '40001') return jsonResponse({ error: 'concurrent_turn', detail: 'This thread changed while you were typing. Reload and resend.' }, 409);
+    throw new Error(`record question enqueue failed: ${error.message}`);
   }
   const kicked = await kick(service, runId as string);
   return jsonResponse({ thread_id: thread.id, run_id: runId, seq: nextSeq, state: 'queued', kicked }, 202);

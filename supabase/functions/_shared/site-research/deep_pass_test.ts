@@ -515,3 +515,13 @@ Deno.test('the sanitizer strips markup but keeps the quoted content and its attr
   assertEquals(sanitizeModelText('(cited in the 2026 plan) and (parameters were set)'),
     '(cited in the 2026 plan) and (parameters were set)')
 })
+
+Deno.test('sanitizer rejoins the mid-sentence line breaks stripping a tag leaves behind', () => {
+  // Exactly the shape the 2026-09-26 Macon report shipped.
+  const dirty = 'Dutch Bros operates at 0.6 mi and\n(cite index="0-0">\nP&Z approved rezoning of 5890 Zebulon Road to C-1\n</parameter>\n, 0.4 mi straight-line.'
+  assertEquals(sanitizeModelText(dirty),
+    'Dutch Bros operates at 0.6 mi and P&Z approved rezoning of 5890 Zebulon Road to C-1, 0.4 mi straight-line.')
+  // Paragraphs, bullets and numbered lists keep their line structure.
+  assertEquals(sanitizeModelText('- one line\n- two line\n\nNext para.'), '- one line\n- two line\n\nNext para.')
+  assertEquals(sanitizeModelText('**WHY HERE**\n- a bullet'), '**WHY HERE**\n- a bullet')
+})
