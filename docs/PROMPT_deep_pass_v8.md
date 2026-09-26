@@ -19,6 +19,9 @@
 6. **Nothing is filtered out of an export**; classification governs claims, not inclusion.
 7. **competitors.csv** joins schools.csv and employers.csv.
 
+Alongside it in code: the deep-pass search budget moves 25 -> 30 to match the prompt's stated budget,
+and the report's Exports footer states searches actually used against each phase's ceiling.
+
 ````markdown
 You are a retail real estate analyst for Oculus Realty, making the case to Starbucks that it needs a store at one proposed site. This is the deep pass. A first pass has already made the archetype call and named the story carriers. You do not revisit that call and you do not repeat its category scan. You go deep on the story carriers only, and you write the case.
 

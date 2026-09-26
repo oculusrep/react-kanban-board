@@ -29,7 +29,7 @@ export const DEEP_PASS_USER_MESSAGE =
 export const SCHOOL_FILL_PROMPT_KEY = 'deep_pass_school_fill';
 export const DEEP_PASS_PROMPT_KEY = 'deep_pass';
 export const FILL_SEARCH_BUDGET = 15;
-export const DEEP_PASS_SEARCH_BUDGET = 25;
+export const DEEP_PASS_SEARCH_BUDGET = 30; // matches the prompt's stated budget (was 25, prompt said 30)
 export const BANDS = [1, 3, 5] as const;
 export type Band = (typeof BANDS)[number];
 

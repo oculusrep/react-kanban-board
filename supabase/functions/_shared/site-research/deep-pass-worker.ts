@@ -114,7 +114,11 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
       firstPassReport: await deps.dp.firstPassReport(run.thread_id),
     });
     return advance('deep_pass', [{ role: 'user', content: opening }], DEEP_PASS_PROMPT_KEY, DEEP_PASS_SEARCH_BUDGET,
-      { ...extra, school_fill_summary: fillSummary, school_fills_accepted: accepted.length });
+      {
+        ...extra, school_fill_summary: fillSummary, school_fills_accepted: accepted.length,
+        // Searches already spent when the deep pass began, and its own ceiling: the report states both.
+        deep_pass_search_base: run.web_search_requests, deep_pass_search_ceiling: DEEP_PASS_SEARCH_BUDGET,
+      });
   };
 
   switch (run.pass_phase) {
@@ -148,7 +152,8 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           return await openDeepPass(schools, fillList, 'No school needed a web fill: every in-band school has NCES enrollment (or is planned) and an NCES-confirmed physical address.', patch);
         }
         return await advance('school_fill', [{ role: 'user', content: schoolFillOpening(fillList) }],
-          SCHOOL_FILL_PROMPT_KEY, FILL_SEARCH_BUDGET, patch);
+          SCHOOL_FILL_PROMPT_KEY, FILL_SEARCH_BUDGET,
+          { ...patch, school_fill_search_base: run.web_search_requests, school_fill_search_ceiling: FILL_SEARCH_BUDGET });
       });
 
     case 'school_fill': {
@@ -226,10 +231,18 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         await deps.dp.patchState(run.id, owner, { exports: exportsState });
 
         const files = (exportsState.files ?? []) as Array<{ name: string; path: string; rows: number; flagged: number }>;
+        // Searches actually spent per phase against that phase's ceiling.
+        const n = (v: unknown) => (typeof v === 'number' ? v : null);
+        const deepBase = n(state.deep_pass_search_base), deepCeiling = n(state.deep_pass_search_ceiling);
+        const fillBase = n(state.school_fill_search_base), fillCeiling = n(state.school_fill_search_ceiling);
+        const searchLine = deepCeiling === null
+          ? ''
+          : ` Web searches: ${Math.max(0, run.web_search_requests - (deepBase ?? 0))} of ${deepCeiling} in the deep pass` +
+            (fillCeiling !== null ? `, ${Math.max(0, (deepBase ?? 0) - (fillBase ?? 0))} of ${fillCeiling} in the school fill` : '') + '.';
         const footer = exportsState.status === 'uploaded'
           ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.map((f) =>
-              `${f.name} (${f.rows} rows` + (f.flagged ? `; ${f.flagged} flagged CHECK` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. Nothing is filtered out of an export; the banded totals above are unchanged by it.`
-          : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.`;
+              `${f.name} (${f.rows} rows` + (f.flagged ? `; ${f.flagged} flagged CHECK` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. Nothing is filtered out of an export; the banded totals above are unchanged by it.${searchLine}`
+          : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.${searchLine}`;
 
         const result = await deps.db.finalize({
           runId: run.id, owner, iteration: run.iteration, attempt: run.attempt, convo: run.convo,

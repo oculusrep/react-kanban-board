@@ -291,7 +291,7 @@ Deno.test('prepare with nothing to fill goes straight to the deep pass', async (
   const sim = simulate({ step1: clean })
   assertEquals(await sim.step(), 'chained')
   assertEquals(sim.run.pass_phase, 'deep_pass')
-  assertEquals(sim.run.search_budget, 25)
+  assertEquals(sim.run.search_budget, 30)
   assert(sim.openings[0].includes('No school needed a web fill'))
 })
 
@@ -481,4 +481,37 @@ Deno.test('sanitizeModelText strips the citation markup that leaked into the 09-
   const dirty = 'described by the operator as a <cite index="0-0">103-bed not-for-profit community hospital</parameter> (piedmont.org)'
   assertEquals(sanitizeModelText(dirty), 'described by the operator as a 103-bed not-for-profit community hospital (piedmont.org)')
   assertEquals(sanitizeModelText('plain text  with   spaces '), 'plain text with spaces')
+})
+
+Deno.test('the sanitizer strips markup but keeps the quoted content and its attribution', () => {
+  // All three fragments exactly as they shipped in the 2026-09-16 Macon report.
+  const cases: Array<[string, string]> = [
+    [
+      'at 4.0 mi straight-line, described by the operator as a (cite index="0-0">103-bed not-for-profit community hospital</parameter> (piedmont.org, web-sourced)',
+      'at 4.0 mi straight-line, described by the operator as a 103-bed not-for-profit community hospital (piedmont.org, web-sourced)',
+    ],
+    [
+      'Bibb County enrollment (cite index="0-0">decreased to 20,783 this fall</parameter> (The Macon Melody, web-sourced)',
+      'Bibb County enrollment decreased to 20,783 this fall (The Macon Melody, web-sourced)',
+    ],
+    [
+      'and (cite index="0-0">the district projects 20,546 for 2026-27</parameter> (13WMAZ, https://www.13wmaz.com/article/news/education/x)',
+      'and the district projects 20,546 for 2026-27 (13WMAZ, https://www.13wmaz.com/article/news/education/x)',
+    ],
+  ]
+  for (const [dirty, clean] of cases) {
+    const out = sanitizeModelText(dirty)
+    assertEquals(out, clean)
+    // The number, the source name and any URL all survive: attribution is never what gets stripped.
+    for (const keep of ['103-bed', '20,783', '20,546', 'piedmont.org', 'Macon Melody', '13WMAZ', 'https://www.13wmaz.com/article/news/education/x']) {
+      if (dirty.includes(keep)) assert(out.includes(keep), `${keep} must survive sanitizing`)
+    }
+    assert(!/cite|parameter|index="/.test(out), out)
+  }
+  // Markdown links and bare URLs are untouched.
+  assertEquals(sanitizeModelText('per [13WMAZ](https://13wmaz.com/a) and https://piedmont.org/x'),
+    'per [13WMAZ](https://13wmaz.com/a) and https://piedmont.org/x')
+  // Ordinary prose in parentheses is not markup.
+  assertEquals(sanitizeModelText('(cited in the 2026 plan) and (parameters were set)'),
+    '(cited in the 2026 plan) and (parameters were set)')
 })
