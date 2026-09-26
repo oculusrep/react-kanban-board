@@ -28,6 +28,7 @@ import {
   isTokenExpired,
   applyLabelToMessage,
   removeLabelFromMessage,
+  getOrCreateLabel,
 } from '../_shared/gmail.ts';
 import { authorizeCaller } from '../_shared/caller-auth.ts';
 import { PERSONAL_SENDER_DOMAINS, PERSONAL_SENDER_ADDRESSES, matchesPersonalDomain } from '../_shared/tier1.ts';
@@ -47,6 +48,17 @@ const LABEL = {
   property: 'OVIS/Property',
   events: 'OVIS/Events',
   business: 'OVIS/Business',
+  /**
+   * Trade press worth reading. NOTHING CLASSIFIES INTO THIS YET, by instruction:
+   * the sender list is being built by hand in Gmail and learned from the
+   * watcher's corrections. decide() must never return it -- the label exists so
+   * the owner can tag with it, and so the watcher sees an OVIS/ label (a
+   * correction) rather than a foreign one it would ignore.
+   *
+   * Precedence when a rule eventually exists:
+   *   personal > business > property > events > reading > junk > unsorted
+   */
+  reading: 'OVIS/Reading',
   unsorted: 'OVIS/Unsorted',
 } as const;
 
@@ -221,6 +233,7 @@ serve(async (req) => {
   let resolveUnknown = false;
   let maxApplies = 250;
   let reconcile = false;
+  let ensureLabelsOnly = false;
   try {
     const body = await req.json();
     // Writes require saying so. Anything else, including an empty body, is a dry run.
@@ -240,6 +253,8 @@ serve(async (req) => {
     // Only labels email_label records as applied-and-not-removed are eligible,
     // so a hand-made label -- which has no row -- can never be a candidate.
     reconcile = body?.reconcile === true;
+    // Create the OVIS labels in the mailbox and stop. Touches no message.
+    ensureLabelsOnly = body?.ensure_labels === true;
   } catch {
     // no body — dry run
   }
@@ -267,6 +282,17 @@ serve(async (req) => {
           token_expires_at: new Date(Date.now() + t.expires_in * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         }).eq('id', connection.id);
+      }
+
+      // ensure_labels: make every OVIS label exist so the owner can tag with it
+      // before anything classifies into it. getOrCreateLabel is idempotent.
+      if (ensureLabelsOnly) {
+        const ensured: Record<string, string> = {};
+        for (const name of Object.values(LABEL)) {
+          ensured[name] = await getOrCreateLabel(accessToken, name);
+        }
+        perMailbox.push({ mailbox: connection.google_email, ensured_labels: ensured });
+        continue;
       }
 
       const inboxIds = await listInboxIds(accessToken);
