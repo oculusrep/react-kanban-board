@@ -27,3 +27,39 @@ verify_jwt = false
 # default true on 2026-09-27, which stopped site research dead until it was spotted.
 [functions.ovis-site-research-worker]
 verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# verify_jwt = false, pinned deliberately (2026-09-27 audit)
+#
+# These functions are called WITHOUT an Authorization header, so gateway JWT
+# verification would 401 them. Without a block here, a plain `supabase functions
+# deploy` resets whatever was set with --no-verify-jwt back to the default true
+# and the caller starts failing silently — which is exactly what happened to
+# ovis-site-research-worker. Each one below carries its own caller check.
+#
+# NOT pinned, on purpose: every other function currently sitting at
+# verify_jwt = false. Several have no internal auth at all and are open on the
+# internet today; pinning them would bless that. Letting the next deploy flip
+# them to the default true is the SAFE direction — they are called from the
+# browser, where supabase-js sends the Authorization header already. See
+# docs/EDGE_FUNCTION_JWT_AUDIT.md.
+# ---------------------------------------------------------------------------
+
+# OAuth callbacks: the provider redirects the user's browser here. No header is
+# possible, and each validates its own state/code.
+[functions.gmail-callback]
+verify_jwt = false
+
+[functions.gcal-callback]
+verify_jwt = false
+
+# pg_cron targets that send X-*-Secret and no Authorization. Each compares the
+# secret against vault before doing anything.
+[functions.gcal-sync]
+verify_jwt = false
+
+[functions.ovis-sweep-tick]
+verify_jwt = false
+
+[functions.label-watcher]
+verify_jwt = false

@@ -265,9 +265,93 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ------------------------------------------------------------------------
+    // CRON HTTP -- added 2026-09-27. A third failure class: the cron job itself
+    // reporting success while every call it made was rejected. net.http_post is
+    // fire-and-forget, so pg_cron goes green the moment the request is queued.
+    // On 09-27 a deploy turned verify_jwt back on for ovis-site-research-worker
+    // and 80 minutes of ticks 401'd behind a green job. Rows come from
+    // cron_http_post_verified(); same one-email-per-incident throttle.
+    // ------------------------------------------------------------------------
+    const { data: cronRows, error: cronError } = await supabase
+      .from('cron_http_alert')
+      .select('*')
+      .or('notified.eq.false,and(resolved_at.not.is.null,resolved_notified.eq.false)')
+      .order('fired_at', { ascending: true });
+
+    if (cronError) throw new Error(`cron http alert query failed: ${cronError.message}`);
+
+    for (const row of cronRows ?? []) {
+      const needsAlert = !row.notified;
+      const needsClear = row.resolved_at && !row.resolved_notified;
+
+      if (needsAlert) {
+        const subject = `[OVIS] Cron call failing — ${esc(row.job)}${row.status_code ? ` (HTTP ${row.status_code})` : ' (no response)'}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">A scheduled job's HTTP call is failing</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            <strong>${esc(row.job)}</strong> is still running on schedule, but the request it makes
+            is being rejected. Whatever that job drives is <strong>not happening</strong>.
+          </p>
+          <table style="font-family:system-ui,sans-serif;color:#002147;border-collapse:collapse">
+            <tr><td style="padding:4px 12px 4px 0">Job</td>
+                <td style="padding:4px 0"><strong>${esc(row.job)}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Response</td>
+                <td style="padding:4px 0"><strong>${row.status_code ?? 'none — the request was never answered'}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Detected</td>
+                <td style="padding:4px 0">${et(row.fired_at)}</td></tr>
+          </table>
+          <p style="font-family:system-ui,sans-serif;color:#A27B5C;border-left:3px solid #A27B5C;padding-left:8px">
+            ${esc((row.detail ?? '').slice(0, 500))}
+          </p>
+          <p style="font-family:system-ui,sans-serif;color:#4A6B94">
+            A 401 here usually means the function's gateway JWT check came back on: a plain
+            <code>supabase functions deploy</code> applies config.toml and resets a server-side
+            <code>--no-verify-jwt</code>. Check for a <code>[functions.&lt;name&gt;]</code> block
+            with <code>verify_jwt = false</code>. cron.job_run_details will read "succeeded"
+            regardless — it only means the request was queued.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('cron_http_alert')
+            .update({ notified: true, notify_error: null,
+                      notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          sent.push(`cron:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('cron_http_alert')
+            .update({ notify_error: String(e).slice(0, 500),
+                      notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          failed.push(`cron:${row.id}:${e}`);
+        }
+      }
+
+      if (needsClear) {
+        const subject = `[OVIS] Cron call recovered — ${esc(row.job)}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">${esc(row.job)} is answering again</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            The alert opened at ${et(row.fired_at)} and resolved at ${et(row.resolved_at)}.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('cron_http_alert')
+            .update({ resolved_notified: true, notify_error: null })
+            .eq('id', row.id);
+          sent.push(`cron-clear:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('cron_http_alert')
+            .update({ notify_error: String(e).slice(0, 500) })
+            .eq('id', row.id);
+          failed.push(`cron-clear:${row.id}:${e}`);
+        }
+      }
+    }
+
     // Report failures as a non-200 so a silently-failing alerter is itself visible.
     return new Response(
-      JSON.stringify({ success: failed.length === 0, sent, failed, considered: (rows?.length ?? 0) + (clfRows?.length ?? 0) }),
+      JSON.stringify({ success: failed.length === 0, sent, failed, considered: (rows?.length ?? 0) + (clfRows?.length ?? 0) + (cronRows?.length ?? 0) }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: failed.length ? 500 : 200 }
     );
