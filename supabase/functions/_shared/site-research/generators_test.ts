@@ -1,7 +1,7 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
-  buildGeneratorsCsv, collapseSubEntities, dayPartNote, lastRejectedByGuards,
-  type MerchantGenerator, merchantGenerators, recordGenerator,
+  buildGeneratorsCsv, type CatalogueBrand, collapseSubEntities, dayPartNote, lastRejectedByGuards,
+  type MerchantGenerator, merchantGenerators, recordGenerator, recoverBrand,
 } from './generators.ts'
 import { isAncillarySubListing, nameMatchesBrand } from '../merchant-brand-guards.ts'
 import { generatorCallout } from '../csv.ts'
@@ -113,27 +113,57 @@ Deno.test('generators.csv: CHECK rows sort first, and nothing is filtered out', 
   assertEquals(generatorCallout(built.rows[0]), null)
 })
 
-Deno.test('the query drops what the guards reject, so no mis-branded row reaches the export', async () => {
-  const rows = [
-    // Passes both guards.
-    { name: 'Kroger', brand: 'Kroger', cat: 'Grocery Stores' },
-    // Fails nameMatchesBrand: a "Roses" search that returned a florist.
-    { name: "Ladybug's Flowers & Gifts", brand: 'Roses', cat: 'Discount Department Stores' },
-    // Fails nameMatchesBrand: the Walmart filed under Golf Mart.
-    { name: 'Walmart Supercenter', brand: 'Golf Mart', cat: 'Sporting Goods' },
-    // Fails isAncillarySubListing.
-    { name: 'Kroger Pharmacy', brand: 'Kroger', cat: 'Drug Stores' },
-  ].map((r) => ({
-    name: r.name, latitude: 32.881, longitude: -83.761, formatted_address: `1 A St, Macon, GA 31210`,
-    business_status: 'OPERATIONAL',
-    merchant_brand: { name: r.brand, places_display_name: null, places_name_exclude: null, merchant_category: { name: r.cat } },
-  }))
-  const chain: Record<string, unknown> = {}
-  for (const k of ['select', 'is', 'in', 'gte', 'lte']) chain[k] = () => chain
-  chain.range = () => Promise.resolve({ data: rows, error: null })
-  const out = await merchantGenerators({ from: () => chain }, site)
-  assertEquals(out.map((r) => r.name), ['Kroger'])
-  assertEquals(lastRejectedByGuards, { mismatched: 2, ancillary: 1 })
+/** A stub service whose merchant_brand table is the catalogue and merchant_location the rows. */
+// deno-lint-ignore no-explicit-any
+function stubService(locations: any[], brands: Array<{ name: string; display?: string | null; cat: string }>) {
+  const make = (rows: unknown[]) => {
+    const chain: Record<string, unknown> = {}
+    for (const k of ['select', 'is', 'in', 'gte', 'lte']) chain[k] = () => chain
+    chain.limit = () => Promise.resolve({ data: rows, error: null })
+    chain.range = () => Promise.resolve({ data: rows, error: null })
+    return chain
+  }
+  return {
+    from: (t: string) =>
+      t === 'merchant_brand'
+        ? make(brands.map((b) => ({ name: b.name, places_display_name: b.display ?? null, merchant_category: { name: b.cat } })))
+        : make(locations),
+  }
+}
+// deno-lint-ignore no-explicit-any
+const loc = (name: string, brand: string, cat: string, addr = '1 A St'): any => ({
+  name, latitude: 32.881, longitude: -83.761, formatted_address: `${addr}, Macon, GA 31210`,
+  business_status: 'OPERATIONAL',
+  merchant_brand: { name: brand, places_display_name: null, places_name_exclude: null, merchant_category: { name: cat } },
+})
+
+Deno.test('the query keeps what the guards pass, recovers what it can, drops the rest', async () => {
+  const brands = [
+    { name: 'Kroger', cat: 'Grocery Stores' },
+    { name: 'Wal-Mart', display: 'Walmart', cat: 'Discount Department Stores' },
+    { name: 'Roses', cat: 'Discount Department Stores' },
+    { name: 'Golf Mart', cat: 'Sporting Goods' },
+  ]
+  const out = await merchantGenerators(stubService([
+    loc('Kroger', 'Kroger', 'Grocery Stores', '2 B St'),                          // guards pass
+    loc('Walmart Supercenter', 'Golf Mart', 'Sporting Goods', '3 C St'),          // recovered
+    loc("Ladybug's Flowers & Gifts", 'Roses', 'Discount Department Stores'),      // no brand: gone
+    loc('Kroger Pharmacy', 'Kroger', 'Drug Stores', '2 B St'),                    // ancillary: gone
+  ], brands), site)
+  assertEquals(out.map((r) => r.name).sort(), ['Kroger', 'Walmart Supercenter'])
+  const wm = out.find((r) => r.name === 'Walmart Supercenter')!
+  assertEquals(wm.category, 'big_box', 'category comes from the RECOVERED brand, not the stored one')
+  assertEquals(wm.brand, 'Wal-Mart')
+  assertEquals(wm.corrected_from, 'Golf Mart')
+  assertEquals(lastRejectedByGuards, { mismatched: 1, ancillary: 1, recovered: 1 })
+})
+
+Deno.test('a row whose real brand is not a generator category is dropped, not mis-filed', async () => {
+  const out = await merchantGenerators(stubService(
+    [loc('Chick-fil-A at Zebulon', 'Kroger', 'Grocery Stores')],
+    [{ name: 'Chick-fil-A', cat: 'Restaurant Fastfood Major' }, { name: 'Kroger', cat: 'Grocery Stores' }],
+  ), site)
+  assertEquals(out.length, 0)
 })
 
 Deno.test('the merchant query is bounded and paginated, never an unbounded 1000-row read', async () => {
@@ -143,6 +173,7 @@ Deno.test('the merchant query is bounded and paginated, never an unbounded 1000-
   for (const k of ['select', 'is', 'in', 'gte', 'lte']) {
     chain[k] = (...a: unknown[]) => { calls.push({ [k]: a }); return chain }
   }
+  chain.limit = () => Promise.resolve({ data: [], error: null }) // empty brand catalogue
   chain.range = (from: number, to: number) => {
     calls.push({ range: [from, to] })
     // First page full, second short: the loop must stop after the second.
@@ -164,4 +195,75 @@ Deno.test('the merchant query is bounded and paginated, never an unbounded 1000-
   assert(calls.some((c) => 'gte' in c), 'the query is bounded by a lat/lng box')
   assertEquals(out.filter((r) => r.name === 'Far Away').length, 0, 'outside the radius, dropped')
   assertEquals(out.length, 1000)
+})
+
+// ---------------------------------------------------------------------------
+// Read-side brand recovery
+// ---------------------------------------------------------------------------
+
+const cat = (name: string, categoryName: string, display?: string): CatalogueBrand => ({
+  name, expected: display ?? name, normalized: (display ?? name).toLowerCase().replace(/[^a-z0-9]/g, ''), categoryName,
+})
+const CATALOGUE: CatalogueBrand[] = [
+  cat('Wal-Mart', 'Discount Department Stores', 'Walmart'),
+  cat('Publix', 'Grocery Stores'),
+  cat('PetsMart', 'Pet Stores', 'PetSmart'),
+  cat('Planet Fitness', 'Fitness'),
+  cat('Planet Smoothie', 'Restaurant Ice Cream Smoothie'),
+  cat('Walgreens', 'Drug Stores'),
+  cat('Onelife Fitness', 'Fitness'),
+  cat('American Freight', 'Furniture Household'),
+  cat('Shoe Carnival', 'Shoes Footwear'),
+  cat('Chick-fil-A', 'Restaurant Fastfood Major'),
+]
+
+Deno.test('recovery finds the real brand of a mis-filed row', () => {
+  assertEquals(recoverBrand('Walmart Supercenter', CATALOGUE)?.brand, 'Wal-Mart')
+  assertEquals(recoverBrand('Walmart Supercenter', CATALOGUE)?.category, 'big_box')
+  assertEquals(recoverBrand('Publix Super Market at Bass Plantation', CATALOGUE)?.category, 'grocery')
+  assertEquals(recoverBrand('PetSmart', CATALOGUE)?.brand, 'PetsMart')
+  assertEquals(recoverBrand('Onelife Fitness - Macon', CATALOGUE)?.category, 'fitness')
+})
+
+Deno.test('recovery rejects the substring matches that invented brands', () => {
+  // These are the false re-homes a "contains" rule produced. A prefix rule must refuse them.
+  assertEquals(recoverBrand('American Eagle', CATALOGUE), null)
+  assertEquals(recoverBrand('DSW Designer Shoe Warehouse', CATALOGUE), null)
+  assertEquals(recoverBrand("Mike's Food Mart", CATALOGUE), null)
+  // The florists a "Roses" search returned: no brand, correctly gone.
+  assertEquals(recoverBrand("Ladybug's Flowers & Gifts", CATALOGUE), null)
+})
+
+Deno.test('longest match wins, and a non-generator brand is recovered but not exported', () => {
+  // "Planet Fitness" must not lose to "Planet" — and must not be taken for Planet Smoothie.
+  assertEquals(recoverBrand('Planet Fitness Macon', CATALOGUE)?.brand, 'Planet Fitness')
+  // Correctly identified, simply not a generator: the caller drops it.
+  assertEquals(recoverBrand('Chick-fil-A at Zebulon', CATALOGUE)?.category, null)
+})
+
+Deno.test('two brands tied on the longest match in different categories: CHECK, never a guess', () => {
+  const tied: CatalogueBrand[] = [cat('Summit Foods', 'Grocery Stores'), cat('Summit Foods', 'Fitness')]
+  const r = recoverBrand('Summit Foods of Macon', tied)!
+  assertEquals(r.category, null)
+  assertEquals(r.ambiguous?.length, 2)
+  const built = buildGeneratorsCsv([{
+    name: 'Summit Foods of Macon', category: '', brand: 'Summit Foods', street: '1 A St', city: 'Macon',
+    state: 'GA', zip: '31210', latitude: 32.9, longitude: -83.75, distance_miles: 1.1,
+    corrected_from: 'Kroger', ambiguous: r.ambiguous!,
+  }], [])
+  assertEquals(built.rows[0].flag, 'CHECK')
+  assertEquals(built.rows[0].category, null, 'category is left blank rather than guessed')
+  assert(String(built.rows[0].notes).includes('candidates:'), String(built.rows[0].notes))
+})
+
+Deno.test('a recovered row says what it was corrected from, and that the table is unchanged', () => {
+  const built = buildGeneratorsCsv([{
+    name: 'Walmart Supercenter', category: 'big_box', brand: 'Wal-Mart', street: '5955 Zebulon Rd',
+    city: 'Macon', state: 'GA', zip: '31210', latitude: 32.883, longitude: -83.76, distance_miles: 0.2,
+    corrected_from: 'Golf Mart',
+  }], [])
+  const notes = String(built.rows[0].notes)
+  assertEquals(built.rows[0].flag, null)
+  assert(notes.includes('corrected from the stored value "Golf Mart"'), notes)
+  assert(notes.includes('merchant_location itself is unchanged'), notes)
 })

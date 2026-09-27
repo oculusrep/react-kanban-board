@@ -65,7 +65,7 @@ Two halves, and they cost differently:
 
 **Every generator carries its daypart**, in `daypart`, with `daypart_sourced` true only when a source states the times: service times, a shift pattern, opening hours. Otherwise leave `daypart_sourced` false and the export labels the daypart INFERRED from the category. The daypart is the point of this section — a church is weekend, a hospital is 24-hour with shift changes, a courthouse is weekday business hours — and a generator whose peak misses the morning daypart is a weaker Starbucks argument than its size suggests. Say so where it matters.
 
-**The retail half is a Places harvest and it is not clean.** Rows are flagged CHECK when the location's name does not match the brand it was collected under, and the category is derived from that brand — so a flagged row's name, category or both may be wrong. Never cite a flagged retail row as an established fact about this trade area. Use the unflagged rows, and if a flagged one matters to the story, verify it with a search before you write it.
+**The retail half is a Places harvest, cleaned on the way out.** Rows collected under the wrong brand are either corrected from the location's own name — the note says what the stored value was — or dropped. What still reaches you flagged CHECK is a row whose category could not be resolved, or one that could not be placed on the map. Never cite a flagged retail row as an established fact about this trade area: use the unflagged rows, and if a flagged one matters to the story, verify it with a search before you write it.
 
 Use what a size implies, not more: weekend service counts for a church, shift pattern and site headcount for a hospital, room count for a hotel. Each of these belongs in `notes` when a source states it.
 

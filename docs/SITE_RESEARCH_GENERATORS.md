@@ -87,30 +87,53 @@ imported by ingest, map render and generators. It is dependency-free so Vite and
 
 ### What the guards do at Macon
 
-| | raw | ancillary | mis-branded | after collapse |
-|---|---|---|---|---|
-| 5 mi of the site | 120 | 22 dropped | 47 dropped | **43 rows, 0 flagged** |
+| | scanned | ancillary | unrecoverable | recovered | final |
+|---|---|---|---|---|---|
+| 5 mi of the site | 346 (all categories) | 36 dropped | 102 dropped | 12 | **50 rows, 0 flagged** |
+
+Recovered at Macon: Walmart Supercenter (was Golf Mart), Publix at Bass Plantation (was Kroger),
+Publix at Tobesofkee Crossing and The Fresh Market (both Maple Street), PetSmart (Petco), Planet
+Fitness and Onelife Fitness (24 Hour Fitness), Walgreens (CVS), Barnes & Noble (Starbucks), Rooms
+To Go (Mattress King). Two more were absorbed by the sub-entity collapse — Walmart Business Center
+and Walmart Money Center now fold into the Supercenter row.
 
 Table-wide: 23,667 rows → 2,003 ancillary, 6,520 mis-branded, **15,144 clean**. Ten-site sample,
 junk share: 0 / 17 / 23 / 29 / 29 / 31 / 48%.
 
-### The cost of filtering without re-homing
+### Read-side recovery: the export corrects, the table does not change
 
-A mis-filed row is dropped, not corrected, so **a real store whose only row is mis-branded
-disappears from the export**. At Macon that costs 16 stores, including Walmart Supercenter (filed
-under Golf Mart), Publix Super Market at Bass Plantation (under Kroger), PetSmart (under Petco),
-Planet Fitness and Onelife Fitness (under 24 Hour Fitness), and Walgreens (under CVS). The Walmart
-row that survives is "Walmart Money Center", because that one happens to be filed correctly.
+Guards alone drop a mis-filed row rather than correcting it, so **a real store whose only row is
+mis-branded disappears**. At Macon that cost 16 stores including the Walmart Supercenter at 5955
+Zebulon Rd — the anchor next door to the site. A generators file missing the Walmart next door is
+the failure this whole feature exists to avoid: an absence that means "we cannot see it", read as
+"nothing is there".
 
-Re-homing those rows to the brand their name actually matches is the fix, and it is **deliberately
-not done here**: it would make ~1,069 currently-hidden locations appear as pins on the merchant
-map, which is a map change, not a site-research one. Scheduled separately.
+So `merchantGenerators` recovers the brand **from the location's own name, for the export only**:
 
-A strict matcher is required for it — the location name must *start with* the brand (normalized,
-≥5 chars, longest match wins). A loose substring match looks like it recovers 2,536 rows but
-produces false re-homes: "American Eagle" → American Freight, "Batteries Plus" → AT&T, "DSW
-Designer Shoe Warehouse" → Shoe Carnival. The strict rule recovers **1,069**, and the remaining
-5,787 match no brand at all — those are the florists, and dropping them is correct.
+- The name must **start with** the brand, normalized, **5+ characters**, **longest match wins**.
+- The recovered brand supplies the category, because the stored one came from the wrong brand.
+- The row's note says what it was corrected from: *brand corrected from the stored value "Golf
+  Mart" by matching the location name; merchant_location itself is unchanged*.
+- A name matching **no** brand is not recovered — the florists stay gone.
+- Two brands tied at the longest match in **different categories**: category left **blank** and the
+  row flagged **CHECK**, with both candidates named. Never guessed.
+- **Nothing is written back.** `brand_id` is untouched, so the merchant map is unaffected.
+
+The strictness is the point. A loose "contains" match appears to recover 2,536 rows but invents
+brands: "American Eagle" → American Freight, "Batteries Plus" → AT&T, "DSW Designer Shoe
+Warehouse" → Shoe Carnival. The prefix rule refuses all three.
+
+Because the stored category is unreliable, the query no longer filters by category server-side —
+the Walmart filed under Golf Mart would have been excluded before it could be recovered. The
+lat/lng box keeps it cheap: 346 rows at Macon across every category, plus one 401-row brand
+catalogue read per run.
+
+### Still open: re-homing the table itself (B)
+
+Read-side recovery fixes the export, not the data. Writing the corrections back to
+`merchant_location.brand_id` would make **~1,069** currently-hidden locations appear as pins on the
+merchant map — a map change, scheduled on its own. The strict rule above is the one to use when it
+happens. The other 5,787 mismatched rows match no brand and should be deleted, not re-homed.
 
 ### Sub-entity collapse
 
