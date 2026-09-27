@@ -1,8 +1,9 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
-  buildGeneratorsCsv, collapseSubEntities, dayPartNote, type MerchantGenerator,
-  merchantGenerators, nameMatchesBrand, recordGenerator,
+  buildGeneratorsCsv, collapseSubEntities, dayPartNote, lastRejectedByGuards,
+  type MerchantGenerator, merchantGenerators, recordGenerator,
 } from './generators.ts'
+import { isAncillarySubListing, nameMatchesBrand } from '../merchant-brand-guards.ts'
 import { generatorCallout } from '../csv.ts'
 
 const site = { latitude: 32.880362, longitude: -83.760908 }
@@ -57,12 +58,16 @@ Deno.test('retail categories cannot be recorded by the model — they come from 
   assertEquals((r.rejected as Array<{ field: string }>)[0].field, 'category')
 })
 
-Deno.test('brand mismatch: the Places brand is wrong often enough to test for', () => {
-  assert(nameMatchesBrand('Kroger Deli', 'Kroger'))
-  assert(nameMatchesBrand('bealls', 'Bealls Outlet'))
-  assert(!nameMatchesBrand('Planet Fitness', '24 Hour Fitness'))
-  assert(!nameMatchesBrand("Mike's Food Mart", 'Apple Store'))
-  assert(nameMatchesBrand('Anything', null))
+Deno.test('the shared guards are what generators applies — same rule as ingest and map render', () => {
+  assert(nameMatchesBrand('Kroger Deli', { name: 'Kroger' }))
+  assert(nameMatchesBrand('bealls', { name: 'Bealls Outlet' }))
+  assert(!nameMatchesBrand('Planet Fitness', { name: '24 Hour Fitness' }))
+  assert(!nameMatchesBrand("Mike's Food Mart", { name: 'Apple Store' }))
+  assert(!nameMatchesBrand('Ladybug\'s Flowers & Gifts', { name: 'Roses' }))
+  // The ancillary list already covers the named sub-listings; the collapse covers the rest.
+  assert(isAncillarySubListing('Kroger Deli', {}))
+  assert(isAncillarySubListing('Walmart Garden Center', {}))
+  assert(!isAncillarySubListing('Walmart Supercenter', {}))
 })
 
 Deno.test('sub-entities of one store collapse; separate tenants at one address do not', () => {
@@ -82,19 +87,14 @@ Deno.test('sub-entities of one store collapse; separate tenants at one address d
   assertEquals(rows.find((r) => r.name === 'Kroger')?.collapsed?.length, 2)
 })
 
-Deno.test('generators.csv: retail is not flagged for a missing size, a mis-branded row is', () => {
+Deno.test('generators.csv: retail carries no size and is not flagged for it', () => {
   const built = buildGeneratorsCsv(
-    [m('Kroger', 'Kroger', '220 Tom Hill Sr Blvd'), m('Planet Fitness', '24 Hour Fitness', '160 Tom Hill Sr Blvd', 'fitness')],
-    [], (lat) => (lat === 32.881 ? '5min' : null))
-  assertEquals(built.rows.length, 2)
-  const kroger = built.rows.find((r) => r.name === 'Kroger')!
+    [m('Kroger', 'Kroger', '220 Tom Hill Sr Blvd')], [], (lat) => (lat === 32.881 ? '5min' : null))
+  const kroger = built.rows[0]
   assertEquals(kroger.flag, null, 'retail has no size anywhere; a blank size is not a CHECK')
   assertEquals(kroger.drive_time_band, '5min')
   assertEquals(kroger.size_value, null)
-  const pf = built.rows.find((r) => r.name === 'Planet Fitness')!
-  assertEquals(pf.flag, 'CHECK')
-  assert(String(pf.notes).includes('unverified'), String(pf.notes))
-  assertEquals(built.flagged, 1)
+  assertEquals(built.flagged, 0)
   assertEquals(built.csv.split('\r\n')[0].split(',')[0], 'flag')
 })
 
@@ -113,6 +113,29 @@ Deno.test('generators.csv: CHECK rows sort first, and nothing is filtered out', 
   assertEquals(generatorCallout(built.rows[0]), null)
 })
 
+Deno.test('the query drops what the guards reject, so no mis-branded row reaches the export', async () => {
+  const rows = [
+    // Passes both guards.
+    { name: 'Kroger', brand: 'Kroger', cat: 'Grocery Stores' },
+    // Fails nameMatchesBrand: a "Roses" search that returned a florist.
+    { name: "Ladybug's Flowers & Gifts", brand: 'Roses', cat: 'Discount Department Stores' },
+    // Fails nameMatchesBrand: the Walmart filed under Golf Mart.
+    { name: 'Walmart Supercenter', brand: 'Golf Mart', cat: 'Sporting Goods' },
+    // Fails isAncillarySubListing.
+    { name: 'Kroger Pharmacy', brand: 'Kroger', cat: 'Drug Stores' },
+  ].map((r) => ({
+    name: r.name, latitude: 32.881, longitude: -83.761, formatted_address: `1 A St, Macon, GA 31210`,
+    business_status: 'OPERATIONAL',
+    merchant_brand: { name: r.brand, places_display_name: null, places_name_exclude: null, merchant_category: { name: r.cat } },
+  }))
+  const chain: Record<string, unknown> = {}
+  for (const k of ['select', 'is', 'in', 'gte', 'lte']) chain[k] = () => chain
+  chain.range = () => Promise.resolve({ data: rows, error: null })
+  const out = await merchantGenerators({ from: () => chain }, site)
+  assertEquals(out.map((r) => r.name), ['Kroger'])
+  assertEquals(lastRejectedByGuards, { mismatched: 2, ancillary: 1 })
+})
+
 Deno.test('the merchant query is bounded and paginated, never an unbounded 1000-row read', async () => {
   const calls: Array<Record<string, unknown>> = []
   let page = 0
@@ -125,12 +148,13 @@ Deno.test('the merchant query is bounded and paginated, never an unbounded 1000-
     // First page full, second short: the loop must stop after the second.
     const rows = page++ === 0
       ? Array.from({ length: 1000 }, (_, i) => ({
-        name: `Store ${i}`, latitude: 32.881, longitude: -83.761, formatted_address: '1 A St, Macon, GA 31210',
-        business_status: 'OPERATIONAL', merchant_brand: { name: `Store ${i}`, merchant_category: { name: 'Grocery Stores' } },
+        // Distinct names and addresses: the collapse must not fold unrelated stores together.
+        name: `Brand${i} Market`, latitude: 32.881, longitude: -83.761, formatted_address: `${i} A St, Macon, GA 31210`,
+        business_status: 'OPERATIONAL', merchant_brand: { name: `Brand${i} Market`, places_display_name: null, places_name_exclude: null, merchant_category: { name: 'Grocery Stores' } },
       }))
       : [{
         name: 'Far Away', latitude: 40.0, longitude: -83.761, formatted_address: '9 B St, Columbus, OH 43004',
-        business_status: 'OPERATIONAL', merchant_brand: { name: 'Far Away', merchant_category: { name: 'Grocery Stores' } },
+        business_status: 'OPERATIONAL', merchant_brand: { name: 'Far Away', places_display_name: null, places_name_exclude: null, merchant_category: { name: 'Grocery Stores' } },
       }]
     return Promise.resolve({ data: rows, error: null })
   }

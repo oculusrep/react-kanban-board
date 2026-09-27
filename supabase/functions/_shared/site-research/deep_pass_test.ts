@@ -246,7 +246,8 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
     merchantGenerators: () => Promise.resolve([
       { name: 'Kroger', category: 'grocery', brand: 'Kroger', street: '220 Tom Hill Sr Blvd', city: 'Macon',
         state: 'GA', zip: '31210', latitude: 32.9, longitude: -83.75, distance_miles: 1.4 },
-      { name: 'Planet Fitness', category: 'fitness', brand: '24 Hour Fitness', street: '160 Tom Hill Sr Blvd',
+      // Only guard-passing rows ever reach the worker; merchantGenerators drops the rest.
+      { name: 'Planet Fitness', category: 'fitness', brand: 'Planet Fitness', street: '160 Tom Hill Sr Blvd',
         city: 'Macon', state: 'GA', zip: '31210', latitude: 32.91, longitude: -83.76, distance_miles: 1.6 },
     ]),
     recordGenerator: (input, site) => recordGenerator(input, site, () => Promise.resolve(null)),
@@ -289,9 +290,8 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(sim.uploads.some((u) => u.name === 'competitors.csv'), 'competitors.csv is exported')
   const gens = sim.uploads.find((u) => u.name === 'generators.csv')!.text.split('\r\n')
   assertEquals(gens[0], 'flag,name,category,size_value,size_unit,street,city,state,zip,lat,lng,distance_mi,drive_time_band,source,notes')
-  // The church the model recorded is sized and unflagged; the mis-branded gym and the unsized
-  // courthouse are CHECK, and CHECK sorts first.
-  assertEquals(gens.slice(1, -1).map((l) => l.split(',')[1]), ['Planet Fitness', 'County Courthouse', 'Kroger'])
+  // Only the unsized courthouse is CHECK, and CHECK sorts first; retail then sorts by distance.
+  assertEquals(gens.slice(1, -1).map((l) => l.split(',')[1]), ['County Courthouse', 'Kroger', 'Planet Fitness'])
   assert(gens.find((l) => l.startsWith(',Kroger,'))!.includes(',grocery,,,'), 'retail carries no size and is not flagged')
   const pipelineCsv = sim.uploads.find((u) => u.name === 'pipeline.csv')
   assert(pipelineCsv, 'pipeline.csv is exported')
@@ -323,7 +323,7 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(msg.content.includes('schools.csv (7 rows; 2 flagged CHECK)'), msg.content)
   assert(msg.content.includes('employers.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('competitors.csv (1 rows)'), msg.content)
-  assert(msg.content.includes('generators.csv (3 rows; 2 flagged CHECK)'), msg.content)
+  assert(msg.content.includes('generators.csv (3 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('pipeline.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('Nothing is filtered out of an export'))
 })

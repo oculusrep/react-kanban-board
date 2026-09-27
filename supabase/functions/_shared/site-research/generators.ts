@@ -18,6 +18,7 @@ import {
   type GeneratorsRow, generatorSort, toCsv,
 } from '../csv.ts';
 import { haversineMiles, round1 } from './geo.ts';
+import { isAncillarySubListing, nameMatchesBrand } from '../merchant-brand-guards.ts';
 import { censusGeocode, distanceIfExact, type GeocodeMatch } from './geocode.ts';
 
 /** Everything within this many miles is a candidate generator. */
@@ -63,29 +64,18 @@ export const dayPartNote = (category: string, sourced: string | null): string =>
   sourced ? `daypart: ${sourced} — Sourced` : `daypart: ${CATEGORY_DAYPART[category] ?? 'not determined'} — INFERRED`;
 
 /**
- * merchant_location is a Places harvest, and it is dirty in two specific ways that matter here.
+ * merchant_location is a Places harvest, and it is dirty in two ways that matter here.
  *
- * SUB-ENTITIES: one store yields several rows — "Kroger Bakery", "Kroger Deli", "Kroger Pharmacy",
- * "Kroger Fuel Center" at 220 Tom Hill Sr Blvd; six rows for one Home Depot. Same brand, same
- * street, one physical generator. They are collapsed to one row and the collapsed names kept in
- * notes, so nothing is lost and the count is a count of stores.
+ * MIS-BRANDED ROWS: brand comes from the Places search *query*, so a "Macy's" search at a mall
+ * returned Claire's and Talbots, a "24 Hour Fitness" search returned Planet Fitness, and a "Roses"
+ * search returned 395 florists. OVIS already rejects these — nameMatchesBrand and
+ * isAncillarySubListing, shipped July 2026 at ingest and at map render. Every stored row predates
+ * them, so this query applies the same guards rather than inventing a third rule.
  *
- * MIS-BRANDED ROWS: brand comes from the Places search query, so a "Macy's" search at a mall
- * returned Claire's, Talbots and American Eagle, and a "24 Hour Fitness" search returned Planet
- * Fitness. Those rows are real places, wrongly labelled. They stay in the export — filtering is
- * the mapper's call — but they carry flag=CHECK with the reason, which is what the flag is for.
+ * SUB-ENTITIES: one store yields several rows. The ancillary token list covers the named ones
+ * (Kroger Deli, Lowe's Garden Center); collapseSubEntities below covers what it misses, such as
+ * Walmart Supercenter against Walmart Business Center at one address.
  */
-const normalizeName = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(the|inc|llc|co|company|store|stores|supercenter|market)\b/g, ' ')
-    .replace(/\s+/g, ' ').trim();
-
-/** Does a Places name plausibly belong to its brand? */
-export function nameMatchesBrand(name: string, brand: string | null): boolean {
-  if (!brand) return true;
-  const n = normalizeName(name), b = normalizeName(brand);
-  if (!n || !b) return true;
-  return n.includes(b) || b.includes(n) || n.slice(0, 5) === b.slice(0, 5);
-}
 
 export interface MerchantGenerator {
   name: string;
@@ -118,11 +108,12 @@ export async function merchantGenerators(service: any, site: { latitude: number;
   const PAGE = 1000;
   const pt = { lat: site.latitude, lng: site.longitude };
   const out: MerchantGenerator[] = [];
+  const rejected = { mismatched: 0, ancillary: 0 };
 
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await service
       .from('merchant_location')
-      .select('name, latitude, longitude, verified_latitude, verified_longitude, formatted_address, business_status, merchant_brand!inner(name, merchant_category!inner(name))')
+      .select('name, latitude, longitude, verified_latitude, verified_longitude, formatted_address, business_status, merchant_brand!inner(name, places_display_name, places_name_exclude, merchant_category!inner(name))')
       .is('excluded_at', null)
       .in('merchant_brand.merchant_category.name', categories)
       .gte('latitude', site.latitude - dLat).lte('latitude', site.latitude + dLat)
@@ -138,9 +129,17 @@ export async function merchantGenerators(service: any, site: { latitude: number;
       if (String(row.business_status ?? '').toUpperCase() === 'CLOSED_PERMANENTLY') continue;
       const d = haversineMiles(pt, { lat, lng });
       if (d > GENERATOR_RADIUS_MILES) continue;
-      const brand = (row.merchant_brand as { name?: string; merchant_category?: { name?: string } } | null) ?? null;
+      const brand = (row.merchant_brand as
+        { name?: string; places_display_name?: string | null; places_name_exclude?: string | null; merchant_category?: { name?: string } }
+        | null) ?? null;
       const category = MERCHANT_CATEGORY_MAP[brand?.merchant_category?.name ?? ''];
       if (!category) continue;
+      // The shipped guards, same as ingest and map render. A row that fails these is not a
+      // location of this brand at all, and its category — derived from that brand — is wrong too.
+      const guardBrand = { name: brand?.name ?? '', places_display_name: brand?.places_display_name, places_name_exclude: brand?.places_name_exclude };
+      const placesName = String(row.name ?? '');
+      if (!nameMatchesBrand(placesName, guardBrand)) { rejected.mismatched++; continue; }
+      if (isAncillarySubListing(placesName, guardBrand)) { rejected.ancillary++; continue; }
       // formatted_address is "street, city, state zip" from Places; split without inventing parts.
       const parts = String(row.formatted_address ?? '').split(',').map((x) => x.trim());
       const stateZip = (parts[2] ?? '').split(' ').filter(Boolean);
@@ -154,8 +153,12 @@ export async function merchantGenerators(service: any, site: { latitude: number;
     }
     if (rows.length < PAGE) break;
   }
+  lastRejectedByGuards = rejected;
   return collapseSubEntities(out).sort((a, b) => a.distance_miles - b.distance_miles);
 }
+
+/** What the last merchantGenerators call dropped, for the run log. Not part of the export. */
+export let lastRejectedByGuards = { mismatched: 0, ancillary: 0 };
 
 /**
  * One store per physical location, however many Places rows it has.
@@ -166,6 +169,19 @@ export async function merchantGenerators(service: any, site: { latitude: number;
  * at 5955 Zebulon Rd carries the brands Wal-Mart, Golf Mart and Office Depot across its three rows.
  * A shared address alone is not enough: a shopping centre's tenants share one.
  */
+/**
+ * Ranking only, never dropping: the ancillary tokens with their spaces removed, so "ProServices"
+ * ranks below "Home Improvement" the way "Pro Services" already would. The shared guard keeps its
+ * own spelling — widening it would change which pins the merchant map draws, which is a map
+ * decision, not a generators one.
+ */
+const ANCILLARY_ISH = /(atm|pharmacy|fuelcenter|fuelkiosk|fuelingcenter|deli|bakery|floral|moneyservices|moneycenter|advisors|clicklist|gardencenter|proservices|procenter|prodesk|toolrental|autocenter|visioncenter|opticalcenter|photolab|customerservice|curbside|pickup)/i;
+const looksAncillary = (name: string) => ANCILLARY_ISH.test(name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+/** First meaningful word of a store name: "walmart" from "Walmart Business Center". */
+const leadWord = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(the|at|of)\b/g, ' ').trim().split(/\s+/)[0] ?? '';
+
 export function collapseSubEntities(rows: MerchantGenerator[]): MerchantGenerator[] {
   const streetKey = (r: MerchantGenerator) =>
     r.street ? r.street.toLowerCase().replace(/\s+(ste|suite|unit|#|spc)\s*\S+$/i, '').trim() : null;
@@ -178,10 +194,10 @@ export function collapseSubEntities(rows: MerchantGenerator[]): MerchantGenerato
     if (g) g.push(r); else byStreet.set(k, [r]);
   }
 
-  const lead = (r: MerchantGenerator) => normalizeName(r.name).split(' ')[0] ?? '';
   const sameStore = (a: MerchantGenerator, b: MerchantGenerator) =>
-    (lead(a) !== '' && lead(a) === lead(b)) ||
-    (!!a.brand && a.brand === b.brand && nameMatchesBrand(a.name, a.brand) && nameMatchesBrand(b.name, b.brand));
+    (leadWord(a.name) !== '' && leadWord(a.name) === leadWord(b.name)) ||
+    (!!a.brand && a.brand === b.brand &&
+      nameMatchesBrand(a.name, { name: a.brand }) && nameMatchesBrand(b.name, { name: b.brand! }));
 
   for (const group of byStreet.values()) {
     const clusters: MerchantGenerator[][] = [];
@@ -193,7 +209,8 @@ export function collapseSubEntities(rows: MerchantGenerator[]): MerchantGenerato
       if (c.length === 1) { out.push(c[0]); continue; }
       // Keep the row whose name is closest to the brand — "Kroger", not "Kroger Fuel Center".
       const best = [...c].sort((a, b) =>
-        (nameMatchesBrand(b.name, b.brand) ? 1 : 0) - (nameMatchesBrand(a.name, a.brand) ? 1 : 0) ||
+        (nameMatchesBrand(b.name, { name: b.brand ?? '' }) ? 1 : 0) - (nameMatchesBrand(a.name, { name: a.brand ?? '' }) ? 1 : 0) ||
+        (looksAncillary(a.name) ? 1 : 0) - (looksAncillary(b.name) ? 1 : 0) ||
         a.name.length - b.name.length)[0];
       out.push({ ...best, collapsed: c.filter((r) => r !== best).map((r) => r.name) });
     }
@@ -365,9 +382,6 @@ export function buildGeneratorsCsv(
     rows.push(r);
   };
   for (const m of merchants) {
-    // The category comes FROM the brand, so a wrong brand means a wrong category too — say so.
-    const mismatch = nameMatchesBrand(m.name, m.brand) ? null
-      : `Places name does not match its brand (${m.brand}); the category is derived from that brand, so treat both as unverified`;
     push(buildGeneratorRow({
       name: m.name, category: m.category, size_value: null, size_unit: null,
       street: m.street, city: m.city, state: m.state, zip: m.zip,
@@ -376,12 +390,10 @@ export function buildGeneratorsCsv(
       source: 'OVIS merchant_location (Google Places)',
       // Retail has no size on file anywhere, so a blank size is not a CHECK for these rows.
       size_expected: false,
-      check_reason: mismatch,
       notes: [
         m.brand ? `brand: ${m.brand}` : null,
         dayPartNote(m.category, null),
         m.collapsed?.length ? `one store; Places also lists ${m.collapsed.join(', ')}` : null,
-        mismatch,
       ].filter(Boolean).join('; '),
     }));
   }

@@ -56,29 +56,70 @@ make the column noise. A generator row is CHECK when:
 2. it could not be placed on the map (no geocode), or
 3. its Places **name does not match its brand**.
 
-## merchant_location data quality — read this before trusting a category
+## merchant_location data quality — and the guards that handle it
 
-Two defects, both handled, neither fixed at source:
+**OVIS already solved this, in July 2026, and site research did not know.** Two guards ship at
+ingest time and at map render time:
 
-**Sub-entities.** One store yields several Places rows: `Kroger`, `Kroger Bakery`, `Kroger Deli`,
-`Kroger Pharmacy`, `Kroger Fuel Center` at 220 Tom Hill Sr Blvd; six rows for one Home Depot.
-`collapseSubEntities` merges rows at the same street address whose names share a leading word, or
-whose names both genuinely match a shared brand. The collapsed names are kept in `notes`. At Macon
-this took 120 rows to 87.
+- `nameMatchesBrand` (`92459b3f`, 2026-07-02) — Places Text Search is over-permissive: a
+  "24 Hour Fitness" search returns Anytime Fitness and dance studios, a "Roses" search returned
+  **395 florists**, and "Walmart Supercenter" is filed under brand *Golf Mart*.
+- `isAncillarySubListing` (`684f513f`, 2026-07-07) — Kroger Pharmacy, Wells Fargo ATM, Lowe's
+  Garden Center: sub-services at one storefront, listed by Places as separate places.
 
-**Mis-branded rows.** `brand` comes from the Places *search query*, so a "Macy's" search at a mall
-returned Claire's, Talbots and American Eagle; a "24 Hour Fitness" search returned Planet Fitness;
-"Walmart Supercenter" is filed under brand *Golf Mart* and "Mike's Food Mart" under *Apple Store*.
-**31% of all 23,667 `merchant_location` rows have a name that does not match their brand** (54% of
-the generator-category rows within 5 mi of Macon).
+**Every row in the table predates both.** Ingestion ran 2026-04 (21,108 rows) and 2026-06 (2,559);
+the guards landed in July. Ingest is upsert-only and never deletes, and **no cron re-ingests
+locations** — the only merchant cron is `merchant-logo-refresh-daily`, which touches
+`merchant_brand` logos alone. Ingestion is manual, from the admin Ingestion tab. So the pre-guard
+rows stay until someone cleans them, and every reader has to filter.
 
-This matters beyond the name: **the category is derived from the brand**, so a mis-branded row has
-an unreliable category too. Those rows stay in the export — filtering is the mapping step's call —
-flagged CHECK with a note saying both are unverified, and deep_pass v11 forbids citing a flagged
-retail row as fact without verifying it.
+The map has been filtering at render all along ([MerchantLayer.tsx:459-461](../src/components/mapping/layers/MerchantLayer.tsx#L459-L461)),
+which is why the junk was invisible. The first generators build read the raw table and picked up
+all of it: 54% of rows within 5 mi of Macon.
 
-Fixing this properly means classifying on the location name rather than the brand, which is a
-separate piece of work on `merchant_location` itself, not on site research.
+### One definition, three callers
+
+The guards were two hand-synced copies with "KEEP IN SYNC" comments, which is precisely how site
+research missed the contract. They now live once, in
+[supabase/functions/_shared/merchant-brand-guards.ts](../supabase/functions/_shared/merchant-brand-guards.ts),
+imported by ingest, map render and generators. It is dependency-free so Vite and Deno both take it;
+`supabase functions deploy` uploads it as a function asset.
+
+### What the guards do at Macon
+
+| | raw | ancillary | mis-branded | after collapse |
+|---|---|---|---|---|
+| 5 mi of the site | 120 | 22 dropped | 47 dropped | **43 rows, 0 flagged** |
+
+Table-wide: 23,667 rows → 2,003 ancillary, 6,520 mis-branded, **15,144 clean**. Ten-site sample,
+junk share: 0 / 17 / 23 / 29 / 29 / 31 / 48%.
+
+### The cost of filtering without re-homing
+
+A mis-filed row is dropped, not corrected, so **a real store whose only row is mis-branded
+disappears from the export**. At Macon that costs 16 stores, including Walmart Supercenter (filed
+under Golf Mart), Publix Super Market at Bass Plantation (under Kroger), PetSmart (under Petco),
+Planet Fitness and Onelife Fitness (under 24 Hour Fitness), and Walgreens (under CVS). The Walmart
+row that survives is "Walmart Money Center", because that one happens to be filed correctly.
+
+Re-homing those rows to the brand their name actually matches is the fix, and it is **deliberately
+not done here**: it would make ~1,069 currently-hidden locations appear as pins on the merchant
+map, which is a map change, not a site-research one. Scheduled separately.
+
+A strict matcher is required for it — the location name must *start with* the brand (normalized,
+≥5 chars, longest match wins). A loose substring match looks like it recovers 2,536 rows but
+produces false re-homes: "American Eagle" → American Freight, "Batteries Plus" → AT&T, "DSW
+Designer Shoe Warehouse" → Shoe Carnival. The strict rule recovers **1,069**, and the remaining
+5,787 match no brand at all — those are the florists, and dropping them is correct.
+
+### Sub-entity collapse
+
+Kept alongside the guards for what the token list misses: "Walmart Supercenter" against "Walmart
+Business Center", where neither word is an ancillary token. Rows at the same street address merge
+when their names share a leading word, or when both genuinely match a shared brand. Within a group
+the representative is the name closest to the brand, and a name that *looks* ancillary once its
+spaces are removed ("Lowe's ProServices") ranks last — a ranking rule only, local to generators,
+because widening the shared token list would change which pins the map draws.
 
 ## Code
 
