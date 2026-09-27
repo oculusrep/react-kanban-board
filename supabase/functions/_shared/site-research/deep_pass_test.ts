@@ -5,6 +5,7 @@ import {
   type RecordedEmployer, streetKey, validateSchoolFill,
 } from './deep-pass.ts'
 import { type DeepPassDb, type DeepPassDeps, runDeepPassIteration } from './deep-pass-worker.ts'
+import { recordGenerator } from './generators.ts'
 import { distanceBetweenAddressesTool, distanceIfExact, interpretCensus } from './geocode.ts'
 import { sanitizeModelText } from './loop.ts'
 import type { ClaimedRun, WorkerDb } from './iteration.ts'
@@ -200,6 +201,8 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
         { type: 'tool_use', id: 'e1', name: 'record_employer', input: { name: 'Navicent Hospital', employer_type: 'hospital', street: '777 Hemlock St', city: 'Macon', state: 'GA', headcount: 4600, source: 'https://navicent.example', source_year: '2025' } },
         { type: 'tool_use', id: 'e2', name: 'record_employer', input: { name: '=HYPERLINK("x")', employer_type: 'other_institutional', source: 'https://evil.example' } },
         { type: 'tool_use', id: 'e3', name: 'record_employer', input: { name: 'Kroger on Zebulon Rd', employer_type: 'other_institutional', headcount: 120, source: 'https://kroger.example' } },
+        { type: 'tool_use', id: 'g1', name: 'record_generator', input: { name: 'County Courthouse', category: 'civic', source: 'https://bibb.example/courts' } },
+        { type: 'tool_use', id: 'g2', name: 'record_generator', input: { name: 'Publix', category: 'grocery', source: 'https://publix.example' } },
       ] },
       { stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: '**Why Here**\nThe case.' }] },
     ],
@@ -239,6 +242,14 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
       drive_thru: true, company_operated: true, rtm_sales: 2543370, sales_as_of: '2026-07-08',
       source: 'Starbucks Atlas', notes: 'store_type DT',
     }]),
+    // Retail generators are code-sourced like Atlas coffee: no tool call, no search.
+    merchantGenerators: () => Promise.resolve([
+      { name: 'Kroger', category: 'grocery', brand: 'Kroger', street: '220 Tom Hill Sr Blvd', city: 'Macon',
+        state: 'GA', zip: '31210', latitude: 32.9, longitude: -83.75, distance_miles: 1.4 },
+      { name: 'Planet Fitness', category: 'fitness', brand: '24 Hour Fitness', street: '160 Tom Hill Sr Blvd',
+        city: 'Macon', state: 'GA', zip: '31210', latitude: 32.91, longitude: -83.76, distance_miles: 1.6 },
+    ]),
+    recordGenerator: (input, site) => recordGenerator(input, site, () => Promise.resolve(null)),
     recordEmployer: (input, site) => recordEmployer(input, site, () =>
       Promise.resolve({ latitude: 34.0211, longitude: -84.4158, matched_address: '777 HEMLOCK ST, MACON, GA', match_quality: 'exact' as const, candidates: 1 })),
     exportFiles: (_ss, files) => {
@@ -276,6 +287,12 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
 
   const schools = sim.uploads.find((u) => u.name === 'schools.csv')!.text.split('\r\n')
   assert(sim.uploads.some((u) => u.name === 'competitors.csv'), 'competitors.csv is exported')
+  const gens = sim.uploads.find((u) => u.name === 'generators.csv')!.text.split('\r\n')
+  assertEquals(gens[0], 'flag,name,category,size_value,size_unit,street,city,state,zip,lat,lng,distance_mi,drive_time_band,source,notes')
+  // The church the model recorded is sized and unflagged; the mis-branded gym and the unsized
+  // courthouse are CHECK, and CHECK sorts first.
+  assertEquals(gens.slice(1, -1).map((l) => l.split(',')[1]), ['Planet Fitness', 'County Courthouse', 'Kroger'])
+  assert(gens.find((l) => l.startsWith(',Kroger,'))!.includes(',grocery,,,'), 'retail carries no size and is not flagged')
   const pipelineCsv = sim.uploads.find((u) => u.name === 'pipeline.csv')
   assert(pipelineCsv, 'pipeline.csv is exported')
   const pl = pipelineCsv!.text.split('\r\n')
@@ -306,6 +323,7 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(msg.content.includes('schools.csv (7 rows; 2 flagged CHECK)'), msg.content)
   assert(msg.content.includes('employers.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('competitors.csv (1 rows)'), msg.content)
+  assert(msg.content.includes('generators.csv (3 rows; 2 flagged CHECK)'), msg.content)
   assert(msg.content.includes('pipeline.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('Nothing is filtered out of an export'))
 })
@@ -315,7 +333,7 @@ Deno.test('prepare with nothing to fill goes straight to the deep pass', async (
   const sim = simulate({ step1: clean })
   assertEquals(await sim.step(), 'chained')
   assertEquals(sim.run.pass_phase, 'deep_pass')
-  assertEquals(sim.run.search_budget, 30)
+  assertEquals(sim.run.search_budget, 36) // 30 + 6 for sizing generators
   assert(sim.openings[0].includes('No school needed a web fill'))
 })
 

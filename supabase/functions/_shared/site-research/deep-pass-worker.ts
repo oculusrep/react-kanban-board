@@ -3,8 +3,8 @@
  *
  *   prepare      (code)  Step 1 school results → EDGE check → fill list → school_fill, or straight to deep_pass
  *   school_fill  (model) record_school_fill + web_search (15) → on end_turn: deep_pass
- *   deep_pass    (model) record_employer, geocode_address, OVIS tools + web_search (20) → on end_turn: exports
- *   exports      (code)  schools.csv + employers.csv to Dropbox → finalize the report message
+ *   deep_pass    (model) record_employer/_coffee_competitor/_generator, OVIS tools + web_search → exports
+ *   exports      (code)  schools/employers/competitors/generators/pipeline .csv → finalize the report
  *
  * Every phase change goes through advance_thread_run_phase (lease-checked, commits the
  * iteration). Model phases reuse runModelIteration, so retries, cost and the search budget
@@ -18,6 +18,10 @@ import {
   type RecordedCompetitor, recordCoffeeCompetitor, type RecordedEmployer, recordEmployer,
   SCHOOL_FILL_CLIENT_TOOLS, SCHOOL_FILL_PROMPT_KEY, type SchoolRecord, schoolFillOpening, validateSchoolFill,
 } from './deep-pass.ts';
+import {
+  buildGeneratorsCsv, fetchDriveBands, type MerchantGenerator, merchantGenerators,
+  type RecordedGenerator, recordGenerator,
+} from './generators.ts';
 import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentError, runModelIteration } from './iteration.ts';
 import { isPermanentApiError, MODEL } from './model.ts';
 import { dataQualityFor } from './snapshot.ts';
@@ -49,6 +53,9 @@ export interface DeepPassDeps extends Omit<IterationDeps, 'clientTools' | 'webSe
   atlasCoffee: (site: { latitude: number; longitude: number }) => Promise<AtlasCoffeeRow[]>;
   recordEmployer?: typeof recordEmployer;
   recordCoffeeCompetitor?: typeof recordCoffeeCompetitor;
+  recordGenerator?: typeof recordGenerator;
+  /** Grocery, big box, home improvement, drug, fitness and destination retail from OVIS data — no searches. */
+  merchantGenerators?: (site: { latitude: number; longitude: number }) => Promise<MerchantGenerator[]>;
   /** Upload the CSVs to the site submit's Dropbox folder; returns where they landed. */
   exportFiles: (siteSubmitId: string, files: Array<{ name: string; bytes: Uint8Array }>) => Promise<Array<{ name: string; path: string; size: number }>>;
 }
@@ -187,6 +194,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           // schoolsOnFile: a school recorded as an employer keeps its NCES distance, never a second one.
           if (name === 'record_employer') return await record(input, siteOf(r), undefined, schoolsOnFile);
           if (name === 'record_coffee_competitor') return await recordCompetitor(input, siteOf(r));
+          if (name === 'record_generator') return await (deps.recordGenerator ?? recordGenerator)(input, siteOf(r));
           if (name === 'query_nearby_schools') throw new Error('query_nearby_schools is not available in the deep pass; the school bands are already computed');
           return await deps.execute(name, input, r);
         },
@@ -206,9 +214,13 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           .map((o) => (o as { recorded?: RecordedEmployer | null }).recorded).filter((e): e is RecordedEmployer => !!e);
         const competitors = (await deps.dp.committedToolOutputs(run.id, 'record_coffee_competitor'))
           .map((o) => (o as { recorded?: RecordedCompetitor | null }).recorded).filter((c): c is RecordedCompetitor => !!c);
+        const generators = (await deps.dp.committedToolOutputs(run.id, 'record_generator'))
+          .map((o) => (o as { recorded?: RecordedGenerator | null }).recorded).filter((g): g is RecordedGenerator => !!g);
         const site = siteOf(run);
         // Atlas coffee is code-sourced: competitors.csv never depends on the model having called a tool.
         const atlas = site ? await deps.atlasCoffee(site) : [];
+        // Same for the retail half of generators.csv — OVIS data, zero searches.
+        const merchants = site ? await (deps.merchantGenerators ?? ((s) => merchantGenerators(deps.rpc, s)))(site) : [];
         // One pipeline count, from the shared SQL function — never re-counted here.
         const pipeline = site
           ? await fetchPipelineMatrix(deps.rpc, site, householdsByBand((run.pinned_context as { demographics?: unknown } | null)?.demographics), run.site_submit_id)
@@ -217,6 +229,21 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         const schoolsCsv = buildSchoolsCsv((state.schools ?? []) as SchoolRecord[], fills);
         const employersCsv = buildEmployersCsv(employers);
         const competitorsCsv = buildCompetitorsCsv(atlas, competitors);
+        // One isochrone for the whole export: the same cached pull pipeline.csv counted against.
+        const bandPoints = [
+          ...merchants.map((m, i) => ({ id: `m${i}`, lat: m.latitude, lng: m.longitude })),
+          ...generators.flatMap((g, i) => g.latitude !== null && g.longitude !== null ? [{ id: `g${i}`, lat: g.latitude, lng: g.longitude }] : []),
+        ];
+        let driveBands = new Map<string, string>();
+        if (site && bandPoints.length) {
+          try { driveBands = (await fetchDriveBands(deps.rpc, site, bandPoints)).bands; }
+          catch (e) { log(`${tag} drive bands unavailable: ${e instanceof Error ? e.message : String(e)}`); }
+        }
+        const bandAt = (lat: number, lng: number) => {
+          const p = bandPoints.find((b) => b.lat === lat && b.lng === lng);
+          return p ? driveBands.get(p.id) ?? null : null;
+        };
+        const generatorsCsv = buildGeneratorsCsv(merchants, generators, bandAt);
 
         let exportsState: Record<string, unknown>;
         try {
@@ -224,6 +251,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
             { name: 'schools.csv', bytes: csvBytes(schoolsCsv.csv) },
             { name: 'employers.csv', bytes: csvBytes(employersCsv.csv) },
             { name: 'competitors.csv', bytes: csvBytes(competitorsCsv.csv) },
+            { name: 'generators.csv', bytes: csvBytes(generatorsCsv.csv) },
             ...(pipelineCsv ? [{ name: 'pipeline.csv', bytes: csvBytes(pipelineCsv.csv) }] : []),
           ]);
           exportsState = {
@@ -232,6 +260,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
               const built = u.name === 'schools.csv' ? schoolsCsv
                 : u.name === 'employers.csv' ? employersCsv
                 : u.name === 'competitors.csv' ? competitorsCsv
+                : u.name === 'generators.csv' ? { rows: generatorsCsv.rows, filtered: { kept: generatorsCsv.rows.length, flagged: generatorsCsv.flagged } }
                 : { rows: pipelineCsv?.rows ?? [], filtered: { kept: pipelineCsv?.rows.length ?? 0, flagged: pipelineCsv?.flagged ?? 0 } };
               return { ...u, ...built.filtered, rows: built.rows.length };
             }),
@@ -262,7 +291,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           content: report + footer, model: MODEL, parsed: false,
           archetypePrimary: null, archetypeSecondary: null, storyCarriers: null,
         });
-        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length} employers=${employersCsv.rows.length} competitors=${competitorsCsv.rows.length} pipeline=${pipelineCsv?.rows.length ?? 0} finalize=${result.status}`);
+        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length} employers=${employersCsv.rows.length} competitors=${competitorsCsv.rows.length} generators=${generatorsCsv.rows.length} pipeline=${pipelineCsv?.rows.length ?? 0} finalize=${result.status}`);
         return result.status;
       });
 

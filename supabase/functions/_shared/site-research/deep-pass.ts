@@ -29,7 +29,7 @@ export const DEEP_PASS_USER_MESSAGE =
 export const SCHOOL_FILL_PROMPT_KEY = 'deep_pass_school_fill';
 export const DEEP_PASS_PROMPT_KEY = 'deep_pass';
 export const FILL_SEARCH_BUDGET = 15;
-export const DEEP_PASS_SEARCH_BUDGET = 30; // matches the prompt's stated budget (was 25, prompt said 30)
+export const DEEP_PASS_SEARCH_BUDGET = 36; // 30 + 6 for sizing the researched generators (churches, hospitals, civic, hotels)
 export const BANDS = [1, 3, 5] as const;
 export type Band = (typeof BANDS)[number];
 
@@ -248,6 +248,11 @@ export async function recordCoffeeCompetitor(
   };
 }
 
+// Generators that are not schools, employers or coffee: the retail half comes from OVIS data with
+// no searches, the church/hospital/civic/hotel half is recorded by the model and sized by search.
+export { buildGeneratorsCsv, fetchDriveBands, GENERATOR_RADIUS_MILES, type MerchantGenerator, merchantGenerators, RECORD_GENERATOR_TOOL, recordGenerator, type RecordedGenerator } from './generators.ts';
+import { RECORD_GENERATOR_TOOL } from './generators.ts';
+
 const DEEP_PASS_OVIS_TOOLS = ['query_nearby_starbucks', 'query_municipal_projects', 'query_housing_pipeline', 'query_traffic_counts', 'geocode_address', 'distance_between_addresses'];
 
 export const SCHOOL_FILL_CLIENT_TOOLS: Array<Record<string, unknown>> = [RECORD_SCHOOL_FILL_TOOL];
@@ -255,6 +260,7 @@ export const DEEP_PASS_CLIENT_TOOLS: Array<Record<string, unknown>> = [
   ...(TOOL_DEFINITIONS as unknown as Array<Record<string, unknown>>).filter((t) => DEEP_PASS_OVIS_TOOLS.includes(String(t.name))),
   RECORD_EMPLOYER_TOOL,
   RECORD_COFFEE_COMPETITOR_TOOL,
+  RECORD_GENERATOR_TOOL,
 ];
 
 // ---------------------------------------------------------------------------

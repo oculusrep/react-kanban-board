@@ -380,3 +380,87 @@ export function pipelineSort(a: PipelineRow, b: PipelineRow): number {
   const flagged = (r: PipelineRow) => (r.flag === FLAG_CHECK ? 0 : 1)
   return flagged(a) - flagged(b) || byDistance(a as never, b as never)
 }
+
+// ---------------------------------------------------------------------------
+// generators.csv — the traffic generators that are not schools or employers
+// ---------------------------------------------------------------------------
+
+export const GENERATORS_COLUMNS = [
+  'flag', 'name', 'category', 'size_value', 'size_unit', 'street', 'city', 'state', 'zip',
+  'lat', 'lng', 'distance_mi', 'drive_time_band', 'source', 'notes',
+] as const
+export type GeneratorsColumn = (typeof GENERATORS_COLUMNS)[number]
+export type GeneratorsRow = Record<GeneratorsColumn, CsvCell>
+
+/** Each generator is sized in its OWN unit: a church in seats, a hotel in rooms, a store in sf. */
+export const GENERATOR_SIZE_UNITS = ['seats', 'beds', 'rooms', 'sf', 'headcount'] as const
+export type GeneratorSizeUnit = (typeof GENERATOR_SIZE_UNITS)[number]
+
+export const GENERATOR_CATEGORIES = [
+  'grocery', 'big_box', 'home_improvement', 'drug', 'fitness', 'destination_retail',
+  'church', 'hospital_medical', 'civic', 'hotel',
+] as const
+export type GeneratorCategory = (typeof GENERATOR_CATEGORIES)[number]
+
+export interface GeneratorInput {
+  name: string | null
+  category: GeneratorCategory | string | null
+  size_value: number | null
+  size_unit: GeneratorSizeUnit | string | null
+  street: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  latitude: number | null
+  longitude: number | null
+  distance_miles: number | null // unrounded
+  drive_time_band: string | null
+  source: string | null
+  /** "daypart: weekend — Sourced" / "daypart: 24hr — Inferred", plus anything else worth keeping. */
+  notes?: string | null
+  /**
+   * True when a size was expected and is missing, so the row wants a look. Retail from
+   * merchant_location never carries a size (Places has none), and flagging all 120 of those would
+   * make the column noise — only the researched categories and unverified rows flag.
+   */
+  size_expected?: boolean
+  /** Something else the mapper must check, e.g. a Places name that does not match its brand. */
+  check_reason?: string | null
+}
+
+/** CHECK when the mapper must look: a missing size that was expected, unplaced, or flagged upstream. */
+export function buildGeneratorRow(g: GeneratorInput): GeneratorsRow {
+  const size = typeof g.size_value === 'number' && Number.isFinite(g.size_value) && g.size_value >= 0 ? g.size_value : null
+  const unit = size === null ? null : blankToNull(String(g.size_unit ?? ''))
+  const located = typeof g.latitude === 'number' && typeof g.longitude === 'number'
+  const street = blankToNull(g.street)
+  return {
+    flag: (g.size_expected !== false && size === null) || !located || blankToNull(g.check_reason) ? FLAG_CHECK : null,
+    name: blankToNull(g.name),
+    category: blankToNull(String(g.category ?? '')),
+    size_value: size,
+    size_unit: unit,
+    street,
+    city: blankToNull(g.city),
+    state: blankToNull(g.state),
+    zip: blankToNull(g.zip),
+    lat: located ? g.latitude : null,
+    lng: located ? g.longitude : null,
+    distance_mi: oneDecimal(g.distance_miles),
+    drive_time_band: blankToNull(g.drive_time_band),
+    source: blankToNull(g.source),
+    notes: blankToNull(g.notes),
+  }
+}
+
+/** CHECK rows first, then nearest first. */
+export function generatorSort(a: GeneratorsRow, b: GeneratorsRow): number {
+  const flagged = (r: GeneratorsRow) => (r.flag === FLAG_CHECK ? 0 : 1)
+  return flagged(a) - flagged(b) || byDistance(a as never, b as never)
+}
+
+/** Slide form: "Eastside Baptist (1,249 seats)". Blank size means no callout at all. */
+export function generatorCallout(row: GeneratorsRow): string | null {
+  if (typeof row.size_value !== 'number' || !row.size_unit || !row.name) return null
+  return `${row.name} (${row.size_value.toLocaleString('en-US')} ${row.size_unit})`
+}
