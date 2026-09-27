@@ -17,3 +17,13 @@ verify_jwt = false
 [functions.ovis-research-mcp]
 verify_jwt = false
 
+
+# ovis-site-research-worker: internal only, and it must stay verify_jwt = false.
+# Both callers — kickWorker() and the per-minute pg_cron tick — send X-Worker-Secret
+# and no Authorization header, so JWT verification at the gateway 401s them before the
+# function runs and every run sits queued forever. The function checks the secret itself
+# against vault (index.ts:147). This block exists because a plain `supabase functions
+# deploy` applies config.toml and silently reset a server-side --no-verify-jwt to the
+# default true on 2026-09-27, which stopped site research dead until it was spotted.
+[functions.ovis-site-research-worker]
+verify_jwt = false
