@@ -122,6 +122,18 @@ export function hasPendingServerToolUse(content: Block[] | undefined): boolean {
   return content.some((b) => b.type === 'server_tool_use' && !answered.has(String(b.id)));
 }
 
+/**
+ * Said to the model on a locked request. Locked means the run's search budget is spent but web_search
+ * must stay declared (its container is still needed), with tool_choice none so nothing new can start.
+ * Without this the model can sit there wanting a search it cannot make and end the turn with thinking
+ * and no prose — which is how run a6e0aa0e failed on 2026-09-26.
+ */
+export const SEARCH_BUDGET_SPENT_NOTE =
+  'YOUR WEB SEARCH BUDGET FOR THIS RUN IS SPENT. No further search or tool call can be made — they are ' +
+  'disabled for this request. Do not wait for one and do not ask for one. Write your final answer now, ' +
+  'in full, from the tool results and searches already in this conversation. Where something could not ' +
+  'be determined with what you have, say so plainly in the report rather than leaving it out.';
+
 export type SearchPlan =
   | { mode: 'search'; maxUses: number }
   | { mode: 'drop' }
@@ -149,6 +161,12 @@ export function buildRequestParams(
   containerId: string | null = null,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = { ...baseParams, messages: convo };
+  if (plan.mode === 'lock') {
+    // Appended, never replacing: the versioned prompt and the frozen snapshot stay exactly as they are.
+    const system = Array.isArray(baseParams.system) ? [...(baseParams.system as unknown[])] : [];
+    system.push({ type: 'text', text: SEARCH_BUDGET_SPENT_NOTE });
+    params.system = system;
+  }
   const tools: Array<Record<string, unknown>> = [];
   // The container may only ride along when the code-execution-backed tool is actually declared.
   const codeExecutionToolDeclared = !!webSearchTool && plan.mode !== 'drop';

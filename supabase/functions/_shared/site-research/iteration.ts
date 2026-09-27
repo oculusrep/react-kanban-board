@@ -230,7 +230,17 @@ export async function runModelIteration(run: ClaimedRun, owner: string, deps: It
         .map((b) => b.text as string)
         .join('\n'),
     );
-    if (!text) throw new PermanentError(`empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'})`);
+    if (!text) {
+      // An end_turn with no prose is RETRYABLE, not fatal (run a6e0aa0e, 2026-09-26: the search budget
+      // was spent, the request went out locked with tool_choice none, and the model returned 250 tokens
+      // of thinking and no text). Releasing keeps the conversation, the container, the tokens already
+      // paid for and — crucially — web_search_requests, so the retry resumes this iteration on the
+      // budget already spent instead of restarting the run. The attempt counter still caps it at 3.
+      const detail = `empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'}); retrying this iteration`;
+      await deps.db.release(run.id, owner, run.iteration, run.attempt, detail);
+      log(`${tag} ${detail} — attempt ${run.attempt}/${run.max_attempts ?? 3}`);
+      return 'released';
+    }
 
     if (deps.onEndTurn) {
       const outcome = await deps.onEndTurn({ run, owner, text, convo: [...run.convo, assistant as Record<string, unknown>] });
