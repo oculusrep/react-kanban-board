@@ -16,6 +16,7 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { NCES_ARCGIS, arcgisQueryUrl } from './nces-config.ts';
 import { haversineMiles, toRad } from './geo.ts';
 import { distanceBetweenAddressesTool, geocodeAddressTool } from './geocode.ts';
+import { coverageVerdict, fetchPipelineMatrix, householdsByBand } from './pipeline.ts';
 
 // Server-side web search. No domain allowlist by design — source quality is a
 // prompt concern (prefer primary sources), not a config concern.
@@ -141,6 +142,22 @@ export const TOOL_DEFINITIONS = [
       },
       required: ['address'],
     },
+  },
+  {
+    name: 'query_housing_pipeline',
+    description:
+      'The housing pipeline as a matrix: phase (Recently Completed, Under Construction, Approved, ' +
+      'Planning) by catchment (1 mi, 3 mi, 5-minute drive, 10-minute drive), counted by one shared ' +
+      'SQL function — the same one the map slide uses. Every cell carries TWO counts, and they answer ' +
+      'different questions: units_centroid (the project pin sits inside the catchment) and ' +
+      'units_intersects (its drawn boundary clips the catchment, so a 600-unit project at the edge ' +
+      'counts in full). Cite whichever you mean and say which, with BOTH phase and catchment: never ' +
+      '"860 units" on its own. weighted_index per band is weighted units over existing households in ' +
+      'that same band (phase and distance weights from config; Recently Completed weights 0 because ' +
+      'Esri household estimates already include occupied units). Pending unreviewed rows are excluded ' +
+      'from every total and reported separately. coverage says whether anything has been collected ' +
+      'here at all: an empty result with no collection is a COVERAGE GAP, never "no material pipeline".',
+    input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'distance_between_addresses',
@@ -797,11 +814,24 @@ export async function executeTool(
   service: SupabaseClient,
   name: string,
   input: Record<string, unknown>,
-  ctx: { siteSubmitId: string | null; site?: { latitude: number; longitude: number } | null },
+  ctx: {
+    siteSubmitId: string | null;
+    site?: { latitude: number; longitude: number } | null;
+    /** The snapshot's demographics block: households per band for the pipeline index. */
+    demographics?: unknown;
+  },
 ): Promise<unknown> {
   switch (name) {
     case 'geocode_address':
       return await geocodeAddressTool(String(input.address ?? ''), ctx.site ?? null);
+    case 'query_housing_pipeline': {
+      if (!ctx.site) throw new Error('no site coordinate on this thread; the pipeline matrix needs one');
+      const matrix = await fetchPipelineMatrix(
+        service as unknown as { rpc: (fn: string, args?: Record<string, unknown>) => unknown },
+        ctx.site, householdsByBand(ctx.demographics), ctx.siteSubmitId,
+      );
+      return { ...matrix, coverage_verdict: coverageVerdict(matrix.coverage) };
+    }
     case 'distance_between_addresses':
       return await distanceBetweenAddressesTool(String(input.address_a ?? ''), String(input.address_b ?? ''));
     case 'query_traffic_counts':

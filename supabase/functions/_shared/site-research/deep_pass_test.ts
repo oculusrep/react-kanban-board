@@ -216,6 +216,23 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
     webSearchTool: { type: 'web_search_20260209', name: 'web_search' },
     chain: () => Promise.resolve(),
     edgePrivate: () => Promise.resolve(EDGE),
+    // The shared SQL pipeline function, stubbed: the export must carry what it returns, unchanged.
+    rpc: {
+      rpc: (_fn: string) => Promise.resolve({
+        data: {
+          site: { latitude: 33.9921, longitude: -84.4158 }, isochrones_from: null,
+          isochrones_pulled_m_from_site: null, has_5min: false, has_10min: false, bands: [], weights: {},
+          projects: [{
+            name: 'Barrington Hall', units: 600, phase: 'Under Construction', distance_mi: 3, drive_time_band: '10min',
+            address: null, lat: 32.92, lng: -83.75, status_source: 'import', source: 'P&Z',
+            phase_weight: 1, distance_weight: 0.5, recently_completed_timing_unknown: false,
+          }],
+          pending_unreviewed: [{ name: 'Agent row', units: 40, phase: 'unreviewed', address: null, source: null, collected_at: null }],
+          coverage: { projects_within_10mi: 1, last_collected_at: null, research_runs_for_site: 1, last_research_run_at: null, pending_rows: 1 },
+        },
+        error: null,
+      }),
+    },
     atlasCoffee: () => Promise.resolve([{
       name: 'Zebulon & Bass', brand: 'Starbucks', operator_type: 'national_dt' as const, street: null,
       city: 'Macon', state: 'GA', zip: null, latitude: 33.99, longitude: -84.41, distance_miles: 3.1,
@@ -259,6 +276,12 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
 
   const schools = sim.uploads.find((u) => u.name === 'schools.csv')!.text.split('\r\n')
   assert(sim.uploads.some((u) => u.name === 'competitors.csv'), 'competitors.csv is exported')
+  const pipelineCsv = sim.uploads.find((u) => u.name === 'pipeline.csv')
+  assert(pipelineCsv, 'pipeline.csv is exported')
+  const pl = pipelineCsv!.text.split('\r\n')
+  assertEquals(pl[0], 'flag,name,units,phase,distance_mi,drive_time_band,street,city,state,zip,lat,lng,status_source,source,notes')
+  assert(pl[1].startsWith('CHECK,Agent row,40,unreviewed'), pl[1]) // unreviewed sorts to the top, excluded from totals
+  assert(pl[2].startsWith(',Barrington Hall,600,Under Construction,3,10min'), pl[2])
   assertEquals(schools[0], 'flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
   // Tiny Montessori (42 pupils) is filtered OUT of the file but stays inside the band totals above.
   // Nothing is filtered now: the 42-pupil school is exported like every other row.
@@ -283,6 +306,7 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(msg.content.includes('schools.csv (7 rows; 2 flagged CHECK)'), msg.content)
   assert(msg.content.includes('employers.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('competitors.csv (1 rows)'), msg.content)
+  assert(msg.content.includes('pipeline.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('Nothing is filtered out of an export'))
 })
 

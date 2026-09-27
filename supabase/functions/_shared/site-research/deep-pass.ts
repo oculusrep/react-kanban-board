@@ -248,7 +248,7 @@ export async function recordCoffeeCompetitor(
   };
 }
 
-const DEEP_PASS_OVIS_TOOLS = ['query_nearby_starbucks', 'query_municipal_projects', 'query_traffic_counts', 'geocode_address', 'distance_between_addresses'];
+const DEEP_PASS_OVIS_TOOLS = ['query_nearby_starbucks', 'query_municipal_projects', 'query_housing_pipeline', 'query_traffic_counts', 'geocode_address', 'distance_between_addresses'];
 
 export const SCHOOL_FILL_CLIENT_TOOLS: Array<Record<string, unknown>> = [RECORD_SCHOOL_FILL_TOOL];
 export const DEEP_PASS_CLIENT_TOOLS: Array<Record<string, unknown>> = [

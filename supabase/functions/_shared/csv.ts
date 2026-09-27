@@ -318,3 +318,65 @@ export function buildCompetitorRow(c: CompetitorInput): CompetitorsRow {
     notes: blankToNull(c.notes),
   }
 }
+
+// ---------------------------------------------------------------------------
+// pipeline.csv — every municipal housing project on file, counted or not
+// ---------------------------------------------------------------------------
+
+export const PIPELINE_COLUMNS = [
+  'flag', 'name', 'units', 'phase', 'distance_mi', 'drive_time_band', 'street', 'city', 'state', 'zip',
+  'lat', 'lng', 'status_source', 'source', 'notes',
+] as const
+export type PipelineColumn = (typeof PIPELINE_COLUMNS)[number]
+export type PipelineRow = Record<PipelineColumn, CsvCell>
+
+export interface PipelineInput {
+  name: string | null
+  units: number | null
+  /** Recently Completed / Under Construction / Approved / Planning / unreviewed / Unspecified. */
+  phase: string | null
+  distance_miles: number | null // unrounded; blank for a pending row that was never geocoded
+  drive_time_band: string | null // '5min' | '10min' | blank
+  street: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  latitude: number | null
+  longitude: number | null
+  status_source: string | null
+  source: string | null
+  notes?: string | null
+}
+
+/**
+ * CHECK marks a row the mapper must look at: an unreviewed (agent-discovered) row, one with no unit
+ * count, or one that cannot be placed on a map. Nothing is ever filtered out of the export.
+ */
+export function buildPipelineRow(p: PipelineInput): PipelineRow {
+  const units = typeof p.units === 'number' && Number.isFinite(p.units) && p.units >= 0 ? p.units : null
+  const located = typeof p.latitude === 'number' && typeof p.longitude === 'number'
+  const unreviewed = (p.phase ?? '').toLowerCase() === 'unreviewed'
+  return {
+    flag: unreviewed || units === null || !located ? FLAG_CHECK : null,
+    name: blankToNull(p.name),
+    units,
+    phase: blankToNull(p.phase),
+    distance_mi: oneDecimal(p.distance_miles),
+    drive_time_band: blankToNull(p.drive_time_band),
+    street: blankToNull(p.street),
+    city: blankToNull(p.city),
+    state: blankToNull(p.state),
+    zip: blankToNull(p.zip),
+    lat: located ? p.latitude : null,
+    lng: located ? p.longitude : null,
+    status_source: blankToNull(p.status_source),
+    source: blankToNull(p.source),
+    notes: blankToNull(p.notes),
+  }
+}
+
+/** CHECK rows first, then by distance ascending with unplaced rows last. */
+export function pipelineSort(a: PipelineRow, b: PipelineRow): number {
+  const flagged = (r: PipelineRow) => (r.flag === FLAG_CHECK ? 0 : 1)
+  return flagged(a) - flagged(b) || byDistance(a as never, b as never)
+}

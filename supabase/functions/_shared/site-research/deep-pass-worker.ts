@@ -21,6 +21,7 @@ import {
 import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentError, runModelIteration } from './iteration.ts';
 import { isPermanentApiError, MODEL } from './model.ts';
 import { dataQualityFor } from './snapshot.ts';
+import { buildPipelineCsv, fetchPipelineMatrix, householdsByBand } from './pipeline.ts';
 
 export interface DeepPassDb {
   advancePhase(a: {
@@ -39,6 +40,9 @@ export interface DeepPassDb {
 
 export interface DeepPassDeps extends Omit<IterationDeps, 'clientTools' | 'webSearchTool' | 'onEndTurn'> {
   dp: DeepPassDb;
+  /** Service client, for the shared pipeline SQL function at export time. */
+  // deno-lint-ignore no-explicit-any
+  rpc: { rpc: (fn: string, args?: Record<string, unknown>) => any };
   webSearchTool: Record<string, unknown>;
   edgePrivate: (ppins: string[]) => Promise<Map<string, EdgeLocation>>;
   /** Starbucks within 5 mi from the Atlas tables, for competitors.csv. */
@@ -205,6 +209,11 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         const site = siteOf(run);
         // Atlas coffee is code-sourced: competitors.csv never depends on the model having called a tool.
         const atlas = site ? await deps.atlasCoffee(site) : [];
+        // One pipeline count, from the shared SQL function — never re-counted here.
+        const pipeline = site
+          ? await fetchPipelineMatrix(deps.rpc, site, householdsByBand((run.pinned_context as { demographics?: unknown } | null)?.demographics), run.site_submit_id)
+          : null;
+        const pipelineCsv = pipeline ? buildPipelineCsv(pipeline) : null;
         const schoolsCsv = buildSchoolsCsv((state.schools ?? []) as SchoolRecord[], fills);
         const employersCsv = buildEmployersCsv(employers);
         const competitorsCsv = buildCompetitorsCsv(atlas, competitors);
@@ -215,11 +224,15 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
             { name: 'schools.csv', bytes: csvBytes(schoolsCsv.csv) },
             { name: 'employers.csv', bytes: csvBytes(employersCsv.csv) },
             { name: 'competitors.csv', bytes: csvBytes(competitorsCsv.csv) },
+            ...(pipelineCsv ? [{ name: 'pipeline.csv', bytes: csvBytes(pipelineCsv.csv) }] : []),
           ]);
           exportsState = {
             status: 'uploaded',
             files: uploaded.map((u) => {
-              const built = u.name === 'schools.csv' ? schoolsCsv : u.name === 'employers.csv' ? employersCsv : competitorsCsv;
+              const built = u.name === 'schools.csv' ? schoolsCsv
+                : u.name === 'employers.csv' ? employersCsv
+                : u.name === 'competitors.csv' ? competitorsCsv
+                : { rows: pipelineCsv?.rows ?? [], filtered: { kept: pipelineCsv?.rows.length ?? 0, flagged: pipelineCsv?.flagged ?? 0 } };
               return { ...u, ...built.filtered, rows: built.rows.length };
             }),
           };
@@ -249,7 +262,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           content: report + footer, model: MODEL, parsed: false,
           archetypePrimary: null, archetypeSecondary: null, storyCarriers: null,
         });
-        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length} employers=${employersCsv.rows.length} competitors=${competitorsCsv.rows.length} finalize=${result.status}`);
+        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length} employers=${employersCsv.rows.length} competitors=${competitorsCsv.rows.length} pipeline=${pipelineCsv?.rows.length ?? 0} finalize=${result.status}`);
         return result.status;
       });
 

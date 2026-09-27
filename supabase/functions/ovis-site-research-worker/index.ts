@@ -74,7 +74,10 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
     db,
     create: anthropicCreate(apiKey),
     execute: (name: string, input: Record<string, unknown>, r: typeof run) =>
-      executeTool(service, name, input, { siteSubmitId: r.site_submit_id, site: site(r) }),
+      executeTool(service, name, input, {
+        siteSubmitId: r.site_submit_id, site: site(r),
+        demographics: (r.pinned_context as { demographics?: unknown } | null)?.demographics,
+      }),
     chain: async (id: string) => {
       // Self-chain the next iteration. If this call fails, the tick picks the run up
       // within a minute or two (its heartbeat ages past the kick threshold).
@@ -109,6 +112,7 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
     ? await runDeepPassIteration(run, owner, {
         ...common,
         dp: supabaseDeepPassDb(service),
+        rpc: service,
         webSearchTool: WEB_SEARCH_TOOL,
         edgePrivate: edgePrivateLocations,
         atlasCoffee: (site) => atlasCoffeeWithin(service, site),
