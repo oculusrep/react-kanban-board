@@ -29,8 +29,17 @@ export const WEB_SEARCH_TOOL = {
   name: 'web_search',
 };
 
-/** Web searches allowed across one whole Step 1 run (all loop iterations together). */
-export const STEP1_SEARCH_BUDGET = 12;
+/**
+ * Web searches allowed across one whole Step 1 run (all loop iterations together).
+ *
+ * 12 until archetype_call v15, which was spending 9-12 of them on six categories. v15 adds
+ * Category 7 (non-Starbucks coffee competition), the only category with no tool behind it: it
+ * costs one or two searches to find the operators and one geocode per operator. Left at 12 the
+ * new category would have taken its searches from the other six rather than adding any, and the
+ * degradation would have been silent. 16 buys it its own budget. Cost moves with it: the sniff
+ * test was ~$1.10.
+ */
+export const STEP1_SEARCH_BUDGET = 16;
 
 export const TOOL_DEFINITIONS = [
   {

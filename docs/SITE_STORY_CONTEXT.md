@@ -43,7 +43,7 @@ to the table.
 **Ops.** `verify_jwt` pinned in `config.toml`; `cron_http_post_verified` checks the response status
 of the previous call and emails on failure; JWT audit doc.
 
-**Prompts:** deep_pass **v12**, archetype_call **v14** active.
+**Prompts:** deep_pass **v12**, archetype_call **v15** active.
 
 **Executive summary (archetype_call v14, 2026-09-28).** Six lines at the top of every first-pass
 report — city – corner, the story in the 2–3 numbers that carry it, the pitch, the risk, the call.
@@ -51,6 +51,26 @@ Written last, printed first, and it introduces nothing: every figure in it is al
 the body, which is why it is the one place rules 1, 1a and 6 are suspended. "At this corner" claims
 take the 1 mi ring and nothing wider, and the Risk line names the unresolved question when the call
 hinges on one. The demographics "missing" banner still leads the page, now above the summary.
+
+**Category 7 and growth sensitivity (archetype_call v15, 2026-09-28).** The body fixes the summary
+depends on. Category 7 is non-Starbucks coffee competition within 1 mi — each operator geocoded for
+distance, drive-thru sourced or blank, classified national_dt / local_dt / institutional / cafe as
+the deep pass already classifies them, and only the two drive-thru types countable. It is the one
+category with **no OVIS tool behind it**: there is no non-Starbucks coffee layer, so it runs on
+web_search plus geocode_address, and `STEP1_SEARCH_BUDGET` went 12 → 16 so it does not take its
+searches from the other six. Cost moves with the budget; the sniff test was ~$1.10.
+
+Growth sensitivity in Category 2: pipeline units ÷ existing households per band, centroid counts,
+both operands printed beside every ratio. Plus the single-project test — one project over 50% of a
+band's Under Construction or Approved units is named and the ratio printed with and without it. The
+Risk line is required to carry both findings when the body found them.
+
+**Not built: road names per AADT segment.** Asked for in the same round and blocked on data.
+`streetlight_segment` has `road_name` and `road_type` null on all 1,225,544 rows, including all 170
+that carry a count, so there is no name to print and no way to label a limited-access segment. The
+only road names in the database are 116 GDOT segments in `traffic_cache`, a single 18-tile fetch
+from 2026-03-23 that no application code reads. Category 5's ban on searching for the road name
+stands.
 
 ---
 
