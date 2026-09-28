@@ -208,6 +208,58 @@ Three passes over this surface each missed something the next one caught:
 
 Only the third generalizes. `has_table_privilege`, `relrowsecurity` and policy text are each a *partial* predicate for reachability; the request is the whole one.
 
+## Round four — caller-blind policies (what a portal client can read)
+
+The last class left open. These tables are **not** anon-reachable; the issue is that their SELECT policy is `USING (true)` for `authenticated`, so any logged-in account — including a client with a portal login — reads every row.
+
+### Fixed in code
+
+`PortalAnalyticsPage`'s access gate listed `broker_limited`, which is not a valid `ovis_role` (`broker_lite` is), so that entry matched nobody. It traces back to the role names in ROW_LEVEL_SECURITY_STRATEGY.md. Removed rather than corrected to `broker_lite`: `portal_user_analytics` became `security_invoker` in `20260928160000`, and `contact`'s SELECT policy excludes `broker_lite`, so such a user would load the page and see 1 of 22 rows.
+
+### Prepared, tested, NOT applied
+
+A migration covering ~60 policies across 50 tables is written and **verified against production in a rolled-back transaction**, but not applied — writing it into `supabase/migrations/` was refused by the permission classifier as "Modify Shared Resources", which is a fair call for a single migration rewriting that many policies at once. It is parked at:
+
+`<scratchpad>/PROPOSED_20260928200000_internal_only_caller_blind_policies.sql`
+
+Predicate is `(select is_internal_user())`, not `is_internal_user()` — parenthesised, it is evaluated once per query as an InitPlan instead of once per row. That also **fixes the `restaurant_trend` timeout** noted in round three.
+
+Measured effect (portal → 0 in every case, internal roles unchanged):
+
+| Table | Rows a portal client can read today |
+|---|---|
+| `merchant_location` | 23,667 |
+| `nces_private_school` | 22,510 |
+| `restaurant_location` | 10,594 |
+| `ipeds_institution` | 6,163 |
+| `hunter_signal` | 1,061 |
+| `deal_stage_history` | 749 |
+| `boundary_municipality` | 697 |
+| `site_submit_stage_history` | 471 (and **writable**) |
+| `google_places_result` | 828 |
+| `merchant_brand` | 401 |
+| `streetlight_segment_metrics`, `research_run`, `qb_item`, `clause_type`, `legal_playbook`, `traffic_cache`, `research_thread`, `special_layer`, `portal_file_visibility`, `client_broker`, `restaurant_placer_rank`, `goal`, `hunter_source` | 2–170 each |
+
+**One regression the test caught and prevented.** The first draft *dropped* the blanket `email_template_select` policy, leaving the per-user rule (`created_by = auth.uid() OR is_shared OR admin`). The two existing templates are admin-created and not flagged shared, so `broker_full` and `va` went 2 → 0. The revised version scopes the blanket policy to internal users instead: all three internal roles keep 2, portal gets 0. (Worth noting the per-user policy compares `u.id = auth.uid()` rather than `auth_user_id`, so it likely never matches anyone but admin — left alone.)
+
+### Deliberately left permissive
+
+The portal app genuinely reads these, so a blanket lock would break it. Each needs per-row scoping with `portal_user_client_ids()`, which is a larger change:
+
+| Table | Why the portal needs it |
+|---|---|
+| `dropbox_mapping` (3,027 rows) | `PortalFilesTab` browses files via `useDropboxFiles` |
+| `map_layer`, `map_layer_shape`, `map_layer_client_share` | `PortalMapPage` renders the shared `LayerManager` |
+| `property_note` (3,302 rows) | `PortalChatTab` mirrors client comments into property notes |
+| `role` | `hooks/usePermissions.tsx` is in the portal import tree |
+| `submit_stage`, `deal_stage`, `transaction_type`, other enum/label tables | Stage and type *names*, not an exposure |
+
+`property_note` and `dropbox_mapping` are the two that matter — a client can currently read internal notes on every property and the Dropbox path mapping for everything.
+
+### Method note
+
+Static import reachability was the wrong tool for deciding what the portal needs. Seeding from `src/components/portal/` over-reached badly, because that directory holds *admin-side* components for managing the portal (`ClientBrokersSection` is imported only by `ClientOverviewTab`), and shared components like `SiteSubmitSidebar` pull in research panels and convert-to-deal modals. The import graph says what code *could* run, not what the portal is *entitled* to. What settled each case was checking which component actually renders inside the portal route tree, then measuring per-role row counts.
+
 ## Remaining work
 
 - Fix the `broker_limited` role string in `PortalAnalyticsPage` — it is not a valid `ovis_role` (`broker_lite` is), so that branch of the access gate never matches.
@@ -215,7 +267,8 @@ Only the third generalizes. `has_table_privilege`, `relrowsecurity` and policy t
 - `v_prospecting_daily_metrics` is still the one definer view in `public` that internal users read. It is guarded, but if it is ever recreated the guard must be carried forward — `pg_get_viewdef` first.
 - Nothing else in `public` is readable by `anon` or by portal users beyond their own records, as of the closing sweep above. Re-check with `scripts/view_invoker_harness.py` and an anonymous `curl` after any migration that adds a table or view.
 - `restaurant_trend`'s per-row `can_manage_operations()` policy makes it un-queryable within the statement timeout. Not a security issue; will bite whenever that table is read from the UI.
-- The caller-blind policies PORTAL_AUTHZ_HOTFIX.md flagged (`merchant_location`, `note`, `property_note`, `restaurant_location`, …) are still caller-blind. They are not *anon*-reachable, but any logged-in account — including a portal client — can read them.
+- **Apply the round-four migration** (prepared and tested; needs approval to write into `supabase/migrations/`). Until then every table in that list is readable by a portal client.
+- Scope `property_note`, `dropbox_mapping`, `map_layer*` and `role` per client with `portal_user_client_ids()` — the portal needs them, so they could not be locked outright.
 
 ## Original proposal (superseded by the above)
 

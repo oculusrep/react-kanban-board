@@ -62,9 +62,15 @@ export default function PortalAnalyticsPage() {
   const [userActivity, setUserActivity] = useState<ActivityLogEntry[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
 
-  // Check admin access
+  // Check admin access.
+  // 'broker_limited' was never a real ovis_role value ('broker_lite' is), so that
+  // entry matched nobody — it traces back to the role names in the 2025 RLS strategy
+  // doc. Dropped rather than corrected: portal_user_analytics became
+  // security_invoker in 20260928160000, and contact's SELECT policy
+  // (can_manage_operations()) excludes broker_lite, so a broker_lite user would load
+  // this page and see 1 of 22 rows.
   useEffect(() => {
-    if (userRole && !['admin', 'broker_full', 'broker_limited'].includes(userRole)) {
+    if (userRole && !['admin', 'broker_full'].includes(userRole)) {
       navigate('/');
     }
   }, [userRole, navigate]);
