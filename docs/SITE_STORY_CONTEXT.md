@@ -43,7 +43,14 @@ to the table.
 **Ops.** `verify_jwt` pinned in `config.toml`; `cron_http_post_verified` checks the response status
 of the previous call and emails on failure; JWT audit doc.
 
-**Prompts:** deep_pass **v12**, archetype_call **v13** active.
+**Prompts:** deep_pass **v12**, archetype_call **v14** active.
+
+**Executive summary (archetype_call v14, 2026-09-28).** Six lines at the top of every first-pass
+report — city – corner, the story in the 2–3 numbers that carry it, the pitch, the risk, the call.
+Written last, printed first, and it introduces nothing: every figure in it is already sourced in
+the body, which is why it is the one place rules 1, 1a and 6 are suspended. "At this corner" claims
+take the 1 mi ring and nothing wider, and the Risk line names the unresolved question when the call
+hinges on one. The demographics "missing" banner still leads the page, now above the summary.
 
 ---
 
