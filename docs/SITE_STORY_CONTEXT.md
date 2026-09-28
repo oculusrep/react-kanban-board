@@ -43,7 +43,7 @@ to the table.
 **Ops.** `verify_jwt` pinned in `config.toml`; `cron_http_post_verified` checks the response status
 of the previous call and emails on failure; JWT audit doc.
 
-**Prompts:** deep_pass **v12**, archetype_call **v16** active.
+**Prompts:** deep_pass **v12**, archetype_call **v17** active.
 
 **Executive summary (archetype_call v14, 2026-09-28).** Six lines at the top of every first-pass
 report — city – corner, the story in the 2–3 numbers that carry it, the pitch, the risk, the call.
@@ -75,6 +75,13 @@ introducing one. `site_pipeline_matrix` sums it across every phase itself, so th
 tool total and does no arithmetic — but it therefore includes standing units, so both body and
 summary say what the figure spans ("completed through planning") instead of calling it pipeline.
 Macon 3 mi is 1,732 centroid / 1,822 intersects against 9,482 households.
+
+**The summary's pipeline band is 3 mi, always (archetype_call v17, 2026-09-28).** It was "one named
+band", the model's choice. Growth arrives across a trade area, and leaving the band open let the
+summary pick the one that flattered the site. This is the single deliberate exception to the
+at-this-corner rule that pins everything else in the summary to 1 mi, and the prompt says so where
+the exception is written. Macon's 1 mi band is 162 units, 80 of them Recently Completed and
+standing — a fair illustration of why the narrower band was the wrong default.
 
 **Not built: road names per AADT segment.** Asked for in the same round and blocked on data.
 `streetlight_segment` has `road_name` and `road_type` null on all 1,225,544 rows, including all 170
