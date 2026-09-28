@@ -74,6 +74,14 @@ order by anon_select desc, c.relname;
 
 Verify round-trip before calling a migration done — run it inside a transaction and `ROLLBACK`, so nothing test-related persists.
 
+**A migration file that contains its own `BEGIN; … COMMIT;` cannot be round-trip tested this way.** `\i`-ing it inside your own transaction runs its `COMMIT`, which closes *your* transaction and applies the migration for real — the trailing `ROLLBACK` then rolls back nothing. Strip `BEGIN`/`COMMIT` from a copy first:
+
+```bash
+sed 's/^BEGIN;$//; s/^COMMIT;$//' supabase/migrations/<file>.sql > /tmp/body.sql
+```
+
+The tell is `ERROR: SAVEPOINT can only be used in transaction blocks` partway through the run — by the time you see it, the migration is already committed. Treat it as "applied", record it in `schema_migrations`, and check for test fixtures (impersonation rows, seeded users) that got committed along with it.
+
 ## Timezone
 
 **Always use Eastern Time (EST/EDT) for all date and time operations in OVIS.**
