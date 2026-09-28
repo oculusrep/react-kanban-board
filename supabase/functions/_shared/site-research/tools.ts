@@ -101,7 +101,8 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'query_nearby_schools',
     description:
-      'Public and private K-12 schools near a point, from NCES — use this, not web search, for the ' +
+      'Schools near a point: public and private K-12 from NCES, plus higher education from IPEDS — use ' +
+      'this, not web search, for the ' +
       'schools and enrollment category. Returns computed `totals` for the radius (enrollment total and ' +
       'school count per group, unknown-enrollment schools and planned schools by name): cite those ' +
       'numbers and never add up the rows yourself. Public schools come live from NCES Common Core of Data ' +
@@ -112,7 +113,9 @@ export const TOOL_DEFINITIONS = [
       'enrollment null means NCES did not report a figure: say so, do not estimate. A public school ' +
       'with status "Future" is planned and not yet open — a growth signal, not current enrollment. ' +
       'Private rows flagged address_is_mailing show address text from the mailing field; their distance still ' +
-      'comes from the NCES physical-location geocode.',
+      'comes from the NCES physical-location geocode. Higher education is a THIRD group with its own ' +
+      'totals and its own IPEDS vintage: never add it to either K-12 total, and say so wherever you ' +
+      'state a band that includes it.',
     input_schema: {
       type: 'object',
       properties: {
@@ -725,6 +728,45 @@ const named = (r: { name: string | null; distance_miles: number | null; vintage:
   ({ name: r.name, distance_miles: r.distance_miles, vintage: r.vintage });
 const distinct = (xs: Array<string | null>) => [...new Set(xs.filter((x): x is string => !!x))].sort();
 
+/**
+ * Higher education from the bulk ipeds_institution table.
+ *
+ * Bulk, not a per-run API call: a third-party API that fails mid-run fails silently as zero
+ * colleges, which reads as "no higher education here" rather than as an outage.
+ */
+async function queryHigherEd(
+  service: SupabaseClient,
+  latitude: number,
+  longitude: number,
+  radius: number,
+) {
+  const { data, error } = await service.rpc('ipeds_near_point', {
+    p_latitude: latitude, p_longitude: longitude, p_radius_miles: radius,
+  });
+  if (error) throw new Error(`ipeds_near_point failed: ${error.message}`);
+  if (data != null && !Array.isArray(data)) throw new Error('ipeds_near_point returned a non-array');
+  const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    unitid: r.unitid as number,
+    name: r.name as string,
+    address: r.street as string | null,
+    city: r.city as string | null,
+    state: r.state as string | null,
+    zip: r.zip as string | null,
+    level: r.school_level as string | null,
+    // Headcount at an institution. NOT comparable with a K-12 enrollment, hence its own group.
+    enrollment: (r.enrollment ?? null) as number | null,
+    // The year the ENROLLMENT describes, per row — vintages are never merged.
+    vintage: r.enrollment_year == null ? null : String(r.enrollment_year),
+    public_private: r.control === 1 ? 'public' : 'private',
+    residential: r.residential as boolean | null,
+    dormitory_capacity: (r.dormitory_capacity ?? null) as number | null,
+    system_name: (r.system_name ?? null) as string | null,
+    distance_miles: r.distance_miles == null ? null : Number(r.distance_miles),
+    _distance: r.distance_miles == null ? null : Number(r.distance_miles),
+  }));
+  return { rows, truncated: false };
+}
+
 async function queryNearbySchools(
   service: SupabaseClient,
   args: { latitude: number; longitude: number; radius_miles?: number },
@@ -734,9 +776,12 @@ async function queryNearbySchools(
 
   // The two sources fail independently — a down NCES service must not hide the
   // private schools we already hold, and vice versa.
-  const [pub, priv] = await Promise.allSettled([
+  // Three sources, failing independently — a down NCES service must not hide the private schools
+  // we already hold, and a higher-ed outage must not look like a trade area with no colleges.
+  const [pub, priv, high] = await Promise.allSettled([
     queryPublicSchools(latitude, longitude, radius),
     queryPrivateSchools(service, latitude, longitude, radius),
+    queryHigherEd(service, latitude, longitude, radius),
   ]);
 
   // ---- Totals: computed here so the model cites them instead of adding. ----
@@ -785,6 +830,27 @@ async function queryNearbySchools(
         };
   }
 
+  // Higher education is a THIRD group, never folded into the other two. Its count is headcount at
+  // an institution, its vintage is an IPEDS year, and adding it to a K-12 total would be adding
+  // unlike things across unlike years — the same rule that already keeps public and private apart.
+  let higherEdTotals: Record<string, unknown>;
+  if (high.status === 'rejected') {
+    higherEdTotals = { enrollment_total: null, incomplete_reason: `Higher-education query failed: ${String((high.reason as Error)?.message ?? high.reason)}` };
+  } else {
+    const all = high.value.rows;
+    const known = all.filter((r) => r.enrollment !== null);
+    const unknown = all.filter((r) => r.enrollment === null);
+    higherEdTotals = {
+      enrollment_total: known.reduce((sum, r) => sum + (r.enrollment as number), 0),
+      includes_prek: false,
+      schools_counted: all.length,
+      schools_with_enrollment: known.length,
+      unknown_enrollment_schools: unknown.map((r) => r.name),
+      vintages: distinct(all.map((r) => r.vintage)),
+      caveat: 'Institutions reporting their own IPEDS UNITID. Satellite campuses of larger systems may not appear.',
+    };
+  }
+
   const strip = <T extends { _distance: unknown }>(rows: T[]) => rows.map(({ _distance, ...rest }) => rest);
 
   return {
@@ -797,13 +863,18 @@ async function queryNearbySchools(
       'enrollment_total — name them. planned_schools_not_in_total are public schools with status Future: ' +
       'not open, a forward signal. address_is_mailing (and address_from_mailing_field_count) means only that ' +
       'the displayed ADDRESS TEXT came from the mailing-address field; coordinates, distance and band membership ' +
-      'come from NCES\'s physical-location geocode and are not affected. Cite the vintages. Distances are straight-line miles; band membership uses unrounded distance.',
+      'come from NCES\'s physical-location geocode and are not affected. Cite the vintages. Distances are straight-line miles; band membership uses unrounded distance. ' +
+      'HIGHER EDUCATION IS A THIRD GROUP AND IS NEVER ADDED TO EITHER K-12 TOTAL: its count is institutional ' +
+      'headcount and its vintage is an IPEDS year, so summing it across the others would add unlike things ' +
+      'across unlike years. Report it separately, and wherever you state a band that includes it, say that ' +
+      'it does. higher_education.caveat applies wherever colleges are discussed.',
     radius_miles: radius,
-    totals: { public: publicTotals, private: privateTotals },
+    totals: { public: publicTotals, private: privateTotals, higher_education: higherEdTotals },
     public_schools: pub.status === 'fulfilled' ? strip(pub.value.rows) : [],
     public_truncated: pub.status === 'fulfilled' ? pub.value.truncated : undefined,
     private_schools: priv.status === 'fulfilled' ? strip(priv.value.rows) : [],
     private_truncated: priv.status === 'fulfilled' ? priv.value.truncated : undefined,
+    higher_education: high.status === 'fulfilled' ? strip(high.value.rows) : [],
   };
 }
 

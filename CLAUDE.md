@@ -140,6 +140,25 @@ Concretely:
 - Prefer "open in slideout" over `navigate('/deal/:id')` for related-object drill-downs (today this often still means navigating; flag the gap rather than papering over it with a page-bound design).
 - A panel built for a sidebar should also work mounted inside a slideout body.
 
+## Site Story scope boundary
+
+**Site Story READS municipality and project data. It does not fix, improve or backfill it.**
+
+Polygon coverage, parcel-fetch accuracy, boundary confirmation, project deduplication and
+discovery quality belong to **Market Research / Market Planning**, and are handled there.
+
+What Site Story does when that data is incomplete: **report it plainly and carry on.** Coverage
+gaps, unplaced projects, unverified rows, missing polygons — all said out loud, in the report and
+in the export footers. It never silently treats missing data as absence: "we cannot see it" and
+"there is nothing there" are different claims and must read differently.
+
+**Flag and move on, don't fix.** If you find a data-quality problem in municipality or project
+data, say so in one line and stop. Do not propose a fix and do not build one.
+
+In scope, by contrast: anything where Site Story's own output contradicts itself — a CSV
+disagreeing with the prose it ships beside, a count stated at two different scopes, a figure in a
+file that no section can source. Those are Site Story bugs and get fixed here.
+
 ## Supabase Query Pagination
 
 **Always paginate Supabase queries that may return more than 1000 rows.**

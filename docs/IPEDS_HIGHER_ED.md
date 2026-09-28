@@ -44,6 +44,29 @@ date — so a stale institution is visible rather than dated to today.
 IPEDS codes `-1/-2/-3` for "not applicable" and "not reported"; the loader maps those to NULL, not
 to zero.
 
+## One source: query_nearby_schools
+
+Higher ed is a **third group inside `query_nearby_schools`**, beside public and private — not a
+separate fetch at export time. That was a deliberate correction: the first cut fetched IPEDS in the
+exports phase, which put colleges in schools.csv but not in the banded totals the prose cites, so
+**the file contradicted the prose shipped beside it** — 1,469 students at Macon in one and absent
+from the other. One tool result now feeds both.
+
+```
+--- 5 mi ---
+  public  : 9,028 across 11  (2024-2025)
+  private : 1,903 across 8   (2023-2024)
+  higher  : 1,469 across 3   (2023)
+```
+
+Three groups, three vintages, **never summed**. The same rule that already keeps public (includes
+pre-K) and private (excludes it) apart: adding an IPEDS headcount for 2023 to an NCES school-year
+count is adding unlike things across unlike years. deep_pass v12 and archetype_call v12 state the
+rule and require every band that includes higher ed to say so.
+
+A band whose higher-education total is 0 has no institution reporting there — said plainly, not
+treated as a gap.
+
 ## In schools.csv
 
 One file, existing columns, no new ones. Higher-ed rows sort in by distance beside the K-12 rows.
@@ -56,9 +79,15 @@ One file, existing columns, no new ones. Higher-ed rows sort in by distance besi
   when on file), and what can honestly be said about main campus versus branch
 - No enrollment on file → blank and `flag=CHECK`, never guessed
 
-Macon, 5 mi: Wesleyan College (1,099, residential, 2.7 mi), Miller-Motte College-Macon (337,
-4.5 mi), Webb's Barber School of Arts (33, 4.8 mi). The v11 deep pass had reported Wesleyan with
-"no headcount stated by the sources found" — that gap is now closed without a search.
+Macon: Wesleyan College (1,099, residential, 2.7 mi) in the 3 and 5 mi bands; Miller-Motte
+College-Macon (337, 4.5 mi) and Webb's Barber School of Arts (33, 4.8 mi) in the 5 mi band. The 1
+mi band has none. The v11 deep pass had reported Wesleyan with "no headcount stated by the sources
+found" — closed without a search.
+
+**Existing threads do not gain them retroactively.** The rows come from Step 1's persisted
+`query_nearby_schools` results, so a thread whose archetype pass ran before this change has no
+higher-education group, and its deep pass will say so rather than invent one. A new thread picks
+them up on its first pass.
 
 ## What this cannot see, and the standing line
 

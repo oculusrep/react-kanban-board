@@ -268,8 +268,10 @@ export const DEEP_PASS_CLIENT_TOOLS: Array<Record<string, unknown>> = [
 // ---------------------------------------------------------------------------
 
 export interface SchoolRecord {
-  school_id: string; // public:<NCESSCH> | private:<PPIN>
+  school_id: string; // public:<NCESSCH> | private:<PPIN> | higher_ed:<UNITID>
   public_private: 'public' | 'private';
+  /** Higher education is its own group: its count never joins a K-12 total. */
+  higher_ed?: boolean;
   name: string | null;
   street: string | null; // null when the address still needs a physical street
   city: string | null;
@@ -287,7 +289,7 @@ export interface SchoolRecord {
   notes: string[];
 }
 
-export type BandTotals = Record<string, { public: unknown; private: unknown } | null>;
+export type BandTotals = Record<string, { public: unknown; private: unknown; higher_education?: unknown } | null>;
 
 export interface Step1Schools {
   bands: BandTotals; // "1" | "3" | "5" -> the tool's totals for that call, or null when no call was made
@@ -323,7 +325,7 @@ export function extractStep1Schools(results: Array<{ output: unknown }>): Step1S
   const bands: BandTotals = {};
   for (const b of BANDS) {
     const out = byBand.get(b);
-    bands[String(b)] = out ? (out.totals as { public: unknown; private: unknown }) : null;
+    bands[String(b)] = out ? (out.totals as { public: unknown; private: unknown; higher_education?: unknown }) : null;
     if (!out) warnings.push(`The first pass made no query_nearby_schools call at ${b} mi, so there is no ${b} mi band.`);
     if (out?.public_truncated) warnings.push(`NCES public school list at ${b} mi was truncated.`);
     if (out?.private_truncated) warnings.push(`Private school list at ${b} mi was truncated.`);
@@ -355,6 +357,30 @@ export function extractStep1Schools(results: Array<{ output: unknown }>): Step1S
         enrollment: numOrNull(row.enrollment_k12_ungraded), school_level: str(row.level),
         grade_low: lo, grade_high: hi, distance_miles: numOrNull(row.distance_miles), band: b,
         school_year: str(row.vintage), status: null, address_is_mailing: row.address_is_mailing === true, notes: [],
+      });
+    }
+
+    // Higher education: a third group, carried in the same list so schools.csv and the band totals
+    // come from ONE tool result. Its enrollment is never added to a K-12 total.
+    for (const row of (out.higher_education ?? []) as Array<Record<string, unknown>>) {
+      const id = `higher_ed:${row.unitid}`;
+      if (schools.has(id)) continue;
+      const notes: string[] = [];
+      if (row.residential === true) {
+        notes.push(row.dormitory_capacity ? `residential campus (${Number(row.dormitory_capacity).toLocaleString('en-US')} dorm beds)` : 'residential campus');
+      } else if (row.residential === false) notes.push('commuter campus, no on-campus housing');
+      else notes.push('residential or commuter not stated');
+      notes.push(str(row.system_name)
+        ? `reports its own IPEDS UNITID; part of the ${str(row.system_name)} system`
+        : 'reports its own IPEDS UNITID; no parent system on file');
+      schools.set(id, {
+        school_id: id,
+        public_private: row.public_private === 'public' ? 'public' : 'private',
+        higher_ed: true,
+        name: str(row.name), street: str(row.address), city: str(row.city), state: str(row.state), zip: str(row.zip),
+        enrollment: numOrNull(row.enrollment), school_level: str(row.level),
+        grade_low: null, grade_high: null, distance_miles: numOrNull(row.distance_miles), band: b,
+        school_year: str(row.vintage), status: null, address_is_mailing: false, notes,
       });
     }
   }
@@ -794,14 +820,16 @@ export interface CsvFilterCounts {
 /**
  * schools.csv: the K-12 rows from Step 1 plus, optionally, the higher-education rows.
  *
- * ONE file, as specced — a second schools file would just be two things to reconcile. Higher-ed
- * rows use the existing columns and read as College / University / Technical College in
- * school_level, with the same enrollment unit so the banded totals are adding like to like.
+ * ONE file and, now, ONE source: the higher-ed rows come from the same query_nearby_schools result
+ * the band totals are computed from, so the file cannot disagree with the prose beside it. They use
+ * the existing columns and read as College / University / Technical College in school_level.
+ *
+ * Their enrollment is NOT added to a K-12 total anywhere — it is a third group with its own IPEDS
+ * vintage, the same way public and private are already kept apart.
  */
 export function buildSchoolsCsv(
   schools: SchoolRecord[],
   fills: AcceptedFill[],
-  higherEd: SchoolsRow[] = [],
 ): { csv: string; rows: SchoolsRow[]; filtered: CsvFilterCounts } {
   const merged = mergeFills(fills);
   const all = schools
@@ -814,13 +842,16 @@ export function buildSchoolsCsv(
       }, merged.get(s.school_id));
       // Band = Step 1 membership (what the totals were computed from), not bandFor(rounded distance).
       row.band = s.band;
-      if (row.enrollment_source === 'NCES') {
+      if (s.higher_ed) {
+        // IPEDS headcount, not an NCES K-12 count: it has its own source and its own vintage.
+        row.enrollment_source = 'IPEDS';
+        row.address_source = 'IPEDS';
+      } else if (row.enrollment_source === 'NCES') {
         const basis = s.public_private === 'public' ? 'NCES enrollment includes pre-K' : 'NCES enrollment excludes pre-K';
         row.notes = [basis, row.notes].filter(Boolean).join('; ');
       }
       return row;
     })
-    .concat(higherEd)
     .sort(byDistance);
   return {
     csv: toCsv(SCHOOLS_COLUMNS, all),

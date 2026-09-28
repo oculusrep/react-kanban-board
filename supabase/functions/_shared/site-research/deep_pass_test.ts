@@ -31,11 +31,20 @@ const R = pub('R', 'Rim HS', 1.0, 1500) // rounds to 1.0 but NCES put it outside
 const F = pub('F', 'Future ES', 3.5, null, { status: 'Future' })
 const P = priv('P', 'Pine Academy', 1.5, 200)
 const Q = priv('Q', 'Quail School', 4.2, null)
-const totals = (n: number) => ({ public: { enrollment_total: n }, private: { enrollment_total: 0 } })
+const totals = (n: number, he = 0) => ({
+  public: { enrollment_total: n }, private: { enrollment_total: 0 },
+  higher_education: { enrollment_total: he, schools_counted: he ? 1 : 0, vintages: he ? ['2023'] : [] },
+})
+/** One IPEDS institution, as query_nearby_schools returns it in its third group. */
+const WES = {
+  unitid: 139959, name: 'Wesleyan College', address: '4760 Forsyth Rd', city: 'Macon', state: 'GA',
+  zip: '31210', level: 'College', enrollment: 1099, vintage: '2023', public_private: 'private',
+  residential: true, dormitory_capacity: 400, system_name: null, distance_miles: 2.7,
+}
 const STEP1 = [
   { output: { radius_miles: 1, totals: totals(542), public_schools: [A, TINY], private_schools: [] } },
-  { output: { radius_miles: 3, totals: totals(2000), public_schools: [A, TINY, R, B], private_schools: [P] } },
-  { output: { radius_miles: 5, totals: totals(2000), public_schools: [A, TINY, R, B, F], private_schools: [P, Q] } },
+  { output: { radius_miles: 3, totals: totals(2000, 1099), public_schools: [A, TINY, R, B], private_schools: [P], higher_education: [WES] } },
+  { output: { radius_miles: 5, totals: totals(2000, 1099), public_schools: [A, TINY, R, B, F], private_schools: [P, Q], higher_education: [WES] } },
 ]
 const EDGE = new Map([['P', { ppin: 'P', street: '900 PINE RD', city: 'MACON', state: 'GA', zip: '31211' }]])
 
@@ -45,7 +54,7 @@ const EDGE = new Map([['P', { ppin: 'P', street: '900 PINE RD', city: 'MACON', s
 Deno.test('extractStep1Schools: band is Step 1 call membership, not the rounded distance', () => {
   const s = extractStep1Schools(STEP1)
   const band = Object.fromEntries(s.schools.map((x) => [x.school_id, x.band]))
-  assertEquals(band, { 'public:A': 1, 'public:T': 1, 'public:R': 3, 'public:B': 3, 'private:P': 3, 'public:F': 5, 'private:Q': 5 })
+  assertEquals(band, { 'public:A': 1, 'public:T': 1, 'public:R': 3, 'public:B': 3, 'private:P': 3, 'higher_ed:139959': 3, 'public:F': 5, 'private:Q': 5 })
   assertEquals(s.bands['1'], totals(542)) // the tool's total: includes the 42-pupil school
   assertEquals(s.warnings, [])
   assertEquals(extractStep1Schools(STEP1.slice(0, 2)).warnings.length, 1)
@@ -250,12 +259,6 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
       { name: 'Planet Fitness', category: 'fitness', brand: 'Planet Fitness', street: '160 Tom Hill Sr Blvd',
         city: 'Macon', state: 'GA', zip: '31210', latitude: 32.91, longitude: -83.76, distance_miles: 1.6 },
     ]),
-    // Higher ed is code-sourced; the sim returns one college so schools.csv covers that path.
-    higherEd: () => Promise.resolve([{
-      unitid: 139959, name: 'Wesleyan College', street: '4760 Forsyth Rd', city: 'Macon', state: 'GA',
-      zip: '31210', enrollment: 1099, enrollment_year: 2023, school_level: 'College', residential: true,
-      dormitory_capacity: 400, system_name: null, control: 2, distance_miles: 2.7,
-    }]),
     municipalityKmls: () => Promise.resolve([]),
     recordGenerator: (input, site) => recordGenerator(input, site, () => Promise.resolve(null)),
     recordEmployer: (input, site) => recordEmployer(input, site, () =>
@@ -315,6 +318,10 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   const wes = schools.find((l) => l.includes('Wesleyan College'))!
   assert(wes.includes(',1099,College,'), wes)
   assert(wes.includes('IPEDS'), wes)
+  assert(wes.includes('residential campus (400 dorm beds)'), wes)
+  assert(!wes.includes('pre-K'), 'a college never carries the K-12 pre-K basis note')
+  // Same source as the band totals: the file cannot disagree with the prose beside it.
+  assert(deep.includes('"higher_education"'), 'the band totals carry higher ed as its own group')
   assert(deep.includes('"enrollment_total": 542'), 'the 1 mi total still counts the filtered school')
   const row = (name: string) => schools.find((l) => l.split(',')[1] === name || l.startsWith(`,${name}`))!
   assert(row('Rim HS').includes(',1,3,2023-2024,NCES,NCES,'), row('Rim HS')) // distance 1.0 → band 3 by membership
