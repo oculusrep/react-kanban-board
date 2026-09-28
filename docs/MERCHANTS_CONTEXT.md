@@ -13,7 +13,7 @@ A map layer that shows branded retail/restaurant/service locations as **actual b
 The model is **curated brands + cached Places data**, not live API calls:
 
 ```
-merchant_brand (401 curated brands, 35 categories)
+merchant_brand (403 curated brands, 35 categories)
       │
       │  admin triggers ingestion, per region
       ▼
@@ -41,7 +41,7 @@ Two surfaces:
 | **2026-07-25** | `is_default` org-wide favorite (OREP), auto-applied on first drawer open. |
 | **2026-09-03** | Global wrong-pin removal (soft delete via `SECURITY DEFINER` RPC, any authenticated user). Favorite **sharing** UI — the schema had existed unused since April. |
 | **2026-09-27** | Name-match + ancillary guards extracted to `supabase/functions/_shared/merchant-brand-guards.ts`. **One definition, three callers** (ingest, map render, site-research). |
-| **2026-09-28** | **Ingestion regions.** Geography became a registry; Columbia SC added as the second market. *On `feature/merchant-regions`, not merged.* |
+| **2026-09-28** | **Ingestion regions.** Geography became a registry; Columbia SC added as the second market, with a quadtree partition and hard cost ceilings. Harris Teeter + Piggly Wiggly added; the 12 bogus North Augusta rows excluded. *On `feature/merchant-regions`, not merged.* |
 
 ---
 
@@ -51,13 +51,13 @@ Counts verified 2026-09-28:
 
 | | |
 |---|---:|
-| Active brands / categories | 401 / 35 |
+| Active brands / categories | 403 / 35 |
 | Cached locations | 23,667 |
 | Verified (hand-dragged) pins | 7 |
-| Excluded (removed-as-wrong) pins | 0 |
+| Excluded (removed-as-wrong) pins | 12 |
 | Favorites / shares | 3 / 1 |
 | Closure alerts | 2 |
-| `merchant_brand_region_ingest` rows | 401 (all `georgia`) |
+| `merchant_brand_region_ingest` rows | 401 (all `georgia`; the 2 new grocery brands have no run yet) |
 
 **Roughly half of all cached rows never render.** The name-match and ancillary filters run at *render* time and hide ~48% of `merchant_location`. Rows are not deleted — flipping a brand's `places_display_name` recovers false negatives. Don't be alarmed by the gap between 23,667 and what you see on the map.
 
@@ -104,6 +104,8 @@ RLS pattern across all of them: authenticated users read, `merchants_is_admin()`
 
 **Brandfetch's terms shape the architecture.** Logos must be **hotlinked**, never downloaded and stored. A brand's licence expires if no API call is made within 30 days. Their CDN also returns HTTP 200 for brands it doesn't have — the disambiguator is `Content-Length` (a real logo is ≥1KB, the placeholder is exactly 338 bytes), and server-side calls must forge browser-like `User-Agent`/`Referer`/`Origin` headers or they 302 to the ToS page.
 
+**Ingestion cost is now bounded in three places**, and all three matter: an adaptive quadtree that recurses only into saturated cells, a per-brand `maxRequestsPerBrand` ceiling, and a run budget checked between brands. The thing that makes bounds necessary is subtle — the saturation test reads the **raw** Places response, before the name-match filter, so a brand with one real location in a region still returns 20 loose matches and trips the whole partition. Georgia's log: 12.9% of all calls saturated.
+
 **Cost estimates in this feature have a history of being wrong.** The original spec said ~$25 for a full ingestion; it cost $124.58. The admin tab's estimator said $16 for the same run. The spec said closure detection would cost $0.25–0.50/month; it is $422 per sweep. Treat any figure here as a lower bound until a real run confirms it.
 
 **Clusterer teardown uses `setMap(null)`, not `clearMarkers()`** — the latter's re-render is projection-guarded and leaves stale cluster glyphs on the map.
@@ -126,9 +128,8 @@ RLS pattern across all of them: authenticated users read, `merchants_is_admin()`
 
 1. **180 Brandfetch misses.** Biggest visible quality problem. Undiagnosed. Admin Brands tab has a "Brandfetch returned nothing" filter to work the list.
 2. **Columbia SC is built but not run.** `feature/merchant-regions` is committed and unmerged; migration `20260928143932` **is already applied to the shared production database** (additive, and `main` doesn't read the table). The 401-brand Columbia ingestion has not happened — ~$35–50, browser session required. Afterwards, recalibrate `COLUMBIA_SC.avgRequestsPerBrand` from `google_places_api_log` and flip `costBasis` to `'measured'`.
-3. **12 bogus North Augusta rows** still in the cache from the old address filter. The new filter wouldn't admit them, but re-ingestion doesn't delete.
-4. **Brand-list gaps for the Columbia market:** Harris Teeter, Piggly Wiggly. Neither state has a convenience/gas category at all.
-5. **Brand-override curation pass** — the render filters overreach on ~20 brands. Known candidates: Truist Bank → `Truist`, Dunkin' Donuts → `Dunkin`, Apple Store → `Apple`, Verizon Wireless → `Verizon`, Mavis Discount Tire → `Mavis`. No re-ingest needed; the filters are render-time.
+3. **Neither state has a convenience/gas category at all** — QuikTrip, Circle K, Sunoco, Parker's. A decision, not a bug.
+4. **Brand-override curation pass** — the render filters overreach on ~20 brands. Known candidates: Truist Bank → `Truist`, Dunkin' Donuts → `Dunkin`, Apple Store → `Apple`, Verizon Wireless → `Verizon`, Mavis Discount Tire → `Mavis`. No re-ingest needed; the filters are render-time.
 
 ---
 

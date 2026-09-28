@@ -129,8 +129,26 @@ Brands with no SC presence cost 2¢ each to discover and cache nothing. Not wort
 6. Test-run 3 brands against Columbia (one sparse, one mid, one dense — e.g. REI / Chick-fil-A / Dollar General) and eyeball pin placement on the map.
 7. Full 401-brand Columbia run. — *~$35–50, 20–40 min of browser time*
 8. Recalibrate `COLUMBIA_SC.avgRequestsPerBrand` from `google_places_api_log` and flip `costBasis` to `'measured'`.
-9. Add Harris Teeter + Piggly Wiggly, resolve logos, ingest those two.
-10. Delete the 12 bogus North Augusta rows (they are Georgia-cache rows that the old filter let in; the new filter would not admit them, but re-ingestion does not delete).
+~~9. Add Harris Teeter + Piggly Wiggly~~ — **done 2026-09-28**, migration `20260928185116`. Both Brandfetch domains verified live against the CDN (2,380 / 4,068 bytes, clear of the 338-byte placeholder). 403 active brands now. They will be picked up by the first Columbia run.
+~~10. Remove the 12 bogus North Augusta rows~~ — **done 2026-09-28**. Soft-deleted, never `DELETE`: ingest upserts on `google_place_id`, so a hard delete is resurrected by the next run of that brand. `excluded_at`/`excluded_by`/`exclusion_reason = 'SC row admitted by old Georgia Avenue address filter'`. Zero SC rows now visible in the cache; no verified pin was touched.
+
+### Cost guard (added after review)
+
+The first cut of the Columbia region used a fixed 4×4 grid, which meant any brand tripping the region-wide cap paid for all 16 cells: **17 calls/brand as soon as a brand caps once ($136 for 401 brands), 81 in the worst case ($650)**. The `$35–50` estimate assumed a ~20% cap rate with nothing enforcing it.
+
+Georgia's log shows why that was optimistic: **6,229 calls / 401 brands = 15.53 per brand, with 12.9% of all calls saturating**. The cap test runs on the *raw* Places response, before the name-match filter, and Google's text search is permissive enough that a brand with one real location still returns 20 loose matches and trips the partition.
+
+Three guards now:
+
+| Guard | Value |
+|---|---|
+| Adaptive quadtree (recurse only into saturated cells) | 2×2, maxDepth 3 |
+| Per-brand ceiling (`maxRequestsPerBrand`) | 25 calls / $0.50, reported as `truncated` |
+| Run budget, checked between brands | $75 default in the admin UI |
+
+Revised projection: **1 call/brand floor ($8), ~7.2 likely (~$57), $75 hard stop.** A cost model built from the committed config reproduces Georgia's real run at 16.4 calls/brand against 15.53 measured, which is the basis for trusting the 7.2.
+
+Georgia keeps its curated-metro strategy — it is a shipped market with 23k rows already paid for, and changing its search shape would invalidate the measured calibration for no present benefit.
 
 ## 10. Running the ingestion
 
