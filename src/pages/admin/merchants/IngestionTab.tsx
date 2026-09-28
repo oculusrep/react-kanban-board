@@ -65,6 +65,7 @@ export default function IngestionTab() {
   const region: MerchantRegion = getRegion(regionId);
   const [regionIngest, setRegionIngest] = useState<Map<string, RegionIngestRow>>(new Map());
   const [skipRecent, setSkipRecent] = useState(true);
+  const [budgetDollars, setBudgetDollars] = useState('75');
   const [stats, setStats] = useState<BrandStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -238,9 +239,13 @@ export default function IngestionTab() {
     cancelRef.current = { cancelled: false };
     setProgress(null);
     try {
+      const parsedBudget = parseFloat(budgetDollars);
       await ingestBrands(
         brandsToIngest,
         region,
+        Number.isFinite(parsedBudget) && parsedBudget > 0
+          ? Math.round(parsedBudget * 100)
+          : Infinity,
         (p) => setProgress({ ...p }),
         cancelRef.current,
       );
@@ -364,10 +369,12 @@ export default function IngestionTab() {
         </h2>
         <p className="text-sm text-gray-600 mb-4">
           Run ingestion for one brand, into <strong>{region.name}</strong>, before committing
-          to the full run. Good for verifying coverage before you spend. Cost is 2¢ for a brand
-          that fits under the 20-result cap; a brand that trips the cap also pays for{' '}
-          {region.subAreas.length} sub-area searches, and a dense one adds{' '}
-          {region.phase3Grid * region.phase3Grid} more per saturated sub-area.
+          to the full run. Good for verifying coverage before you spend. Cost is 2¢ for a
+          brand that fits under the 20-result cap.{' '}
+          {region.strategy.kind === 'named'
+            ? `A brand that trips the cap also pays for ${region.strategy.subAreas.length} sub-area searches, plus ${region.strategy.phase3Grid ** 2} more per saturated sub-area.`
+            : `A brand that trips the cap splits the region ${region.strategy.split}×${region.strategy.split} and recurses only into cells that also cap, to depth ${region.strategy.maxDepth}.`}{' '}
+          Hard ceiling {region.maxRequestsPerBrand} calls ({formatDollars(region.maxRequestsPerBrand * 2)}) per brand.
         </p>
         <div className="flex gap-2">
           <input
@@ -415,7 +422,16 @@ export default function IngestionTab() {
                   raised
                 </div>
               )}
-              <div>Cost: {formatDollars(testResult.costCents)}</div>
+              <div>
+                Cost: {formatDollars(testResult.costCents)} over {testResult.requests} Places
+                call{testResult.requests === 1 ? '' : 's'}
+              </div>
+              {testResult.truncated && (
+                <div style={{ color: BRAND_COLOR_WARN }}>
+                  Hit the {region.maxRequestsPerBrand}-call ceiling — coverage for this brand
+                  may be incomplete.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -463,6 +479,27 @@ export default function IngestionTab() {
                   done. Uncheck to force a full re-ingestion of all {brands.length.toLocaleString()}{' '}
                   brands.
                 </span>
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <span className="font-medium" style={{ color: BRAND_COLOR_DARK }}>
+                Stop the run at
+              </span>
+              <span className="text-gray-500">$</span>
+              <input
+                type="number"
+                min="1"
+                step="5"
+                value={budgetDollars}
+                onChange={(e) => setBudgetDollars(e.target.value)}
+                className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+              <span className="text-gray-500 text-xs">
+                — hard ceiling on the whole run, checked between brands. Blank or 0 removes
+                it. Per brand, {region.name} is capped at{' '}
+                {region.maxRequestsPerBrand} Places calls (
+                {formatDollars(region.maxRequestsPerBrand * 2)}).
               </span>
             </label>
 
@@ -608,7 +645,9 @@ function ProgressPanel({
             {progress.finished
               ? progress.cancelled
                 ? 'Cancelled'
-                : 'Complete'
+                : progress.budgetExhausted
+                  ? 'Stopped — run budget reached'
+                  : 'Complete'
               : `Ingesting: ${progress.currentBrandName || '…'}`}
           </span>
           <span className="text-gray-500 ml-2">
@@ -629,6 +668,28 @@ function ProgressPanel({
           style={{ width: `${pct}%`, backgroundColor: BRAND_COLOR_DARK }}
         />
       </div>
+
+      {progress.budgetExhausted && (
+        <div
+          className="text-xs rounded p-2 border"
+          style={{ color: BRAND_COLOR_WARN, borderColor: BRAND_COLOR_WARN }}
+        >
+          The run stopped at its dollar ceiling with{' '}
+          {(progress.total - progress.currentIndex).toLocaleString()} brand
+          {progress.total - progress.currentIndex === 1 ? '' : 's'} not yet ingested. Raise the
+          ceiling and run again — skip-recent will resume where this left off.
+        </div>
+      )}
+
+      {progress.totalTruncated > 0 && (
+        <div
+          className="text-xs rounded p-2 border"
+          style={{ color: BRAND_COLOR_WARN, borderColor: BRAND_COLOR_WARN }}
+        >
+          {progress.totalTruncated} brand{progress.totalTruncated === 1 ? '' : 's'} hit the
+          per-brand call ceiling; their coverage may be incomplete.
+        </div>
+      )}
 
       {errorsCount > 0 && (
         <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">

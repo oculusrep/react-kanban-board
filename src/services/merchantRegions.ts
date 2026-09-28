@@ -33,6 +33,32 @@ export interface PlaceGeo {
   formatted_address: string;
 }
 
+/**
+ * How a region is partitioned when a search saturates.
+ *
+ * 'named' — a curated list of sub-areas (Georgia's six metros), each
+ *   subdivided phase3Grid × phase3Grid if it also saturates. Encodes human
+ *   knowledge about where the density is. Every sub-area is searched once the
+ *   region-wide search saturates, whether or not there is anything there.
+ *
+ * 'adaptive' — recursive quadtree. Split the region `split × split`, and
+ *   recurse ONLY into children that saturate, to `maxDepth`. Costs far less
+ *   than 'named' on the common case (see below) and goes deeper exactly where
+ *   density warrants it. This is the approach GOOGLE_PLACES_API_STATUS.md §8
+ *   recommends.
+ *
+ * Why adaptive matters so much here: the saturation test is
+ * `results.length >= 20` on the RAW Places response, before the name-match
+ * filter. Google's text search is over-permissive — a "REI" search returns
+ * every outdoor shop in range — so a brand with ONE real location in the
+ * region can still come back with 20 results and trip the partition. Under
+ * 'named' that brand pays for all 16 sub-areas. Under 'adaptive' it pays for
+ * 4, finds nothing saturated, and stops.
+ */
+export type SearchStrategy =
+  | { kind: 'named'; subAreas: NamedBounds[]; phase3Grid: number }
+  | { kind: 'adaptive'; split: number; maxDepth: number };
+
 export interface MerchantRegion {
   /**
    * Stable key, persisted as merchant_brand_region_ingest.region_id.
@@ -48,10 +74,14 @@ export interface MerchantRegion {
   locationLabel: string;
   /** Phase 1 locationRestriction — one search over the whole region. */
   bounds: GeoBounds;
-  /** Phase 2 partitions, searched only when Phase 1 hits the 20-result cap. */
-  subAreas: NamedBounds[];
-  /** Phase 3: N for the N×N subdivision of any sub-area that ALSO caps. */
-  phase3Grid: number;
+  /** How to partition when a search saturates. */
+  strategy: SearchStrategy;
+  /**
+   * Hard ceiling on Places calls for a single brand, so one pathological
+   * brand cannot run away with the budget. A brand that hits it is marked
+   * `truncated` in the result and can be re-run alone with a raised cap.
+   */
+  maxRequestsPerBrand: number;
   /**
    * Authoritative membership test, applied to every result before it is
    * cached.
@@ -158,8 +188,14 @@ const GEORGIA: MerchantRegion = {
   name: 'Georgia (statewide)',
   locationLabel: 'GA',
   bounds: GEORGIA_BOUNDS,
-  subAreas: GEORGIA_METROS,
-  phase3Grid: 4,
+  // Georgia keeps the curated-metro strategy it was ingested under. Switching
+  // it to adaptive would be cheaper, but it is a shipped market with 23k rows
+  // already paid for, and changing its search shape invalidates the measured
+  // calibration below. Migrate it deliberately, not as a side effect.
+  strategy: { kind: 'named', subAreas: GEORGIA_METROS, phase3Grid: 4 },
+  // Full tree is 1 + 6 + 6×16 = 103, so this never binds — present only so
+  // every region has a ceiling.
+  maxRequestsPerBrand: 110,
   // A bbox test would be wrong here: GEORGIA_BOUNDS also covers east Alabama,
   // the Florida panhandle above 30.35 (Tallahassee included), and slivers of
   // SC/NC/TN. The state code is the real boundary.
@@ -191,21 +227,29 @@ const COLUMBIA_SC: MerchantRegion = {
   name: 'Columbia SC (50-mile radius)',
   locationLabel: 'Columbia-area',
   bounds: COLUMBIA_BOUNDS,
-  // One real metro, so there are no meaningful named sub-markets to enumerate
-  // the way Georgia does. A 4×4 grid over the region (~28 mi/cell) is the
-  // Phase 2 partition instead.
-  subAreas: subdivide(COLUMBIA_BOUNDS, 4, 'Columbia'),
-  phase3Grid: 2,
+  // One real metro, so there are no named sub-markets to enumerate the way
+  // Georgia does — and a fixed 4×4 grid would bill all 16 cells for every
+  // brand Google merely returns 20 loose matches for. Quadtree instead:
+  // 2×2 = 4 cells at depth 1 (~55 mi), recursing only where saturated, to
+  // ~14 mi cells at depth 3.
+  strategy: { kind: 'adaptive', split: 2, maxDepth: 3 },
+  // 25 calls = $0.50. The full depth-3 tree would be 85; a brand that needs
+  // more than 25 is either genuinely enormous here or is matching junk, and
+  // either way it should surface as truncated rather than quietly bill.
+  maxRequestsPerBrand: 25,
   // Radius, not state code: the circle lies entirely inside South Carolina
   // (nearest GA point ≈ 62 mi, nearest NC ≈ 80 mi), so distance alone is both
   // exact and immune to malformed addresses.
   accept: (p) =>
     haversineMiles(p.latitude, p.longitude, COLUMBIA_CENTER.lat, COLUMBIA_CENTER.lng) <=
     COLUMBIA_RADIUS_MILES,
-  // Estimated, not measured: 1 Phase-1 call for every brand, plus the 16-cell
-  // grid for the ~20% expected to cap, plus a little Phase 3. Recalibrate from
-  // google_places_api_log after the first full run.
-  avgRequestsPerBrand: 4.5,
+  // Estimated, not measured. Georgia's real run logged 6,229 calls across 401
+  // brands (15.53/brand) with 12.9% of all calls saturating, which says the
+  // saturation rate is high — the earlier 4.5 here assumed ~20% and was too
+  // optimistic. Under the quadtree, a brand that saturates region-wide pays 5
+  // calls before any real density is found, and ~11 if two levels bite.
+  // Recalibrate from google_places_api_log after the first full run.
+  avgRequestsPerBrand: 8.5,
   costBasis: 'estimated',
 };
 

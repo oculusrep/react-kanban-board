@@ -10,7 +10,7 @@
 import { Loader } from '@googlemaps/js-api-loader';
 import { supabase } from '../lib/supabaseClient';
 import { PlacesSearchResult } from './googlePlacesSearchService';
-import { GeoBounds, MerchantRegion, subdivide } from './merchantRegions';
+import { GeoBounds, MerchantRegion, NamedBounds, subdivide } from './merchantRegions';
 // The guards live in ONE place; ingest, map render and site research all import them.
 import {
   isAncillarySubListing, nameMatchesBrand,
@@ -42,6 +42,13 @@ export interface IngestBrandResult {
   statusChanges: number;
   error: string | null;
   costCents: number;
+  /** Places calls actually made for this brand. */
+  requests: number;
+  /**
+   * True if the search stopped on region.maxRequestsPerBrand rather than on
+   * exhausting the partition — coverage for this brand may be incomplete.
+   */
+  truncated: boolean;
 }
 
 export interface IngestAllProgress {
@@ -53,8 +60,12 @@ export interface IngestAllProgress {
   totalUpdatedLocations: number;
   totalStatusChanges: number;
   totalCostCents: number;
+  /** Brands that hit the per-brand call ceiling. */
+  totalTruncated: number;
   cancelled: boolean;
   finished: boolean;
+  /** True if the run stopped because it reached the run budget. */
+  budgetExhausted: boolean;
 }
 
 export interface CancelToken {
@@ -282,6 +293,8 @@ export async function ingestBrand(
     statusChanges: 0,
     error: null,
     costCents: 0,
+    requests: 0,
+    truncated: false,
   };
 
   try {
@@ -289,30 +302,56 @@ export async function ingestBrand(
 
     const brandQuery = brand.places_search_query?.trim() || brand.name;
 
-    // --- Phase 1: one search across the whole region ---
-    // Place.searchByText (2025 API) returns up to 20 results per call.
-    const regionResults = await searchPlaces(brandQuery, region.bounds);
-    result.costCents += COST_PER_REQUEST_CENTS;
-
     const byId = new Map<string, PlacesSearchResult>();
-    for (const p of regionResults) byId.set(p.place_id, p);
 
-    // --- Phase 2: sub-area partition, only if Phase 1 hit the 20-cap ---
-    if (regionResults.length >= PLACES_RESULT_CAP) {
-      for (const subArea of region.subAreas) {
-        const subResults = await searchPlaces(brandQuery, subArea);
-        result.costCents += COST_PER_REQUEST_CENTS;
-        for (const p of subResults) byId.set(p.place_id, p);
+    // Every Places call for this brand goes through here, so the per-brand
+    // ceiling is enforced in exactly one place. Returns null once the budget
+    // is spent, which unwinds the traversal without another request.
+    const search = async (bounds: GeoBounds): Promise<PlacesSearchResult[] | null> => {
+      if (result.requests >= region.maxRequestsPerBrand) {
+        result.truncated = true;
+        return null;
+      }
+      const found = await searchPlaces(brandQuery, bounds);
+      result.requests++;
+      result.costCents += COST_PER_REQUEST_CENTS;
+      for (const p of found) byId.set(p.place_id, p);
+      return found;
+    };
 
-        // --- Phase 3: grid, only if this sub-area ALSO hit the cap ---
-        if (subResults.length >= PLACES_RESULT_CAP) {
-          const cells = subdivide(subArea, region.phase3Grid, subArea.name);
-          for (const cell of cells) {
-            const cellResults = await searchPlaces(brandQuery, cell);
-            result.costCents += COST_PER_REQUEST_CENTS;
-            for (const p of cellResults) byId.set(p.place_id, p);
+    // --- Phase 1: one search across the whole region ---
+    const regionResults = await search(region.bounds);
+
+    // --- Partition, only if Phase 1 saturated (→ more locations exist) ---
+    if (regionResults && regionResults.length >= PLACES_RESULT_CAP) {
+      const strategy = region.strategy;
+
+      if (strategy.kind === 'named') {
+        // Curated sub-areas, each subdivided once if it also saturates.
+        for (const subArea of strategy.subAreas) {
+          const subResults = await search(subArea);
+          if (!subResults) break;
+          if (subResults.length >= PLACES_RESULT_CAP) {
+            for (const cell of subdivide(subArea, strategy.phase3Grid, subArea.name)) {
+              if (!(await search(cell))) break;
+            }
           }
         }
+      } else {
+        // Quadtree: recurse only into children that saturate. A brand that
+        // merely matched 20 loose results region-wide pays for one split and
+        // stops, instead of every cell of a fixed grid.
+        const descend = async (bounds: NamedBounds, depth: number): Promise<void> => {
+          if (depth >= strategy.maxDepth) return;
+          for (const cell of subdivide(bounds, strategy.split, bounds.name)) {
+            const cellResults = await search(cell);
+            if (!cellResults) return;
+            if (cellResults.length >= PLACES_RESULT_CAP) {
+              await descend(cell, depth + 1);
+            }
+          }
+        };
+        await descend({ ...region.bounds, name: region.id }, 0);
       }
     }
 
@@ -450,9 +489,20 @@ async function upsertMerchantLocation(
  * show live progress. cancelToken.cancelled stops the loop cleanly; partial
  * progress stays saved in the DB.
  */
+/**
+ * Ingest a list of brands into one region.
+ *
+ * `budgetCents` is a hard ceiling on the whole run. Per-brand ceilings
+ * (region.maxRequestsPerBrand) bound the tail; this bounds the total, which
+ * is the number anyone actually cares about. The run stops cleanly between
+ * brands — a brand is never left half-ingested — and reports
+ * budgetExhausted so the operator knows the sweep is incomplete rather than
+ * finished. Pass Infinity to disable.
+ */
 export async function ingestBrands(
   brands: MerchantBrandRow[],
   region: MerchantRegion,
+  budgetCents: number,
   onProgress: (p: IngestAllProgress) => void,
   cancelToken: CancelToken,
 ): Promise<IngestAllProgress> {
@@ -465,14 +515,25 @@ export async function ingestBrands(
     totalUpdatedLocations: 0,
     totalStatusChanges: 0,
     totalCostCents: 0,
+    totalTruncated: 0,
     cancelled: false,
     finished: false,
+    budgetExhausted: false,
   };
   onProgress(progress);
 
   for (let i = 0; i < brands.length; i++) {
     if (cancelToken.cancelled) {
       progress.cancelled = true;
+      progress.finished = true;
+      onProgress(progress);
+      return progress;
+    }
+
+    // Checked before starting a brand, not mid-brand, so no brand is left
+    // with partial coverage silently recorded as a completed ingest.
+    if (progress.totalCostCents >= budgetCents) {
+      progress.budgetExhausted = true;
       progress.finished = true;
       onProgress(progress);
       return progress;
@@ -489,6 +550,7 @@ export async function ingestBrands(
     progress.totalUpdatedLocations += result.updatedLocations;
     progress.totalStatusChanges += result.statusChanges;
     progress.totalCostCents += result.costCents;
+    if (result.truncated) progress.totalTruncated++;
     onProgress(progress);
   }
 
