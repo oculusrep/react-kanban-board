@@ -260,3 +260,53 @@ Deno.test('a recovered retail row is still corrected and still researched, just 
   assertEquals(built.rows.length, 0)
   assertEquals(built.retailResearchedNotExported, 1)
 })
+
+// ---------------------------------------------------------------------------
+// Higher education
+// ---------------------------------------------------------------------------
+
+import { bandForMiles, HIGHER_ED_CAVEAT, higherEdRows, type IpedsRow } from './higher-ed.ts'
+
+const ip = (o: Partial<IpedsRow>): IpedsRow => ({
+  unitid: 1, name: 'X', street: '1 A St', city: 'Macon', state: 'GA', zip: '31210',
+  enrollment: 1000, enrollment_year: 2023, school_level: 'College', residential: null,
+  dormitory_capacity: null, system_name: null, control: 2, distance_miles: 2.7, ...o,
+})
+
+Deno.test('higher ed carries headcount in the K-12 unit, and the enrollment year per row', () => {
+  const [r] = higherEdRows([ip({ name: 'Wesleyan College', enrollment: 1099, enrollment_year: 2023 })])
+  assertEquals(r.enrollment, 1099)
+  assertEquals(r.school_year, '2023', 'the year the enrollment describes, not the loader run date')
+  assertEquals(r.enrollment_source, 'IPEDS')
+  assertEquals(r.school_level, 'College')
+  assertEquals(r.band, '3')
+  assertEquals(r.flag, null)
+})
+
+Deno.test('notes carry residential-or-commuter and the UNITID caveat, and nothing else', () => {
+  const [res] = higherEdRows([ip({ residential: true, dormitory_capacity: 800 })])
+  assert(String(res.notes).includes('residential campus (800 dorm beds)'), String(res.notes))
+  const [com] = higherEdRows([ip({ residential: false })])
+  assert(String(com.notes).includes('commuter campus'), String(com.notes))
+  const [sys] = higherEdRows([ip({ system_name: 'University System of Georgia' })])
+  assert(String(sys.notes).includes('part of the University System of Georgia system'), String(sys.notes))
+  // No FTE, no part-time split, no profile.
+  for (const n of [res.notes, com.notes, sys.notes]) {
+    assert(!String(n).toLowerCase().includes('full-time'), String(n))
+    assert(!String(n).toLowerCase().includes('fte'), String(n))
+  }
+})
+
+Deno.test('public/private comes from IPEDS control; an unenrolled college is CHECK', () => {
+  assertEquals(higherEdRows([ip({ control: 1 })])[0].public_private, 'public')
+  assertEquals(higherEdRows([ip({ control: 3 })])[0].public_private, 'private')
+  const [blank] = higherEdRows([ip({ enrollment: null })])
+  assertEquals(blank.enrollment, null)
+  assertEquals(blank.flag, 'CHECK', 'blank rather than guessed, and flagged for a look')
+})
+
+Deno.test('bands match the K-12 membership, and beyond 5 mi is out', () => {
+  assertEquals([0.9, 1, 2.9, 3, 4.9, 5, 5.1].map(bandForMiles), ['1', '1', '3', '3', '5', '5', null])
+  assertEquals(bandForMiles(null), null)
+  assert(HIGHER_ED_CAVEAT.includes('satellite'), HIGHER_ED_CAVEAT)
+})

@@ -23,6 +23,7 @@ import {
   type RecordedGenerator, recordGenerator,
 } from './generators.ts';
 import { buildMunicipalityKmls, kmlFooter, type MunicipalityKml } from './municipal-kml.ts';
+import { HIGHER_ED_CAVEAT, higherEdNear, higherEdRows, type IpedsRow } from './higher-ed.ts';
 import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentError, runModelIteration } from './iteration.ts';
 import { isPermanentApiError, MODEL } from './model.ts';
 import { dataQualityFor } from './snapshot.ts';
@@ -59,6 +60,8 @@ export interface DeepPassDeps extends Omit<IterationDeps, 'clientTools' | 'webSe
   merchantGenerators?: (site: { latitude: number; longitude: number }) => Promise<MerchantGenerator[]>;
   /** One KML per municipality within 10 mi, each carrying that municipality's whole project set. */
   municipalityKmls?: (site: { latitude: number; longitude: number }) => Promise<MunicipalityKml[]>;
+  /** Higher education within 5 mi, from the bulk IPEDS table. Code-sourced, no tool call. */
+  higherEd?: (site: { latitude: number; longitude: number }) => Promise<IpedsRow[]>;
   /** Upload the CSVs to the site submit's Dropbox folder; returns where they landed. */
   exportFiles: (siteSubmitId: string, files: Array<{ name: string; bytes: Uint8Array }>) => Promise<Array<{ name: string; path: string; size: number }>>;
 }
@@ -229,7 +232,14 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           ? await fetchPipelineMatrix(deps.rpc, site, householdsByBand((run.pinned_context as { demographics?: unknown } | null)?.demographics), run.site_submit_id)
           : null;
         const pipelineCsv = pipeline ? buildPipelineCsv(pipeline) : null;
-        const schoolsCsv = buildSchoolsCsv((state.schools ?? []) as SchoolRecord[], fills);
+        // Higher ed is code-sourced like Atlas coffee: a college cannot go missing because a tool
+        // was not called. An outage leaves the rows out and is logged, never reported as zero.
+        let ipeds: IpedsRow[] = [];
+        if (site) {
+          try { ipeds = await (deps.higherEd ?? ((s) => higherEdNear(deps.rpc, s)))(site); }
+          catch (e) { log(`${tag} higher ed unavailable: ${e instanceof Error ? e.message : String(e)}`); }
+        }
+        const schoolsCsv = buildSchoolsCsv((state.schools ?? []) as SchoolRecord[], fills, higherEdRows(ipeds));
         const employersCsv = buildEmployersCsv(employers);
         const competitorsCsv = buildCompetitorsCsv(atlas, competitors);
         // One isochrone for the whole export: the same cached pull pipeline.csv counted against.
@@ -295,6 +305,9 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         const footer = exportsState.status === 'uploaded'
           ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.filter((f) => !f.name.endsWith('.kml')).map((f) =>
               `${f.name} (${f.rows} rows` + (f.flagged ? `; ${f.flagged} flagged CHECK` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. Nothing is filtered out of an export; the banded totals above are unchanged by it.` +
+            (ipeds.length
+              ? ` schools.csv includes ${ipeds.length} higher-education row${ipeds.length === 1 ? '' : 's'} within 5 mi from IPEDS. ${HIGHER_ED_CAVEAT}`
+              : ` No higher-education institution reports an IPEDS UNITID within 5 mi. ${HIGHER_ED_CAVEAT}`) +
             ` generators.csv carries the researched generators only — the ${generatorsCsv.retailResearchedNotExported} retail locations were researched and are in the narrative, not the file (they are already in Sites USA).` +
             kmlFooter(kmls) + searchLine
           : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.${searchLine}`;

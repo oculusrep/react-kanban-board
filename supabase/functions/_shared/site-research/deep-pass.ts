@@ -791,9 +791,17 @@ export interface CsvFilterCounts {
   flagged: number;
 }
 
+/**
+ * schools.csv: the K-12 rows from Step 1 plus, optionally, the higher-education rows.
+ *
+ * ONE file, as specced — a second schools file would just be two things to reconcile. Higher-ed
+ * rows use the existing columns and read as College / University / Technical College in
+ * school_level, with the same enrollment unit so the banded totals are adding like to like.
+ */
 export function buildSchoolsCsv(
   schools: SchoolRecord[],
   fills: AcceptedFill[],
+  higherEd: SchoolsRow[] = [],
 ): { csv: string; rows: SchoolsRow[]; filtered: CsvFilterCounts } {
   const merged = mergeFills(fills);
   const all = schools
@@ -812,6 +820,7 @@ export function buildSchoolsCsv(
       }
       return row;
     })
+    .concat(higherEd)
     .sort(byDistance);
   return {
     csv: toCsv(SCHOOLS_COLUMNS, all),

@@ -250,6 +250,13 @@ function simulate(opts: { step1?: Array<{ output: unknown }>; uploadFails?: bool
       { name: 'Planet Fitness', category: 'fitness', brand: 'Planet Fitness', street: '160 Tom Hill Sr Blvd',
         city: 'Macon', state: 'GA', zip: '31210', latitude: 32.91, longitude: -83.76, distance_miles: 1.6 },
     ]),
+    // Higher ed is code-sourced; the sim returns one college so schools.csv covers that path.
+    higherEd: () => Promise.resolve([{
+      unitid: 139959, name: 'Wesleyan College', street: '4760 Forsyth Rd', city: 'Macon', state: 'GA',
+      zip: '31210', enrollment: 1099, enrollment_year: 2023, school_level: 'College', residential: true,
+      dormitory_capacity: 400, system_name: null, control: 2, distance_miles: 2.7,
+    }]),
+    municipalityKmls: () => Promise.resolve([]),
     recordGenerator: (input, site) => recordGenerator(input, site, () => Promise.resolve(null)),
     recordEmployer: (input, site) => recordEmployer(input, site, () =>
       Promise.resolve({ latitude: 34.0211, longitude: -84.4158, matched_address: '777 HEMLOCK ST, MACON, GA', match_quality: 'exact' as const, candidates: 1 })),
@@ -303,7 +310,11 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assertEquals(schools[0], 'flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
   // Tiny Montessori (42 pupils) is filtered OUT of the file but stays inside the band totals above.
   // Nothing is filtered now: the 42-pupil school is exported like every other row.
-  assertEquals(schools.slice(1, -1).map((l) => l.split(',')[1]), ['Alpha ES', 'Tiny Montessori', 'Rim HS', 'Pine Academy', 'Bravo MS', 'Future ES', 'Quail School'])
+  // The higher-ed row sorts in by distance, in the same file, with the same enrollment unit.
+  assertEquals(schools.slice(1, -1).map((l) => l.split(',')[1]), ['Alpha ES', 'Tiny Montessori', 'Rim HS', 'Pine Academy', 'Bravo MS', 'Wesleyan College', 'Future ES', 'Quail School'])
+  const wes = schools.find((l) => l.includes('Wesleyan College'))!
+  assert(wes.includes(',1099,College,'), wes)
+  assert(wes.includes('IPEDS'), wes)
   assert(deep.includes('"enrollment_total": 542'), 'the 1 mi total still counts the filtered school')
   const row = (name: string) => schools.find((l) => l.split(',')[1] === name || l.startsWith(`,${name}`))!
   assert(row('Rim HS').includes(',1,3,2023-2024,NCES,NCES,'), row('Rim HS')) // distance 1.0 → band 3 by membership
@@ -321,7 +332,9 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   const msg = sim.finalized[0]
   assertEquals(msg.parsed, false) // never touches the thread's archetype columns
   assert(msg.content.startsWith('**Why Here**\nThe case.'))
-  assert(msg.content.includes('schools.csv (7 rows; 2 flagged CHECK)'), msg.content)
+  assert(msg.content.includes('schools.csv (8 rows; 2 flagged CHECK)'), msg.content)
+  assert(msg.content.includes('1 higher-education row'), msg.content)
+  assert(msg.content.includes('satellite campuses'), msg.content)
   assert(msg.content.includes('employers.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('competitors.csv (1 rows)'), msg.content)
   assert(msg.content.includes('generators.csv (1 rows; 1 flagged CHECK)'), msg.content)
