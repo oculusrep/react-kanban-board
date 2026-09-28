@@ -1,4 +1,14 @@
-# Anonymous (publishable-key) exposure audit — 2026-09-28
+# Data API exposure audit and lockdown — 2026-09-28
+
+**Covers:** unauthenticated (publishable-key) access to `public`, RLS-disabled tables,
+`SECURITY DEFINER` views that bypass RLS, locking portal users out of municipal and
+prospecting data, and making the company budget admin-only. Six migrations, all applied.
+
+**See also:** [ROW_LEVEL_SECURITY_STRATEGY.md](ROW_LEVEL_SECURITY_STRATEGY.md) (the original plan,
+now partly stale), [PORTAL_AUTHZ_HOTFIX.md](PORTAL_AUTHZ_HOTFIX.md) (the portal model this builds on),
+[2026-04-22-security-definer-view-fixes.md](2026-04-22-security-definer-view-fixes.md) (the earlier
+definer-view pass that missed the `anon` grants), and CLAUDE.md § "Every new table, view or RPC
+needs an explicit grants block".
 
 Prompted by Supabase's notice that, **from 2026-10-30, new tables in `public` no longer get Data API grants automatically**. That change is about *future* tables; this audit covers the inverse problem it leaves untouched — tables and views that already exist and are reachable **with no authentication at all**.
 

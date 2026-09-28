@@ -59,6 +59,8 @@ Rules:
 - **`serial` / identity columns need the sequence too**: `GRANT USAGE ON SEQUENCE public.my_table_id_seq TO authenticated;` or inserts fail with a permission error on the sequence, not the table.
 - **Verify by impersonation, not by reading the migration.** `set local role authenticated;` plus a real `SELECT`/`INSERT` inside a transaction you `ROLLBACK`.
 
+Background on why this matters here, and the audit that found 23 relations reachable with no authentication at all: [docs/SUPABASE_ANON_EXPOSURE_AUDIT.md](docs/SUPABASE_ANON_EXPOSURE_AUDIT.md).
+
 Audit for tables that were created without a grants block:
 
 ```sql

@@ -90,6 +90,7 @@ The portal had **no policies of its own** on `client`, `site_submit`, `property`
 - **`is_portal_visible_stage()` is broken** — it selects `submit_stage.stage_name`, a column that does not exist, so it throws whenever called. It is dead code (no caller in policies, functions, views or `src/`). Deliberately not used by the interim policies.
 - `gmail-sync` still has no caller check and its cron still sends a hardcoded legacy anon JWT.
 - ~30 other public tables have policies that never reference the caller (`restaurant_trend`, `merchant_location`, `note`, `property_note`, …), and 11 tables have RLS disabled entirely. Reported separately; out of scope here.
+  - **Followed up 2026-09-28** in [SUPABASE_ANON_EXPOSURE_AUDIT.md](SUPABASE_ANON_EXPOSURE_AUDIT.md): the 10 RLS-disabled tables now have RLS, and the municipal / prospecting / target tables moved from `USING (true)` to `is_internal_user()` — which is what kept portal users out of them. The remaining caller-blind policies (`restaurant_trend`, `merchant_location`, `note`, `property_note`, …) are **still open**.
 
 ## See also
 
