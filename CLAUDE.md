@@ -34,6 +34,42 @@ Single application path — file first, psql apply, explicit record:
 4. **Never use the MCP `apply_migration` tool or the Supabase dashboard SQL editor for schema changes.** Both stamp their own version number and are the source of most of the drift. Use them for read-only queries only.
 5. Branch worktrees follow the same rule and note in the PR which migrations they applied to the shared production database — one prod DB is shared across all worktrees, so any branch that migrates puts `main` out of sync until it merges.
 
+### Every new table, view or RPC needs an explicit grants block
+
+**A migration that creates a relation in `public` is not done until it ends with a REVOKE + GRANT block.** Omit it and the table is either wide open or completely unreachable, depending on when it runs:
+
+- **Before 2026-10-30:** `ALTER DEFAULT PRIVILEGES` in this database grants **anon, authenticated and service_role ALL privileges** on every new `public` table, so a new table is world-readable with the publishable key the moment it exists and RLS is the only gate.
+- **From 2026-10-30:** Supabase stops auto-granting Data API access to new tables. A table created without grants returns `permission denied` from supabase-js / PostgREST — including on new projects, preview branches and `supabase db reset`. Existing tables keep their current grants; nothing already shipped changes.
+
+The same block is correct on both sides of that date, so write it unconditionally:
+
+```sql
+-- Grants: don't inherit the defaults, state what the app uses.
+REVOKE ALL ON public.my_table FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.my_table TO authenticated;
+-- Only if the table is written by an edge function / cron via the secret key:
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.my_table TO service_role;
+```
+
+Rules:
+- **Never grant `anon`** unless the feature is genuinely pre-auth. OVIS has exactly one anonymous write surface (`portal_activity_log` INSERT); everything else goes through `authenticated`.
+- **Grant only the verbs the app actually uses.** `GRANT SELECT` on a table the UI never writes means a permissive policy added later can't silently unlock writes.
+- **Views need their own grants** — a view in `public` is a relation and is not covered by grants on its base tables. Grant `SELECT` to `authenticated` when you create or recreate one.
+- **RPCs need `GRANT EXECUTE ... TO authenticated`** (and nothing else). A `SECURITY DEFINER` function with a stale grant is how a service-role-only helper becomes callable from the browser.
+- **`serial` / identity columns need the sequence too**: `GRANT USAGE ON SEQUENCE public.my_table_id_seq TO authenticated;` or inserts fail with a permission error on the sequence, not the table.
+- **Verify by impersonation, not by reading the migration.** `set local role authenticated;` plus a real `SELECT`/`INSERT` inside a transaction you `ROLLBACK`.
+
+Audit for tables that were created without a grants block:
+
+```sql
+select c.relname, c.relrowsecurity,
+       has_table_privilege('anon', c.oid, 'SELECT')          as anon_select,
+       has_table_privilege('authenticated', c.oid, 'SELECT') as auth_select
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind in ('r','v','m')
+order by anon_select desc, c.relname;
+```
+
 **Never rebuild an RPC or view from an older migration file.** Pull the current definition from the live database first (`pg_get_functiondef` / `pg_get_viewdef`); later migrations routinely add things the old file doesn't have, and rebuilding from it silently drops them. Views created with `SELECT t.*` expand to a fixed column list at creation time, so a new table column requires recreating the view.
 
 Verify round-trip before calling a migration done — run it inside a transaction and `ROLLBACK`, so nothing test-related persists.
