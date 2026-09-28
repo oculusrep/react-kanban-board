@@ -10,6 +10,7 @@
 import { Loader } from '@googlemaps/js-api-loader';
 import { supabase } from '../lib/supabaseClient';
 import { PlacesSearchResult } from './googlePlacesSearchService';
+import { GeoBounds, MerchantRegion, subdivide } from './merchantRegions';
 // The guards live in ONE place; ingest, map render and site research all import them.
 import {
   isAncillarySubListing, nameMatchesBrand,
@@ -33,6 +34,8 @@ export interface MerchantBrandRow {
 export interface IngestBrandResult {
   brandId: string;
   brandName: string;
+  /** Which MerchantRegion this run covered. */
+  regionId: string;
   locationsFound: number;
   newLocations: number;
   updatedLocations: number;
@@ -59,53 +62,27 @@ export interface CancelToken {
 }
 
 // Cost model: Places Text Search is 2¢/request (per google_places_api_log).
-// A statewide search fires up to 3 pages (6¢). A brand that hits the 60-cap
-// also runs per-metro searches (6 metros × up to 3 pages = 18 more requests)
-// but in practice metros return 1-2 pages each. Budget at ~4¢ average (mix
-// of sub-cap and at-cap brands).
-const AVG_REQUESTS_PER_BRAND = 2;
+//
+// The old flat "2 requests per brand" estimate undershot Georgia's actual
+// full run by 8× ($16 predicted, $124.58 spent) because it ignored the
+// Phase 2/3 partition entirely — and almost every chain trips it under the
+// new API's 20-result cap. The multiplier now comes from the region, where
+// it can be calibrated against a real run. See MerchantRegion.costBasis.
 export const COST_PER_REQUEST_CENTS = 2;
 
-export function estimateIngestCostCents(brandCount: number): number {
-  return brandCount * AVG_REQUESTS_PER_BRAND * COST_PER_REQUEST_CENTS;
-}
-
-// ---------- Geographic bounds for multi-phase search ----------
-
 /**
- * GA metro bounding boxes. Used when a statewide textSearch hits the 60-
- * result cap — we re-run the search per metro to capture additional
- * locations. Bounds are generous (metro + inner suburbs + outer ring) so
- * density is well covered; post-filter by bbox keeps noise out.
- *
- * These are approximate — they're for locationBias, not strict restriction.
+ * Place.searchByText returns at most 20 results per call. Coming back with
+ * exactly this many means "there are probably more" and triggers the next
+ * partition phase.
  */
-interface MetroBounds {
-  name: string;
-  north: number;
-  south: number;
-  east: number;
-  west: number;
+const PLACES_RESULT_CAP = 20;
+
+export function estimateIngestCostCents(
+  brandCount: number,
+  region: MerchantRegion,
+): number {
+  return Math.round(brandCount * region.avgRequestsPerBrand * COST_PER_REQUEST_CENTS);
 }
-
-// Georgia state bounding box — used as Phase 1 locationRestriction so
-// Places can only return in-state results.
-const GA_STATE_BOUNDS: MetroBounds = {
-  name: 'Georgia',
-  north: 35.01,
-  south: 30.35,
-  east: -80.75,
-  west: -85.61,
-};
-
-const GA_METROS: MetroBounds[] = [
-  { name: 'Atlanta',  north: 34.35, south: 33.25, east: -83.80, west: -85.05 },
-  { name: 'Savannah', north: 32.30, south: 31.80, east: -80.95, west: -81.50 },
-  { name: 'Augusta',  north: 33.75, south: 33.15, east: -81.70, west: -82.40 },
-  { name: 'Columbus', north: 32.80, south: 32.30, east: -84.55, west: -85.20 },
-  { name: 'Macon',    north: 33.05, south: 32.45, east: -83.35, west: -83.90 },
-  { name: 'Athens',   north: 34.15, south: 33.70, east: -83.15, west: -83.60 },
-];
 
 // ---------- New Places API (Place.searchByText) ----------
 
@@ -169,14 +146,14 @@ const PLACE_FIELDS = [
 
 async function searchPlaces(
   query: string,
-  restriction?: MetroBounds,
+  restriction?: GeoBounds,
 ): Promise<PlacesSearchResult[]> {
   const Place = await ensurePlaceClass();
 
   const request: Parameters<NewPlaceClass['searchByText']>[0] = {
     textQuery: query,
     fields: PLACE_FIELDS,
-    maxResultCount: 20,
+    maxResultCount: PLACES_RESULT_CAP,
     region: 'us',
   };
   if (restriction) {
@@ -277,23 +254,28 @@ export async function initMerchantIngestService(): Promise<void> {
 // ---------- Ingestion ----------
 
 /**
- * Run Places Text Search for one brand and upsert results into
- * merchant_location.
+ * Run Places Text Search for one brand within one region and upsert the
+ * results into merchant_location.
  *
- * Two-phase search to get past the 60-result cap Google imposes on
- * textSearch:
- *   1. Statewide: "{brand} in Georgia" (up to 60 results)
- *   2. If Phase 1 returned exactly 60 (cap hit → likely more exist),
- *      re-run per-metro with locationBias bounds, union by place_id.
+ * Three-phase search, because Place.searchByText caps at 20 results per call:
+ *   1. One search over the whole region (region.bounds).
+ *   2. If Phase 1 came back at the cap (→ more exist), re-run over each of
+ *      region.subAreas, unioned by place_id.
+ *   3. For any sub-area that ALSO capped, subdivide it region.phase3Grid ×
+ *      region.phase3Grid and search each cell.
  *
- * Each returned place is post-filtered to guarantee a GA address (Places
- * textSearch with bounds uses locationBias, not locationRestriction, so
- * results can leak across state lines).
+ * Every surviving place is then put through region.accept(). locationRestriction
+ * is only ever a rectangle, and no region is actually a rectangle, so that
+ * predicate — not the bbox — is what keeps out-of-region rows out of the cache.
  */
-export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandResult> {
+export async function ingestBrand(
+  brand: MerchantBrandRow,
+  region: MerchantRegion,
+): Promise<IngestBrandResult> {
   const result: IngestBrandResult = {
     brandId: brand.id,
     brandName: brand.name,
+    regionId: region.id,
     locationsFound: 0,
     newLocations: 0,
     updatedLocations: 0,
@@ -307,26 +289,24 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
 
     const brandQuery = brand.places_search_query?.trim() || brand.name;
 
-    // --- Phase 1: statewide search ---
-    // Using Place.searchByText (2025 API) with a GA-wide locationRestriction.
-    // Returns up to 20 results per call.
-    const statewideResults = await searchPlaces(brandQuery, GA_STATE_BOUNDS);
+    // --- Phase 1: one search across the whole region ---
+    // Place.searchByText (2025 API) returns up to 20 results per call.
+    const regionResults = await searchPlaces(brandQuery, region.bounds);
     result.costCents += COST_PER_REQUEST_CENTS;
 
     const byId = new Map<string, PlacesSearchResult>();
-    for (const p of statewideResults) byId.set(p.place_id, p);
+    for (const p of regionResults) byId.set(p.place_id, p);
 
-    // --- Phase 2: metro partition, only if Phase 1 hit the 20-cap ---
-    const hitCap = statewideResults.length >= 20;
-    if (hitCap) {
-      for (const metro of GA_METROS) {
-        const metroResults = await searchPlaces(brandQuery, metro);
+    // --- Phase 2: sub-area partition, only if Phase 1 hit the 20-cap ---
+    if (regionResults.length >= PLACES_RESULT_CAP) {
+      for (const subArea of region.subAreas) {
+        const subResults = await searchPlaces(brandQuery, subArea);
         result.costCents += COST_PER_REQUEST_CENTS;
-        for (const p of metroResults) byId.set(p.place_id, p);
+        for (const p of subResults) byId.set(p.place_id, p);
 
-        // --- Phase 3: grid, only if this metro ALSO hit cap ---
-        if (metroResults.length >= 20) {
-          const cells = subdivideMetro(metro, 4); // 4×4 = 16 sub-cells
+        // --- Phase 3: grid, only if this sub-area ALSO hit the cap ---
+        if (subResults.length >= PLACES_RESULT_CAP) {
+          const cells = subdivide(subArea, region.phase3Grid, subArea.name);
           for (const cell of cells) {
             const cellResults = await searchPlaces(brandQuery, cell);
             result.costCents += COST_PER_REQUEST_CENTS;
@@ -336,16 +316,17 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
       }
     }
 
-    // Final dedup'd list, GA-only by address, name-matched against the brand,
+    // Final dedup'd list: inside the region, name-matched against the brand,
     // and free of ancillary sub-listings.
+    //   - region.accept: the true geographic boundary (state code for GA, a
+    //     50-mile radius for Columbia). The search bbox is always looser.
     //   - Name-match: rejects Google's over-eager semantic matches (Anytime
     //     Fitness returned for a 24 Hour Fitness search). See nameMatchesBrand.
     //   - Ancillary filter: rejects sub-services at the same storefront
     //     (Kroger Pharmacy, Wells Fargo ATM, Lowe's Garden Center). See
     //     isAncillarySubListing.
     const allPlaces = Array.from(byId.values()).filter((p) => {
-      const addr = p.formatted_address ?? '';
-      if (!(addr.includes(', GA') || /\bGeorgia\b/.test(addr))) return false;
+      if (!region.accept(p)) return false;
       if (!nameMatchesBrand(p.name, brand)) return false;
       if (isAncillarySubListing(p.name, brand)) return false;
       return true;
@@ -356,13 +337,7 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
       await upsertMerchantLocation(brand.id, place, result);
     }
 
-    await supabase
-      .from('merchant_brand')
-      .update({
-        last_ingested_at: new Date().toISOString(),
-        last_verified_at: new Date().toISOString(),
-      })
-      .eq('id', brand.id);
+    await recordRegionIngest(brand.id, region.id, allPlaces.length);
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);
   }
@@ -370,23 +345,38 @@ export async function ingestBrand(brand: MerchantBrandRow): Promise<IngestBrandR
   return result;
 }
 
-/** Split a metro's bbox into an N×N grid of smaller bboxes. */
-function subdivideMetro(m: MetroBounds, n: number): MetroBounds[] {
-  const latStep = (m.north - m.south) / n;
-  const lngStep = (m.east - m.west) / n;
-  const cells: MetroBounds[] = [];
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      cells.push({
-        name: `${m.name} ${i},${j}`,
-        south: m.south + i * latStep,
-        north: m.south + (i + 1) * latStep,
-        west: m.west + j * lngStep,
-        east: m.west + (j + 1) * lngStep,
-      });
-    }
-  }
-  return cells;
+/**
+ * Mark this brand as ingested for this region.
+ *
+ * merchant_brand.last_ingested_at is region-blind, so once a second region
+ * existed it stopped being usable as a "have we done this brand?" signal —
+ * a Columbia run would otherwise make the next Georgia run skip all 401
+ * brands. Per-region truth lives in merchant_brand_region_ingest; the
+ * brand-level column is still bumped because the Brands tab reads it as a
+ * plain "last touched by any ingest" timestamp.
+ */
+async function recordRegionIngest(
+  brandId: string,
+  regionId: string,
+  locationsFound: number,
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  const { error } = await supabase.from('merchant_brand_region_ingest').upsert(
+    {
+      brand_id: brandId,
+      region_id: regionId,
+      last_ingested_at: now,
+      locations_found: locationsFound,
+    },
+    { onConflict: 'brand_id,region_id' },
+  );
+  if (error) throw error;
+
+  await supabase
+    .from('merchant_brand')
+    .update({ last_ingested_at: now, last_verified_at: now })
+    .eq('id', brandId);
 }
 
 async function upsertMerchantLocation(
@@ -462,6 +452,7 @@ async function upsertMerchantLocation(
  */
 export async function ingestBrands(
   brands: MerchantBrandRow[],
+  region: MerchantRegion,
   onProgress: (p: IngestAllProgress) => void,
   cancelToken: CancelToken,
 ): Promise<IngestAllProgress> {
@@ -492,7 +483,7 @@ export async function ingestBrands(
     progress.currentBrandName = brand.name;
     onProgress(progress);
 
-    const result = await ingestBrand(brand);
+    const result = await ingestBrand(brand, region);
     progress.results.push(result);
     progress.totalNewLocations += result.newLocations;
     progress.totalUpdatedLocations += result.updatedLocations;

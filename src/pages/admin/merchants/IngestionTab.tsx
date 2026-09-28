@@ -11,6 +11,12 @@ import {
   initMerchantIngestService,
 } from '../../../services/merchantIngestService';
 import {
+  DEFAULT_REGION_ID,
+  MERCHANT_REGIONS,
+  MerchantRegion,
+  getRegion,
+} from '../../../services/merchantRegions';
+import {
   BRAND_COLOR_DARK,
   BRAND_COLOR_LIGHT,
   BRAND_COLOR_MED,
@@ -20,9 +26,20 @@ import {
 interface BrandStats {
   totalBrands: number;
   brandsWithDomain: number;
+  /** Brands with at least one cached location INSIDE the selected region. */
   brandsWithLocations: number;
-  brandsStale: number; // last_ingested_at older than 30 days OR never
+  /** Never ingested for this region, or last ingested >30 days ago. */
+  brandsStale: number;
+  /** merchant_location rows inside the selected region. */
   totalLocations: number;
+  /** merchant_location rows everywhere, for context. */
+  totalLocationsAllRegions: number;
+}
+
+/** One brand's ingest history for the selected region. */
+interface RegionIngestRow {
+  last_ingested_at: string;
+  locations_found: number;
 }
 
 interface ApiLogEntry {
@@ -44,6 +61,9 @@ const SKIP_RECENT_HOURS = 48;
 
 export default function IngestionTab() {
   const [brands, setBrands] = useState<FullBrandRow[]>([]);
+  const [regionId, setRegionId] = useState<string>(DEFAULT_REGION_ID);
+  const region: MerchantRegion = getRegion(regionId);
+  const [regionIngest, setRegionIngest] = useState<Map<string, RegionIngestRow>>(new Map());
   const [skipRecent, setSkipRecent] = useState(true);
   const [stats, setStats] = useState<BrandStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,34 +106,72 @@ export default function IngestionTab() {
       }
       setBrands(allBrands);
 
-      // Stats
-      const { count: totalLocations } = await supabase
-        .from('merchant_location')
-        .select('id', { count: 'exact', head: true });
+      // Per-region ingest history. This — not merchant_brand.last_ingested_at —
+      // is what drives skip-recent and the stale count, because the brand-level
+      // column is bumped by an ingest of ANY region.
+      const ingestByBrand = new Map<string, RegionIngestRow>();
+      let riOffset = 0;
+      let riHasMore = true;
+      while (riHasMore) {
+        const { data, error } = await supabase
+          .from('merchant_brand_region_ingest')
+          .select('brand_id, last_ingested_at, locations_found')
+          .eq('region_id', regionId)
+          .range(riOffset, riOffset + PAGE - 1);
+        if (error) throw error;
+        (data ?? []).forEach((r) =>
+          ingestByBrand.set(r.brand_id, {
+            last_ingested_at: r.last_ingested_at,
+            locations_found: r.locations_found,
+          }),
+        );
+        riHasMore = (data?.length ?? 0) === PAGE;
+        riOffset += PAGE;
+      }
+      setRegionIngest(ingestByBrand);
 
-      // Count unique brand_ids that have at least one merchant_location row.
-      // Paginate — a naive .select('brand_id') is capped at 1000 rows by
-      // Supabase's default limit, so for >1000 locations the unique-brand
-      // count came out wildly low (bug observed 2026-04-23).
+      // Location coverage, scoped to the selected region.
+      //
+      // merchant_location has no region column — region membership is decided
+      // in code by region.accept() — so the rows are counted client-side.
+      // Paginate: a naive select is capped at 1000 rows by Supabase's default
+      // limit, which made the unique-brand count come out wildly low (bug
+      // observed 2026-04-23).
       const uniqueBrandsWithLocations = new Set<string>();
+      let totalLocationsInRegion = 0;
+      let totalLocationsAllRegions = 0;
       let locOffset = 0;
       let locHasMore = true;
       while (locHasMore) {
         const { data } = await supabase
           .from('merchant_location')
-          .select('brand_id')
+          .select('brand_id, latitude, longitude, formatted_address')
           .range(locOffset, locOffset + PAGE - 1);
         if (!data) break;
-        data.forEach((r) => uniqueBrandsWithLocations.add(r.brand_id));
+        for (const r of data) {
+          totalLocationsAllRegions++;
+          if (
+            !region.accept({
+              latitude: Number(r.latitude),
+              longitude: Number(r.longitude),
+              formatted_address: r.formatted_address ?? '',
+            })
+          ) {
+            continue;
+          }
+          totalLocationsInRegion++;
+          uniqueBrandsWithLocations.add(r.brand_id);
+        }
         locHasMore = data.length === PAGE;
         locOffset += PAGE;
       }
       const brandsWithLocations = uniqueBrandsWithLocations.size;
 
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const brandsStale = allBrands.filter(
-        (b) => !b.last_ingested_at || b.last_ingested_at < thirtyDaysAgo,
-      ).length;
+      const brandsStale = allBrands.filter((b) => {
+        const seen = ingestByBrand.get(b.id);
+        return !seen || seen.last_ingested_at < thirtyDaysAgo;
+      }).length;
       const brandsWithDomain = allBrands.filter((b) => b.brandfetch_domain).length;
 
       setStats({
@@ -121,7 +179,8 @@ export default function IngestionTab() {
         brandsWithDomain,
         brandsWithLocations,
         brandsStale,
-        totalLocations: totalLocations ?? 0,
+        totalLocations: totalLocationsInRegion,
+        totalLocationsAllRegions,
       });
 
       // Recent API log entries (last 20)
@@ -140,7 +199,9 @@ export default function IngestionTab() {
 
   useEffect(() => {
     loadAll();
-  }, []);
+    // Region scopes every number on this tab, so a change reloads all of it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionId]);
 
   // Ensure Maps SDK is warmed up when the tab mounts, so the first ingest
   // doesn't take an extra 1-2s loading the SDK.
@@ -158,16 +219,17 @@ export default function IngestionTab() {
     const cutoff = new Date(
       Date.now() - SKIP_RECENT_HOURS * 60 * 60 * 1000,
     ).toISOString();
-    return brands.filter(
-      (b) => !b.last_ingested_at || b.last_ingested_at < cutoff,
-    );
-  }, [brands, skipRecent]);
+    return brands.filter((b) => {
+      const seen = regionIngest.get(b.id);
+      return !seen || seen.last_ingested_at < cutoff;
+    });
+  }, [brands, skipRecent, regionIngest]);
 
   const skippedCount = brands.length - brandsToIngest.length;
 
   const estimatedCostCents = useMemo(
-    () => estimateIngestCostCents(brandsToIngest.length),
-    [brandsToIngest.length],
+    () => estimateIngestCostCents(brandsToIngest.length, region),
+    [brandsToIngest.length, region],
   );
 
   const startIngestAll = async () => {
@@ -178,6 +240,7 @@ export default function IngestionTab() {
     try {
       await ingestBrands(
         brandsToIngest,
+        region,
         (p) => setProgress({ ...p }),
         cancelRef.current,
       );
@@ -208,7 +271,7 @@ export default function IngestionTab() {
         );
         return;
       }
-      const r = await ingestBrand(match);
+      const r = await ingestBrand(match, region);
       setTestResult(r);
       await loadAll();
     } catch (e: unknown) {
@@ -220,6 +283,38 @@ export default function IngestionTab() {
 
   return (
     <div className="space-y-6">
+      {/* Region picker — scopes every number, every button and every cost on
+          this tab. Ingestion geography is a registry in merchantRegions.ts. */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <label
+          htmlFor="merchant-region"
+          className="block text-xs font-medium uppercase tracking-wider text-gray-500 mb-2"
+        >
+          Region
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            id="merchant-region"
+            value={regionId}
+            onChange={(e) => setRegionId(e.target.value)}
+            disabled={running || testing}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            style={{ color: BRAND_COLOR_DARK }}
+          >
+            {MERCHANT_REGIONS.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-gray-500">
+            Ingest history, staleness and coverage below are all counted for
+            this region only. Brands, categories and logos are shared across
+            regions.
+          </span>
+        </div>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Brands" value={stats?.totalBrands ?? 0} />
@@ -229,28 +324,36 @@ export default function IngestionTab() {
           accent={BRAND_COLOR_MED}
         />
         <StatCard
-          label="With Places locations"
+          label={`With ${region.locationLabel} locations`}
           value={stats?.brandsWithLocations ?? 0}
           accent={BRAND_COLOR_MED}
+          hint={`of ${(stats?.totalBrands ?? 0).toLocaleString()} active brands`}
         />
         <StatCard
-          label="Stale (>30 days)"
+          label="Stale here (>30 days)"
           value={stats?.brandsStale ?? 0}
           accent={(stats?.brandsStale ?? 0) > 0 ? BRAND_COLOR_WARN : BRAND_COLOR_LIGHT}
+          hint="never ingested for this region, or over 30 days ago"
         />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatCard
-          label="Total merchant locations in DB"
+          label={`Cached locations in ${region.name}`}
           value={stats?.totalLocations ?? 0}
           accent={BRAND_COLOR_DARK}
+          hint={`${(stats?.totalLocationsAllRegions ?? 0).toLocaleString()} in merchant_location across all regions`}
         />
         <StatCard
           label="Est. cost to ingest all"
           value={formatDollars(estimatedCostCents)}
           accent={BRAND_COLOR_DARK}
           asCurrency
+          hint={
+            region.costBasis === 'measured'
+              ? `~${region.avgRequestsPerBrand} Places calls/brand, measured on a full run`
+              : `~${region.avgRequestsPerBrand} Places calls/brand — ESTIMATE, not yet calibrated against a real run`
+          }
         />
       </div>
 
@@ -260,10 +363,11 @@ export default function IngestionTab() {
           Test a single brand
         </h2>
         <p className="text-sm text-gray-600 mb-4">
-          Run ingestion for one brand before committing to the full run. Good for verifying
-          coverage (e.g. "Starbucks" should return 200+ GA locations when statewide + metro
-          partitioning kicks in). Cost is ~2¢ for a typical brand, up to ~14¢ if the statewide
-          search hits the 60-result cap and metro phase runs.
+          Run ingestion for one brand, into <strong>{region.name}</strong>, before committing
+          to the full run. Good for verifying coverage before you spend. Cost is 2¢ for a brand
+          that fits under the 20-result cap; a brand that trips the cap also pays for{' '}
+          {region.subAreas.length} sub-area searches, and a dense one adds{' '}
+          {region.phase3Grid * region.phase3Grid} more per saturated sub-area.
         </p>
         <div className="flex gap-2">
           <input
@@ -298,7 +402,8 @@ export default function IngestionTab() {
             </div>
             <div className="text-gray-600 mt-1 space-y-0.5 text-xs">
               <div>
-                <strong>{testResult.locationsFound}</strong> GA locations returned by Places
+                <strong>{testResult.locationsFound}</strong> {region.locationLabel} locations
+                kept (after region, name-match and ancillary filters)
               </div>
               <div>
                 <strong>{testResult.newLocations}</strong> new + <strong>{testResult.updatedLocations}</strong>{' '}
@@ -327,9 +432,10 @@ export default function IngestionTab() {
           Ingest Google Places
         </h2>
         <p className="text-sm text-gray-600 mb-4">
-          For every active brand, run a Google Places Text Search to find physical GA locations
-          and save them to the map. Upserts by <code className="text-xs">google_place_id</code> —
-          running again is safe and updates existing rows.
+          For every active brand, run a Google Places Text Search to find physical locations in{' '}
+          <strong>{region.name}</strong> and save them to the map. Upserts by{' '}
+          <code className="text-xs">google_place_id</code> — running again is safe, and re-running
+          a different region never disturbs this one's rows.
         </p>
 
         {loading && <div className="text-sm text-gray-500">Loading state…</div>}
@@ -350,7 +456,7 @@ export default function IngestionTab() {
               />
               <span>
                 <span className="font-medium" style={{ color: BRAND_COLOR_DARK }}>
-                  Skip brands ingested in the last {SKIP_RECENT_HOURS} hours
+                  Skip brands ingested into {region.name} in the last {SKIP_RECENT_HOURS} hours
                 </span>
                 <span className="text-gray-500">
                   {' '}— use this to resume an interrupted run without re-paying for brands already
@@ -372,8 +478,8 @@ export default function IngestionTab() {
             </button>
             {brandsToIngest.length === 0 && (
               <p className="text-xs text-gray-500 italic">
-                All brands were ingested within the last {SKIP_RECENT_HOURS} hours. Uncheck the
-                box above to force a re-ingestion.
+                All brands were ingested into {region.name} within the last{' '}
+                {SKIP_RECENT_HOURS} hours. Uncheck the box above to force a re-ingestion.
               </p>
             )}
           </div>
@@ -442,6 +548,7 @@ export default function IngestionTab() {
       {confirmOpen && (
         <ConfirmModal
           brandCount={brandsToIngest.length}
+          region={region}
           skippedCount={skipRecent ? skippedCount : 0}
           estimatedCostCents={estimatedCostCents}
           onCancel={() => setConfirmOpen(false)}
@@ -459,11 +566,13 @@ function StatCard({
   value,
   accent,
   asCurrency,
+  hint,
 }: {
   label: string;
   value: number | string;
   accent?: string;
   asCurrency?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -471,6 +580,7 @@ function StatCard({
       <div className="text-3xl font-bold mt-1" style={{ color: accent ?? BRAND_COLOR_DARK }}>
         {asCurrency ? value : typeof value === 'number' ? value.toLocaleString() : value}
       </div>
+      {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
     </div>
   );
 }
@@ -552,12 +662,14 @@ function ProgressPanel({
 
 function ConfirmModal({
   brandCount,
+  region,
   skippedCount,
   estimatedCostCents,
   onCancel,
   onConfirm,
 }: {
   brandCount: number;
+  region: MerchantRegion;
   skippedCount: number;
   estimatedCostCents: number;
   onCancel: () => void;
@@ -567,13 +679,16 @@ function ConfirmModal({
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
         <h3 className="text-lg font-semibold mb-2" style={{ color: BRAND_COLOR_DARK }}>
-          {skippedCount > 0 ? 'Resume ingestion?' : 'Ingest all merchant brands?'}
+          {skippedCount > 0
+            ? `Resume ingestion into ${region.name}?`
+            : `Ingest all merchant brands into ${region.name}?`}
         </h3>
         <p className="text-sm text-gray-600 mb-4">
           This will run a Google Places Text Search for{' '}
           <strong>{brandCount.toLocaleString()}</strong> active brand
-          {brandCount === 1 ? '' : 's'} and upsert their GA locations into the map. Existing rows
-          update; duplicates are not created.
+          {brandCount === 1 ? '' : 's'} and upsert their{' '}
+          <strong>{region.locationLabel}</strong> locations into the map. Existing rows update;
+          duplicates are not created; other regions are untouched.
           {skippedCount > 0 && (
             <>
               {' '}
@@ -585,6 +700,12 @@ function ConfirmModal({
         <div className="text-sm mb-4 space-y-1">
           <div>
             <strong>Estimated cost:</strong> {formatDollars(estimatedCostCents)}
+            {region.costBasis === 'estimated' && (
+              <span className="text-gray-500">
+                {' '}— estimate only; this region has never been fully run, so treat it as a
+                lower bound
+              </span>
+            )}
           </div>
           <div>
             <strong>Estimated time:</strong> ~{Math.ceil(brandCount / 3)}s (roughly 3 brands/sec)
