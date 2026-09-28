@@ -80,3 +80,23 @@ ALTER VIEW public.deal_current_stage_info SET (security_invoker = off);
 ALTER VIEW public.budget_vs_actual SET (security_invoker = off);
 ALTER VIEW public.deal_forecasting_summary SET (security_invoker = off);
 ```
+
+---
+
+## Follow-up: 2026-09-28
+
+This pass fixed the views the Supabase linter flagged. It did not catch that
+**`anon` still held ALL privileges on ~200 public relations**, so a definer view
+plus an `anon` grant was an unauthenticated read — `portal_user_analytics` was
+handing out contact email addresses to anyone with the publishable key.
+
+See [SUPABASE_ANON_EXPOSURE_AUDIT.md](SUPABASE_ANON_EXPOSURE_AUDIT.md). Two lessons that
+apply to any future pass over this surface:
+
+- **A linter flag is not the exposure.** `SECURITY DEFINER` only matters in
+  combination with who holds a grant. Check `has_table_privilege('anon', …)`
+  alongside `reloptions`, and verify with an anonymous request.
+- **`security_invoker` is not always the right fix.** Where a view blends sources
+  with different visibility rules, flipping it yields *partial* data rather than
+  none. `v_prospecting_daily_metrics` got an `is_internal_user()` guard inside the
+  view instead.
