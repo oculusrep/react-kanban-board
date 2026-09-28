@@ -2,7 +2,9 @@
 
 Usage:
     set -a && . ../react-kanban-board/.env && set +a
-    python3 scripts/view_invoker_harness.py /tmp/out
+    python3 scripts/view_invoker_harness.py /tmp/out [view1,view2,...]
+
+With no view list it tests all ten views from the 2026-09-28 audit.
 
 A view without security_invoker runs with its OWNER's privileges, so base-table
 RLS never applies to the caller — an anon SELECT grant on such a view is an
@@ -27,12 +29,13 @@ import csv, os, re, subprocess, sys
 DB = os.environ["DATABASE_URL"]
 OUT = sys.argv[1]
 
-VIEWS = [
+ALL_VIEWS = [
     "portal_user_analytics", "client_velocity_stats", "municipal_project_v",
     "budget_vs_actual_monthly", "document_handoff_history",
     "v_prospecting_stale_targets", "v_prospecting_target",
     "v_prospecting_daily_metrics", "v_prospecting_weekly_metrics", "v_contact_tags",
 ]
+VIEWS = sys.argv[2].split(",") if len(sys.argv) > 2 else ALL_VIEWS
 ROLES = ["admin", "broker_full", "broker_lite", "va", "coach", "portal"]
 INTERNAL = {"admin", "broker_full", "broker_lite", "va", "coach"}
 

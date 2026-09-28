@@ -101,12 +101,69 @@ The round-trip verification for migrations 2 and 3 did not roll back. Both files
 
 Net effect was benign, because the per-role harness had already cleared both migrations before that run. CLAUDE.md now documents the trap and the `sed` workaround.
 
+## Round two — decisions taken, 2026-09-28
+
+Two questions from the first round were answered: **the company budget should be admin-only**, and **the coach role needs no access at all** (no coach engagement is active). A third instruction followed: **portal users must not see municipal project data or prospecting lists.** Three more migrations, all applied and recorded.
+
+### `20260928160000_security_invoker_remaining_views.sql`
+
+Flips the four views held back in round one. `scripts/view_invoker_harness.py` still reports "DO NOT FLIP" for all four — expected, since it flags any internal-role loss and cannot know the loss is now intended.
+
+| View | After | Why it is now correct |
+|---|---|---|
+| `budget_vs_actual_monthly` | admin 223, everyone else 0 | Matches `account_budget`'s admin-only policy — the decision |
+| `client_velocity_stats` | admin/broker_full/va 564, coach 0 | Coach needs nothing |
+| `document_handoff_history` | admin/broker_full/va 125, coach 0 | Coach needs nothing |
+| `portal_user_analytics` | admin/broker_full 22, va/coach 0 | The page already excludes va |
+
+`v_prospecting_daily_metrics` was still **not** flipped — see below.
+
+### `20260928170000_internal_only_municipal_prospecting.sql`
+
+Every municipal and prospecting table read `USING (true)` for `authenticated`, which includes portal logins. Switched to `is_internal_user()` (admin, broker_full, broker_lite, va — excludes coach and portal), already the convention on `prospecting_activity`:
+
+- `municipal_project`, `municipal_project_staging`, `municipal_import`, `municipality`, `municipality_stage_mapping`
+- `prospecting_target` (read **and** write — insert/update/delete were also wide open), `prospecting_note`
+- `target`, `target_signal` (the Hunter pipeline, same exposure)
+
+All ten views over these tables were already `security_invoker`, so they inherited the restriction with no separate changes. Nothing under `src/pages/portal` or `src/components/portal` references any of these tables, so no portal screen changed.
+
+### `20260928180000_prospecting_daily_metrics_internal_only.sql`
+
+`v_prospecting_daily_metrics` was the last way a portal user could reach prospecting data, and the only remaining definer view in `public` that logged-in users can read (besides the two PostGIS ones). Locking the base tables did not help, because a definer view ignores them.
+
+**`security_invoker` is the wrong fix here.** The view blends `prospecting_activity` (internal users read all rows) with `activity` (owner-scoped — admin sees all, others only their own). Flipping it would have given a broker complete prospecting totals but only their own activity totals: a silently half-populated scorecard. Reporting wrong numbers is worse than denying access.
+
+So the guard went *inside* the view — `AND is_internal_user()` on the outer `WHERE`, since that helper is `SECURITY DEFINER` and resolves the caller. Definition was pulled from the live database with `pg_get_viewdef`, not rebuilt from an older migration file. Result: admin/broker_full/va keep all 121 rows unchanged, coach and portal get 0.
+
+### UI change
+
+`BrokerForecastDashboard` read `budget_vs_actual_monthly` with no role check, so after the flip non-admins would have seen `$0` expense and budget figures. The two tiles that depend on it — **YTD Expenses** and **Net Profit Forecast** (which nets off budgeted expenses) — are now gated on `isAdmin`, using the `userRole` the file already imported but never used. Typecheck: 8 pre-existing errors in that file before, 7 after — the change removed the "`userRole` is declared but never read" error and introduced none.
+
+### Verified live, per role
+
+| Relation | admin | broker_full | va | coach | portal |
+|---|---|---|---|---|---|
+| `municipal_project` / `_v` | 350 | 350 | 350 | **0** | **0** |
+| `municipality` | 27 | 27 | 27 | **0** | **0** |
+| `prospecting_target` / `v_prospecting_target` | 1 | 1 | 1 | **0** | **0** |
+| `target` | 230 | 230 | 230 | **0** | **0** |
+| `target_signal` | 350 | 350 | 350 | **0** | **0** |
+| `v_hunter_dashboard` | 227 | 227 | 227 | **0** | **0** |
+| `v_prospecting_daily_metrics` | 121 | 121 | 121 | **0** | **0** |
+| `budget_vs_actual_monthly` | 223 | **0** | **0** | **0** | **0** |
+| `client_velocity_stats` | 564 | 564 | 564 | **0** | 1 (own) |
+| `document_handoff_history` | 125 | 125 | 125 | **0** | **0** |
+| `portal_user_analytics` | 22 | 22 | **0** | **0** | 1 (own) |
+
+Round-trip tests for all three held this time (`BEGIN`/`COMMIT` stripped from a copy first, per the CLAUDE.md caveat), confirmed by the absence of the `SAVEPOINT` error.
+
 ## Remaining work
 
-- Decide the `budget_vs_actual_monthly` question above.
-- Give `coach` real SELECT policies on `deal` / `prospecting_time_entry`, then flip the remaining four views.
-- Fix the `broker_limited` role string in `PortalAnalyticsPage`.
-- **Separate exposure, not covered here:** portal users (your clients) can read all 350 `municipal_project` rows and all prospecting targets — those base tables have `USING (true)` for every `authenticated` role, portal included. Flipping the views does not help, because the policy itself is permissive.
+- Fix the `broker_limited` role string in `PortalAnalyticsPage` — it is not a valid `ovis_role` (`broker_lite` is), so that branch of the access gate never matches.
+- If a coach engagement ever starts, `coach` now has no access to deals, prospecting, municipal data, budgets or handoff history. Granting it means real SELECT policies on `deal` and `prospecting_time_entry`, not re-widening the views.
+- `v_prospecting_daily_metrics` is still the one definer view in `public` that internal users read. It is guarded, but if it is ever recreated the guard must be carried forward — `pg_get_viewdef` first.
+- Nothing else in `public` is readable by `anon` or by portal users beyond their own records. Re-check with `scripts/view_invoker_harness.py` and an anonymous `curl` after any migration that adds a view.
 
 ## Original proposal (superseded by the above)
 
