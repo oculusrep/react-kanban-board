@@ -155,6 +155,10 @@ in the export footers. It never silently treats missing data as absence: "we can
 **Flag and move on, don't fix.** If you find a data-quality problem in municipality or project
 data, say so in one line and stop. Do not propose a fix and do not build one.
 
+Open decision, recorded not built: the archetype list is five, the original prompt had nine — see
+[docs/ARCHETYPE_OPEN_DECISION.md](docs/ARCHETYPE_OPEN_DECISION.md). Adding one needs a migration,
+not just a prompt.
+
 In scope, by contrast: anything where Site Story's own output contradicts itself — a CSV
 disagreeing with the prose it ships beside, a count stated at two different scopes, a figure in a
 file that no section can source. Those are Site Story bugs and get fixed here.
