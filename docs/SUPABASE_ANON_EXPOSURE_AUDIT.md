@@ -1,8 +1,10 @@
 # Data API exposure audit and lockdown — 2026-09-28
 
 **Covers:** unauthenticated (publishable-key) access to `public`, RLS-disabled tables,
-`SECURITY DEFINER` views that bypass RLS, locking portal users out of municipal and
-prospecting data, and making the company budget admin-only. Six migrations, all applied.
+`SECURITY DEFINER` views that bypass RLS, RLS-enabled tables whose policies admit `public`,
+locking portal users out of municipal and prospecting data, and making the company budget
+admin-only. Seven migrations, all applied. Ends with an anonymous request to all 198
+`anon`-granted relations — see "Closing sweep".
 
 **See also:** [ROW_LEVEL_SECURITY_STRATEGY.md](ROW_LEVEL_SECURITY_STRATEGY.md) (the original plan,
 now partly stale), [PORTAL_AUTHZ_HOTFIX.md](PORTAL_AUTHZ_HOTFIX.md) (the portal model this builds on),
@@ -168,12 +170,52 @@ So the guard went *inside* the view — `AND is_internal_user()` on the outer `W
 
 Round-trip tests for all three held this time (`BEGIN`/`COMMIT` stripped from a copy first, per the CLAUDE.md caveat), confirmed by the absence of the `SAVEPOINT` error.
 
+## Round three — a blind spot in this audit's own method
+
+Found while merging to `main`, and it matters more than the finding itself: **the original sweep asked the wrong question.**
+
+It looked for tables with RLS *disabled* and views without `security_invoker`. It never considered an RLS-**enabled** table whose policy is written `TO public USING (true)` — and `public` includes `anon`, so the publishable key reads it straight through. RLS being on proves nothing about who the policies admit.
+
+Verified by anonymous request:
+
+| Relation | Leaked | What it exposes |
+|---|---|---|
+| `role` | 7 rows | Role names and the `permissions` JSON — hands an attacker the authorization model |
+| `goal` | 2 rows | Company revenue and deal-count targets |
+| `site_submit_deal_type` | 7 rows | Lookup |
+| `contact_contact_type` | 0 rows | Only because the table is empty; the policy is equally open |
+
+`nces_private_school` (22,510 rows) also held `anon` grants, but its policy is `TO authenticated`, so RLS held. Its grants were revoked anyway — the grant is what made the others reachable.
+
+Fixed by `20260928190000_anon_readable_rls_tables.sql`: `REVOKE ALL … FROM anon` on all five, plus `ALTER POLICY … TO authenticated` on the four open policies. `service_role` has `BYPASSRLS`, so edge functions are unaffected.
+
+### Closing sweep — every `anon`-granted relation, tested
+
+Rather than re-query the grant tables, all **198** relations `anon` still holds SELECT on were hit with a real anonymous request:
+
+- **195 return `[]`** — the grant is still there, but RLS blocks every row. This is the intended end state: the grants are broad, the policies are the gate, and the gate holds.
+- **3 return data**, all deliberate: `spatial_ref_sys`, `geometry_columns`, `geography_columns` — PostGIS-owned system metadata that client libraries expect to read.
+
+`restaurant_trend` needs a note, because it looks like a leak and is not. An anonymous request to it returns `57014 statement timeout` rather than `[]`, so the API cannot prove the negative. Tested directly instead — `SET LOCAL ROLE anon; SELECT count(*)` returns **0**. The timeout is a *performance* finding: its policy calls `can_manage_operations()`, which is re-evaluated per row across 50,112 rows. Worth wrapping in a `SELECT` (so Postgres caches it as an InitPlan) if that table is ever queried from the UI.
+
+### Method note for the next audit
+
+Three passes over this surface each missed something the next one caught:
+
+1. **2026-04-22** followed the Supabase linter's `SECURITY DEFINER` flags — and missed that a definer view only leaks in combination with a grant.
+2. **This audit, round one** checked `relrowsecurity` and `reloptions` — and missed policies that admit `public`.
+3. **Round three** is the only pass whose method was "send an unauthenticated request to everything."
+
+Only the third generalizes. `has_table_privilege`, `relrowsecurity` and policy text are each a *partial* predicate for reachability; the request is the whole one.
+
 ## Remaining work
 
 - Fix the `broker_limited` role string in `PortalAnalyticsPage` — it is not a valid `ovis_role` (`broker_lite` is), so that branch of the access gate never matches.
 - If a coach engagement ever starts, `coach` now has no access to deals, prospecting, municipal data, budgets or handoff history. Granting it means real SELECT policies on `deal` and `prospecting_time_entry`, not re-widening the views.
 - `v_prospecting_daily_metrics` is still the one definer view in `public` that internal users read. It is guarded, but if it is ever recreated the guard must be carried forward — `pg_get_viewdef` first.
-- Nothing else in `public` is readable by `anon` or by portal users beyond their own records. Re-check with `scripts/view_invoker_harness.py` and an anonymous `curl` after any migration that adds a view.
+- Nothing else in `public` is readable by `anon` or by portal users beyond their own records, as of the closing sweep above. Re-check with `scripts/view_invoker_harness.py` and an anonymous `curl` after any migration that adds a table or view.
+- `restaurant_trend`'s per-row `can_manage_operations()` policy makes it un-queryable within the statement timeout. Not a security issue; will bite whenever that table is read from the UI.
+- The caller-blind policies PORTAL_AUTHZ_HOTFIX.md flagged (`merchant_location`, `note`, `property_note`, `restaurant_location`, …) are still caller-blind. They are not *anon*-reachable, but any logged-in account — including a portal client — can read them.
 
 ## Original proposal (superseded by the above)
 
