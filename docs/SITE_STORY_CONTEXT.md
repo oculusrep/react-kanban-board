@@ -43,7 +43,7 @@ to the table.
 **Ops.** `verify_jwt` pinned in `config.toml`; `cron_http_post_verified` checks the response status
 of the previous call and emails on failure; JWT audit doc.
 
-**Prompts:** deep_pass **v12**, archetype_call **v15** active.
+**Prompts:** deep_pass **v12**, archetype_call **v16** active.
 
 **Executive summary (archetype_call v14, 2026-09-28).** Six lines at the top of every first-pass
 report — city – corner, the story in the 2–3 numbers that carry it, the pitch, the risk, the call.
@@ -64,6 +64,17 @@ Growth sensitivity in Category 2: pipeline units ÷ existing households per band
 both operands printed beside every ratio. Plus the single-project test — one project over 50% of a
 band's Under Construction or Approved units is named and the ratio printed with and without it. The
 Risk line is required to carry both findings when the body found them.
+
+**One pipeline total in the summary (archetype_call v16, 2026-09-28).** v15's growth sensitivity is
+unchanged in the body. The Executive summary now states the residential pipeline as `total_units_
+centroid` for **one named band** — every phase the matrix holds, Recently Completed through
+Planning — and nothing else: **no ratios, no percentages, no units-per-household, no phase
+breakdown**. The Risk line's single-project finding is expressed in units, not a ratio. Category 2
+also prints that all-phase total so the summary quotes a figure that exists in the body rather than
+introducing one. `site_pipeline_matrix` sums it across every phase itself, so the summary cites a
+tool total and does no arithmetic — but it therefore includes standing units, so both body and
+summary say what the figure spans ("completed through planning") instead of calling it pipeline.
+Macon 3 mi is 1,732 centroid / 1,822 intersects against 9,482 households.
 
 **Not built: road names per AADT segment.** Asked for in the same round and blocked on data.
 `streetlight_segment` has `road_name` and `road_type` null on all 1,225,544 rows, including all 170
