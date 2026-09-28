@@ -290,9 +290,10 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(sim.uploads.some((u) => u.name === 'competitors.csv'), 'competitors.csv is exported')
   const gens = sim.uploads.find((u) => u.name === 'generators.csv')!.text.split('\r\n')
   assertEquals(gens[0], 'flag,name,category,size_value,size_unit,street,city,state,zip,lat,lng,distance_mi,drive_time_band,source,notes')
-  // Only the unsized courthouse is CHECK, and CHECK sorts first; retail then sorts by distance.
-  assertEquals(gens.slice(1, -1).map((l) => l.split(',')[1]), ['County Courthouse', 'Kroger', 'Planet Fitness'])
-  assert(gens.find((l) => l.startsWith(',Kroger,'))!.includes(',grocery,,,'), 'retail carries no size and is not flagged')
+  // Researched categories only: the courthouse. The two retailers were researched and are in the
+  // narrative, but they are already in Sites USA so they are not exported.
+  assertEquals(gens.slice(1, -1).map((l) => l.split(',')[1]), ['County Courthouse'])
+  assertEquals(gens.filter((l) => l.includes('Kroger') || l.includes('Planet Fitness')).length, 0)
   const pipelineCsv = sim.uploads.find((u) => u.name === 'pipeline.csv')
   assert(pipelineCsv, 'pipeline.csv is exported')
   const pl = pipelineCsv!.text.split('\r\n')
@@ -323,7 +324,8 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(msg.content.includes('schools.csv (7 rows; 2 flagged CHECK)'), msg.content)
   assert(msg.content.includes('employers.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('competitors.csv (1 rows)'), msg.content)
-  assert(msg.content.includes('generators.csv (3 rows; 1 flagged CHECK)'), msg.content)
+  assert(msg.content.includes('generators.csv (1 rows; 1 flagged CHECK)'), msg.content)
+  assert(msg.content.includes('2 retail locations were researched'), msg.content)
   assert(msg.content.includes('pipeline.csv (2 rows; 1 flagged CHECK)'), msg.content)
   assert(msg.content.includes('Nothing is filtered out of an export'))
 })

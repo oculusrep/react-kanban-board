@@ -22,6 +22,7 @@ import {
   buildGeneratorsCsv, fetchDriveBands, type MerchantGenerator, merchantGenerators,
   type RecordedGenerator, recordGenerator,
 } from './generators.ts';
+import { buildMunicipalityKmls, kmlFooter, type MunicipalityKml } from './municipal-kml.ts';
 import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentError, runModelIteration } from './iteration.ts';
 import { isPermanentApiError, MODEL } from './model.ts';
 import { dataQualityFor } from './snapshot.ts';
@@ -56,6 +57,8 @@ export interface DeepPassDeps extends Omit<IterationDeps, 'clientTools' | 'webSe
   recordGenerator?: typeof recordGenerator;
   /** Grocery, big box, home improvement, drug, fitness and destination retail from OVIS data — no searches. */
   merchantGenerators?: (site: { latitude: number; longitude: number }) => Promise<MerchantGenerator[]>;
+  /** One KML per municipality within 10 mi, each carrying that municipality's whole project set. */
+  municipalityKmls?: (site: { latitude: number; longitude: number }) => Promise<MunicipalityKml[]>;
   /** Upload the CSVs to the site submit's Dropbox folder; returns where they landed. */
   exportFiles: (siteSubmitId: string, files: Array<{ name: string; bytes: Uint8Array }>) => Promise<Array<{ name: string; path: string; size: number }>>;
 }
@@ -244,6 +247,12 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           return p ? driveBands.get(p.id) ?? null : null;
         };
         const generatorsCsv = buildGeneratorsCsv(merchants, generators, bandAt);
+        // KML is code-sourced like Atlas coffee: it never depends on the model asking for it.
+        let kmls: MunicipalityKml[] = [];
+        if (site) {
+          try { kmls = await (deps.municipalityKmls ?? ((s) => buildMunicipalityKmls(deps.rpc as never, s)))(site); }
+          catch (e) { log(`${tag} municipality KML unavailable: ${e instanceof Error ? e.message : String(e)}`); }
+        }
 
         let exportsState: Record<string, unknown>;
         try {
@@ -252,6 +261,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
             { name: 'employers.csv', bytes: csvBytes(employersCsv.csv) },
             { name: 'competitors.csv', bytes: csvBytes(competitorsCsv.csv) },
             { name: 'generators.csv', bytes: csvBytes(generatorsCsv.csv) },
+            ...kmls.map((k) => ({ name: k.filename, bytes: new TextEncoder().encode(k.kml) })),
             ...(pipelineCsv ? [{ name: 'pipeline.csv', bytes: csvBytes(pipelineCsv.csv) }] : []),
           ]);
           exportsState = {
@@ -261,6 +271,7 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
                 : u.name === 'employers.csv' ? employersCsv
                 : u.name === 'competitors.csv' ? competitorsCsv
                 : u.name === 'generators.csv' ? { rows: generatorsCsv.rows, filtered: { kept: generatorsCsv.rows.length, flagged: generatorsCsv.flagged } }
+                : u.name.endsWith('.kml') ? { rows: [], filtered: { kept: 0, flagged: 0 } }
                 : { rows: pipelineCsv?.rows ?? [], filtered: { kept: pipelineCsv?.rows.length ?? 0, flagged: pipelineCsv?.flagged ?? 0 } };
               return { ...u, ...built.filtered, rows: built.rows.length };
             }),
@@ -282,8 +293,10 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           : ` Web searches: ${Math.max(0, run.web_search_requests - (deepBase ?? 0))} of ${deepCeiling} in the deep pass` +
             (fillCeiling !== null ? `, ${Math.max(0, (deepBase ?? 0) - (fillBase ?? 0))} of ${fillCeiling} in the school fill` : '') + '.';
         const footer = exportsState.status === 'uploaded'
-          ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.map((f) =>
-              `${f.name} (${f.rows} rows` + (f.flagged ? `; ${f.flagged} flagged CHECK` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. Nothing is filtered out of an export; the banded totals above are unchanged by it.${searchLine}`
+          ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.filter((f) => !f.name.endsWith('.kml')).map((f) =>
+              `${f.name} (${f.rows} rows` + (f.flagged ? `; ${f.flagged} flagged CHECK` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. Nothing is filtered out of an export; the banded totals above are unchanged by it.` +
+            ` generators.csv carries the researched generators only — the ${generatorsCsv.retailResearchedNotExported} retail locations were researched and are in the narrative, not the file (they are already in Sites USA).` +
+            kmlFooter(kmls) + searchLine
           : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.${searchLine}`;
 
         const result = await deps.db.finalize({

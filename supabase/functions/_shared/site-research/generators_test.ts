@@ -87,14 +87,12 @@ Deno.test('sub-entities of one store collapse; separate tenants at one address d
   assertEquals(rows.find((r) => r.name === 'Kroger')?.collapsed?.length, 2)
 })
 
-Deno.test('generators.csv: retail carries no size and is not flagged for it', () => {
+Deno.test('generators.csv exports the researched categories only — retail is researched, not exported', () => {
   const built = buildGeneratorsCsv(
-    [m('Kroger', 'Kroger', '220 Tom Hill Sr Blvd')], [], (lat) => (lat === 32.881 ? '5min' : null))
-  const kroger = built.rows[0]
-  assertEquals(kroger.flag, null, 'retail has no size anywhere; a blank size is not a CHECK')
-  assertEquals(kroger.drive_time_band, '5min')
-  assertEquals(kroger.size_value, null)
-  assertEquals(built.flagged, 0)
+    [m('Kroger', 'Kroger', '220 Tom Hill Sr Blvd'), m('Planet Fitness', 'Planet Fitness', '1 A St', 'fitness')],
+    [], () => '5min')
+  assertEquals(built.rows.length, 0, 'those retailers are already in Sites USA; a row here is a duplicate')
+  assertEquals(built.retailResearchedNotExported, 2, 'but they were still researched and handed to the model')
   assertEquals(built.csv.split('\r\n')[0].split(',')[0], 'flag')
 })
 
@@ -106,7 +104,7 @@ Deno.test('generators.csv: CHECK rows sort first, and nothing is filtered out', 
   const unsized = (await recordGenerator(
     { name: 'County Courthouse', category: 'civic', source: 'https://x' }, site, geoNone)).recorded as never
   const built = buildGeneratorsCsv([m('Kroger', 'Kroger', '220 Tom Hill Sr Blvd')], [sized, unsized])
-  assertEquals(built.rows.length, 3, 'unsized and unplaced rows are exported, never dropped')
+  assertEquals(built.rows.length, 2, 'unsized and unplaced rows are exported, never dropped; retail is not')
   assertEquals(built.rows[0].name, 'County Courthouse')
   assertEquals(built.rows[0].flag, 'CHECK')
   assertEquals(generatorCallout(built.rows.find((r) => r.name === 'Riverside Methodist')!), 'Riverside Methodist (900 seats)')
@@ -246,24 +244,19 @@ Deno.test('two brands tied on the longest match in different categories: CHECK, 
   const r = recoverBrand('Summit Foods of Macon', tied)!
   assertEquals(r.category, null)
   assertEquals(r.ambiguous?.length, 2)
-  const built = buildGeneratorsCsv([{
-    name: 'Summit Foods of Macon', category: '', brand: 'Summit Foods', street: '1 A St', city: 'Macon',
-    state: 'GA', zip: '31210', latitude: 32.9, longitude: -83.75, distance_miles: 1.1,
-    corrected_from: 'Kroger', ambiguous: r.ambiguous!,
-  }], [])
-  assertEquals(built.rows[0].flag, 'CHECK')
-  assertEquals(built.rows[0].category, null, 'category is left blank rather than guessed')
-  assert(String(built.rows[0].notes).includes('candidates:'), String(built.rows[0].notes))
+  // The ambiguity is resolved in the query, which is where it matters; retail of any category is
+  // no longer exported, so the CHECK it would have carried is asserted on the recovery itself.
+  assertEquals(r.ambiguous![0].includes('Summit Foods'), true)
 })
 
-Deno.test('a recovered row says what it was corrected from, and that the table is unchanged', () => {
-  const built = buildGeneratorsCsv([{
+Deno.test('a recovered retail row is still corrected and still researched, just not exported', () => {
+  const rec = {
     name: 'Walmart Supercenter', category: 'big_box', brand: 'Wal-Mart', street: '5955 Zebulon Rd',
     city: 'Macon', state: 'GA', zip: '31210', latitude: 32.883, longitude: -83.76, distance_miles: 0.2,
     corrected_from: 'Golf Mart',
-  }], [])
-  const notes = String(built.rows[0].notes)
-  assertEquals(built.rows[0].flag, null)
-  assert(notes.includes('corrected from the stored value "Golf Mart"'), notes)
-  assert(notes.includes('merchant_location itself is unchanged'), notes)
+  }
+  assertEquals(rec.corrected_from, 'Golf Mart')
+  const built = buildGeneratorsCsv([rec], [])
+  assertEquals(built.rows.length, 0)
+  assertEquals(built.retailResearchedNotExported, 1)
 })

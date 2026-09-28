@@ -92,3 +92,37 @@ looking at the dashboard.
 
 Currently verified: `ovis-site-research-tick`. Other cron jobs that post HTTP can be moved onto
 `cron_http_post_verified()` the same way — pass a job name, url, headers and body.
+
+---
+
+# merchant_location: the three open items (2026-09-28)
+
+Collected here so they are not re-derived. None is fixed; each moves the merchant map, so each is
+its own scheduled decision. Background in [SITE_RESEARCH_GENERATORS.md](SITE_RESEARCH_GENERATORS.md).
+
+**1. Re-home ~1,069 mis-filed rows.** Location names that start with a different brand than the one
+they are stored under — "Walmart Supercenter" filed under Golf Mart. The rule to use is the strict
+one: the normalized name must START WITH the normalized brand, brand ≥ 5 characters, longest match
+wins. A loose "contains" match appears to recover 2,536 but invents them (American Eagle →
+American Freight, Batteries Plus → AT&T, DSW Designer Shoe Warehouse → Shoe Carnival). Writing
+these back makes ~1,069 currently-hidden locations appear as pins on the merchant map.
+
+**2. Delete the 5,787 that match no brand at all.** The 395 florists a "Roses" search returned, and
+their kind. They are not chain locations and nothing recovers them.
+
+**3. `nameMatchesBrand` is a CONTAINS test, and it passes things it should not.** Found 2026-09-28
+in a live generators export: **"Nikki Bassett, Realtor" is categorised destination_retail because
+its normalized name contains "bassett"**, the furniture brand. A realtor, exported as a retail
+generator — and drawn on the merchant map today as a Bassett pin, since the map applies the same
+test at render.
+
+The prefix rule in item 1 would reject it, so the natural fix is to make the guard's name test a
+prefix test rather than a contains test. Two reasons that is not a drive-by change:
+
+- It moves the map. Rows currently passing on a contains match would stop rendering.
+- It would reject legitimate names. "SEPHORA at Kohl's" contains but does not start with its
+  brand, and a store legitimately prefixed by a centre name ("Shoppes at X — Kroger") would fail.
+
+So it needs its own pass with a reviewed diff of what enters and leaves the map, not a flag flip.
+Until then, a contains-match false positive reaches generators.csv unflagged, because the row
+passes the stored-brand path and recovery never examines it.

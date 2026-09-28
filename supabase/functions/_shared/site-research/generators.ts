@@ -463,11 +463,21 @@ export async function fetchDriveBands(
   return { bands: new Map(Object.entries(out.bands ?? {})), isochronesFrom: out.isochrones_from ?? null };
 }
 
+/**
+ * generators.csv carries the RESEARCHED categories only — churches, hospitals and medical, civic
+ * buildings, hotels.
+ *
+ * The retail half (grocery, big box, home improvement, drug, fitness, destination retail) is still
+ * queried, still handed to the model, and still part of the co-tenancy read and the retail-node
+ * argument in the narrative. It is simply not exported: those locations are already in Sites USA,
+ * so a row here is a duplicate to reconcile rather than something new. This is an export filter,
+ * not a research change — `merchants` is still what the model saw.
+ */
 export function buildGeneratorsCsv(
   merchants: MerchantGenerator[],
   recorded: RecordedGenerator[],
   driveBand: (lat: number, lng: number) => string | null = () => null,
-): { csv: string; rows: GeneratorsRow[]; flagged: number } {
+): { csv: string; rows: GeneratorsRow[]; flagged: number; retailResearchedNotExported: number } {
   const rows: GeneratorsRow[] = [];
   const seen = new Set<string>();
   const push = (r: GeneratorsRow) => {
@@ -476,29 +486,7 @@ export function buildGeneratorsCsv(
     seen.add(key);
     rows.push(r);
   };
-  for (const m of merchants) {
-    push(buildGeneratorRow({
-      name: m.name, category: m.category, size_value: null, size_unit: null,
-      street: m.street, city: m.city, state: m.state, zip: m.zip,
-      latitude: m.latitude, longitude: m.longitude, distance_miles: m.distance_miles,
-      drive_time_band: driveBand(m.latitude, m.longitude),
-      source: 'OVIS merchant_location (Google Places)',
-      // Retail has no size on file anywhere, so a blank size is not a CHECK for these rows.
-      size_expected: false,
-      check_reason: m.ambiguous?.length
-        ? `name matches ${m.ambiguous.length} brands in different categories — category left blank rather than guessed`
-        : null,
-      notes: [
-        m.brand ? `brand: ${m.brand}` : null,
-        m.corrected_from
-          ? `brand corrected from the stored value "${m.corrected_from}" by matching the location name; merchant_location itself is unchanged`
-          : null,
-        m.ambiguous?.length ? `candidates: ${m.ambiguous.join(' | ')}` : null,
-        m.category ? dayPartNote(m.category, null) : 'daypart not determined — category unresolved',
-        m.collapsed?.length ? `one store; Places also lists ${m.collapsed.join(', ')}` : null,
-      ].filter(Boolean).join('; '),
-    }));
-  }
+  // Retail is not pushed: it is researched and narrated, never exported. See the note above.
   for (const g of recorded) {
     push(buildGeneratorRow({
       name: g.name, category: g.category, size_value: g.size_value, size_unit: g.size_unit,
@@ -509,5 +497,10 @@ export function buildGeneratorsCsv(
     }));
   }
   rows.sort(generatorSort);
-  return { csv: toCsv(GENERATORS_COLUMNS, rows), rows, flagged: rows.filter((r) => r.flag === 'CHECK').length };
+  return {
+    csv: toCsv(GENERATORS_COLUMNS, rows),
+    rows,
+    flagged: rows.filter((r) => r.flag === 'CHECK').length,
+    retailResearchedNotExported: merchants.length,
+  };
 }

@@ -29,6 +29,7 @@ import { executeTool, TOOL_DEFINITIONS, WEB_SEARCH_TOOL } from '../_shared/site-
 import { kickWorker } from '../_shared/site-research/kick.ts';
 import { runDeepPassIteration, supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
 import { atlasCoffeeWithin, edgePrivateLocations, merchantGenerators } from '../_shared/site-research/deep-pass.ts';
+import { buildMunicipalityKmls } from '../_shared/site-research/municipal-kml.ts';
 import { BRIEF_MAX_WORDS, wordCount } from '../_shared/site-research/brief.ts';
 import { resolveSiteSubmitFolder, uploadFile } from '../_shared/dropbox.ts';
 import { notifySiteResearch } from '../_shared/site-research/alerts.ts';
@@ -117,6 +118,7 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
         edgePrivate: edgePrivateLocations,
         atlasCoffee: (site) => atlasCoffeeWithin(service, site),
         merchantGenerators: (site) => merchantGenerators(service, site),
+        municipalityKmls: (site) => buildMunicipalityKmls(service, site),
         exportFiles: async (siteSubmitId, files) => {
           const folder = await resolveSiteSubmitFolder(service, siteSubmitId);
           const out = [];
