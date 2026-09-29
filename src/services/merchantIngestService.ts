@@ -376,7 +376,7 @@ export async function ingestBrand(
       await upsertMerchantLocation(brand.id, place, result);
     }
 
-    await recordRegionIngest(brand.id, region.id, allPlaces.length);
+    await recordRegionIngest(brand.id, region.id, allPlaces.length, result.truncated);
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);
   }
@@ -398,6 +398,7 @@ async function recordRegionIngest(
   brandId: string,
   regionId: string,
   locationsFound: number,
+  truncated: boolean,
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -407,6 +408,9 @@ async function recordRegionIngest(
       region_id: regionId,
       last_ingested_at: now,
       locations_found: locationsFound,
+      // Skip-recent must never skip a truncated brand — otherwise the run
+      // that would fill the gap is the one that passes over it.
+      truncated,
     },
     { onConflict: 'brand_id,region_id' },
   );

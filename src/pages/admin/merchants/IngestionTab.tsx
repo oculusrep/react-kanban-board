@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   CancelToken,
   IngestAllProgress,
@@ -40,6 +41,8 @@ interface BrandStats {
 interface RegionIngestRow {
   last_ingested_at: string;
   locations_found: number;
+  /** Stopped on the per-brand call ceiling — coverage may be incomplete. */
+  truncated: boolean;
 }
 
 interface ApiLogEntry {
@@ -55,18 +58,37 @@ interface ApiLogEntry {
 type FullBrandRow = MerchantBrandRow & {
   last_ingested_at: string | null;
   brandfetch_domain: string | null;
+  category_id: string | null;
 };
+
+/** A favorite the current user can see: own, shared with them, or the org default. */
+interface FavoriteOption {
+  id: string;
+  name: string;
+  /** Disambiguated label for the dropdown — duplicate names carry an owner suffix. */
+  label: string;
+  brandIds: Set<string>;
+  isDefault: boolean;
+}
+
+/** Scope of a run: every active brand, or one favorite's brands. */
+const SCOPE_ALL = 'all';
 
 const SKIP_RECENT_HOURS = 48;
 
 export default function IngestionTab() {
+  const { userTableId } = useAuth();
   const [brands, setBrands] = useState<FullBrandRow[]>([]);
   const [regionId, setRegionId] = useState<string>(DEFAULT_REGION_ID);
   const region: MerchantRegion = getRegion(regionId);
   const [regionIngest, setRegionIngest] = useState<Map<string, RegionIngestRow>>(new Map());
+  const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map());
+  const [locationsByBrand, setLocationsByBrand] = useState<Map<string, number>>(new Map());
+  const [totalLocationsAllRegions, setTotalLocationsAllRegions] = useState(0);
+  const [favorites, setFavorites] = useState<FavoriteOption[]>([]);
+  const [scopeId, setScopeId] = useState<string>(SCOPE_ALL);
   const [skipRecent, setSkipRecent] = useState(true);
   const [budgetDollars, setBudgetDollars] = useState('75');
-  const [stats, setStats] = useState<BrandStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recentLogs, setRecentLogs] = useState<ApiLogEntry[]>([]);
@@ -95,7 +117,7 @@ export default function IngestionTab() {
         const { data, error } = await supabase
           .from('merchant_brand')
           .select(
-            'id, name, places_search_query, places_type_filter, places_display_name, places_name_exclude, last_ingested_at, brandfetch_domain, is_active',
+            'id, name, places_search_query, places_type_filter, places_display_name, places_name_exclude, last_ingested_at, brandfetch_domain, is_active, category_id',
           )
           .eq('is_active', true)
           .order('name')
@@ -116,7 +138,7 @@ export default function IngestionTab() {
       while (riHasMore) {
         const { data, error } = await supabase
           .from('merchant_brand_region_ingest')
-          .select('brand_id, last_ingested_at, locations_found')
+          .select('brand_id, last_ingested_at, locations_found, truncated')
           .eq('region_id', regionId)
           .range(riOffset, riOffset + PAGE - 1);
         if (error) throw error;
@@ -124,12 +146,74 @@ export default function IngestionTab() {
           ingestByBrand.set(r.brand_id, {
             last_ingested_at: r.last_ingested_at,
             locations_found: r.locations_found,
+            truncated: !!r.truncated,
           }),
         );
         riHasMore = (data?.length ?? 0) === PAGE;
         riOffset += PAGE;
       }
       setRegionIngest(ingestByBrand);
+
+      // Category names, for the end-of-run truncation report.
+      const { data: cats } = await supabase
+        .from('merchant_category')
+        .select('id, name');
+      setCategoryNames(new Map((cats ?? []).map((c) => [c.id as string, c.name as string])));
+
+      // Favorites the current user can run. RLS already limits this to
+      // own + shared-with-me + the org default, so no client-side filter is
+      // needed — and "shared with me" works the day someone shares one, even
+      // though nothing is shared today.
+      const { data: favRows, error: favErr } = await supabase
+        .from('merchant_favorite')
+        .select('id, name, is_default, owner_user_id, brands:merchant_favorite_brand(brand_id)')
+        .order('is_default', { ascending: false })
+        .order('name', { ascending: true });
+      if (favErr) throw favErr;
+
+      // Owner emails, only for the names that actually collide — two
+      // favorites called "Burritos" are indistinguishable otherwise.
+      const nameCounts = new Map<string, number>();
+      for (const f of favRows ?? []) {
+        nameCounts.set(f.name as string, (nameCounts.get(f.name as string) ?? 0) + 1);
+      }
+      const ownerIds = Array.from(
+        new Set(
+          (favRows ?? [])
+            .filter((f) => (nameCounts.get(f.name as string) ?? 0) > 1)
+            .map((f) => f.owner_user_id as string)
+            .filter(Boolean),
+        ),
+      );
+      const ownerEmails = new Map<string, string>();
+      if (ownerIds.length > 0) {
+        const { data: owners } = await supabase
+          .from('user')
+          .select('id, email')
+          .in('id', ownerIds);
+        (owners ?? []).forEach((o) =>
+          ownerEmails.set(o.id as string, (o.email as string) ?? ''),
+        );
+      }
+
+      setFavorites(
+        (favRows ?? []).map((f: any) => {
+          const collides = (nameCounts.get(f.name) ?? 0) > 1;
+          const ownerLabel =
+            f.owner_user_id === userTableId
+              ? 'me'
+              : (ownerEmails.get(f.owner_user_id) || 'shared').split('@')[0];
+          return {
+            id: f.id,
+            name: f.name,
+            label:
+              `${f.name}${f.is_default ? ' — org default' : ''}` +
+              (collides ? ` (${ownerLabel})` : ''),
+            brandIds: new Set<string>((f.brands ?? []).map((b: any) => b.brand_id)),
+            isDefault: !!f.is_default,
+          };
+        }),
+      );
 
       // Location coverage, scoped to the selected region.
       //
@@ -138,8 +222,7 @@ export default function IngestionTab() {
       // Paginate: a naive select is capped at 1000 rows by Supabase's default
       // limit, which made the unique-brand count come out wildly low (bug
       // observed 2026-04-23).
-      const uniqueBrandsWithLocations = new Set<string>();
-      let totalLocationsInRegion = 0;
+      const inRegionByBrand = new Map<string, number>();
       let totalLocationsAllRegions = 0;
       let locOffset = 0;
       let locHasMore = true;
@@ -160,29 +243,13 @@ export default function IngestionTab() {
           ) {
             continue;
           }
-          totalLocationsInRegion++;
-          uniqueBrandsWithLocations.add(r.brand_id);
+          inRegionByBrand.set(r.brand_id, (inRegionByBrand.get(r.brand_id) ?? 0) + 1);
         }
         locHasMore = data.length === PAGE;
         locOffset += PAGE;
       }
-      const brandsWithLocations = uniqueBrandsWithLocations.size;
-
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const brandsStale = allBrands.filter((b) => {
-        const seen = ingestByBrand.get(b.id);
-        return !seen || seen.last_ingested_at < thirtyDaysAgo;
-      }).length;
-      const brandsWithDomain = allBrands.filter((b) => b.brandfetch_domain).length;
-
-      setStats({
-        totalBrands: allBrands.length,
-        brandsWithDomain,
-        brandsWithLocations,
-        brandsStale,
-        totalLocations: totalLocationsInRegion,
-        totalLocationsAllRegions,
-      });
+      setLocationsByBrand(inRegionByBrand);
+      setTotalLocationsAllRegions(totalLocationsAllRegions);
 
       // Recent API log entries (last 20)
       const { data: logs } = await supabase
@@ -215,18 +282,78 @@ export default function IngestionTab() {
 
   // Brands that will actually run through ingestion, based on the
   // skip-recent toggle. Used for button labels, cost, and the confirm modal.
+  const selectedFavorite = useMemo(
+    () => (scopeId === SCOPE_ALL ? null : favorites.find((f) => f.id === scopeId) ?? null),
+    [scopeId, favorites],
+  );
+
+  /** Active brands in the current scope, before skip-recent. */
+  const scopedBrands = useMemo(
+    () =>
+      selectedFavorite
+        ? brands.filter((b) => selectedFavorite.brandIds.has(b.id))
+        : brands,
+    [brands, selectedFavorite],
+  );
+
   const brandsToIngest = useMemo(() => {
-    if (!skipRecent) return brands;
+    if (!skipRecent) return scopedBrands;
     const cutoff = new Date(
       Date.now() - SKIP_RECENT_HOURS * 60 * 60 * 1000,
     ).toISOString();
-    return brands.filter((b) => {
+    return scopedBrands.filter((b) => {
       const seen = regionIngest.get(b.id);
-      return !seen || seen.last_ingested_at < cutoff;
+      if (!seen) return true;
+      // A brand that stopped on the per-brand call ceiling has incomplete
+      // coverage. Skipping it would mean the run meant to fill the gap is
+      // the one that passes over it.
+      if (seen.truncated) return true;
+      return seen.last_ingested_at < cutoff;
     });
-  }, [brands, skipRecent, regionIngest]);
+  }, [scopedBrands, skipRecent, regionIngest]);
 
-  const skippedCount = brands.length - brandsToIngest.length;
+  const skippedCount = scopedBrands.length - brandsToIngest.length;
+
+  /**
+   * Every headline number follows the scope, so picking a favorite reframes
+   * the whole tab rather than just the run button.
+   */
+  const stats: BrandStats = useMemo(() => {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    let brandsWithLocations = 0;
+    let totalLocations = 0;
+    let brandsStale = 0;
+    let brandsWithDomain = 0;
+    for (const b of scopedBrands) {
+      const n = locationsByBrand.get(b.id) ?? 0;
+      if (n > 0) brandsWithLocations++;
+      totalLocations += n;
+      if (b.brandfetch_domain) brandsWithDomain++;
+      const seen = regionIngest.get(b.id);
+      if (!seen || seen.truncated || seen.last_ingested_at < thirtyDaysAgo) brandsStale++;
+    }
+    return {
+      totalBrands: scopedBrands.length,
+      brandsWithDomain,
+      brandsWithLocations,
+      brandsStale,
+      totalLocations,
+      totalLocationsAllRegions,
+    };
+  }, [scopedBrands, locationsByBrand, regionIngest, totalLocationsAllRegions]);
+
+  /** Brands in scope whose last run for this region was truncated. */
+  const truncatedInScope = useMemo(
+    () =>
+      scopedBrands
+        .filter((b) => regionIngest.get(b.id)?.truncated)
+        .map((b) => ({
+          name: b.name,
+          category: categoryNames.get(b.category_id ?? '') ?? 'Uncategorised',
+        }))
+        .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)),
+    [scopedBrands, regionIngest, categoryNames],
+  );
 
   const estimatedCostCents = useMemo(
     () => estimateIngestCostCents(brandsToIngest.length, region),
@@ -318,26 +445,62 @@ export default function IngestionTab() {
             regions.
           </span>
         </div>
+
+        <label
+          htmlFor="merchant-scope"
+          className="block text-xs font-medium uppercase tracking-wider text-gray-500 mt-4 mb-2"
+        >
+          Brands to run
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            id="merchant-scope"
+            value={scopeId}
+            onChange={(e) => setScopeId(e.target.value)}
+            disabled={running || testing}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            style={{ color: BRAND_COLOR_DARK }}
+          >
+            <option value={SCOPE_ALL}>All active brands ({brands.length})</option>
+            {favorites.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label} ({f.brandIds.size})
+              </option>
+            ))}
+          </select>
+          {selectedFavorite ? (
+            <span className="text-xs text-gray-500">
+              Only this favorite's brands will be ingested. Same per-brand ceiling and run
+              budget as a full run.
+              {selectedFavorite.isDefault &&
+                ' This is the org default, auto-applied on every user\u2019s first Merchants drawer open.'}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-500">
+              Every active brand in the master list.
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Brands" value={stats?.totalBrands ?? 0} />
+        <StatCard label="Brands" value={stats.totalBrands} />
         <StatCard
           label="With Brandfetch domain"
-          value={stats?.brandsWithDomain ?? 0}
+          value={stats.brandsWithDomain}
           accent={BRAND_COLOR_MED}
         />
         <StatCard
           label={`With ${region.locationLabel} locations`}
-          value={stats?.brandsWithLocations ?? 0}
+          value={stats.brandsWithLocations}
           accent={BRAND_COLOR_MED}
-          hint={`of ${(stats?.totalBrands ?? 0).toLocaleString()} active brands`}
+          hint={`of ${(stats.totalBrands).toLocaleString()} active brands`}
         />
         <StatCard
           label="Stale here (>30 days)"
-          value={stats?.brandsStale ?? 0}
-          accent={(stats?.brandsStale ?? 0) > 0 ? BRAND_COLOR_WARN : BRAND_COLOR_LIGHT}
+          value={stats.brandsStale}
+          accent={(stats.brandsStale) > 0 ? BRAND_COLOR_WARN : BRAND_COLOR_LIGHT}
           hint="never ingested for this region, or over 30 days ago"
         />
       </div>
@@ -345,9 +508,9 @@ export default function IngestionTab() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatCard
           label={`Cached locations in ${region.name}`}
-          value={stats?.totalLocations ?? 0}
+          value={stats.totalLocations}
           accent={BRAND_COLOR_DARK}
-          hint={`${(stats?.totalLocationsAllRegions ?? 0).toLocaleString()} in merchant_location across all regions`}
+          hint={`${(stats.totalLocationsAllRegions).toLocaleString()} in merchant_location across all regions`}
         />
         <StatCard
           label="Est. cost to ingest all"
@@ -482,6 +645,19 @@ export default function IngestionTab() {
               </span>
             </label>
 
+            {truncatedInScope.length > 0 && (
+              <div
+                className="text-xs rounded p-2 border"
+                style={{ color: BRAND_COLOR_WARN, borderColor: BRAND_COLOR_WARN }}
+              >
+                {truncatedInScope.length} brand
+                {truncatedInScope.length === 1 ? '' : 's'} in this scope stopped on the
+                per-brand call ceiling last time, so coverage may be incomplete. They are
+                never skipped by skip-recent:{' '}
+                {truncatedInScope.map((t) => `${t.name} (${t.category})`).join(', ')}.
+              </div>
+            )}
+
             <label className="flex items-center gap-2 text-sm">
               <span className="font-medium" style={{ color: BRAND_COLOR_DARK }}>
                 Stop the run at
@@ -525,6 +701,10 @@ export default function IngestionTab() {
         {progress && (
           <ProgressPanel
             progress={progress}
+            categoryFor={(brandId) =>
+              categoryNames.get(brands.find((b) => b.id === brandId)?.category_id ?? '') ??
+              'Uncategorised'
+            }
             running={running}
             onCancel={requestCancel}
             onReset={() => {
@@ -624,11 +804,13 @@ function StatCard({
 
 function ProgressPanel({
   progress,
+  categoryFor,
   running,
   onCancel,
   onReset,
 }: {
   progress: IngestAllProgress;
+  categoryFor: (brandId: string) => string;
   running: boolean;
   onCancel: () => void;
   onReset: () => void;
@@ -683,11 +865,21 @@ function ProgressPanel({
 
       {progress.totalTruncated > 0 && (
         <div
-          className="text-xs rounded p-2 border"
+          className="text-xs rounded p-2 border space-y-1"
           style={{ color: BRAND_COLOR_WARN, borderColor: BRAND_COLOR_WARN }}
         >
-          {progress.totalTruncated} brand{progress.totalTruncated === 1 ? '' : 's'} hit the
-          per-brand call ceiling; their coverage may be incomplete.
+          <div className="font-medium">
+            {progress.totalTruncated} brand{progress.totalTruncated === 1 ? '' : 's'} hit the
+            per-brand call ceiling — coverage may be incomplete. Re-run these individually
+            with a raised ceiling; skip-recent will not pass over them.
+          </div>
+          <ul className="list-disc pl-4">
+            {truncatedByCategory(progress, categoryFor).map(([category, names]) => (
+              <li key={category}>
+                <strong>{category}:</strong> {names.join(', ')}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -793,6 +985,20 @@ function ConfirmModal({
       </div>
     </div>
   );
+}
+
+/** Group the run's truncated brands by category, for the end-of-run report. */
+function truncatedByCategory(
+  progress: IngestAllProgress,
+  categoryFor: (brandId: string) => string,
+): Array<[string, string[]]> {
+  const byCategory = new Map<string, string[]>();
+  for (const r of progress.results) {
+    if (!r.truncated) continue;
+    const cat = categoryFor(r.brandId);
+    byCategory.set(cat, [...(byCategory.get(cat) ?? []), r.brandName]);
+  }
+  return Array.from(byCategory.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 function formatDollars(cents: number): string {
