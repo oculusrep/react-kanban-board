@@ -15,7 +15,7 @@
 
 import {
   buildCompetitorRow, buildEmployerRow, buildSchoolRow, byDistance, COMPETITOR_OPERATOR_TYPES,
-  COMPETITORS_COLUMNS, type CompetitorsRow, csvBytes, DENSITY_COUNTING_TYPES, EMPLOYERS_COLUMNS, type EmployersRow,
+  COMPETITORS_COLUMNS, type CompetitorsRow, csvBytes, EMPLOYERS_COLUMNS, type EmployersRow,
   FLAG_CHECK, SCHOOLS_COLUMNS, type SchoolFill, type SchoolsRow, toCsv,
 } from '../csv.ts';
 import { haversineMiles, ringFor, round1 } from './geo.ts';
@@ -143,14 +143,16 @@ export const RECORD_EMPLOYER_TOOL = {
 export const RECORD_COFFEE_COMPETITOR_TOOL = {
   name: 'record_coffee_competitor',
   description:
-    'Record one coffee operation within 5 mi that is not a Starbucks (Starbucks come from the Atlas data ' +
-    'and are added to the export automatically). operator_type says how it competes, which is a different ' +
-    'question from whether it has a lane: national_dt (national or regional drive-thru brand — Dutch Bros, ' +
-    '7 Brew, Scooter\'s, Dunkin\', Caribou), local_dt (independent or local operator with a drive-thru), ' +
-    'institutional (coffee inside a church, school, hospital, grocery, campus or office building, with or ' +
-    'without a lane), cafe (no drive-thru). Every type is exported and mapped; only national_dt and ' +
-    'local_dt may be counted in a drive-thru competitive-density claim. The address is geocoded here for ' +
-    'the map: give the street as the source states it.',
+    'Record one coffee operation WITHIN 1 MILE that is not a Starbucks (Starbucks come from the Atlas ' +
+    'data and are added to the export automatically). Anything beyond 1 mi is out of scope and is ' +
+    'rejected here: do not research it, do not record it, do not mention it. operator_type is a plain ' +
+    'DESCRIPTION of the operation, never a score and never something to count: national_dt (a national ' +
+    'or regional drive-thru brand — Dutch Bros, 7 Brew, Scooter\'s, Dunkin\', Caribou), local_dt (an ' +
+    'independent or local operator with a drive-thru), institutional (coffee inside a church, school, ' +
+    'hospital, grocery, campus or office building), cafe. drive_thru is optional colour; nothing depends ' +
+    'on it and no source needs to confirm it. Nearby coffee is CONTEXT — it shows the corridor already ' +
+    'sells morning coffee — never a risk and never a count. The address is geocoded here for the map: ' +
+    'give the street as the source states it.',
   input_schema: {
     type: 'object',
     properties: {
@@ -161,7 +163,7 @@ export const RECORD_COFFEE_COMPETITOR_TOOL = {
       city: { type: 'string' },
       state: { type: 'string' },
       zip: { type: 'string' },
-      drive_thru: { type: 'boolean', description: 'Does this location have a drive-thru lane?' },
+      drive_thru: { type: 'boolean', description: 'Optional. Descriptive only; nothing is counted from it and no source need confirm it.' },
       source: { type: 'string' },
       notes: { type: 'string', description: 'For institutional: the host (church, school, hospital, grocery).' },
     },
@@ -226,7 +228,16 @@ export async function recordCoffeeCompetitor(
     notes.push('no street address with a city or zip; not placed on the map');
   }
 
-  const counts = (DENSITY_COUNTING_TYPES as readonly string[]).includes(operatorType);
+  // Scope is enforced here, not left to the prompt: a coffee operation beyond 1 mi is not recorded,
+  // not exported and not available to cite. See RECORDED_COMPETITOR_RADIUS_MILES.
+  if (distance !== null && distance > RECORDED_COMPETITOR_RADIUS_MILES) {
+    return {
+      recorded: null,
+      rejected: [{ field: 'street', reason: `${round1(distance)} mi from the site; only coffee within ${RECORDED_COMPETITOR_RADIUS_MILES} mi is in scope` }],
+      note: 'Not recorded. Coffee beyond 1 mi is out of scope for this report: do not research it, list it or mention it.',
+    };
+  }
+
   const recorded: RecordedCompetitor = {
     name: clip(name, 200), brand: str(input.brand) ? clip(str(input.brand)!, 120) : null,
     operator_type: operatorType, street: street ? clip(street, 200) : null,
@@ -240,11 +251,8 @@ export async function recordCoffeeCompetitor(
   return {
     recorded,
     distance_miles: distance === null ? null : round1(distance),
-    counts_toward_density: counts,
     rejected,
-    note: counts
-      ? 'Recorded, and it counts toward a drive-thru competitive-density claim — say which types you counted.'
-      : `Recorded as ${operatorType}: exported and mapped, but it may NOT be counted in a "drive-thru competitors within X mi" statement.`,
+    note: `Recorded as ${operatorType}: exported, mapped, and available as context. Nothing is counted from it — there is no competitive-density claim in this report, and coffee nearby never argues against the site.`,
   };
 }
 
@@ -886,8 +894,25 @@ export { csvBytes };
 // competitors.csv
 // ---------------------------------------------------------------------------
 
-/** Every coffee operation within this many miles goes in competitors.csv. */
+/**
+ * Starbucks' OWN network within this many miles goes in competitors.csv, from the Atlas tables.
+ *
+ * This stays at 5 because it is not competition: it is cannibalization and network spacing, the
+ * evidence behind RELIEF, behind the WHITE_SPACE rule, and behind the duplication analysis. The
+ * nearest company-operated store is routinely 3 mi out, and cutting the file to 1 mi would delete
+ * the figure the prose cites while the prose went on citing it.
+ */
 export const COMPETITOR_RADIUS_MILES = 5;
+
+/**
+ * Non-Starbucks coffee within this many miles goes in competitors.csv, and nothing beyond it is
+ * recorded at all (recordCoffeeCompetitor rejects it).
+ *
+ * 1 mi, because nearby coffee is context, not risk: Starbucks is not deterred by a competitor and
+ * a drive-thru on the same corridor mostly proves the corridor sells morning coffee. Beyond a mile
+ * it is not even context, so it is not researched, listed, counted or mentioned.
+ */
+export const RECORDED_COMPETITOR_RADIUS_MILES = 1;
 
 export interface AtlasCoffeeRow {
   name: string | null;
@@ -1001,6 +1026,9 @@ export function buildCompetitorsCsv(
     push(buildCompetitorRow({ ...a, rtm_sales: a.rtm_sales, distance_miles: a.distance_miles }));
   }
   for (const c of recorded) {
+    // Belt and braces with the tool's own check: an unplaced row (no distance) never reaches the
+    // file either, because a row with no distance cannot be shown to be within the mile.
+    if (c.distance_miles_unrounded === null || c.distance_miles_unrounded > RECORDED_COMPETITOR_RADIUS_MILES) continue;
     push(buildCompetitorRow({
       name: c.name, brand: c.brand, operator_type: c.operator_type, street: c.street, city: c.city,
       state: c.state, zip: c.zip, latitude: c.latitude, longitude: c.longitude,
@@ -1016,9 +1044,6 @@ export function buildCompetitorsCsv(
   };
 }
 
-/** Rows a "N drive-thru competitors within X mi" claim may count. */
-export function densityCountable(rows: CompetitorsRow[], withinMiles: number): CompetitorsRow[] {
-  return rows.filter((r) =>
-    (DENSITY_COUNTING_TYPES as readonly string[]).includes(String(r.operator_type)) &&
-    typeof r.distance_mi === 'number' && (r.distance_mi as number) <= withinMiles);
-}
+// densityCountable() was removed with deep_pass v13. There is no competitive-density claim in this
+// report any more, so there is no set of rows that may be counted toward one, and leaving the helper
+// in place would have been an invitation to write the claim back.

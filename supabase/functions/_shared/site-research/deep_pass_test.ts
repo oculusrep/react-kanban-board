@@ -1,6 +1,6 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
-  type AtlasCoffeeRow, buildCompetitorsCsv, buildEmployersCsv, buildFillList, buildSchoolsCsv, densityCountable,
+  type AtlasCoffeeRow, buildCompetitorsCsv, buildEmployersCsv, buildFillList, buildSchoolsCsv,
   extractStep1Schools, isPoBox, mergeFills, recordCoffeeCompetitor, type RecordedCompetitor, recordEmployer,
   type RecordedEmployer, streetKey, validateSchoolFill,
 } from './deep-pass.ts'
@@ -492,28 +492,37 @@ Deno.test('streetKey normalises the spellings that produced the double distance'
 // ---------------------------------------------------------------------------
 // Coffee competitors: classification governs claims, never inclusion.
 // ---------------------------------------------------------------------------
-Deno.test('record_coffee_competitor: operator_type required; institutional is exported but not countable', async () => {
+Deno.test('record_coffee_competitor: operator_type required, nothing counts, beyond 1 mi is rejected', async () => {
   const site = { latitude: 32.880362, longitude: -83.760908 }
   const geo = () => Promise.resolve({ latitude: 32.8812, longitude: -83.7588, matched_address: 'X', match_quality: 'exact' as const, candidates: 1 })
   const bad = await recordCoffeeCompetitor({ name: 'Somewhere Coffee', operator_type: 'drive_thru', source: 'https://x' }, site, geo)
   assertEquals(bad.recorded, null)
   assertEquals((bad.rejected as Array<{ field: string }>)[0].field, 'operator_type')
 
-  // Cathedral Coffee, inside Northway Church — counted as a drive-thru competitor on 2026-09-16.
+  // v13: the four labels are description. No result carries a density verdict any more.
   const inst = await recordCoffeeCompetitor(
     { name: 'Cathedral Coffee', operator_type: 'institutional', street: '5915 Zebulon Rd', city: 'Macon', state: 'GA', drive_thru: true, source: 'https://x', notes: 'inside Northway Church' },
     site, geo)
-  assertEquals(inst.counts_toward_density, false)
+  assertEquals(inst.counts_toward_density, undefined)
   assert((inst.recorded as { latitude: number }).latitude !== null) // still mapped
-  assert(String(inst.note).includes('may NOT be counted'))
+  assert(String(inst.note).includes('Nothing is counted from it'))
 
   const nat = await recordCoffeeCompetitor(
     { name: 'Dutch Bros Zebulon', brand: 'Dutch Bros', operator_type: 'national_dt', street: '5781 Zebulon Rd', city: 'Macon', state: 'GA', drive_thru: true, source: 'https://y' },
     site, geo)
-  assertEquals(nat.counts_toward_density, true)
+  assertEquals(nat.counts_toward_density, undefined)
+  assert(nat.recorded !== null)
+
+  // Beyond 1 mi is not recorded at all: the scope is enforced here, not left to the prompt.
+  const farGeo = () => Promise.resolve({ latitude: 32.93, longitude: -83.71, matched_address: 'Y', match_quality: 'exact' as const, candidates: 1 })
+  const far = await recordCoffeeCompetitor(
+    { name: 'Dunkin Bass Rd', brand: "Dunkin'", operator_type: 'national_dt', street: '1425 Bass Rd', city: 'Macon', state: 'GA', source: 'https://z' },
+    site, farGeo)
+  assertEquals(far.recorded, null)
+  assert(String((far.rejected as Array<{ reason: string }>)[0].reason).includes('only coffee within 1 mi'))
 })
 
-Deno.test('competitors.csv: Atlas rows plus recorded rows, deduped; density counts only dt types', () => {
+Deno.test('competitors.csv: Starbucks keeps 5 mi, recorded coffee is cut to 1 mi, deduped', () => {
   const atlas: AtlasCoffeeRow[] = [{
     name: 'Zebulon & Bass', brand: 'Starbucks', operator_type: 'national_dt', street: null, city: 'Macon',
     state: 'GA', zip: null, latitude: 32.92, longitude: -83.75, distance_miles: 3.1, drive_thru: true,
@@ -531,14 +540,17 @@ Deno.test('competitors.csv: Atlas rows plus recorded rows, deduped; density coun
     name: 'Dutch Bros Zebulon', brand: 'Dutch Bros', operator_type: 'national_dt', street: '5781 Zebulon Rd',
     city: 'Macon', state: 'GA', zip: '31210', latitude: 32.884, longitude: -83.769, distance_miles_unrounded: 0.63,
     drive_thru: true, source: 'https://y', notes: null,
+  }, {
+    // v13: out of scope at 3.2 mi. It never reaches the file even if a stale row is passed in.
+    name: 'Dunkin Bass Rd', brand: "Dunkin'", operator_type: 'national_dt', street: '1425 Bass Rd',
+    city: 'Macon', state: 'GA', zip: '31210', latitude: 32.93, longitude: -83.71, distance_miles_unrounded: 3.2,
+    drive_thru: null, source: 'https://z', notes: null,
   }]
   const built = buildCompetitorsCsv(atlas, [...recorded, recorded[0]]) // duplicate ignored
+  // Starbucks' own network keeps 5 mi — it is cannibalization evidence, not competition.
   assertEquals(built.rows.map((r) => r.name), ['Cathedral Coffee', 'Dutch Bros Zebulon', 'Zebulon & Bass', 'Target Macon 1394'])
   assertEquals(built.rows.map((r) => r.distance_mi), [0.2, 0.6, 3.1, 4.2])
   assertEquals(built.filtered, { kept: 4, flagged: 0 })
-  // "drive-thru competitors within 1 mi" counts Dutch Bros only — not Cathedral Coffee.
-  assertEquals(densityCountable(built.rows, 1).map((r) => r.name), ['Dutch Bros Zebulon'])
-  assertEquals(densityCountable(built.rows, 5).length, 2)
 })
 
 Deno.test('sanitizeModelText strips the citation markup that leaked into the 09-16 report', () => {

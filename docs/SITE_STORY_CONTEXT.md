@@ -43,7 +43,7 @@ to the table.
 **Ops.** `verify_jwt` pinned in `config.toml`; `cron_http_post_verified` checks the response status
 of the previous call and emails on failure; JWT audit doc.
 
-**Prompts:** deep_pass **v12**, archetype_call **v17** active.
+**Prompts:** deep_pass **v13**, archetype_call **v18** active.
 
 **Executive summary (archetype_call v14, 2026-09-28).** Six lines at the top of every first-pass
 report — city – corner, the story in the 2–3 numbers that carry it, the pitch, the risk, the call.
@@ -82,6 +82,31 @@ summary pick the one that flattered the site. This is the single deliberate exce
 at-this-corner rule that pins everything else in the summary to 1 mi, and the prompt says so where
 the exception is written. Macon's 1 mi band is 162 units, 80 of them Recently Completed and
 standing — a fair illustration of why the narrower band was the wrong default.
+
+**Coffee is context, not risk (archetype_call v18 + deep_pass v13, 2026-09-29).** Starbucks is not
+deterred by competition; another operator's morning drive-thru on the corridor mostly proves the
+corridor sells morning coffee. Both passes changed together:
+
+- **Scope 1 mi, non-Starbucks.** Beyond it: not researched, listed, counted or mentioned, in any
+  section. Enforced in code, not just prompt — `recordCoffeeCompetitor` rejects a row past the mile
+  and `buildCompetitorsCsv` drops one. Coffee brands also came out of the duplication analysis,
+  which was a side door for a unit beyond the mile.
+- **Starbucks' own Atlas rows keep 5 mi in competitors.csv.** One file, two scopes, on purpose:
+  coffee context at 1 mi, Starbucks' network further out. Cutting Starbucks to 1 mi would have
+  deleted the cannibalization figure (nearest store 3.1 mi at Macon) while the prose kept citing it.
+- **No count of coffee operations anywhere.** `densityCountable()` and `counts_toward_density` are
+  deleted rather than left as an invitation to write the claim back. No drive-thru confirmation
+  either — the lane-sourcing rule and "unconfirmed lane" are both gone.
+- **Never a story carrier, never moves the call.** "Coffee competition" is out of `story_carriers`;
+  WHITE_SPACE is never ruled out over a non-Starbucks operator. Barred from the exec summary's Risk
+  line and from the deep pass's VERDICT objection line and OBJECTIONS section; allowed in the story
+  / Pitch / HEADLINE / WHY HERE as demand validation.
+
+**Hard rule 8a, deep pass: a spent search budget is not a finding.** "budget exhausted — absence not
+confirmed", with what was still unsearched. The 2026-09-28 Macon run spent 33/33 searches and then
+reported no civic building within 5 mi — which may have been true and may have been the budget.
+Searches freed by dropping lane confirmation go to generators and employers, with a stated spend
+order.
 
 **Not built: road names per AADT segment.** Asked for in the same round and blocked on data.
 `streetlight_segment` has `road_name` and `road_type` null on all 1,225,544 rows, including all 170
