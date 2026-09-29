@@ -25,3 +25,8 @@ verify_jwt = false
 # passes it. Authorization is enforced inside, by _shared/caller-auth.ts.
 [functions.label-watcher]
 verify_jwt = false
+
+# label-canary: same reasoning as label-watcher -- pg_cron calls it with
+# X-Cron-Secret only and caller-auth is the real check.
+[functions.label-canary]
+verify_jwt = false

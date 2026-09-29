@@ -83,6 +83,13 @@ serve(async (req) => {
       .from('gmail_connection').select('*').eq('is_active', true);
     if (error) throw new Error(`connections: ${error.message}`);
 
+    // The canary's own label changes must never reach the correction set. This
+    // is structural -- every event on a canary message is stamped excluded at
+    // the moment it is recorded -- rather than a filter someone has to remember
+    // to apply in every downstream query.
+    const { data: canaryRows } = await supabase.from('email_canary').select('gmail_id');
+    const canaryIds = new Set((canaryRows ?? []).map((c) => c.gmail_id as string));
+
     for (const connection of (connections ?? []) as (GmailConnection & { last_label_history_id?: string | null })[]) {
       let accessToken = connection.access_token;
       if (isTokenExpired(connection.token_expires_at)) {
@@ -143,6 +150,8 @@ serve(async (req) => {
             label: name,
             history_id: ev.historyId,
             attribution: 'pending',
+            excluded: canaryIds.has(ev.gmailId),
+            excluded_reason: canaryIds.has(ev.gmailId) ? 'label pipeline canary' : null,
           }, { onConflict: 'gmail_id,label,event_type,history_id', ignoreDuplicates: true });
           if (insErr) {
             // NEVER swallow this again. A dropped insert used to be
