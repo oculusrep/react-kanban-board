@@ -835,6 +835,41 @@ which mode the guarantee lives in, and whether that mode is on — the artifacts
 either way. This is the config-constant entry again, one level up: there the constant shipped but the
 path ignored it; here the constraint holds perfectly over data that was never the exposure.
 
+### An error captured in a variable and never logged — built here, not inherited
+
+**2026-09-29. The sixth instance, and the first one this project created rather than found.**
+
+`label-watcher`'s unique index was written on `(gmail_id, label, event_type, COALESCE(history_id,''))`.
+Its upsert named the plain columns. Postgres rejects an `ON CONFLICT` target that does not match an
+index exactly, so **every insert raised 42P10 and every event was discarded.** The error was assigned
+to `insErr`, tested, and used only to decide whether to increment a counter:
+
+```ts
+if (!insErr) recorded++;        // the whole handling
+```
+
+So the function reported `events_recorded: 0` — identical to what it reports when Gmail genuinely
+has nothing new. The cron said "succeeded" 1,046 times. The watermark advanced 84,000 history ids,
+because it advanced on *reading* rather than on *recording*. Three days of the owner's hand-tagging
+were read out of Gmail and dropped. Only Gmail's own history retention made recovery possible; a
+week later it would have been unrecoverable.
+
+Three separate guards, each of which had already been learned on this project, were absent here:
+the counter-only error handling (the same silent-success shape as §15's earlier entry), the
+watermark advancing past unpersisted work (**the exact bug fixed in `gmail-sync` four days earlier,
+reintroduced in a new function**), and a schema/caller mismatch that no test covered because the
+tests ran against synthetic rows inserted directly.
+
+**Rule: a counter is not error handling, and "zero" is not an observation.** Any code path that can
+fail silently must log at the point of failure and must not advance a cursor past the failure. When
+a measurement reports zero, the first question is whether the instrument can distinguish zero from
+broken — and if it cannot, that is the finding, not the zero.
+
+Corollary, learned the same day: **synthetic tests validate logic, not integration.** The gesture
+classifier passed eight synthetic cases and still had three category errors (`OVIS-Linked`
+attributed to the owner, `INBOX` removals paired as corrections, foreign labels counted as
+corrections) plus an attribution inversion, all exposed within minutes of real data.
+
 ### Related, from earlier in this project
 
 - **Don't declare a finding solved on circumstantial alignment.** The Barrio Burrito seed was
@@ -844,6 +879,27 @@ path ignored it; here the constraint holds perfectly over data that was never th
 - **A doc asserting an invariant is not evidence the invariant holds.** The deal-board spec said
   "all activity inserts are human-originated — no guard needed." True when written, false within
   days, and it stayed in the doc while 18 of 63 tiles lied.
+
+### DECISION 2026-09-29 — archive-on-arrival is OFF the table as specced
+
+Earlier sections assume OVIS will eventually remove `INBOX` from labelled mail. **It will not, in
+that form.**
+
+The weekend's measurement settled it. Of 865 owner dispositions, **854 were `INBOX` removals and 11
+were label removals**: the owner's real habit is *tag and archive*, not *clear the label queue*.
+Archiving is therefore the gesture that means "I am done with this" — the only such gesture actually
+in use. If OVIS archives at the moment it labels, that gesture is consumed by the machine and the
+signal disappears: handled and never-looked-at become indistinguishable from the outside, and
+`gmail_label_event` loses the one disposition it can currently observe.
+
+This is a decision, not an open question. Do not reintroduce archive-on-arrival without a
+replacement disposition signal.
+
+**If a version is ever wanted, it must preserve the signal, not relocate it.** The shape that would:
+leave `INBOX` alone, and let the owner's archive remain the close. OVIS would then read the archive
+event (already captured, `gesture = 'handled'`) as the completion, and could offer *archive
+suggestions* the owner accepts, rather than archiving unasked. That keeps the hand movement that
+carries the meaning. It has not been requested and should not be assumed.
 
 ---
 

@@ -120,6 +120,7 @@ serve(async (req) => {
       const nameById = new Map(labels.map((l) => [l.id, l.name]));
 
       let recorded = 0;
+      let insertFailed = 0;
       for (const ev of events) {
         for (const labelId of ev.labelIds) {
           const name = nameById.get(labelId) ?? labelId;
@@ -143,23 +144,46 @@ serve(async (req) => {
             history_id: ev.historyId,
             attribution: 'pending',
           }, { onConflict: 'gmail_id,label,event_type,history_id', ignoreDuplicates: true });
-          if (!insErr) recorded++;
+          if (insErr) {
+            // NEVER swallow this again. A dropped insert used to be
+            // indistinguishable from "no events": the counter simply did not
+            // advance, the watermark moved on, and three days of the owner's
+            // tagging were read from Gmail and discarded (2026-09-26..28).
+            insertFailed++;
+            console.error(
+              `[label-watcher] INSERT FAILED gmail_id=${ev.gmailId} label=${name} ` +
+              `type=${ev.type} history=${ev.historyId}: ${insErr.message}`,
+            );
+          } else {
+            recorded++;
+          }
         }
       }
 
-      // Only advance past what was read, same rule as the message watermark.
-      if (!truncated) {
+      // Only advance past what was read AND recorded. The same rule as the
+      // message watermark, and for the same reason: a cursor that outruns what
+      // was persisted makes the loss permanent, because Gmail history is the
+      // only copy and it expires.
+      if (!truncated && insertFailed === 0) {
         await supabase.from('gmail_connection')
           .update({ last_label_history_id: historyId })
           .eq('id', connection.id);
+      }
+
+      if (insertFailed > 0) {
+        console.error(
+          `[label-watcher] ${insertFailed} insert(s) failed for ${connection.google_email}; ` +
+          `holding watermark at ${connection.last_label_history_id}`,
+        );
       }
 
       results.push({
         mailbox: connection.google_email,
         events_seen: events.length,
         events_recorded: recorded,
+        insert_failed: insertFailed,
         truncated,
-        watermark: truncated ? connection.last_label_history_id : historyId,
+        watermark: (truncated || insertFailed > 0) ? connection.last_label_history_id : historyId,
       });
     }
 
@@ -181,8 +205,13 @@ serve(async (req) => {
       let ovisLabel: string | null = null;
       let ovisVerdict: string | null = null;
 
-      // Outside the OVIS namespace, OVIS has never written it. Unambiguous.
-      if (!ev.label.startsWith('OVIS/')) {
+      // OVIS-Linked predates the OVIS/ namespace and is applied by email-triage
+      // on every linked email. It is OVIS's write, not the owner's.
+      if (ev.label === 'OVIS-Linked') {
+        attribution = 'ovis';
+        note = 'legacy OVIS-Linked label, applied by email-triage';
+      } else if (!ev.label.startsWith('OVIS/')) {
+        // Outside the OVIS namespace, OVIS has never written it. Unambiguous.
         note = 'label outside the OVIS namespace';
       } else {
         const { data: own } = await supabase
@@ -208,11 +237,19 @@ serve(async (req) => {
               attribution = 'ambiguous';
               note = `OVIS row exists but ${deltaMin.toFixed(0)} min away from the event`;
             }
+          } else if (ev.event_type === 'removed') {
+            // OVIS applied this label and has NO record of removing it, yet it
+            // came off. That is the owner clearing their queue -- unambiguous,
+            // and the single most common gesture in the workflow. Calling it
+            // ambiguous (as this did until 2026-09-29) buried 122 real
+            // dispositions in the bucket meant for genuine uncertainty.
+            attribution = 'owner';
+            note = 'OVIS applied this label and never removed it; removal is the owner\'s';
           } else {
-            // OVIS intended this label but never confirmed the call. Cannot say
-            // whose action the event was.
+            // An ADD with an intent row but no applied_at: OVIS may have made
+            // the call and failed to record it. Genuinely unknown.
             attribution = 'ambiguous';
-            note = `OVIS row exists with no ${ev.event_type === 'added' ? 'applied_at' : 'removed_at'}`;
+            note = 'OVIS intent row exists with no applied_at; cannot say whose add this was';
           }
         }
       }
@@ -254,15 +291,28 @@ serve(async (req) => {
       .lt('observed_at', pairCutoff)
       .limit(500);
 
-    const gestures = { handled: 0, correction: 0, superseded: 0, ovis_write: 0 };
+    const gestures = { handled: 0, correction: 0, superseded: 0, ovis_write: 0, noise: 0 };
     for (const ev of unclassified ?? []) {
-      let gesture: 'handled' | 'correction' | 'superseded' | 'ovis_write' = 'handled';
+      let gesture: 'handled' | 'correction' | 'superseded' | 'ovis_write' | 'noise' = 'handled';
       let note = '';
       let pairedId: string | null = null;
+      let correctionKind: 'silent' | 'wrong' | null = null;
+
+      const isOvisCategory = ev.label.startsWith('OVIS/');
 
       if (ev.attribution !== 'owner') {
         gesture = 'ovis_write';
         note = `attributed ${ev.attribution}`;
+      } else if (ev.label === 'INBOX') {
+        // Removing INBOX is archiving: a disposition, the same shape as clearing
+        // a queue label. Adding INBOX is mail arriving, which decides nothing.
+        gesture = ev.event_type === 'removed' ? 'handled' : 'noise';
+        note = ev.event_type === 'removed' ? 'archived out of the inbox' : 'arrived in the inbox';
+      } else if (!isOvisCategory) {
+        // The owner's own filing (! [MIKE], _OM, stars). Says nothing about
+        // whether OVIS's category was right, so it is not training signal.
+        gesture = 'noise';
+        note = `own filing label, outside the OVIS namespace: ${ev.label}`;
       } else if (ev.event_type === 'added') {
         // The owner put an OVIS label on. Either OVIS had it wrong, or OVIS had
         // nothing (Unsorted) and was just told. Both are training signal.
@@ -277,6 +327,10 @@ serve(async (req) => {
           ? `owner added ${ev.label}; OVIS had ${live[0].label}`
           : `owner added ${ev.label}; OVIS had no label (Unsorted)`;
         gesture = 'correction';
+        // 'silent' (OVIS had no opinion) and 'wrong' (OVIS had one and was
+        // overridden) are different claims and must not feed a rule at the same
+        // weight. Measured 142 vs 119 in the first real batch.
+        correctionKind = live?.[0]?.label ? 'wrong' : 'silent';
       } else {
         // A removal. Bare = handled. Paired with the owner adding a DIFFERENT
         // OVIS label = the removal half of a correction, which the addition
@@ -290,6 +344,7 @@ serve(async (req) => {
           .eq('event_type', 'added')
           .eq('attribution', 'owner')
           .neq('label', ev.label)
+          .like('label', 'OVIS/%')
           .gte('observed_at', lo)
           .lte('observed_at', hi)
           .limit(1);
@@ -308,6 +363,7 @@ serve(async (req) => {
         gesture_note: note,
         gesture_at: new Date().toISOString(),
         paired_event_id: pairedId,
+        correction_kind: correctionKind,
       }).eq('id', ev.id);
       gestures[gesture]++;
     }

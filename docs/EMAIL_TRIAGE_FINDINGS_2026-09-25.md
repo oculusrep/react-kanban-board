@@ -87,3 +87,51 @@ But `TIER1_MODE = 'log_only'`, and the enforce branch is what skips the insert
 body, sender, subject — and is classified by the model like anything else. The privacy property
 belongs to `enforce`, which has never been on. Personal mail is being read by a model today; the
 TeamSnap example in `tier1.ts:110-113` records the same finding from 2026-09-06.
+
+---
+
+## 7. 2026-09-29 — the watcher's first real batch, and what it changed
+
+**The watcher recorded nothing for three days.** Its unique index was on
+`COALESCE(history_id,'')` while the upsert named the plain columns, so every insert raised 42P10;
+the error was counted, never logged, and the watermark advanced on *reading* rather than on
+*recording*. 1,046 "successful" cron runs, 0 rows. Recovered by rewinding the cursor —
+**1,396 events**, nothing lost but the original timestamps. Written up as the sixth §15 instance in
+the spec, and the first this project built rather than found.
+
+Three classification errors that only real data exposed, all fixed:
+
+| symptom | cause | fix |
+|---|---|---|
+| 93 events credited to the owner | `OVIS-Linked` predates the `OVIS/` namespace | attributed to OVIS |
+| 854 `INBOX` removals would pair as corrections | archiving is not a category change | own disposition; foreign labels → `noise` |
+| 122 rows "ambiguous" | OVIS applied a label, never removed it, yet it came off — that is the OWNER, not uncertainty | attributed to the owner; 0 ambiguous now |
+
+### The workflow is tag-and-archive, not clear-the-queue
+
+Of 865 dispositions, **854 are `INBOX` removals and 11 are label removals**. The design assumption —
+open a label, handle the mail, empty the list — is not what happens. Archiving is the gesture that
+means done. This is what put archive-on-arrival off the table (decision recorded in the spec).
+
+### Corrections split by what OVIS knew
+
+| kind | n | meaning |
+|---|---|---|
+| `silent` | 142 | OVIS had no label; the owner supplied one |
+| `wrong` | 119 | OVIS had a verdict and was overridden |
+
+Recorded in `gmail_label_event.correction_kind`, additive: `gesture` stays `correction` for both, so
+earlier analysis stays reproducible, and the value is derivable from `email_label` at any time.
+
+### Never build a sender rule on the owner's own address
+
+`mike@oculusrep.com` contradicts itself 8 times (5 Business, 3 Personal) and that is **correct**: his
+sent mail genuinely is both. No sender rule can separate them; thread context can.
+
+**Coverage check of the personal-thread rule:** 20 outbound messages sit in 8 school threads, so the
+rule reaches them — but of the 3 messages he tagged Personal himself, only **2** are in a school
+thread. The third is `Re: Maintenance Renewal` with `wadeheating.com`: personal-life admin that no
+school domain and no thread rule will ever catch. Ladder B covers the school half, not the whole of
+personal.
+
+Any rule proposer must exclude `INTERNAL_EMAIL_DOMAINS` senders from sender-level rules outright.
