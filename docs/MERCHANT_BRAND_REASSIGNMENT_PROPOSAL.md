@@ -1,6 +1,6 @@
 # Mis-attributed merchant locations — reassignment proposal
 
-**Status:** Dry run complete. **Nothing applied.** Awaiting Mike's approval.
+**Status:** Phase 1 (`places_display_name` pre-pass) APPLIED 2026-09-30, migration `20260930084718`. Phase 2 (reassignment) dry-run complete, **not applied**, awaiting approval. Phase 3 (upsert fix) not started.
 **Date:** 2026-09-30
 **Context:** [MERCHANTS_CONTEXT.md](MERCHANTS_CONTEXT.md) · surfaced by the Piggly Wiggly Georgia run on 2026-09-29
 
@@ -137,3 +137,51 @@ Same locations recovered, correct brands, and the large half of it costs no data
 ## 10. Reproducing the dry run
 
 Both scripts are read-only and end in `ROLLBACK`; they live in the session scratchpad, not the repo. The v2 logic is the one to keep — see §3 for why v1's stem matching must not be used for inference.
+
+
+---
+
+# Appendix — Phase 1 applied, and the Phase 2 re-run
+
+## Phase 1 result (migration `20260930084718`)
+
+| Brand | Override | Visible before | Visible after |
+|---|---|---:|---:|
+| Mavis Discount Tire | `Mavis` | 0 | **94** |
+| MetroPCS | `Metro by T-Mobile` | 7 | **189** |
+| Apple Store | `Apple` | 16 | 16 |
+| Dunkin' Donuts | `Dunkin` | 267 | 267 |
+| Truist Bank | `Truist` | 145 | 145 |
+| Verizon Wireless | `Verizon` | 134 | 134 |
+
+**+276 rows visible, no reassignment.** Four of the six were no-ops: the "brand minus last word" stem rule that shipped 2026-07-02 already covered them, so the July candidate list was stale. They are recorded anyway to make the intended name explicit.
+
+**Known cost:** MetroPCS *loses* 7 rows signed "Metro Pcs" / "MetroPCS Authorized Dealer", because an override is single-valued and the brand is mid-rebrand. Net +182. Using `Metro` instead captures all 196 with no loss, at the cost of making `metro` a 5-character magnet during reassignment. One-line change if wanted.
+
+## The matching rule needed two more fixes
+
+Phase 2's dry run was re-run post-pre-pass. MetroPCS → T-Mobile disappeared from the plan, as intended. Two further defects surfaced, both in how the candidate brand is matched:
+
+**1. Substring matching is not word matching.** v2 matched normalized substrings, so `Del Taco` (`deltaco`) claimed **"Delta Community Credit Union"**, and `Apple` claimed **"Onelife Fitness - Crabapple"** and **"Pineapple Park"**. Requires a word-boundary anchor.
+
+**2. Punctuation differs in both directions.** A boundary regex built by tokenising the brand on its own punctuation breaks asymmetrically — brand `Wendy's` vs place `Wendys`, and brand `Ollies` / `TJ Maxx` vs place `Ollie's` / `T.J. Maxx`. Tokenising on whitespace dropped 44 legitimate Wendy's rows.
+
+**Final rule:** strip the brand name to alphanumerics, allow `[^a-zA-Z0-9]*` between **every character**, and anchor the whole thing with `\y … \y`. That keeps `Wendy's`, `Ollie's`, `T.J. Maxx`, `Scooter's`, `Freddy's`, `Sam's Club`, and rejects `Crabapple`, `Delta Community`, `Jackson`, `Marlowe's`, `Ingleside`, `Pineapple`, `Target Mobile`, `ACF-Ground-1`.
+
+## Phase 2 plan as it now stands
+
+| | Rows |
+|---|---:|
+| Mismatched, in scope | 6,575 |
+| **Reassign — one candidate** | **1,132** |
+| Ambiguous — leave alone | 4 |
+| No candidate — leave alone | 5,439 |
+
+All 27 pairs the boundary rule removed were verified false positives. The 4 ambiguous rows are all T-Mobile-family and stay put per Mike's instruction:
+
+| Places name | Current brand | Candidates |
+|---|---|---|
+| Metro by T-Mobile | AT&T (×2), Boost Mobile (×1) | MetroPCS \| T-Mobile |
+| T-Mobile at Costco | AT&T | Costco \| T-Mobile |
+
+No further Metro-style rebrand cases remain. A concentration test (old brands losing rows, scored by destinations ÷ rows) shows every remaining high-volume donor scattering across many destination brands and many distinct place names — the signature of Places garbage, not of a rebrand. `Jacks` sheds 156 rows across 16 destinations; `Golf Mart` 123 across 14; `24 Hour Fitness` 115 across 13. All three are brands with little or no Georgia presence whose searches returned other chains.
