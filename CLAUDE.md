@@ -225,6 +225,30 @@ When integrating with external APIs (ESRI, ZoomInfo, Google Maps, etc.):
 
 This prevents wasted iterations debugging parsing issues that are actually request format issues.
 
+## LLM-sourced data: grounded, or it does not ship
+
+**A figure an LLM produces may only be written to a file, column or export when a retrieval tool actually fetched a source for it. An ungrounded number is dropped in code — not flagged, not footnoted, dropped.**
+
+This is not a style preference. When the Site Story employer-headcount pass was first asked for site-level headcounts without grounding, Gemini returned 328 for a hospital, 500 for an insurance office and 121 for a college, each with a plausible source URL beside it, having issued **zero search queries**. All three numbers and all three URLs were invented, and all three read as sourced facts. See [docs/PROMPT_employer_headcount_v2.md](docs/PROMPT_employer_headcount_v2.md) and `supabase/functions/_shared/site-research/employer-headcount.ts`.
+
+The rules that follow from it:
+
+1. **Take the source from the provider's grounding metadata, never from the model's own output.** A URL the model typed came out of the same weights as the number it is supposed to vouch for, so checking it proves nothing. For Gemini that means `candidates[0].groundingMetadata.groundingChunks[].web` — and note those `uri` values are opaque `vertexaisearch.cloud.google.com` redirects, so the readable publisher is in `.title`.
+2. **No source means no value.** The field stays blank, and a sibling `*_source` column stays blank with it. Never substitute "N/A", "unknown" or 0 — see the blank convention in the Site Story prompts.
+3. **Say that you asked.** Write an explicit reason into a notes field on every row you attempted: "Gemini returned a site headcount of 328 but Google Search retrieved nothing to support it, so it was not used." **"Nobody publishes this" and "nobody looked" are different claims** and a reader acts on them differently — the same principle as *empty is not little* in the Site Story pipeline rules.
+4. **Enforce it at the writer, not only at the caller.** `buildEmployerRow` in `supabase/functions/_shared/csv.ts` drops any headcount that arrives without a `headcount_source`, so a future caller that forgets the guard still cannot put an untraceable number in front of a committee.
+5. **Enrichment is additive.** Never overwrite a value an earlier, sourced pass recorded, and let a failed lookup leave every existing value untouched.
+
+### Gemini quirks that cost a debugging cycle
+
+Both were found the hard way against `gemini-3.8-flash` and both fail *silently*, producing output that looks like a legitimate negative result.
+
+**Asked for bare JSON, the model does not search at all.** `webSearchQueries` comes back empty and it answers from its weights, so every answer fails the grounding check and the pass returns nothing but nulls — safe, and useless. **Ask for prose first and a fenced `json` code block last**, and parse the last fence. Writing an ordinary sourced answer is what keeps Search in the loop. This single change took the Macon test from 0 of 3 headcounts filled to 2 of 3.
+
+**Cap `thinkingConfig.thinkingBudget`.** Uncapped, the model spent its entire output allowance thinking — 3,955 thought tokens — and returned a response with **no content parts at all**, which is indistinguishable from "no headcount published". 2,048 thinking against 8,192 `maxOutputTokens` works for narrow extraction. Treat an empty reply as its own error, never as a null answer.
+
+**Check the model id before assuming a Gemini path works.** `gemini-2.0-flash` now returns `404 — no longer available`. Model retirement is silent from the calling code's point of view.
+
 ## Documentation
 
 **All documentation must be saved to git.** When asked to document something, create a status summary, or write notes about an issue:

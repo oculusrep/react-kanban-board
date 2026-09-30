@@ -179,6 +179,24 @@ declining, stable, emerging. Decline binds as hard as growth.
    scoped but one cell of a matrix whose full 3 mi pipeline is 1,732. Watch whether it keeps
    defaulting to the UC-only figure when the MATURE/GROWTH call depends on that number. No prompt
    change; two or three more sites first.
+7. **Audit the deprecated Gemini model ids** in `supabase/functions/_shared/gemini.ts`
+   (`gemini-1.5-pro`, `gemini-1.5-flash`) and `_shared/gemini-agent.ts` (`gemini-2.5-flash`).
+   `gemini-2.0-flash` already returns `404 — no longer available`, and these three are the same
+   vintage, so **email triage, email correction and deal synopsis may be silently broken**. Not a
+   Site Story path — the headcount pass uses `gemini-3.8-flash` — but found from here, and model
+   retirement is invisible to the calling code. Probe each id before assuming which are dead.
+8. **Add `@anthropic-ai/sdk` as a devDependency** in `package.json`. `_shared/site-research/
+   model.ts` imports `npm:@anthropic-ai/sdk@0.124.0`, which is not installed, so
+   `deno test supabase/functions/_shared/site-research/` fails on import and the **86-test deep-pass
+   suite does not run out of the box** — it only runs where someone has done a manual
+   `npm i --no-save`. Do NOT reach for `--node-modules-dir=auto`: in this repo that swaps
+   node_modules for a Deno symlink farm and breaks `tsc`.
+9. **Tag or reject partial headcounts.** The enrichment accepted 121 for Wesleyan College from a
+   faculty-salary page — a real, cited, site-level employee figure, but **faculty only**, so it
+   understates the employer while looking like a total. Either have the prompt reject a
+   partial-population count, or have it label the scope ("faculty only") in `headcount_source` or
+   the notes. Same class of problem as summing K-12 across vintages: two numbers that are not the
+   same kind of number, presented as if they were.
 
 ---
 
@@ -192,6 +210,7 @@ declining, stable, emerging. Decline binds as hard as growth.
 | Background runs, container handling | [SITE_RESEARCH_BACKGROUND_RUNS_DESIGN.md](SITE_RESEARCH_BACKGROUND_RUNS_DESIGN.md) |
 | Brief pass | [SITE_RESEARCH_BRIEF_PASS.md](SITE_RESEARCH_BRIEF_PASS.md) |
 | Deep pass plan, as built | [SITE_RESEARCH_STEP2_DEEP_PASS_PLAN.md](SITE_RESEARCH_STEP2_DEEP_PASS_PLAN.md) |
+| Grounded-data policy, Gemini quirks | [../CLAUDE.md](../CLAUDE.md) — "LLM-sourced data: grounded, or it does not ship" |
 | JWT audit, merchant open items | [EDGE_FUNCTION_JWT_AUDIT.md](EDGE_FUNCTION_JWT_AUDIT.md) |
 | Archetype open decision | [ARCHETYPE_OPEN_DECISION.md](ARCHETYPE_OPEN_DECISION.md) |
 | Drive-time point sensitivity | [ESRI_DRIVE_TIME_POINT_SENSITIVITY.md](ESRI_DRIVE_TIME_POINT_SENSITIVITY.md) |
