@@ -28,6 +28,7 @@ import { anthropicCreate } from '../_shared/site-research/model.ts';
 import { executeTool, TOOL_DEFINITIONS, WEB_SEARCH_TOOL } from '../_shared/site-research/tools.ts';
 import { kickWorker } from '../_shared/site-research/kick.ts';
 import { runDeepPassIteration, supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
+import { HEADCOUNT_PROMPT_KEY } from '../_shared/site-research/employer-headcount.ts';
 import { atlasCoffeeWithin, edgePrivateLocations, merchantGenerators } from '../_shared/site-research/deep-pass.ts';
 import { buildMunicipalityKmls } from '../_shared/site-research/municipal-kml.ts';
 import { BRIEF_MAX_WORDS, wordCount } from '../_shared/site-research/brief.ts';
@@ -119,6 +120,16 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
         atlasCoffee: (site) => atlasCoffeeWithin(service, site),
         merchantGenerators: (site) => merchantGenerators(service, site),
         municipalityKmls: (site) => buildMunicipalityKmls(service, site),
+        // Resolved like every other Site Story prompt, so the wording is tunable without a deploy.
+        headcountPrompt: async () => {
+          const { data, error } = await service
+            .from('prompt_template')
+            .select('body')
+            .eq('key', HEADCOUNT_PROMPT_KEY).is('client_id', null).eq('is_active', true)
+            .order('version', { ascending: false }).limit(1);
+          if (error) throw new Error(`employer_headcount prompt lookup failed: ${error.message}`);
+          return (data?.[0] as { body: string } | undefined)?.body ?? null;
+        },
         exportFiles: async (siteSubmitId, files) => {
           const folder = await resolveSiteSubmitFolder(service, siteSubmitId);
           const out = [];

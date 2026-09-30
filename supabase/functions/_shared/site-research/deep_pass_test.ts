@@ -331,8 +331,10 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(row('Future ES').includes('planned (NCES status Future)'), row('Future ES'))
 
   const employers = sim.uploads.find((u) => u.name === 'employers.csv')!.text.split('\r\n')
-  assertEquals(employers[0], 'flag,name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
-  assertEquals(employers[1], ',Navicent Hospital,hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,2,3,https://navicent.example,2025,')
+  assertEquals(employers[0], 'flag,name,employer_type,street,city,state,zip,full_address,headcount,headcount_source,distance_mi,band,source,source_year,notes')
+  // A headcount the deep pass recorded keeps its own source in headcount_source: the enrichment
+  // adds to blanks and never overwrites, and no headcount reaches the file without a source.
+  assertEquals(employers[1], ',Navicent Hospital,hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,https://navicent.example,2,3,https://navicent.example,2025,')
   assertEquals(employers.filter((l) => l.toLowerCase().includes('kroger')), []) // retail rejected, never in the file
   assert(employers[2].startsWith(`CHECK,"'=HYPERLINK(""x"")"`), employers[2]) // flag, then formula guard + quote doubling
 

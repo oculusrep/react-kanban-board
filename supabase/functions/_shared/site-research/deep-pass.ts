@@ -609,6 +609,11 @@ export interface RecordedEmployer {
   state: string | null;
   zip: string | null;
   headcount: number | null;
+  /**
+   * Where the headcount came from, when it did not come from `source`. Set by the Gemini
+   * headcount enrichment; null everywhere else, and then the row falls back to `source`.
+   */
+  headcount_source?: string | null;
   source: string;
   source_year: string | null;
   notes: string | null;
@@ -876,7 +881,12 @@ export function buildEmployersCsv(recorded: RecordedEmployer[]): { csv: string; 
     if (seen.has(key)) continue;
     seen.add(key);
     all.push(buildEmployerRow({
-      name: e.name, employer_type: e.employer_type, street: e.street, city: e.city, state: e.state, zip: e.zip, headcount: e.headcount,
+      name: e.name, employer_type: e.employer_type, street: e.street, city: e.city, state: e.state, zip: e.zip,
+      headcount: e.headcount,
+      // A headcount the model recorded is carried by the source it recorded beside it; one the
+      // enrichment found carries the URL the enrichment was given. Either way a headcount that
+      // reaches the file has a source next to it, and buildEmployerRow drops one that does not.
+      headcount_source: e.headcount_source ?? (e.headcount === null ? null : e.source),
       distance_miles: e.distance_miles_unrounded, source: e.source, source_year: e.source_year, notes: e.notes,
     }));
   }

@@ -43,7 +43,7 @@ to the table.
 **Ops.** `verify_jwt` pinned in `config.toml`; `cron_http_post_verified` checks the response status
 of the previous call and emails on failure; JWT audit doc.
 
-**Prompts:** deep_pass **v13**, archetype_call **v18** active.
+**Prompts:** deep_pass **v13**, archetype_call **v18**, employer_headcount **v2** active.
 
 **Executive summary (archetype_call v14, 2026-09-28).** Six lines at the top of every first-pass
 report — city – corner, the story in the 2–3 numbers that carry it, the pitch, the risk, the call.
@@ -107,6 +107,31 @@ confirmed", with what was still unsearched. The 2026-09-28 Macon run spent 33/33
 reported no civic building within 5 mi — which may have been true and may have been the budget.
 Searches freed by dropping lane confirmation go to generators and employers, with a stated spend
 order.
+
+**Employer headcount enrichment (employer_headcount v2, 2026-09-30).** A Gemini pass over the
+employers the deep pass recorded, filling `headcount` where it can and adding a `headcount_source`
+column to employers.csv. It is additive: it never overwrites a headcount the deep pass sourced, and
+a failure leaves every row exactly as recorded.
+
+**A number is accepted only with a source Google Search actually RETRIEVED**, taken from
+`groundingMetadata`, never from the URL the model typed. This is load-bearing, not belt-and-braces:
+asked bare, the model returned 328 for Piedmont Macon North, 500 for Georgia Farm Bureau and 121 for
+Wesleyan College with **zero search queries issued** and invented URLs beside them. `csv.ts` drops
+any headcount reaching `buildEmployerRow` without a source, so an unsourced figure cannot reach
+committee even if a later caller forgets.
+
+Two Gemini findings worth keeping:
+
+- **Asked for bare JSON, gemini-3.8-flash does not search at all** — `webSearchQueries` empty every
+  time. v2 asks for prose then a fenced JSON block, which keeps Search in the loop. That one change
+  took Macon from 0 of 3 filled to 2 of 3.
+- **`thinkingBudget` is load-bearing.** Uncapped, the model spent its entire output allowance
+  thinking (3,955 thought tokens) and returned a response with **no content parts at all**, which
+  is indistinguishable from "no headcount published". Capped at 2,048 with 8,192 output tokens.
+
+Separately, `gemini-2.0-flash` now 404s ("no longer available"). The repo still pins `gemini-1.5-pro`,
+`gemini-1.5-flash` and `gemini-2.5-flash` in `_shared/gemini.ts` and `_shared/gemini-agent.ts`, which
+means **email triage and deal synopsis may be silently broken**. Not touched here; flagged.
 
 **Not built: road names per AADT segment.** Asked for in the same round and blocked on data.
 `streetlight_segment` has `road_name` and `road_type` null on all 1,225,544 rows, including all 170

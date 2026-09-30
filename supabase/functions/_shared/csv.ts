@@ -201,7 +201,7 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
 
 export const EMPLOYERS_COLUMNS = [
   'flag', 'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
-  'distance_mi', 'band', 'source', 'source_year', 'notes',
+  'headcount_source', 'distance_mi', 'band', 'source', 'source_year', 'notes',
 ] as const
 export type EmployersColumn = (typeof EMPLOYERS_COLUMNS)[number]
 export type EmployersRow = Record<EmployersColumn, CsvCell>
@@ -214,7 +214,13 @@ export interface EmployerInput {
   city: string | null
   state: string | null
   zip: string | null
-  headcount: number | null // only when the source states a specific number
+  headcount: number | null // only when a source states a specific number for THIS site
+  /**
+   * Where that headcount came from: the URL or named source. NEVER blank when headcount is set
+   * — buildEmployerRow drops a headcount that arrives without one, because a number nobody can
+   * trace back is indistinguishable from a number nobody measured.
+   */
+  headcount_source?: string | null
   distance_miles: number | null // unrounded; null when the address could not be located
   source: string | null // URL or named source
   source_year: number | string | null
@@ -226,7 +232,11 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
   const city = blankToNull(e.city)
   const state = blankToNull(e.state)
   const zip = blankToNull(e.zip)
-  const headcount = typeof e.headcount === 'number' && Number.isInteger(e.headcount) && e.headcount >= 0 ? e.headcount : null
+  const wellFormed = typeof e.headcount === 'number' && Number.isInteger(e.headcount) && e.headcount >= 0
+  const headcountSource = blankToNull(e.headcount_source ?? null)
+  // An unsourced headcount is dropped, not exported. A figure a reader cannot trace is
+  // indistinguishable in this file from one a source stated, and the file goes to committee.
+  const headcount = wellFormed && headcountSource !== null ? (e.headcount as number) : null
   return {
     flag: headcount === null ? FLAG_CHECK : null,
     name: blankToNull(e.name),
@@ -237,6 +247,7 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
     zip,
     full_address: fullAddress(street, city, state, zip),
     headcount,
+    headcount_source: headcount === null ? null : headcountSource,
     distance_mi: oneDecimal(e.distance_miles),
     band: bandFor(e.distance_miles),
     source: blankToNull(e.source),
