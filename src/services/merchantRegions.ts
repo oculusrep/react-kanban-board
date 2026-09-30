@@ -243,14 +243,23 @@ const COLUMBIA_SC: MerchantRegion = {
   accept: (p) =>
     haversineMiles(p.latitude, p.longitude, COLUMBIA_CENTER.lat, COLUMBIA_CENTER.lng) <=
     COLUMBIA_RADIUS_MILES,
-  // Estimated, not measured. Georgia's real run logged 6,229 calls across 401
-  // brands (15.53/brand) with 12.9% of all calls saturating, which says the
-  // saturation rate is high — the earlier 4.5 here assumed ~20% and was too
-  // optimistic. Under the quadtree, a brand that saturates region-wide pays 5
-  // calls before any real density is found, and ~11 if two levels bite.
-  // Recalibrate from google_places_api_log after the first full run.
-  avgRequestsPerBrand: 8.5,
-  costBasis: 'estimated',
+  // Measured on the 2026-09-30 OREP run: 401 calls across 209 brands = 1.92
+  // calls/brand ($8.02). Across everything ingested for this region so far
+  // (the 4-brand probe, Burritos, OREP) it is 444 calls / 220 brands = 2.02.
+  //
+  // Both earlier figures here were far too high — 4.5, then 8.5 — because
+  // they extrapolated Georgia's saturation rate onto a region with a tenth
+  // of the population. What actually happened: only 48 of 209 brands (23%)
+  // saturated region-wide, and of the 192 child cells those 48 splits
+  // produced, NOT ONE saturated. So the quadtree never reached depth 2 and
+  // nothing hit the per-brand ceiling.
+  //
+  // Caveat kept deliberately: OREP is restaurant-weighted and excludes the
+  // dollar stores. Dollar General alone spent 25 calls in the probe, so the
+  // 184 non-OREP brands will pull this average up somewhat. 2.0 is the
+  // all-Columbia figure and the conservative pick between the two.
+  avgRequestsPerBrand: 2.0,
+  costBasis: 'measured',
 };
 
 export const MERCHANT_REGIONS: MerchantRegion[] = [GEORGIA, COLUMBIA_SC];
