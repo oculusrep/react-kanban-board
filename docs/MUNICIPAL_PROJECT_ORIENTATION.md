@@ -149,8 +149,9 @@ called by the client. It is superseded, not dropped.
 ### `MunicipalProjectOrientationOverlay` — new component
 
 `src/components/mapping/layers/MunicipalProjectOrientationOverlay.tsx`.
-Drop-in, takes `map` + `projectId` + `isUnplaced`; reads no `useParams`, so it
-works mounted anywhere (per the overlay-first principle in `docs/OVIS_OVERLAY_UX.md`).
+Drop-in, takes `map` + `project`; reads no `useParams`, so it works mounted
+anywhere (per the overlay-first principle in `docs/OVIS_OVERLAY_UX.md`).
+(Round 2 below replaces what it draws — see "What's drawn".)
 
 It draws the municipality outline — Steel Blue `#4A6B94` stroke over an 8%
 Light Slate Blue `#8FA9C8` wash, which reads as an *area to search* and cannot be
@@ -208,3 +209,112 @@ relations — so nothing on `main` breaks in the meantime.
 Round-tripped before applying: run inside a transaction with `SET LOCAL ROLE
 authenticated`, asserted 14/14 unplaced records resolve an outline and 0 placed
 records return a row, then `ROLLBACK`.
+
+
+---
+
+# Round 2 — orient on the geocode, not the county
+
+The county outline shipped above was too coarse to place anything: Paulding is
+300 square miles. Replaced with the best thing we actually know.
+
+## The data that was going unused
+
+An unplaced record stores `geocoded_address` as **TEXT only** — the coordinates
+were discarded when the geocode was judged too coarse to pin, and they are
+stored nowhere else in the database (checked: no geocode cache table, no column
+holding the rejected point). The text was shown in the sidebar under "Geocoded
+as:" and used for nothing.
+
+Resolving that text at view time turns out to be exactly right for the
+constraint: the coordinate lives for the life of a render, so it is structurally
+incapable of being written, cached onto the record, or becoming the pin.
+
+Measured against the live geocoder, all 14 unplaced records:
+
+| granularity | records | typical circle | vs. its county |
+|---|---|---|---|
+| intersection | 2 | **195 m** | Paulding: 19 mi across |
+| street address | 1 | 252 m | |
+| road / route | 6 | 0.9–2.6 km | |
+| ZIP / city | 4 | 4.9–6 km | |
+| county — nothing better | 1 | — | falls back to the outline |
+
+Ardent goes from a 300-square-mile county to a **195-metre circle**.
+
+## `unplaced_reason` is the wrong signal, and was not used
+
+The obvious move was to badge off `unplaced_reason`, which already distinguishes
+`road_centroid` from `admin_area_centroid`. Measured against the live geocode it
+is **wrong for 4 of 14**:
+
+- "The Hills at Cedar Creek" is tagged `road_centroid` but resolves only to a
+  7-mile locality.
+- Three `admin_area_centroid` rows resolve to a 4–5 km ZIP or city — a great
+  deal better than their county.
+
+That column records why a geocode was rejected *for placement*, which is a
+different question from how useful it is *for orientation*. The live granularity
+is the honest signal, so the badge derives from that. `unplaced_reason` is left
+untouched — it mirrors a database CHECK constraint.
+
+## What's drawn
+
+Two tiers, best first, in `MunicipalProjectOrientationOverlay`:
+
+1. **A translucent circle around the geocode**, sized to half the diagonal of
+   Google's own viewport for the result — so the circle *is* the uncertainty,
+   not a guess at it. Clamped to 150 m–6 km.
+2. **The municipality outline**, only when the address resolves no finer than
+   the county, or fails.
+
+Both are `clickable: false` so they can never intercept the click that actually
+places the record, and both sit at `zIndex: 1`, under the pins.
+
+The slideout banner names which one you're looking at, so a circle is never read
+as a placement and a county outline is read as "we cannot narrow it further"
+rather than "there is nothing there".
+
+## Precision badge
+
+`precisionBadge()` in `src/services/placementPrecision.ts`, rendered by
+`src/components/mapping/PrecisionBadge.tsx`, in the slideout header and on every
+unplaced worklist row.
+
+| badge | means |
+|---|---|
+| **Parcel** | parcel IDs *and* a county adapter — fetch the boundary, don't draw it |
+| **Intersection / road** | a geocode tighter than the municipality; detail says which (`intersection`, `road`, `city`, `ZIP`, `street address`) |
+| **County only** | nothing better than the municipality; read the pin placement hint |
+| *placed* | provenance instead: Parcel boundary (fetched / adjusted), Drawn, Pin dropped, Geocoded pin |
+
+Placed records use the real database vocabularies — `geometry_source`
+(`hand_drawn` / `parcel_fetch` / `parcel_fetch_adjusted`) and `centroid_source`
+(`address_geocode` / `polygon` / `manual_pin`). `centroid_source` was exposed by
+`municipal_project_v` but had never been read by the frontend; it is now on
+`MunicipalProjectMapRow`.
+
+The detail is shown on worklist rows, not just in the slideout, because the list
+is where triage happens — a 195 m intersection and a 6 km city are both
+"Intersection / road" and only one is worth walking out to.
+
+### One tier is currently unreachable
+
+**No record earns the "Parcel" badge today.** `COUNTY_ADAPTERS` in
+`src/services/parcelFabric.ts` has exactly one entry (Forsyth County / Cumming),
+and the only two unplaced records carrying parcel IDs are both in **Winder**,
+which has no adapter. No Forsyth/Cumming record has parcel numbers. The tier is
+correct and will light up when either changes; it just shows for nothing right
+now. (`VITE_PARCEL_FETCH_ENABLED` is also unset in this checkout, so the fetch
+button itself is hidden.)
+
+## Agreement is structural, not remembered
+
+The map circle, the slideout badge and the list badge all come from one hook,
+`useMunicipalPrecision`, over a module-level cache keyed by address. A row
+badged "Intersection / road" in the list that then framed a county when opened
+would be worse than no badge at all, so the three cannot disagree by
+construction — and each distinct address is geocoded once per session.
+
+The cache is in memory only. A cache on disk would be a written coordinate by
+another name.

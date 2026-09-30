@@ -78,3 +78,123 @@ export function classifyGeocode(
       return unplaced('geocode_failed');
   }
 }
+
+/* ------------------------------------------------------------------------- */
+/* Precision badge                                                            */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * How well-located a record is, at a glance — the thing you want to know BEFORE
+ * deciding whether to go hunting for it.
+ *
+ * Deliberately not derived from `unplaced_reason`. That column records why the
+ * geocode was rejected for PLACEMENT, which is a different question from how
+ * useful it is for ORIENTATION, and measured against the live geocode it is
+ * wrong for 4 of the 14 unplaced records: "The Hills at Cedar Creek" is tagged
+ * `road_centroid` but resolves only to a 7-mile locality, while three
+ * `admin_area_centroid` rows resolve to a 4-mile ZIP or city, which is a great
+ * deal better than their county. The live granularity is the honest signal.
+ */
+export type PrecisionTier =
+  | 'parcel'   // parcel IDs in a county we have an adapter for — fetchable
+  | 'road'     // a geocode tighter than the municipality to orient from
+  | 'county'   // nothing better than the municipality; read the hint instead
+  | 'placed';  // already on the map — show where it came from
+
+export interface PrecisionBadge {
+  tier: PrecisionTier;
+  /** Short text on the badge itself. */
+  label: string;
+  /** The specific thing behind the tier, e.g. 'intersection', '2 parcels'. */
+  detail?: string;
+  /** Longer explanation, for a title attribute. */
+  hint: string;
+}
+
+/** Granularity strings from orientationGeocode, kept loose to avoid a cycle. */
+type Granularity = 'address' | 'intersection' | 'road' | 'zip' | 'city' | 'county';
+
+const GRANULARITY_DETAIL: Record<Granularity, string> = {
+  address: 'street address',
+  intersection: 'intersection',
+  road: 'road',
+  zip: 'ZIP code',
+  city: 'city',
+  county: 'county',
+};
+
+export interface PrecisionInput {
+  isUnplaced: boolean;
+  /** Parcel IDs on the record AND a county adapter that can fetch them. */
+  parcelFetchable: boolean;
+  parcelCount: number;
+  /** Live geocode granularity, or null while loading / if it failed. */
+  granularity: Granularity | null;
+  geometrySource?: 'hand_drawn' | 'parcel_fetch' | 'parcel_fetch_adjusted' | null;
+  centroidSource?: 'address_geocode' | 'polygon' | 'manual_pin' | null;
+  hasGeometry: boolean;
+}
+
+/**
+ * Placed records report provenance rather than precision — the question has
+ * already been answered, and how it was answered is what determines how much
+ * you trust it.
+ */
+function placedBadge(i: PrecisionInput): PrecisionBadge {
+  if (i.hasGeometry) {
+    switch (i.geometrySource) {
+      case 'parcel_fetch':
+        return { tier: 'placed', label: 'Parcel boundary', detail: 'fetched',
+          hint: 'Boundary fetched from the county parcel map.' };
+      case 'parcel_fetch_adjusted':
+        return { tier: 'placed', label: 'Parcel boundary', detail: 'adjusted',
+          hint: 'Fetched from the county parcel map, then adjusted by hand.' };
+      default:
+        return { tier: 'placed', label: 'Drawn', detail: 'by hand',
+          hint: 'Boundary drawn by hand.' };
+    }
+  }
+  if (i.centroidSource === 'manual_pin') {
+    return { tier: 'placed', label: 'Pin dropped', detail: 'by hand',
+      hint: 'Someone placed this pin by hand.' };
+  }
+  return { tier: 'placed', label: 'Geocoded pin', detail: 'from address',
+    hint: 'Pin came from geocoding the address, with no boundary.' };
+}
+
+export function precisionBadge(i: PrecisionInput): PrecisionBadge {
+  if (!i.isUnplaced) return placedBadge(i);
+
+  if (i.parcelFetchable) {
+    return {
+      tier: 'parcel',
+      label: 'Parcel',
+      detail: `${i.parcelCount} parcel${i.parcelCount === 1 ? '' : 's'}`,
+      hint: 'Has parcel IDs in a county we can query — fetch the boundary rather than drawing it.',
+    };
+  }
+
+  if (i.granularity && i.granularity !== 'county') {
+    return {
+      tier: 'road',
+      label: 'Intersection / road',
+      detail: GRANULARITY_DETAIL[i.granularity],
+      hint: `Geocodes to a ${GRANULARITY_DETAIL[i.granularity]} — the map is framed on that approximate area. Not precise enough to be the pin.`,
+    };
+  }
+
+  return {
+    tier: 'county',
+    label: 'County only',
+    detail: undefined,
+    hint: 'Nothing better than the municipality. Don’t go hunting — read the pin placement hint and place it by hand.',
+  };
+}
+
+/** Brand-palette colors per tier. Terracotta is the warning tone. */
+export const TIER_COLORS: Record<PrecisionTier, { bg: string; fg: string; border: string }> = {
+  parcel: { bg: '#002147', fg: '#FFFFFF', border: '#002147' },
+  road:   { bg: '#FFFFFF', fg: '#4A6B94', border: '#8FA9C8' },
+  county: { bg: '#FFFFFF', fg: '#A27B5C', border: '#A27B5C' },
+  placed: { bg: '#F8FAFC', fg: '#4A6B94', border: '#8FA9C8' },
+};

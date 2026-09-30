@@ -3624,15 +3624,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               }}
             />
 
-            {/* Search area for an UNPLACED project: its municipality's outline.
+            {/* Search area for an UNPLACED project: the approximate area around
+                its road/intersection geocode, falling back to the municipality
+                outline only when nothing finer resolves.
                 Mounted beside the layer, not inside it, because an unplaced
                 record is by design absent from that layer — the whole reason it
                 had no anchor on the map. Also owns the orientation fitBounds, so
                 the viewport change and the thing it frames arrive together. */}
             <MunicipalProjectOrientationOverlay
               map={mapInstance}
-              projectId={selectedMunicipalProject?.id ?? null}
-              isUnplaced={selectedMunicipalProject?.is_unplaced}
+              project={selectedMunicipalProject}
             />
 
             {/* Municipal Projects Layer — imported development tracking from cities */}
