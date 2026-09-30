@@ -11,6 +11,7 @@ import MunicipalProjectInlineFilters from '../components/mapping/layers/Municipa
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
 import MunicipalProjectUnplacedPanel from '../components/mapping/layers/MunicipalProjectUnplacedPanel';
+import MunicipalProjectOrientationOverlay from '../components/mapping/layers/MunicipalProjectOrientationOverlay';
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
@@ -122,12 +123,13 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // point, which the slideout then confirms and writes.
   const [pinDropMunicipalProjectId, setPinDropMunicipalProjectId] = useState<string | null>(null);
   const [pinDropPoint, setPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
-  // Move the map to a municipal project so the user can see what just happened.
-  // Re-reads the row rather than trusting whatever the caller has in hand, because
-  // after a fetch or a draw the geometry is newer than any cached copy. An
-  // UNPLACED record has nothing to move to — panning somewhere plausible would be
-  // inventing a location, which is the whole thing this work removed — so it is a
-  // deliberate no-op until the record is actually placed.
+  // Move the map to a PLACED municipal project so the user can see what just
+  // happened. Re-reads the row rather than trusting whatever the caller has in
+  // hand, because after a fetch or a draw the geometry is newer than any cached
+  // copy. An UNPLACED record has nothing to move to — panning somewhere plausible
+  // would be inventing a location, which is the whole thing this work removed —
+  // so it is a deliberate no-op until the record is actually placed, and
+  // MunicipalProjectOrientationOverlay handles the "where do I look" problem.
   const focusMunicipalProject = useCallback(async (id: string) => {
     if (!mapInstance) return;
     const { data, error } = await supabase
@@ -161,29 +163,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       return;
     }
 
-    // Still unplaced: frame its municipality as orientation, so the reviewer can
-    // see roughly where to look while placing it. VIEW STATE ONLY — nothing is
-    // written, the record stays unplaced, and no coordinate is ever derived from
-    // this. The RPC returns nothing for a record that is already placed, so a
-    // placed project is never framed by its whole municipality.
-    // Cast: database-schema.ts predates this RPC, so the generated types infer {}.
-    const { data: rpcData } = await supabase
-      .rpc('municipal_project_orientation_bounds', { p_id: id })
-      .maybeSingle();
-    const b = rpcData as {
-      min_lat: number; min_lng: number; max_lat: number; max_lng: number;
-    } | null;
-    if (b
-        && typeof b.min_lat === 'number' && typeof b.min_lng === 'number'
-        && typeof b.max_lat === 'number' && typeof b.max_lng === 'number') {
-      mapInstance.fitBounds(
-        new google.maps.LatLngBounds(
-          { lat: b.min_lat, lng: b.min_lng },
-          { lat: b.max_lat, lng: b.max_lng },
-        ),
-        60,
-      );
-    }
+    // Still unplaced: it has nothing of its own to move to. Orienting on the
+    // municipality is MunicipalProjectOrientationOverlay's job now. Framing an
+    // area the reviewer cannot see is a viewport change they have to take on
+    // faith, so the outline and the fit belong in one place — and there the
+    // orientation fires on every path that opens an unplaced record, including
+    // a pin click and a deep link, which never reached this helper at all.
   }, [mapInstance]);
 
   // Bumped after a placement so the unplaced worklist re-reads itself.
@@ -3637,6 +3622,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setSelectedPinData(restaurant);
                 setIsPinDetailsOpen(true);
               }}
+            />
+
+            {/* Search area for an UNPLACED project: the approximate area around
+                its road/intersection geocode, falling back to the municipality
+                outline only when nothing finer resolves.
+                Mounted beside the layer, not inside it, because an unplaced
+                record is by design absent from that layer — the whole reason it
+                had no anchor on the map. Also owns the orientation fitBounds, so
+                the viewport change and the thing it frames arrive together. */}
+            <MunicipalProjectOrientationOverlay
+              map={mapInstance}
+              project={selectedMunicipalProject}
             />
 
             {/* Municipal Projects Layer — imported development tracking from cities */}

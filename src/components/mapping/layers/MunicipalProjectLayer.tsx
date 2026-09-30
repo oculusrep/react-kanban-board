@@ -44,6 +44,10 @@ export interface MunicipalProjectMapRow {
   // absent from the map rather than pinned to a county centroid.
   is_unplaced?: boolean;
   unplaced_reason?: string | null;
+  // Where a PLACED record's pin came from. Null exactly when unplaced. Read by
+  // the precision badge so a placed record reports provenance rather than a
+  // precision tier it no longer needs.
+  centroid_source?: 'address_geocode' | 'polygon' | 'manual_pin' | null;
   // Polygon provenance + the acreage cross-check.
   geometry_source?: 'hand_drawn' | 'parcel_fetch' | 'parcel_fetch_adjusted' | null;
   geometry_source_parcels?: string[] | null;

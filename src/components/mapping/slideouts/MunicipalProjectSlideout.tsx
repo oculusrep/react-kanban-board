@@ -7,6 +7,8 @@ import { adapterFor, applyParcelBoundary } from '../../../services/parcelFabric'
 import type { MunicipalProjectMapRow } from '../layers/MunicipalProjectLayer';
 import { formatUnitsLabel } from '../../../utils/municipalProjectUnitsLabel';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
+import PrecisionBadge from '../PrecisionBadge';
+import { useMunicipalPrecision } from '../../../hooks/useMunicipalPrecision';
 
 interface ProjectStageOption {
   id: string;
@@ -140,6 +142,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     && (project.parcel_numbers?.length ?? 0) > 0
     && !!adapterFor(project.municipality_name);
   const [polygonError, setPolygonError] = useState<string>('');
+
+  // How well-located this record is. The same hook the map overlay and the
+  // unplaced worklist use, so the badge here, the badge in the list and the
+  // shape drawn on the map cannot disagree. Kept above the early return — this
+  // file has a React #310 history, see the comment there.
+  const precision = useMunicipalPrecision(project);
 
   // Load project stages once for the override dropdown.
   useEffect(() => {
@@ -507,6 +515,11 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
             <div className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>
               {project.municipality_name}, {project.municipality_state}
             </div>
+            {/* Precision first: whether this record is worth going looking for
+                is the thing you need before you start, not after. */}
+            <div className="mt-1">
+              <PrecisionBadge badge={precision.badge} loading={precision.loading} size="md" />
+            </div>
             <h2
               className="text-lg font-semibold mt-0.5 truncate"
               style={{ color: BRAND.midnight }}
@@ -627,6 +640,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
               <span className="font-semibold uppercase tracking-wide block mb-1"
                     style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
                 Pin placement hint
+                {project.is_unplaced && precision.badge.tier === 'county' && (
+                  <span className="ml-1 normal-case font-normal"
+                        style={{ color: BRAND.terracotta }}>
+                    — this is the best locator we have for this record
+                  </span>
+                )}
               </span>
               <textarea
                 value={locDescDraft}
@@ -878,6 +897,19 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                               borderLeft: `3px solid ${BRAND.terracotta}` }}>
                   <span className="font-semibold">Not on the map yet.</span>{' '}
                   <span style={{ color: BRAND.steel }}>{unplacedLabel(project.unplaced_reason)}.</span>
+                  {/* Say what the shape on the map IS, so a circle around an
+                      intersection is never mistaken for a placement — and so a
+                      county outline is read as "we cannot see it", not as
+                      "there is nothing there". */}
+                  <div style={{ color: BRAND.slate }} className="mt-0.5">
+                    {precision.badge.tier === 'county'
+                      ? 'The map is showing the whole municipality — that\u2019s all we can '
+                        + 'narrow it to. Read the pin placement hint above and place it by hand.'
+                      : precision.geocode
+                        ? `The shaded circle is the approximate area around ${precision.geocode.formattedAddress}`
+                          + ' \u2014 orientation only, not a placement.'
+                        : null}
+                  </div>
                   <div style={{ color: BRAND.slate }} className="mt-0.5">
                     Draw the boundary below, or drop a pin if you only know roughly where it is.
                   </div>
