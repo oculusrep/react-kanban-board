@@ -42,6 +42,8 @@ export interface IngestBrandResult {
   statusChanges: number;
   error: string | null;
   costCents: number;
+  /** Rows taken back from a brand that was holding them by mistake. */
+  reclaimedLocations: number;
   /** Places calls actually made for this brand. */
   requests: number;
   /**
@@ -59,6 +61,7 @@ export interface IngestAllProgress {
   totalNewLocations: number;
   totalUpdatedLocations: number;
   totalStatusChanges: number;
+  totalReclaimed: number;
   totalCostCents: number;
   /** Brands that hit the per-brand call ceiling. */
   totalTruncated: number;
@@ -293,6 +296,7 @@ export async function ingestBrand(
     statusChanges: 0,
     error: null,
     costCents: 0,
+    reclaimedLocations: 0,
     requests: 0,
     truncated: false,
   };
@@ -373,7 +377,7 @@ export async function ingestBrand(
     result.locationsFound = allPlaces.length;
 
     for (const place of allPlaces) {
-      await upsertMerchantLocation(brand.id, place, result);
+      await upsertMerchantLocation(brand, place, result);
     }
 
     await recordRegionIngest(brand.id, region.id, allPlaces.length, result.truncated);
@@ -422,14 +426,36 @@ async function recordRegionIngest(
     .eq('id', brandId);
 }
 
+/**
+ * Upsert one Places result, keyed on google_place_id.
+ *
+ * The key MUST stay google_place_id alone — it is the unique column, and one
+ * physical storefront is one row. But that means a place already cached under
+ * the WRONG brand is found here, and until 2026-09-30 the update left
+ * brand_id alone, so the row stayed mis-filed forever: the correct brand's
+ * ingest refreshed someone else's row instead of inserting its own. That is
+ * how Piggly Wiggly's first Georgia run reported "32 kept" while inserting
+ * only 20, and how ~1,130 rows accumulated under brands they do not belong to.
+ *
+ * So the update now reclaims ownership under the same rule the bulk fix used:
+ * if the incoming result name-matches the brand we are searching for, and the
+ * incumbent brand does NOT match the name it is already holding, the row moves
+ * to the searching brand and an audit row is written. Ambiguity is resolved in
+ * favour of leaving things alone — if the incumbent still matches its own row,
+ * nothing moves.
+ *
+ * verified_* is never touched here, as always.
+ */
 async function upsertMerchantLocation(
-  brandId: string,
+  brand: MerchantBrandRow,
   place: PlacesSearchResult,
   result: IngestBrandResult,
 ): Promise<void> {
   const { data: existing, error: selErr } = await supabase
     .from('merchant_location')
-    .select('id, business_status')
+    .select(
+      'id, business_status, brand_id, name, brand:merchant_brand(name, places_display_name)',
+    )
     .eq('google_place_id', place.place_id)
     .maybeSingle();
   if (selErr) throw selErr;
@@ -439,6 +465,17 @@ async function upsertMerchantLocation(
 
   if (existing) {
     const statusChanged = existing.business_status !== place.business_status;
+
+    // Reclaim a mis-filed row — see the comment above.
+    const incumbent = (Array.isArray(existing.brand) ? existing.brand[0] : existing.brand) as
+      | { name: string; places_display_name: string | null }
+      | null
+      | undefined;
+    const reclaim =
+      existing.brand_id !== brand.id &&
+      !!incumbent &&
+      nameMatchesBrand(place.name, brand) &&
+      !nameMatchesBrand(existing.name, incumbent);
     const updates: Record<string, unknown> = {
       name: place.name,
       latitude: place.latitude,
@@ -449,6 +486,7 @@ async function upsertMerchantLocation(
       business_status: place.business_status,
       last_fetched_at: now,
     };
+    if (reclaim) updates.brand_id = brand.id;
     if (isOperational) updates.last_verified_at = now;
     if (statusChanged) {
       updates.previous_status = existing.business_status;
@@ -468,10 +506,28 @@ async function upsertMerchantLocation(
         new_status: place.business_status,
       });
     }
+
+    if (reclaim) {
+      // Same audit trail as the bulk pass, so a reclaim is reversible and
+      // reviewable however it happened.
+      const { error: audErr } = await supabase
+        .from('merchant_location_brand_reassignment')
+        .insert({
+          location_id: existing.id,
+          old_brand_id: existing.brand_id,
+          new_brand_id: brand.id,
+          places_name: place.name,
+          reason: `ingest reclaim: "${place.name}" matches ${brand.name}, not ${incumbent?.name}`,
+        });
+      // An audit failure must not lose the ingest, but it must be loud.
+      if (audErr) console.error('reassignment audit insert failed:', audErr);
+      result.reclaimedLocations++;
+    }
+
     result.updatedLocations++;
   } else {
     const { error: insErr } = await supabase.from('merchant_location').insert({
-      brand_id: brandId,
+      brand_id: brand.id,
       google_place_id: place.place_id,
       name: place.name,
       latitude: place.latitude,
@@ -518,6 +574,7 @@ export async function ingestBrands(
     totalNewLocations: 0,
     totalUpdatedLocations: 0,
     totalStatusChanges: 0,
+    totalReclaimed: 0,
     totalCostCents: 0,
     totalTruncated: 0,
     cancelled: false,
@@ -553,6 +610,7 @@ export async function ingestBrands(
     progress.totalNewLocations += result.newLocations;
     progress.totalUpdatedLocations += result.updatedLocations;
     progress.totalStatusChanges += result.statusChanges;
+    progress.totalReclaimed += result.reclaimedLocations;
     progress.totalCostCents += result.costCents;
     if (result.truncated) progress.totalTruncated++;
     onProgress(progress);

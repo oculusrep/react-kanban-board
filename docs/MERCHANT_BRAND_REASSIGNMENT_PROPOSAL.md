@@ -1,6 +1,6 @@
 # Mis-attributed merchant locations — reassignment proposal
 
-**Status:** Phase 1 (`places_display_name` pre-pass) APPLIED 2026-09-30, migration `20260930084718`. Phase 2 (reassignment) dry-run complete, **not applied**, awaiting approval. Phase 3 (upsert fix) not started.
+**Status:** ALL THREE PHASES DONE 2026-09-30. Phase 1 `20260930084718`, Phase 2 `20260930092623` (+ `20260930093808`), Phase 3 in `merchantIngestService.ts`.
 **Date:** 2026-09-30
 **Context:** [MERCHANTS_CONTEXT.md](MERCHANTS_CONTEXT.md) · surfaced by the Piggly Wiggly Georgia run on 2026-09-29
 
@@ -185,3 +185,45 @@ All 27 pairs the boundary rule removed were verified false positives. The 4 ambi
 | T-Mobile at Costco | AT&T | Costco \| T-Mobile |
 
 No further Metro-style rebrand cases remain. A concentration test (old brands losing rows, scored by destinations ÷ rows) shows every remaining high-volume donor scattering across many destination brands and many distinct place names — the signature of Places garbage, not of a rebrand. `Jacks` sheds 156 rows across 16 destinations; `Golf Mart` 123 across 14; `24 Hour Fitness` 115 across 13. All three are brands with little or no Georgia presence whose searches returned other chains.
+
+
+---
+
+# Appendix 2 — Phase 2 and Phase 3 applied
+
+## Phase 2 (migration `20260930092623`)
+
+**1,132 rows reassigned.** Verified in the same transaction before applying: 0 verified-or-excluded rows touched, and the 4 ambiguous T-Mobile-family rows still on AT&T / Boost Mobile.
+
+Top 10 receiving brands, visible rows before → after:
+
+| Brand | Rows received | Visible before | Visible after |
+|---|---:|---:|---:|
+| Wal-Mart | 187 | 145 | **316** |
+| Wendy's | 57 | 167 | 224 |
+| Walgreens | 55 | 163 | 216 |
+| McDonald's | 54 | 287 | 341 |
+| Zaxby's | 41 | 159 | 200 |
+| Planet Fitness | 38 | 3 | **41** |
+| Publix | 36 | 160 | 196 |
+| Target | 31 | 80 | 111 |
+| Anytime Fitness | 30 | 17 | **47** |
+| Mavis Discount Tire | 30 | 94 | 124 |
+
+Gains exceed rows received where a reclaimed row also stopped being filtered for another reason. Planet Fitness (3 → 41) and Anytime Fitness (17 → 47) were the most broken: almost every Georgia location of both was filed under 24 Hour Fitness, a brand with no Georgia presence.
+
+Reversal, if ever needed:
+
+```sql
+UPDATE merchant_location l SET brand_id = r.old_brand_id
+FROM merchant_location_brand_reassignment r
+WHERE r.location_id = l.id AND r.reason LIKE 'bulk-2026-09-30:%';
+```
+
+## Phase 3 — the forward fix
+
+`upsertMerchantLocation` still keys on `google_place_id` (it must — it is the unique column), but the update now reclaims ownership under the same rule: **if the incoming result name-matches the searching brand and the incumbent brand does NOT match the name it is already holding, the row moves and an audit row is written.** Ambiguity resolves in favour of leaving things alone.
+
+Migration `20260930093808` adds the INSERT grant and an admin policy, because ingestion runs in the browser as an authenticated admin while the bulk pass ran as `postgres`. Without it every reclaim would have moved a row with no audit trail — the one outcome the audit table exists to prevent.
+
+`IngestBrandResult.reclaimedLocations` and `IngestAllProgress.totalReclaimed` surface the count in the admin tab.

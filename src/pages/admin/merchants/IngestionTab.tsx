@@ -585,6 +585,13 @@ export default function IngestionTab() {
                   raised
                 </div>
               )}
+              {testResult.reclaimedLocations > 0 && (
+                <div>
+                  <strong>{testResult.reclaimedLocations}</strong> row
+                  {testResult.reclaimedLocations === 1 ? '' : 's'} reclaimed from a brand that
+                  was holding them by mistake
+                </div>
+              )}
               <div>
                 Cost: {formatDollars(testResult.costCents)} over {testResult.requests} Places
                 call{testResult.requests === 1 ? '' : 's'}
@@ -840,6 +847,7 @@ function ProgressPanel({
           <strong>+{progress.totalNewLocations}</strong> new ·{' '}
           <strong>~{progress.totalUpdatedLocations}</strong> updated ·{' '}
           <strong>{progress.totalStatusChanges}</strong> status changes ·{' '}
+          <strong>{progress.totalReclaimed}</strong> reclaimed ·{' '}
           <strong>{formatDollars(progress.totalCostCents)}</strong> spent
         </div>
       </div>
