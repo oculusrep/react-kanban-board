@@ -102,7 +102,11 @@ RLS pattern across all of them: authenticated users read, `merchants_is_admin()`
 
 **The two render filters have additive-only semantics.** If the global default overreaches for one brand, do **not** add un-exclude logic — pin the expected shape with `places_display_name` instead. Keeps the default sane for the other 400. The guards live in exactly one file, [_shared/merchant-brand-guards.ts](../supabase/functions/_shared/merchant-brand-guards.ts), imported by ingest, map render and site-research. Change it once, check all three.
 
-**Brandfetch's terms shape the architecture.** Logos must be **hotlinked**, never downloaded and stored. A brand's licence expires if no API call is made within 30 days. Their CDN also returns HTTP 200 for brands it doesn't have — the disambiguator is `Content-Length` (a real logo is ≥1KB, the placeholder is exactly 338 bytes), and server-side calls must forge browser-like `User-Agent`/`Referer`/`Origin` headers or they 302 to the ToS page.
+**Brandfetch's terms shape the architecture.** Logos must be **hotlinked**, never downloaded and stored. A brand's licence expires if no API call is made within 30 days. Server-side calls must forge browser-like `User-Agent`/`Referer`/`Origin` headers or they 302 to the ToS page.
+
+**Check the logo CDN with GET, never HEAD, and test for the placeholder rather than for size.** Both halves were learned from the 2026-09-30 regression that put 180 brands on `miss`:
+- Brandfetch answers **HEAD with 404** whenever the resized object is cold in their edge cache, while GET on the same URL returns 200 and a real logo — and warms the cache, after which HEAD works. A HEAD-only checker therefore never warms anything and mislabels ~40% of brands per run.
+- A missing brand still returns 200, with a placeholder that is byte-identical across brands: **344 bytes, sha256 `763edd1e…`** (older docs say 338 — stale). Do not use a size floor above it: the old `≥1000 bytes` rule condemned nine real wordmark logos in the 590–966 byte range (Sephora 590, Staples 628, Kohl's 866).
 
 **Ingestion cost is now bounded in three places**, and all three matter: an adaptive quadtree that recurses only into saturated cells, a per-brand `maxRequestsPerBrand` ceiling, and a run budget checked between brands. The thing that makes bounds necessary is subtle — the saturation test reads the **raw** Places response, before the name-match filter, so a brand with one real location in a region still returns 20 loose matches and trips the whole partition. Georgia's log: 12.9% of all calls saturated.
 

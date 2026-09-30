@@ -7,10 +7,11 @@
  *      Logo API ToS, which expires a brand's license if no API call is made
  *      within 30 days. Bumps merchant_brand.logo_fetched_at on success.
  *
- *   2. CDN coverage check — HEAD's the actual logo CDN URL. Records the
- *      result in merchant_brand.brandfetch_logo_status:
- *        - 'ok'   → CDN returned 2xx → real logo will render
- *        - 'miss' → CDN returned 4xx → broken pin / fallback letter
+ *   2. CDN coverage check — GETs the actual logo CDN URL and inspects the
+ *      body (see checkCdnStatus; HEAD does not work). Records the result in
+ *      merchant_brand.brandfetch_logo_status:
+ *        - 'ok'   → a real logo came back → it will render
+ *        - 'miss' → Brandfetch's placeholder → fallback letter pin
  *      Lets the admin filter and surface "Brandfetch has no logo" cases
  *      that were previously invisible (logo_url set but URL doesn't serve).
  *
@@ -65,32 +66,59 @@ async function sleep(ms: number): Promise<void> {
 }
 
 /**
- * HEAD the Brandfetch CDN URL to determine whether a real logo is served.
+ * Fetch the Brandfetch CDN URL to determine whether a real logo is served.
  *
  * Quirks that make this trickier than "check the HTTP status":
  *
  *   1. Brandfetch's CDN enforces hotlink protection. Requests without a
  *      browser-like User-Agent + matching Referer/Origin get a 302 to their
  *      ToS docs (regardless of whether the brand exists). We forge those
- *      headers to look like the OVIS web app — matches the registered client
- *      domain for our BRANDFETCH_CLIENT_ID.
- *   2. With proper headers, Brandfetch returns 200 OK in BOTH cases:
- *        - Real logo  → ~1.5KB+ webp/png
- *        - Missing    → ~338 byte placeholder
- *      So we use Content-Length as the disambiguator. Anything <1000 bytes
- *      at 128x128 is the placeholder. Comfortable margin since the smallest
- *      real logos observed are >1500.
+ *      headers to look like the OVIS web app.
+ *
+ *   2. GET, NOT HEAD. This one cost us 168 brands. Brandfetch's CDN answers
+ *      HEAD with 404 whenever the resized object is not already warm in their
+ *      edge cache, while GET for the very same URL returns 200 and a real
+ *      logo -- and populates the cache, after which HEAD starts working.
+ *      Because this cron only ever sent HEAD it never warmed anything, so
+ *      ~40% of brands were marked 'miss' on each run depending on which
+ *      objects had gone cold. Verified 2026-09-30: HEAD schlotzskys.com ->
+ *      404, one GET -> 200/1526 bytes, HEAD again -> 200.
+ *
+ *   3. With proper headers a MISSING brand still returns 200, with a
+ *      placeholder image, so the body has to be inspected. The placeholder is
+ *      byte-identical across brands: 344 bytes, sha256 763edd1e...
+ *      (the 338 figure in older docs is stale).
+ *
+ *      Do NOT reintroduce a size floor well above the placeholder. The old
+ *      ">= 1000 bytes" rule condemned nine real logos in the 590-966 byte
+ *      range -- Sephora 590, Staples 628, Havertys 658, Truist 844, Kohl's
+ *      866 -- all simple wordmarks that compress small, all with distinct
+ *      hashes. Test for the placeholder itself, not for "big enough".
+ *
+ * The response bytes are inspected and discarded. Brandfetch's terms require
+ * hotlinking; logo files are never written to disk or to storage.
  *
  * Returns 'ok' / 'miss' / null (null = couldn't determine, don't overwrite).
  */
-const REAL_LOGO_MIN_BYTES = 1000
+const PLACEHOLDER_BYTES = 344
+const PLACEHOLDER_SHA256 = '763edd1e2a573220ab56eba4f2c498aacacb4629916678a18a9eca3e61e336a5'
+// Anything this small cannot be a real 128x128 logo; catches a re-encoded
+// placeholder whose exact length and hash have drifted.
+const IMPLAUSIBLY_SMALL_BYTES = 400
+
+async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 async function checkCdnStatus(logoUrl: string): Promise<'ok' | 'miss' | null> {
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), CDN_TIMEOUT_MS)
     const res = await fetch(logoUrl, {
-      method: 'HEAD',
+      method: 'GET',
       redirect: 'manual',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -100,12 +128,23 @@ async function checkCdnStatus(logoUrl: string): Promise<'ok' | 'miss' | null> {
       signal: controller.signal,
     })
     clearTimeout(timer)
+
     // Hotlink-blocked / redirect = something's off, treat as undetermined.
-    if (res.status >= 300 && res.status < 400) return null
-    if (res.status >= 400) return 'miss'
-    const contentLength = parseInt(res.headers.get('content-length') || '0', 10)
-    if (!Number.isFinite(contentLength) || contentLength === 0) return null
-    return contentLength >= REAL_LOGO_MIN_BYTES ? 'ok' : 'miss'
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel()
+      return null
+    }
+    if (res.status >= 400) {
+      await res.body?.cancel()
+      return 'miss'
+    }
+
+    // Read, inspect, discard. Never persisted -- Brandfetch ToS is hotlink-only.
+    const bytes = await res.arrayBuffer()
+    const size = bytes.byteLength
+    if (size === 0) return null
+    if (size === PLACEHOLDER_BYTES || size < IMPLAUSIBLY_SMALL_BYTES) return 'miss'
+    return (await sha256Hex(bytes)) === PLACEHOLDER_SHA256 ? 'miss' : 'ok'
   } catch {
     return null
   }

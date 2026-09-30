@@ -129,7 +129,7 @@ Brands with no SC presence cost 2¢ each to discover and cache nothing. Not wort
 6. Test-run 3 brands against Columbia (one sparse, one mid, one dense — e.g. REI / Chick-fil-A / Dollar General) and eyeball pin placement on the map.
 7. Full 401-brand Columbia run. — *~$35–50, 20–40 min of browser time*
 8. Recalibrate `COLUMBIA_SC.avgRequestsPerBrand` from `google_places_api_log` and flip `costBasis` to `'measured'`.
-~~9. Add Harris Teeter + Piggly Wiggly~~ — **done 2026-09-28**, migration `20260928185116`. Both Brandfetch domains verified live against the CDN (2,380 / 4,068 bytes, clear of the 338-byte placeholder). 403 active brands now. They will be picked up by the first Columbia run.
+~~9. Add Harris Teeter + Piggly Wiggly~~ — **done 2026-09-28**, migration `20260928185116`. Both Brandfetch domains verified live against the CDN (2,380 / 4,068 bytes, clear of the 344-byte placeholder). 403 active brands now. They will be picked up by the first Columbia run.
 ~~10. Remove the 12 bogus North Augusta rows~~ — **done 2026-09-28**. Soft-deleted, never `DELETE`: ingest upserts on `google_place_id`, so a hard delete is resurrected by the next run of that brand. `excluded_at`/`excluded_by`/`exclusion_reason = 'SC row admitted by old Georgia Avenue address filter'`. Zero SC rows now visible in the cache; no verified pin was touched.
 
 ### Cost guard (added after review)
