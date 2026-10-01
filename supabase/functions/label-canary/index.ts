@@ -48,14 +48,22 @@ const corsHeaders = {
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 
-/** A state must produce its evidence within this. Watcher runs every 5 min,
- *  attribution lags 60s, gesture lags 10 min -- so 15 is the floor that is not
- *  merely measuring the lag constants. */
-const OBSERVE_DEADLINE_MIN = 16;
+/**
+ * A state must produce its evidence within this.
+ *
+ * Set from the WORST case, not the happy path. The happy path is ~16 min
+ * (5 min watcher + 60s attribution + 10 min pairing window). But both
+ * classification passes process 500 rows per run, so after a busy day the
+ * canary's own event can sit behind a queue -- which is exactly what produced
+ * 110 false failures on 2026-09-29: the pipeline was fine, the backlog was
+ * draining, and the canary called it broken. A real outage still trips the
+ * 60-minute cycle deadline.
+ */
+const OBSERVE_DEADLINE_MIN = 35;
 
 /** A whole add/remove cycle must complete within this, or the pipeline is stuck
  *  somewhere the per-state deadline did not catch. */
-const CYCLE_DEADLINE_MIN = 60;
+const CYCLE_DEADLINE_MIN = 90;
 
 type CanaryRow = {
   id: string;
@@ -265,9 +273,16 @@ serve(async (req) => {
       switch (canary.state) {
         case 'idle':
         case 'failed': {
-          // Start (or restart) a cycle. No email_label row is written -- that is
-          // deliberate, and it is what makes the watcher treat this as the
-          // owner's gesture.
+          // REMOVE FIRST. Applying a label Gmail already has is a silent no-op:
+          // no history record, so no event, so the canary reads "the watcher is
+          // not recording" and fails forever. That is how a failed cycle wedged
+          // itself into 110 identical failures on 2026-09-29 -- the probe could
+          // not tell "nothing to observe" from "nothing observed". Clearing the
+          // label first guarantees the apply produces a real change.
+          await removeLabelFromMessage(accessToken, canary.gmail_id, canary.label);
+
+          // No email_label row is written -- deliberate, and it is what makes
+          // the watcher treat this as the owner's gesture.
           const res = await applyLabelToMessage(accessToken, canary.gmail_id, canary.label);
           if (!res.success) {
             await fail(canary, 'apply_failed', res.error ?? 'unknown');

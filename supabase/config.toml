@@ -30,3 +30,8 @@ verify_jwt = false
 # X-Cron-Secret only and caller-auth is the real check.
 [functions.label-canary]
 verify_jwt = false
+
+# label-inbox: pg_cron drives it on the live path (X-Cron-Secret only); the real
+# authorization check is _shared/caller-auth.ts.
+[functions.label-inbox]
+verify_jwt = false

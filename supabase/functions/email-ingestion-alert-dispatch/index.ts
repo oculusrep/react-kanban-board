@@ -337,6 +337,71 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ------------------------------------------------------------------------
+    // LABELER — freshness. The canary proves label CHANGES are recorded; this
+    // proves mail is actually being LABELLED. Nothing watched that until
+    // 2026-10-01, which is how 600 messages sat bare for two days.
+    // ------------------------------------------------------------------------
+    const { data: lblRows, error: lblError } = await supabase
+      .from('email_labeler_alert')
+      .select('*')
+      .or('notified.eq.false,and(resolved_at.not.is.null,resolved_notified.eq.false)')
+      .order('fired_at', { ascending: true });
+
+    if (lblError) throw new Error(`labeler alert query failed: ${lblError.message}`);
+
+    for (const row of lblRows ?? []) {
+      if (!row.notified) {
+        const subject = `[OVIS] Mail is not being labelled — ${row.bare_stale} bare in ${row.mailbox}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">The labeler is not keeping up</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            <strong>${row.bare_stale}</strong> messages in ${esc(row.mailbox)} have been triaged but
+            carry no OVIS label, and have been sitting that way for over two hours.
+          </p>
+          <table style="font-family:system-ui,sans-serif;color:#002147;border-collapse:collapse">
+            <tr><td style="padding:4px 12px 4px 0">Bare, past grace</td>
+                <td style="padding:4px 0"><strong>${row.bare_stale}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Labellable in inbox</td>
+                <td style="padding:4px 0">${row.labelable_total}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Detected</td>
+                <td style="padding:4px 0">${et(row.fired_at)}</td></tr>
+          </table>
+          <p style="font-family:system-ui,sans-serif;color:#4A6B94">${esc((row.detail ?? '').slice(0, 600))}</p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_labeler_alert')
+            .update({ notified: true, notify_error: null, notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          sent.push(`labeler:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_labeler_alert')
+            .update({ notify_error: String(e).slice(0, 500), notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          failed.push(`labeler:${row.id}:${e}`);
+        }
+      }
+
+      if (row.resolved_at && !row.resolved_notified) {
+        const subject = '[OVIS] Labelling has caught up';
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">Mail is being labelled again</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            The alert opened at ${et(row.fired_at)} and resolved at ${et(row.resolved_at)}.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_labeler_alert')
+            .update({ resolved_notified: true, notify_error: null }).eq('id', row.id);
+          sent.push(`labeler-clear:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_labeler_alert')
+            .update({ notify_error: String(e).slice(0, 500) }).eq('id', row.id);
+          failed.push(`labeler-clear:${row.id}:${e}`);
+        }
+      }
+    }
+
     // Report failures as a non-200 so a silently-failing alerter is itself visible.
     return new Response(
       JSON.stringify({ success: failed.length === 0, sent, failed, considered: (rows?.length ?? 0) + (clfRows?.length ?? 0) }),

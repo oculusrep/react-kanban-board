@@ -42,6 +42,11 @@ const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 
 /** Fresh namespace. OVIS-Linked is left alone as history — see the design note. */
+/** How long a triaged message may sit bare in the inbox before the labeler is
+ *  considered to be failing. Two hours: far longer than the ~4 min arrival->
+ *  classified lag plus the 5 min cron, so it cannot fire on normal latency. */
+const BARE_GRACE_HOURS = 2;
+
 const LABEL = {
   personal: 'OVIS/Personal',
   junk: 'OVIS/Junk',
@@ -112,13 +117,27 @@ interface Decision {
 function decide(row: {
   tier1_action: string | null;
   tier1_reason: string | null;
+  classification_status: string | null;
   classification_outcome: string | null;
   is_relevant: boolean | null;
   subject: string | null;
   sender_email: string | null;
   has_link: boolean;
   personal_thread: boolean;
-}): { label: LabelName; sourceVerdict: string } {
+}): { label: LabelName; sourceVerdict: string } | null {
+  // NOT YET TRIAGED -> no label at all. This is what makes the three states
+  // distinguishable in Gmail:
+  //   bare           triage has not run yet
+  //   OVIS/Unsorted  triage ran and found no signal
+  //   any other      triage ran and categorised
+  // Labelling a pending email Unsorted would assert "we looked and found
+  // nothing" about mail nobody has looked at. 'abandoned' DOES get a label:
+  // triage ran, gave up, and that is a finished state. 'failed' is still on
+  // its retry backoff, so it stays bare.
+  if (row.classification_status !== 'classified' && row.classification_status !== 'abandoned') {
+    return null;
+  }
+
   // Ladder B by sender identity, plus thread membership. The thread test is
   // what catches a reply IN a personal thread that is not itself from the
   // personal domain -- including the owner's own sent mail, whose sender is
@@ -320,11 +339,12 @@ serve(async (req) => {
       // Resolve what OVIS knows, in chunks (one .in() per 200 ids).
       const known = new Map<string, Decision>();
       let unknownToOvis = 0;
+      let awaitingTriage = 0;
       for (let i = 0; i < inboxIds.length; i += 200) {
         const chunk = inboxIds.slice(i, i + 200);
         const { data: rows, error: rowErr } = await supabase
           .from('emails')
-          .select('id, gmail_id, message_id, subject, sender_email, thread_id, is_relevant, classification_outcome')
+          .select('id, gmail_id, message_id, subject, sender_email, thread_id, is_relevant, classification_outcome, classification_status')
           .in('gmail_id', chunk);
         if (rowErr) throw new Error(`emails lookup: ${rowErr.message}`);
 
@@ -340,9 +360,10 @@ serve(async (req) => {
 
         for (const r of rows ?? []) {
           const stub = stubBy.get(r.message_id);
-          const { label, sourceVerdict } = decide({
+          const verdict = decide({
             tier1_action: stub?.action ?? null,
             tier1_reason: stub?.tier1_reason ?? null,
+            classification_status: r.classification_status,
             classification_outcome: r.classification_outcome,
             is_relevant: r.is_relevant,
             subject: r.subject,
@@ -350,12 +371,13 @@ serve(async (req) => {
             has_link: linked.has(r.id),
             personal_thread: r.thread_id ? personalThreads.has(r.thread_id) : false,
           });
+          if (!verdict) { awaitingTriage++; continue; }
           known.set(r.gmail_id, {
             gmailId: r.gmail_id,
             messageId: r.message_id,
             emailId: r.id,
-            label,
-            sourceVerdict,
+            label: verdict.label,
+            sourceVerdict: verdict.sourceVerdict,
           });
         }
       }
@@ -370,7 +392,7 @@ serve(async (req) => {
           if (!mid) continue;
           const { data: rows } = await supabase
             .from('emails')
-            .select('id, gmail_id, message_id, subject, sender_email, thread_id, is_relevant, classification_outcome')
+            .select('id, gmail_id, message_id, subject, sender_email, thread_id, is_relevant, classification_outcome, classification_status')
             .eq('message_id', mid)
             .limit(1);
           const r = rows?.[0];
@@ -380,9 +402,10 @@ serve(async (req) => {
             supabase.from('email_object_link').select('email_id').eq('email_id', r.id).limit(1),
             supabase.from('email_tier1_stub').select('action, tier1_reason').eq('message_id', r.message_id).limit(1),
           ]);
-          const { label, sourceVerdict } = decide({
+          const verdict2 = decide({
             tier1_action: stubs?.[0]?.action ?? null,
             tier1_reason: stubs?.[0]?.tier1_reason ?? null,
+            classification_status: r.classification_status,
             classification_outcome: r.classification_outcome,
             is_relevant: r.is_relevant,
             subject: r.subject,
@@ -390,10 +413,11 @@ serve(async (req) => {
             has_link: (links ?? []).length > 0,
             personal_thread: r.thread_id ? personalThreads.has(r.thread_id) : false,
           });
+          if (!verdict2) { awaitingTriage++; continue; }
           // NB: keyed by THIS mailbox's gmail_id, which is the id a label must
           // be applied to here -- not r.gmail_id, which belongs to the mailbox
           // that ingested it first.
-          known.set(gid, { gmailId: gid, messageId: r.message_id, emailId: r.id, label, sourceVerdict });
+          known.set(gid, { gmailId: gid, messageId: r.message_id, emailId: r.id, label: verdict2.label, sourceVerdict: verdict2.sourceVerdict });
           recoveredByMessageId++;
         }
       }
@@ -406,14 +430,9 @@ serve(async (req) => {
         if (d) {
           decisions.push(d);
         } else {
+          // Never ingested, so triage cannot have run on it. Bare, by the same
+          // rule as pending: Unsorted would be a claim nobody made.
           unknownToOvis++;
-          decisions.push({
-            gmailId: gid,
-            messageId: null,
-            emailId: null,
-            label: LABEL.unsorted,
-            sourceVerdict: 'not_in_ovis',
-          });
         }
       }
 
@@ -445,8 +464,6 @@ serve(async (req) => {
         }
 
         for (const d of decisions) {
-          // Unsorted is a bookkeeping state, not something to write to Gmail.
-          if (d.label === LABEL.unsorted) continue;
           if (onlyLabels && !onlyLabels.has(d.label)) continue;
           if (done.has(`${d.gmailId}|${d.label}`)) { alreadyApplied++; continue; }
           if (applied + failed >= maxApplies) { remaining++; continue; }
@@ -529,11 +546,96 @@ serve(async (req) => {
         }
       }
 
+      // ----------------------------------------------------------------
+      // HEALTH. Asks of GMAIL's inbox, not of folder_label, which is a
+      // write-once snapshot that would answer a different question.
+      // ----------------------------------------------------------------
+      {
+        const graceCutoff = Date.now() - BARE_GRACE_HOURS * 3600_000;
+        const labelable = decisions.length;              // triage finished with these
+        let labelled = 0;
+        let bareStale = 0;
+
+        if (labelable > 0) {
+          const liveByGmailId = new Set<string>();
+          for (let i = 0; i < decisions.length; i += 500) {
+            const chunk = decisions.slice(i, i + 500).map((d) => d.gmailId);
+            const { data: live } = await supabase
+              .from('email_label').select('gmail_id')
+              .eq('gmail_connection_id', connection.id)
+              .not('applied_at', 'is', null).is('removed_at', null)
+              .in('gmail_id', chunk);
+            for (const row of live ?? []) liveByGmailId.add(row.gmail_id as string);
+          }
+
+          const ages = new Map<string, number>();
+          for (let i = 0; i < decisions.length; i += 300) {
+            const chunk = decisions.slice(i, i + 300).map((d) => d.gmailId);
+            const { data: rows } = await supabase
+              .from('emails').select('gmail_id, received_at').in('gmail_id', chunk);
+            for (const r of rows ?? []) ages.set(r.gmail_id as string, new Date(r.received_at as string).getTime());
+          }
+
+          for (const d of decisions) {
+            if (liveByGmailId.has(d.gmailId)) { labelled++; continue; }
+            const received = ages.get(d.gmailId);
+            // Unknown age counts as stale: an unmeasurable case must not pass.
+            if (received === undefined || received < graceCutoff) bareStale++;
+          }
+        }
+
+        // INCONCLUSIVE is not a pass. With nothing labellable, the check had no
+        // way to fail, so it says so rather than reporting health it did not
+        // observe.
+        const verdict = labelable === 0
+          ? 'inconclusive'
+          : (bareStale > 0 ? 'unhealthy' : 'healthy');
+
+        const detail = labelable === 0
+          ? `nothing labellable in the inbox this run (${inboxIds.length} messages, ${awaitingTriage} awaiting triage) -- the check could not fail, so it did not pass`
+          : `${labelled}/${labelable} labelled; ${bareStale} triaged and bare for over ${BARE_GRACE_HOURS}h; ${awaitingTriage} awaiting triage`;
+
+        await supabase.from('email_labeler_health').insert({
+          mailbox: connection.google_email,
+          verdict,
+          inbox_total: inboxIds.length,
+          labelable_total: labelable,
+          labelled,
+          bare_stale: bareStale,
+          awaiting_triage: awaitingTriage,
+          detail,
+        });
+
+        const { data: openAlert } = await supabase
+          .from('email_labeler_alert').select('id')
+          .eq('mailbox', connection.google_email).is('resolved_at', null).limit(1);
+
+        if (verdict === 'unhealthy' && !openAlert?.length) {
+          await supabase.from('email_labeler_alert').insert({
+            mailbox: connection.google_email,
+            bare_stale: bareStale,
+            labelable_total: labelable,
+            detail,
+          });
+        } else if (verdict === 'healthy' && openAlert?.length) {
+          // Only a positive result clears it. 'inconclusive' leaves it open.
+          await supabase.from('email_labeler_alert')
+            .update({ resolved_at: new Date().toISOString() })
+            .eq('id', openAlert[0].id);
+        }
+
+        perMailbox.push({
+          mailbox: connection.google_email,
+          health: { verdict, labelable, labelled, bare_stale: bareStale, awaiting_triage: awaitingTriage },
+        });
+      }
+
       perMailbox.push({
         mailbox: connection.google_email,
         inbox_total: inboxIds.length,
         known_to_ovis: inboxIds.length - unknownToOvis,
         not_in_ovis: unknownToOvis,
+        awaiting_triage: awaitingTriage,
         recovered_by_message_id: recoveredByMessageId,
         labels: counts,
         source_verdicts: verdicts,
