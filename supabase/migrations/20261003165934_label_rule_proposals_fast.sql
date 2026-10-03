@@ -36,7 +36,10 @@ AS $fn$
 BEGIN
   -- SECURITY DEFINER bypasses RLS, so the caller is checked explicitly. An
   -- exception here surfaces as an error in the UI, never as an empty list.
-  IF NOT public.is_internal_user() THEN
+  -- Accepts internal users AND the backend roles (service_role, psql ops),
+  -- which carry no JWT and so have no auth.uid(). Anyone else gets an
+  -- exception, never an empty set.
+  IF NOT public.email_label_rule_proposals_guard() THEN
     RAISE EXCEPTION 'email_label_rule_proposals: internal users only';
   END IF;
 
@@ -72,7 +75,7 @@ BEGIN
            count(*) FILTER (WHERE c.correction_kind = 'wrong') AS wrong_count,
            count(*) FILTER (WHERE c.correction_kind = 'silent') AS silent_count,
            1::bigint AS distinct_addresses,
-           coalesce((SELECT sum(u.n) FROM unsorted u WHERE u.sender = c.sender), 0) AS unsorted_now
+           coalesce((SELECT sum(u.n) FROM unsorted u WHERE u.sender = c.sender), 0)::bigint AS unsorted_now
     FROM corr c GROUP BY c.sender
     HAVING count(DISTINCT c.label) = 1 AND count(*) >= 3
   ),
@@ -83,7 +86,7 @@ BEGIN
            count(*) FILTER (WHERE c.correction_kind = 'silent') AS silent_count,
            count(DISTINCT c.sender) AS distinct_addresses,
            coalesce((SELECT sum(u.n) FROM unsorted u
-                      WHERE u.dom = c.dom OR u.dom LIKE '%.' || c.dom), 0) AS unsorted_now
+                      WHERE u.dom = c.dom OR u.dom LIKE '%.' || c.dom), 0)::bigint AS unsorted_now
     FROM corr c GROUP BY c.dom
     HAVING count(DISTINCT c.label) = 1 AND count(*) >= 5 AND count(DISTINCT c.sender) >= 2
   ),
