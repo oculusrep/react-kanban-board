@@ -246,15 +246,27 @@ Measured effect (portal → 0 in every case, internal roles unchanged):
 
 The portal app genuinely reads these, so a blanket lock would break it. Each needs per-row scoping with `portal_user_client_ids()`, which is a larger change:
 
-| Table | Why the portal needs it |
+| Table | Status |
 |---|---|
-| `dropbox_mapping` (3,027 rows) | `PortalFilesTab` browses files via `useDropboxFiles` |
-| `map_layer`, `map_layer_shape`, `map_layer_client_share` | `PortalMapPage` renders the shared `LayerManager` |
-| `property_note` (3,302 rows) | `PortalChatTab` mirrors client comments into property notes |
-| `role` | `hooks/usePermissions.tsx` is in the portal import tree |
-| `submit_stage`, `deal_stage`, `transaction_type`, other enum/label tables | Stage and type *names*, not an exposure |
+| `property_note` (3,308 rows) | **LOCKED 2026-10-03** — the assumption was wrong, see below |
+| `role` | **LOCKED 2026-10-03** — no portal page calls `usePermissions` |
+| `dropbox_mapping` (3,037 rows) | Still open — `PortalFilesTab` browses files via `useDropboxFiles` |
+| `map_layer`, `map_layer_shape`, `map_layer_client_share` | Still open — `PortalMapPage` renders the shared `LayerManager` |
+| `submit_stage`, `deal_stage`, `transaction_type`, other enum/label tables | Left permissive — stage and type *names*, not an exposure |
 
-`property_note` and `dropbox_mapping` are the two that matter — a client can currently read internal notes on every property and the Dropbox path mapping for everything.
+### `property_note` and `role` locked — `20261003165201`
+
+Both were kept permissive on the assumption the portal read them. Neither does:
+
+- **`property_note`** — `PortalChatTab` only *inserts*, mirroring a client comment into a note, and INSERT is a separate policy (`WITH CHECK true`) that was left alone. The only reader, `usePropertyTimeline`, is used by `PropertyActivityTab`, an internal page. Verified by impersonation **including a real INSERT probe as the portal role** (1 row, rolled back) — a read-only check would have missed a broken chat tab.
+- **`role`** — read by `hooks/usePermissions.tsx`, which is in the portal's *import* tree but is not called by any portal page or component. (Another instance of import reachability ≠ entitlement.)
+
+Live after applying: admin 3,308 notes / 7 roles unchanged; portal **0 / 0**.
+
+### What the two remaining ones need decided
+
+- **`map_layer*`** — the data model already answers it: a `map_layer_client_share` table exists and `mapLayerService` shares layers per client, so the policy should be internal-or-shared-to-my-client. Needs confirmation that "only layers explicitly shared with me" is the intended portal behavior, since a client currently sees all 16.
+- **`dropbox_mapping`** — the hard one. Rows are polymorphic (`entity_type` + `entity_id`, no FK), and the portal needs to resolve a folder path for whatever the client is viewing. Two questions: which entity types may a client resolve, and should it be scoped in the policy or moved entirely behind a `SECURITY DEFINER` RPC? The portal already uses `get_dropbox_folder_path`; if resolution goes through that and the RPC does the client check, the table can be locked outright — simpler and tighter than a three-way polymorphic predicate with no FK to lean on.
 
 ### Method note
 
@@ -410,7 +422,7 @@ All the functions are `STABLE`, so `(select f())` is semantically identical -- i
 - `v_prospecting_daily_metrics` is still the one definer view in `public` that internal users read. It is guarded, but if it is ever recreated the guard must be carried forward — `pg_get_viewdef` first.
 - Nothing else in `public` is readable by `anon` or by portal users beyond their own records, as of the closing sweep above. Re-check with `scripts/view_invoker_harness.py` and an anonymous `curl` after any migration that adds a table or view.
 - Wrap the ~28 remaining per-row policy function calls in `(select ...)`, per the table above.
-- Scope `property_note`, `dropbox_mapping`, `map_layer*` and `role` per client with `portal_user_client_ids()` — the portal needs them, so they could not be locked outright.
+- Scope `dropbox_mapping` and `map_layer*` for portal clients (see the two questions above). `property_note` and `role` are done.
 
 ## Original proposal (superseded by the above)
 
