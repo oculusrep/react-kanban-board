@@ -62,6 +62,12 @@ export function LabelRulesPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Load failures are tracked PER LIST and separately from the data, because
+  // the first version of this page rendered a timed-out proposals query as
+  // "Proposed (0) — nothing has reached the threshold yet" while 21 proposals
+  // existed. An error and a genuine zero must never look the same.
+  const [proposalsError, setProposalsError] = useState<string | null>(null);
+  const [rulesError, setRulesError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,10 +76,23 @@ export function LabelRulesPage() {
       supabase.rpc('email_label_rule_proposals'),
       supabase.from('email_label_rule').select('*').order('decided_at', { ascending: false }),
     ]);
-    if (pErr) setError(pErr.message);
-    if (rErr) setError(rErr.message);
-    setProposals((props ?? []) as Proposal[]);
-    setRules((rs ?? []) as Rule[]);
+
+    // On failure: record it and leave the previous data alone. Writing [] here
+    // is what turned a timeout into a confident "there is nothing to approve".
+    if (pErr) {
+      setProposalsError(pErr.message);
+    } else {
+      setProposalsError(null);
+      setProposals((props ?? []) as Proposal[]);
+    }
+
+    if (rErr) {
+      setRulesError(rErr.message);
+    } else {
+      setRulesError(null);
+      setRules((rs ?? []) as Rule[]);
+    }
+
     setLoading(false);
   }, []);
 
@@ -147,7 +166,8 @@ export function LabelRulesPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <h2 style={{ color: NAVY, fontSize: 18, fontWeight: 600, margin: 0 }}>
-            Proposed ({proposals.length})
+            {/* No count while the count is unknown. A number here would be a claim. */}
+            {proposalsError ? 'Proposed — unavailable' : `Proposed (${proposals.length})`}
           </h2>
           <button onClick={load} disabled={loading}
                   style={{ border: `1px solid ${SLATE}`, background: '#fff', color: STEEL,
@@ -159,7 +179,24 @@ export function LabelRulesPage() {
 
         {loading && <p style={{ color: STEEL }}>Loading…</p>}
 
-        {!loading && proposals.length === 0 && (
+        {/* FAILURE, stated plainly and on its own. Nothing else is rendered for
+            this section: no count, no empty-state copy, no stale list. */}
+        {!loading && proposalsError && (
+          <div style={{ background: '#fff', border: '2px solid #A27B5C', borderRadius: 8,
+                        padding: 16, marginBottom: 32 }}>
+            <div style={{ color: '#A27B5C', fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+              Could not load proposals — this is an error, not an empty list.
+            </div>
+            <div style={{ color: NAVY, fontSize: 13, marginBottom: 8 }}>
+              There may well be proposals waiting. The query failed, so this page does not know.
+            </div>
+            <code style={{ color: STEEL, fontSize: 12, wordBreak: 'break-word' }}>
+              {proposalsError}
+            </code>
+          </div>
+        )}
+
+        {!loading && !proposalsError && proposals.length === 0 && (
           <div style={{ background: '#fff', border: `1px solid ${SLATE}`, borderRadius: 8,
                         padding: 16, color: STEEL, fontSize: 14, marginBottom: 32 }}>
             Nothing has reached the threshold yet — three agreeing corrections on one address, or
@@ -167,7 +204,7 @@ export function LabelRulesPage() {
           </div>
         )}
 
-        {proposals.map((p) => {
+        {!proposalsError && proposals.map((p) => {
           const key = p.scope + p.pattern;
           return (
             <div key={key} style={{ background: '#fff', border: `1px solid ${SLATE}`,
@@ -205,10 +242,27 @@ export function LabelRulesPage() {
         })}
 
         <h2 style={{ color: NAVY, fontSize: 18, fontWeight: 600, margin: '32px 0 12px' }}>
-          Active ({active.length})
+          {rulesError ? 'Active — unavailable' : `Active (${active.length})`}
         </h2>
-        {active.length === 0 && <p style={{ color: STEEL, fontSize: 14 }}>No rules are applying yet.</p>}
-        {active.map((r) => (
+        {/* The Active list had the same defect: on a failed read it claimed
+            "No rules are applying yet", which would be read as "my approvals
+            did not take". */}
+        {rulesError && (
+          <div style={{ background: '#fff', border: '2px solid #A27B5C', borderRadius: 8,
+                        padding: 16, marginBottom: 12 }}>
+            <div style={{ color: '#A27B5C', fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+              Could not load rules — this is an error, not an empty list.
+            </div>
+            <div style={{ color: NAVY, fontSize: 13, marginBottom: 8 }}>
+              Approved rules may be active and applying. This page could not read them.
+            </div>
+            <code style={{ color: STEEL, fontSize: 12, wordBreak: 'break-word' }}>{rulesError}</code>
+          </div>
+        )}
+        {!rulesError && active.length === 0 && (
+          <p style={{ color: STEEL, fontSize: 14 }}>No rules are applying yet.</p>
+        )}
+        {!rulesError && active.map((r) => (
           <div key={r.id} style={{ background: '#fff', border: `1px solid ${SLATE}`, borderRadius: 8,
                                    padding: '12px 16px', marginBottom: 8, display: 'flex',
                                    justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -232,7 +286,7 @@ export function LabelRulesPage() {
           </div>
         ))}
 
-        {off.length > 0 && (
+        {!rulesError && off.length > 0 && (
           <>
             <h2 style={{ color: NAVY, fontSize: 18, fontWeight: 600, margin: '32px 0 12px' }}>
               Off ({off.length})
