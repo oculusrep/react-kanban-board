@@ -68,6 +68,7 @@ import QuickBooksCustomerMappingPage from "./pages/QuickBooksCustomerMappingPage
 import GmailSettingsPage from "./pages/GmailSettingsPage";
 import SuggestedContactsPage from "./pages/SuggestedContactsPage";
 import AgentRulesPage from "./pages/AgentRulesPage";
+import LabelRulesPage from "./pages/LabelRulesPage";
 import EmailClassificationReviewPage from "./pages/EmailClassificationReviewPage";
 import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
@@ -225,6 +226,7 @@ function App() {
           <Route path="admin/municipal-import" element={<MunicipalRoute><MunicipalImportPage /></MunicipalRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
+          <Route path="admin/label-rules" element={<GmailRoute><LabelRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />
           <Route path="admin/flagged-emails" element={<GmailRoute><FlaggedEmailQueuePage /></GmailRoute>} />
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />

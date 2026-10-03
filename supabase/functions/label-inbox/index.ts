@@ -84,6 +84,21 @@ const EVENT_RE =
 const LISTING_RE =
   /(\bsf\b|square feet|for lease|for sale|ground lease|end ?cap|pad site|outparcel|\bacres?\b|drive.?thru|shopping cent|sublease|\bnnn\b|cap rate|just listed|just sold|available)/i;
 
+/** An approved sender rule. Matching is exact for an address, and anchored
+ *  (domain or subdomain) for a domain -- never substring. */
+interface LabelRule { scope: 'address' | 'domain'; pattern: string; label: string }
+
+function ruleFor(rules: LabelRule[], senderEmail: string | null): LabelRule | null {
+  const sender = (senderEmail ?? '').toLowerCase().trim();
+  if (!sender) return null;
+  const dom = sender.split('@')[1] ?? '';
+  for (const r of rules) {
+    if (r.scope === 'address' && sender === r.pattern) return r;
+    if (r.scope === 'domain' && (dom === r.pattern || dom.endsWith(`.${r.pattern}`))) return r;
+  }
+  return null;
+}
+
 interface Decision {
   gmailId: string;
   messageId: string | null;
@@ -124,6 +139,7 @@ function decide(row: {
   sender_email: string | null;
   has_link: boolean;
   personal_thread: boolean;
+  rule: LabelRule | null;
 }): { label: LabelName; sourceVerdict: string } | null {
   // NOT YET TRIAGED -> no label at all. This is what makes the three states
   // distinguishable in Gmail:
@@ -154,6 +170,17 @@ function decide(row: {
   if (row.tier1_action === 'tier1_personal') {
     // No sender, no reason: the tier-1 stub carries none by CHECK constraint.
     return { label: LABEL.personal, sourceVerdict: 'tier1:personal' };
+  }
+
+  // AN APPROVED RULE OUTRANKS EVERY HEURISTIC BELOW IT. The owner said this
+  // explicitly, repeatedly, and approved it -- that beats any inference we
+  // draw from headers, subjects or links. It sits below ladder B only because
+  // privacy is not negotiable by rule.
+  if (row.rule) {
+    return {
+      label: row.rule.label as LabelName,
+      sourceVerdict: `rule:${row.rule.scope}:${row.rule.pattern}`,
+    };
   }
 
   const isBulk = row.tier1_action === 'tier1_bulk';
@@ -286,6 +313,17 @@ serve(async (req) => {
   const perMailbox: Record<string, unknown>[] = [];
 
   try {
+    // Approved sender rules, loaded once per run. An empty list is the normal
+    // starting state, not an error.
+    const { data: ruleRows, error: ruleErr } = await supabase
+      .from('email_label_rule').select('scope, pattern, label').eq('status', 'active');
+    if (ruleErr) throw new Error(`label rules: ${ruleErr.message}`);
+    const rules: LabelRule[] = (ruleRows ?? []).map((r) => ({
+      scope: r.scope as 'address' | 'domain',
+      pattern: String(r.pattern).toLowerCase(),
+      label: String(r.label),
+    }));
+
     let q = supabase.from('gmail_connection').select('*').eq('is_active', true);
     if (onlyMailbox) q = q.eq('google_email', onlyMailbox);
     const { data: connections, error } = await q;
@@ -370,6 +408,7 @@ serve(async (req) => {
             sender_email: r.sender_email,
             has_link: linked.has(r.id),
             personal_thread: r.thread_id ? personalThreads.has(r.thread_id) : false,
+            rule: ruleFor(rules, r.sender_email),
           });
           if (!verdict) { awaitingTriage++; continue; }
           known.set(r.gmail_id, {
@@ -412,6 +451,7 @@ serve(async (req) => {
             sender_email: r.sender_email,
             has_link: (links ?? []).length > 0,
             personal_thread: r.thread_id ? personalThreads.has(r.thread_id) : false,
+            rule: ruleFor(rules, r.sender_email),
           });
           if (!verdict2) { awaitingTriage++; continue; }
           // NB: keyed by THIS mailbox's gmail_id, which is the id a label must
