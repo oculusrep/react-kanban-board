@@ -34,6 +34,23 @@ interface ClientPortalUsersSectionProps {
  * - Revoke access for existing users
  * - View portal status (invite status, last login)
  */
+/**
+ * Is this invite expired?
+ *
+ * Derived from portal_invite_expires_at rather than read from
+ * portal_invite_status. The status column used to be written opportunistically
+ * by validate_portal_invite_token -- an unauthenticated endpoint -- which meant
+ * an invite was only ever marked 'expired' if somebody clicked the link after
+ * it lapsed. An invite that expired and was never visited still read 'pending'.
+ * The timestamp is the fact; the status was a cache of it that was wrong
+ * whenever nobody clicked.
+ */
+function inviteIsExpired(u: { portal_invite_status: string | null; portal_invite_expires_at: string | null }): boolean {
+  if (u.portal_invite_status === 'accepted') return false;
+  if (!u.portal_invite_expires_at) return u.portal_invite_status === 'expired';
+  return new Date(u.portal_invite_expires_at).getTime() < Date.now();
+}
+
 export default function ClientPortalUsersSection({
   clientId,
   isNewClient,
@@ -767,14 +784,14 @@ Best regards`;
                       </span>
                     ) : (
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium cursor-pointer transition-colors ${
-                        portalUser.portal_invite_status === 'pending'
-                          ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                          : portalUser.portal_invite_status === 'expired'
+                        inviteIsExpired(portalUser)
                           ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                          : portalUser.portal_invite_status === 'pending'
+                          ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
                           : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
                       }`}>
-                        {portalUser.portal_invite_status === 'pending' ? 'Invite Pending' :
-                         portalUser.portal_invite_status === 'expired' ? 'Invite Expired' : 'Not Invited'}
+                        {inviteIsExpired(portalUser) ? 'Invite Expired' :
+                         portalUser.portal_invite_status === 'pending' ? 'Invite Pending' : 'Not Invited'}
                         <svg className="ml-1 w-3 h-3 opacity-60 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
