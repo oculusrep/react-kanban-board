@@ -809,6 +809,102 @@ config-constant and silent-success entries above: a confident mental model shipp
 that could have contradicted it — except here the contradicting observation had already been made and
 written down in this very session.
 
+### A privacy guarantee that only holds in a mode that has never been on
+
+**2026-09-25. The fifth instance, and the most expensive one.**
+
+Ladder B's whole promise is that personal mail is never stored and never modelled. The artifacts all
+exist and all look right: `buildTier1Stub` writes a personal stub carrying only `message_id`,
+`gmail_connection_id` and `processed_at` ([tier1.ts:182-206](../supabase/functions/_shared/tier1.ts#L182-L206)),
+and the CHECK constraint `pmi_personal_stub_carries_no_sender` enforces it *at the database level*,
+so a future bug cannot quietly start logging personal correspondents.
+
+None of that does anything. The code path that *skips the insert* is the `TIER1_MODE === 'enforce'`
+branch ([gmail-sync/index.ts:207-210](../supabase/functions/gmail-sync/index.ts#L207-L210)), and
+`TIER1_MODE` has never left `'log_only'`. In log_only the message falls through and is stored in
+full — body, sender, subject — and goes to the model like any other mail. The stub's carefully
+minimal shape describes a row that sits *next to* the complete copy.
+
+So for the whole measurement period, school and family mail has been stored in full and sent to
+Gemini. The constraint protects a row nobody needed protecting; the mail it was written to protect
+was never withheld.
+
+**Rule: a guarantee inherits the weakest condition on the path that delivers it.** A CHECK
+constraint, a minimal row shape and a named privacy invariant are all downstream of one `if`. Ask
+which mode the guarantee lives in, and whether that mode is on — the artifacts will look identical
+either way. This is the config-constant entry again, one level up: there the constant shipped but the
+path ignored it; here the constraint holds perfectly over data that was never the exposure.
+
+### An error captured in a variable and never logged — built here, not inherited
+
+**2026-09-29. The sixth instance, and the first one this project created rather than found.**
+
+`label-watcher`'s unique index was written on `(gmail_id, label, event_type, COALESCE(history_id,''))`.
+Its upsert named the plain columns. Postgres rejects an `ON CONFLICT` target that does not match an
+index exactly, so **every insert raised 42P10 and every event was discarded.** The error was assigned
+to `insErr`, tested, and used only to decide whether to increment a counter:
+
+```ts
+if (!insErr) recorded++;        // the whole handling
+```
+
+So the function reported `events_recorded: 0` — identical to what it reports when Gmail genuinely
+has nothing new. The cron said "succeeded" 1,046 times. The watermark advanced 84,000 history ids,
+because it advanced on *reading* rather than on *recording*. Three days of the owner's hand-tagging
+were read out of Gmail and dropped. Only Gmail's own history retention made recovery possible; a
+week later it would have been unrecoverable.
+
+Three separate guards, each of which had already been learned on this project, were absent here:
+the counter-only error handling (the same silent-success shape as §15's earlier entry), the
+watermark advancing past unpersisted work (**the exact bug fixed in `gmail-sync` four days earlier,
+reintroduced in a new function**), and a schema/caller mismatch that no test covered because the
+tests ran against synthetic rows inserted directly.
+
+**Rule: a counter is not error handling, and "zero" is not an observation.** Any code path that can
+fail silently must log at the point of failure and must not advance a cursor past the failure. When
+a measurement reports zero, the first question is whether the instrument can distinguish zero from
+broken — and if it cannot, that is the finding, not the zero.
+
+Corollary, learned the same day: **synthetic tests validate logic, not integration.** The gesture
+classifier passed eight synthetic cases and still had three category errors (`OVIS-Linked`
+attributed to the owner, `INBOX` removals paired as corrections, foreign labels counted as
+corrections) plus an attribution inversion, all exposed within minutes of real data.
+
+### Two silent caps, and a cron that cannot observe what it calls
+
+**2026-10-03. Found while verifying the first approved label rule end to end.**
+
+**(a) pg_net's 5-second timeout is structural, not a bug.** `label-inbox` takes 20-40s for a
+639-message inbox. pg_net abandons the response at 5s, so `net._http_response.status_code` is
+**always NULL** for this function and the cron can never see what it returned. The function still
+runs to completion server side; only the answer is lost.
+
+So for the labeler there is exactly one observable: the `email_labeler_health` row the function
+writes about itself before returning. `cron.job_run_details.status = 'succeeded'` means pg_net
+queued a request. It does not mean the labeler ran, labelled anything, or succeeded — and it will
+report success through a total outage. **Never verify the labeler from the cron.** Read the health
+row, whose `verdict` can be `unhealthy` or `inconclusive`.
+
+An earlier "verified through the cron path" claim in this project was only true because the call
+used `dry_run`, which returns in 1.9s. The same call with writes enabled times out. A verification
+that passes only in the cheap variant has verified the cheap variant.
+
+**(b) PostgREST caps an unpaginated select at 1000 rows, whatever `.limit()` says.** The reconcile
+pass read live `email_label` rows with no `.range()`. At 1586 live labels it saw ~63% of them and
+reported `stale_found: 0` — while two inbox messages sat double-labelled on page 2, one carrying
+both `OVIS/Reading` and `OVIS/Unsorted`. After pagination the same code reported `stale_found: 2`
+and fixed both.
+
+CLAUDE.md already carries this rule ("Always paginate Supabase queries that may return more than
+1000 rows"). It was written down, and still shipped, because the symptom is a **clean result rather
+than an error**: the query was not wrong, it was truncated, and truncated reads report health about
+the part they can see.
+
+**Rule: a limit you did not write is still a limit.** Any aggregate read that backs a health claim
+must either paginate or prove its result set cannot reach the cap. "The query returned no problems"
+and "the query could not see the problems" are indistinguishable from the outside — which is the
+same equivalence as every other entry in this section.
+
 ### Related, from earlier in this project
 
 - **Don't declare a finding solved on circumstantial alignment.** The Barrio Burrito seed was
@@ -818,6 +914,27 @@ written down in this very session.
 - **A doc asserting an invariant is not evidence the invariant holds.** The deal-board spec said
   "all activity inserts are human-originated — no guard needed." True when written, false within
   days, and it stayed in the doc while 18 of 63 tiles lied.
+
+### DECISION 2026-09-29 — archive-on-arrival is OFF the table as specced
+
+Earlier sections assume OVIS will eventually remove `INBOX` from labelled mail. **It will not, in
+that form.**
+
+The weekend's measurement settled it. Of 865 owner dispositions, **854 were `INBOX` removals and 11
+were label removals**: the owner's real habit is *tag and archive*, not *clear the label queue*.
+Archiving is therefore the gesture that means "I am done with this" — the only such gesture actually
+in use. If OVIS archives at the moment it labels, that gesture is consumed by the machine and the
+signal disappears: handled and never-looked-at become indistinguishable from the outside, and
+`gmail_label_event` loses the one disposition it can currently observe.
+
+This is a decision, not an open question. Do not reintroduce archive-on-arrival without a
+replacement disposition signal.
+
+**If a version is ever wanted, it must preserve the signal, not relocate it.** The shape that would:
+leave `INBOX` alone, and let the owner's archive remain the close. OVIS would then read the archive
+event (already captured, `gesture = 'handled'`) as the completion, and could offer *archive
+suggestions* the owner accepts, rather than archiving unasked. That keeps the hand movement that
+carries the meaning. It has not been requested and should not be assumed.
 
 ---
 
