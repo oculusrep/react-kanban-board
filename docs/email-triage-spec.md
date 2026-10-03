@@ -870,6 +870,41 @@ classifier passed eight synthetic cases and still had three category errors (`OV
 attributed to the owner, `INBOX` removals paired as corrections, foreign labels counted as
 corrections) plus an attribution inversion, all exposed within minutes of real data.
 
+### Two silent caps, and a cron that cannot observe what it calls
+
+**2026-10-03. Found while verifying the first approved label rule end to end.**
+
+**(a) pg_net's 5-second timeout is structural, not a bug.** `label-inbox` takes 20-40s for a
+639-message inbox. pg_net abandons the response at 5s, so `net._http_response.status_code` is
+**always NULL** for this function and the cron can never see what it returned. The function still
+runs to completion server side; only the answer is lost.
+
+So for the labeler there is exactly one observable: the `email_labeler_health` row the function
+writes about itself before returning. `cron.job_run_details.status = 'succeeded'` means pg_net
+queued a request. It does not mean the labeler ran, labelled anything, or succeeded — and it will
+report success through a total outage. **Never verify the labeler from the cron.** Read the health
+row, whose `verdict` can be `unhealthy` or `inconclusive`.
+
+An earlier "verified through the cron path" claim in this project was only true because the call
+used `dry_run`, which returns in 1.9s. The same call with writes enabled times out. A verification
+that passes only in the cheap variant has verified the cheap variant.
+
+**(b) PostgREST caps an unpaginated select at 1000 rows, whatever `.limit()` says.** The reconcile
+pass read live `email_label` rows with no `.range()`. At 1586 live labels it saw ~63% of them and
+reported `stale_found: 0` — while two inbox messages sat double-labelled on page 2, one carrying
+both `OVIS/Reading` and `OVIS/Unsorted`. After pagination the same code reported `stale_found: 2`
+and fixed both.
+
+CLAUDE.md already carries this rule ("Always paginate Supabase queries that may return more than
+1000 rows"). It was written down, and still shipped, because the symptom is a **clean result rather
+than an error**: the query was not wrong, it was truncated, and truncated reads report health about
+the part they can see.
+
+**Rule: a limit you did not write is still a limit.** Any aggregate read that backs a health claim
+must either paginate or prove its result set cannot reach the cap. "The query returned no problems"
+and "the query could not see the problems" are indistinguishable from the outside — which is the
+same equivalence as every other entry in this section.
+
 ### Related, from earlier in this project
 
 - **Don't declare a finding solved on circumstantial alignment.** The Barrio Burrito seed was

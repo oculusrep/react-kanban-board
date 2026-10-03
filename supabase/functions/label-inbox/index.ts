@@ -47,6 +47,21 @@ const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
  *  classified lag plus the 5 min cron, so it cannot fire on normal latency. */
 const BARE_GRACE_HOURS = 2;
 
+/**
+ * How far back to reconcile mail the owner has already archived.
+ *
+ * The labeler enumerates the INBOX, so without this an archived message's
+ * labels freeze at whatever OVIS thought when it left the inbox. The owner tags
+ * and archives constantly, so every approved rule would leave a tail of
+ * archived mail carrying the old label, unreachable forever.
+ *
+ * 30 days covers anything still worth browsing by label and bounds the churn:
+ * reconciling all archived mail would rewrite ~900 messages nobody will open.
+ * This runs on the normal 5-minute schedule, not only when a rule changes --
+ * a rule approved at any point reaches the window on the next tick.
+ */
+const ARCHIVED_WINDOW_DAYS = 30;
+
 const LABEL = {
   personal: 'OVIS/Personal',
   junk: 'OVIS/Junk',
@@ -97,6 +112,38 @@ function ruleFor(rules: LabelRule[], senderEmail: string | null): LabelRule | nu
     if (r.scope === 'domain' && (dom === r.pattern || dom.endsWith(`.${r.pattern}`))) return r;
   }
   return null;
+}
+
+/**
+ * Every live label for a connection, paginated.
+ *
+ * PostgREST caps an unpaginated select at 1000 rows no matter what .limit()
+ * says. There are already 1586 live labels, so the unpaginated version of this
+ * read silently saw ~63% of them -- and reported stale_found: 0 while two
+ * messages sat double-labelled, because they were on page 2. Exactly the trap
+ * CLAUDE.md warns about, and the same shape as every other silent-zero on this
+ * project: the query was not wrong, it was truncated.
+ */
+async function allLiveLabels(
+  supabase: any,
+  connectionId: string,
+): Promise<Array<{ id: string; gmail_id: string; label: string; email_id: string | null }>> {
+  const PAGE = 1000;
+  const out: Array<{ id: string; gmail_id: string; label: string; email_id: string | null }> = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from('email_label')
+      .select('id, gmail_id, label, email_id')
+      .eq('gmail_connection_id', connectionId)
+      .not('applied_at', 'is', null)
+      .is('removed_at', null)
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(`email_label page at ${offset}: ${error.message}`);
+    const rows = (data ?? []) as unknown as Array<{ id: string; gmail_id: string; label: string; email_id: string | null }>;
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
 }
 
 interface Decision {
@@ -552,15 +599,9 @@ serve(async (req) => {
       const staleExamples: Array<Record<string, unknown>> = [];
       if (reconcile) {
         const current = new Map(decisions.map((d) => [d.gmailId, d.label as string]));
-        const { data: live, error: liveErr } = await supabase
-          .from('email_label')
-          .select('id, gmail_id, label')
-          .eq('gmail_connection_id', connection.id)
-          .not('applied_at', 'is', null)
-          .is('removed_at', null);
-        if (liveErr) throw new Error(`email_label read: ${liveErr.message}`);
+        const live = await allLiveLabels(supabase, connection.id);
 
-        for (const row of live ?? []) {
+        for (const row of live) {
           const want = current.get(row.gmail_id);
           // Not in this run's enumeration (e.g. archived since) -> leave alone.
           if (!want) continue;
@@ -670,6 +711,113 @@ serve(async (req) => {
         });
       }
 
+      // ----------------------------------------------------------------
+      // ARCHIVED WINDOW. Everything above only sees the inbox. This brings
+      // already-archived mail from the last ARCHIVED_WINDOW_DAYS into line too,
+      // so an approved rule reaches the tail the owner has archived rather than
+      // stopping at the inbox boundary. Decisions here come from the DATABASE
+      // (the message is not in the enumeration), which is sound because every
+      // input decide() needs is stored: stub, links, status, sender, subject.
+      // ----------------------------------------------------------------
+      let windowRemoved = 0;
+      let windowApplied = 0;
+      let windowFailed = 0;
+      if (reconcile && !dryRun) {
+        const since = new Date(Date.now() - ARCHIVED_WINDOW_DAYS * 86400_000).toISOString();
+        const inboxSet = new Set(inboxIds);
+
+        const liveRows = await allLiveLabels(supabase, connection.id);
+
+        // Only archived mail: the inbox was already handled, with Gmail-fresh ids.
+        const archived = liveRows.filter((r) => !inboxSet.has(r.gmail_id));
+        const byGmailId = new Map<string, { label: string; id: string }[]>();
+        for (const r of archived) {
+          const k = r.gmail_id as string;
+          if (!byGmailId.has(k)) byGmailId.set(k, []);
+          byGmailId.get(k)!.push({ label: r.label as string, id: r.id as string });
+        }
+
+        const ids = [...byGmailId.keys()];
+        for (let i = 0; i < ids.length; i += 200) {
+          const chunk = ids.slice(i, i + 200);
+          const { data: rows } = await supabase
+            .from('emails')
+            .select('id, gmail_id, message_id, subject, sender_email, thread_id, is_relevant, classification_outcome, classification_status, received_at')
+            .in('gmail_id', chunk)
+            .gte('received_at', since);
+          if (!rows?.length) continue;
+
+          const rowIds = rows.map((r) => r.id);
+          const msgIds = rows.map((r) => r.message_id);
+          const [{ data: links }, { data: stubs }] = await Promise.all([
+            supabase.from('email_object_link').select('email_id').in('email_id', rowIds),
+            supabase.from('email_tier1_stub').select('message_id, action, tier1_reason').in('message_id', msgIds),
+          ]);
+          const linked = new Set((links ?? []).map((l) => l.email_id));
+          const stubBy = new Map((stubs ?? []).map((st) => [st.message_id, st]));
+
+          for (const r of rows) {
+            const stub = stubBy.get(r.message_id);
+            const want = decide({
+              tier1_action: stub?.action ?? null,
+              tier1_reason: stub?.tier1_reason ?? null,
+              classification_status: r.classification_status,
+              classification_outcome: r.classification_outcome,
+              is_relevant: r.is_relevant,
+              subject: r.subject,
+              sender_email: r.sender_email,
+              has_link: linked.has(r.id),
+              personal_thread: r.thread_id ? personalThreads.has(r.thread_id) : false,
+              rule: ruleFor(rules, r.sender_email),
+            });
+            if (!want) continue;  // triage unfinished: leave it alone
+
+            const held = byGmailId.get(r.gmail_id as string) ?? [];
+
+            // Take off anything that is not the current decision.
+            for (const h of held) {
+              if (h.label === want.label) continue;
+              if (windowRemoved + windowFailed >= maxApplies) continue;
+              const res = await removeLabelFromMessage(accessToken, r.gmail_id as string, h.label);
+              if (res.success) {
+                windowRemoved++;
+                await supabase.from('email_label')
+                  .update({ removed_at: new Date().toISOString(), remove_error: null })
+                  .eq('id', h.id);
+              } else {
+                windowFailed++;
+                await supabase.from('email_label')
+                  .update({ remove_error: res.error ?? 'unknown' }).eq('id', h.id);
+              }
+            }
+
+            // Put on the label it should have, if it is missing.
+            if (!held.some((h) => h.label === want.label)) {
+              if (windowApplied + windowFailed >= maxApplies) continue;
+              await supabase.from('email_label').upsert({
+                email_id: r.id,
+                gmail_id: r.gmail_id,
+                message_id: r.message_id,
+                gmail_connection_id: connection.id,
+                label: want.label,
+                source_verdict: want.sourceVerdict,
+                applied_at: null,
+                apply_error: null,
+                dry_run: false,
+              }, { onConflict: 'gmail_id,gmail_connection_id,label' });
+              const res = await applyLabelToMessage(accessToken, r.gmail_id as string, want.label);
+              if (res.success) windowApplied++; else windowFailed++;
+              await supabase.from('email_label').update({
+                applied_at: res.success ? new Date().toISOString() : null,
+                apply_error: res.success ? null : (res.error ?? 'unknown'),
+              }).eq('gmail_id', r.gmail_id as string)
+                .eq('gmail_connection_id', connection.id)
+                .eq('label', want.label);
+            }
+          }
+        }
+      }
+
       perMailbox.push({
         mailbox: connection.google_email,
         inbox_total: inboxIds.length,
@@ -686,6 +834,9 @@ serve(async (req) => {
         stale_found: staleFound,
         removed,
         remove_failed: removeFailed,
+        archived_window_removed: windowRemoved,
+        archived_window_applied: windowApplied,
+        archived_window_failed: windowFailed,
         stale_examples: staleExamples,
       });
     }
