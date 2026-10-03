@@ -135,3 +135,17 @@ school domain and no thread rule will ever catch. Ladder B covers the school hal
 personal.
 
 Any rule proposer must exclude `INTERNAL_EMAIL_DOMAINS` senders from sender-level rules outright.
+
+---
+
+## 8. 2026-10-03 — deferred: scheduled invite-expiry sweep
+
+`validate_portal_invite_token` used to mark invites expired as a side effect of
+being *visited*, from an endpoint `anon` can call. Those writes are gone and both
+readers now derive expiry from `portal_invite_expires_at`.
+
+If a materialised status is ever wanted for reporting, the owner is a **daily cron
+sweep**: one idempotent statement marking everything past `expires_at`, triggered
+by time rather than by a stranger's HTTP request. Logged, not built — the derived
+value is correct today and is strictly more correct than the old cache, which only
+ever fired for invites somebody clicked.
