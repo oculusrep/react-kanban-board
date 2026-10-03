@@ -196,7 +196,7 @@ Rather than re-query the grant tables, all **198** relations `anon` still holds 
 - **195 return `[]`** — the grant is still there, but RLS blocks every row. This is the intended end state: the grants are broad, the policies are the gate, and the gate holds.
 - **3 return data**, all deliberate: `spatial_ref_sys`, `geometry_columns`, `geography_columns` — PostGIS-owned system metadata that client libraries expect to read.
 
-`restaurant_trend` needs a note, because it looks like a leak and is not. An anonymous request to it returns `57014 statement timeout` rather than `[]`, so the API cannot prove the negative. Tested directly instead — `SET LOCAL ROLE anon; SELECT count(*)` returns **0**. The timeout is a *performance* finding: its policy calls `can_manage_operations()`, which is re-evaluated per row across 50,112 rows. Worth wrapping in a `SELECT` (so Postgres caches it as an InitPlan) if that table is ever queried from the UI.
+`restaurant_trend` needs a note, because it looks like a leak and is not. An anonymous request to it returns `57014 statement timeout` rather than `[]`, so the API cannot prove the negative. Tested directly instead — `SET LOCAL ROLE anon; SELECT count(*)` returns **0**. The timeout is a *performance* finding: its policy calls `can_manage_operations()`, which is re-evaluated per row across 50,112 rows. **Fixed 2026-10-03 in `20261003113553`** — it now answers in 0.2s. See the correction below for why the first attempt did not.
 
 ### Method note for the next audit
 
@@ -216,13 +216,13 @@ The last class left open. These tables are **not** anon-reachable; the issue is 
 
 `PortalAnalyticsPage`'s access gate listed `broker_limited`, which is not a valid `ovis_role` (`broker_lite` is), so that entry matched nobody. It traces back to the role names in ROW_LEVEL_SECURITY_STRATEGY.md. Removed rather than corrected to `broker_lite`: `portal_user_analytics` became `security_invoker` in `20260928160000`, and `contact`'s SELECT policy excludes `broker_lite`, so such a user would load the page and see 1 of 22 rows.
 
-### Prepared, tested, NOT applied
+### APPLIED 2026-10-03 -- migrations `20261003113119` and `20261003113553`
 
-A migration covering ~60 policies across 50 tables is written and **verified against production in a rolled-back transaction**, but not applied — writing it into `supabase/migrations/` was refused by the permission classifier as "Modify Shared Resources", which is a fair call for a single migration rewriting that many policies at once. It is parked at:
+61 `ALTER POLICY` statements across 50 tables, applied and recorded. Verified per role before applying (rolled-back transaction) and again live afterwards: **portal → 0 rows on all 38 data tables, no change for admin, broker_full or va.**
 
-`<scratchpad>/PROPOSED_20260928200000_internal_only_caller_blind_policies.sql`
+Two tables were caught that had not existed when this was drafted — `merchant_brand_region_ingest` (806 rows) and `merchant_location_brand_reassignment` (1,132) arrived with the merchant-regions work carrying the same `USING (true)` default. Re-running the caller-blind query before applying is what found them; the drafted list alone would have missed both.
 
-Predicate is `(select is_internal_user())`, not `is_internal_user()` — parenthesised, it is evaluated once per query as an InitPlan instead of once per row. That also **fixes the `restaurant_trend` timeout** noted in round three.
+Predicate is `(select is_internal_user())`, parenthesised, so it is evaluated once per query as an InitPlan rather than once per row.
 
 Measured effect (portal → 0 in every case, internal roles unchanged):
 
@@ -367,14 +367,49 @@ Before applying, re-run the two checks that made this safe:
    commits itself (see CLAUDE.md).
 2. An anonymous `curl` sweep afterwards.
 
+## Correction -- the InitPlan fix needed a second half
+
+`20261003113119` wrapped these policies in `(select is_internal_user())`, and that was claimed to fix the `restaurant_trend` timeout. **It did not**, and the post-apply check caught it still timing out. `EXPLAIN` showed why:
+
+```
+Seq Scan on restaurant_trend (actual rows=0)
+  Filter: ((InitPlan 1).col1 OR can_manage_operations())
+  Rows Removed by Filter: 50112          -- 4.6s, over the ~3s API timeout
+```
+
+Both restaurant tables carry a **second, older** policy whose qual is a bare `can_manage_operations()`. Policies are OR-ed, so an InitPlan on one operand only short-circuits when it is *true*. An internal user was always fast (37ms) because their InitPlan is true and the OR stops there. For anon or a portal user it is false, so Postgres still ran the per-row function across all 50,112 rows.
+
+`20261003113553` wraps the second policy too. An anonymous request to `restaurant_trend` now answers in **0.2s** instead of timing out.
+
+**Generalisable lesson:** wrapping one policy in `(select ...)` does not make a table fast -- *every* policy on it must be wrapped, because the planner can only skip the per-row operand when a cheaper one has already decided the row. Read `EXPLAIN` for a bare `function()` inside `Filter:` rather than assuming the rewrite worked.
+
+### Still per-row -- about 28 policies on tables over 1,000 rows
+
+Same one-line fix each. Not bundled here: it is a performance change with a different blast radius and deserves its own verification.
+
+| Table | Approx rows | Policy qual |
+|---|---|---|
+| `portal_email_send` | 51,398 | `is_internal_user()` |
+| `email_object_link` | 40,164 | `is_internal_user()` |
+| `critical_date` | 7,889 | `can_manage_operations()`, `get_user_role() = ANY(...)` |
+| `contact` | 5,925 | `can_manage_operations()`, `portal_user_contact_id()`, `get_user_role()` |
+| `email_attachments` | 4,918 | `is_internal_user()` |
+| `property` | 4,779 | `can_manage_operations()`, `get_user_role()` |
+| `property_contact` | 4,441 | both |
+| `salesforce_Property__c` | 3,542 | `can_manage_operations()` |
+| `note_object_link` | 3,319 | `can_manage_operations()` |
+| `site_submit` | 3,222 | `can_manage_operations()`, `portal_user_client_ids()`, `get_user_role()` |
+| `gmail_label_event`, `site_submit_comment`, `dropbox_sync_cache`, `note`, `site_submit_activity`, `note_backup`, `email_label` | 1,500-3,300 | mixed |
+
+All the functions are `STABLE`, so `(select f())` is semantically identical -- it changes only *when* the function runs, not what it returns. For the column-comparing ones, wrap just the call: `id = (select portal_user_contact_id())`.
+
 ## Remaining work
 
 - Fix the `broker_limited` role string in `PortalAnalyticsPage` — it is not a valid `ovis_role` (`broker_lite` is), so that branch of the access gate never matches.
 - If a coach engagement ever starts, `coach` now has no access to deals, prospecting, municipal data, budgets or handoff history. Granting it means real SELECT policies on `deal` and `prospecting_time_entry`, not re-widening the views.
 - `v_prospecting_daily_metrics` is still the one definer view in `public` that internal users read. It is guarded, but if it is ever recreated the guard must be carried forward — `pg_get_viewdef` first.
 - Nothing else in `public` is readable by `anon` or by portal users beyond their own records, as of the closing sweep above. Re-check with `scripts/view_invoker_harness.py` and an anonymous `curl` after any migration that adds a table or view.
-- `restaurant_trend`'s per-row `can_manage_operations()` policy makes it un-queryable within the statement timeout. Not a security issue; will bite whenever that table is read from the UI.
-- **Apply the round-four migration** (prepared and tested; needs approval to write into `supabase/migrations/`). Until then every table in that list is readable by a portal client.
+- Wrap the ~28 remaining per-row policy function calls in `(select ...)`, per the table above.
 - Scope `property_note`, `dropbox_mapping`, `map_layer*` and `role` per client with `portal_user_client_ids()` — the portal needs them, so they could not be locked outright.
 
 ## Original proposal (superseded by the above)
