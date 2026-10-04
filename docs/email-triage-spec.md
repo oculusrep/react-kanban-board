@@ -10,6 +10,8 @@
 
 ## STATUS — 2026-09-07
 
+**CURRENT STATE: [EMAIL_TRIAGE_STATUS_2026-10-03.md](EMAIL_TRIAGE_STATUS_2026-10-03.md)** — the label pipeline, the asking queue, and the open list in order. Read it before anything below.
+
 **All six dependencies (§2) are built and live in production.** Merged to `main` at `fd99c3b4`
 (after `feature/starbucks-deal-board` at `27498845` — that ordering mattered, see below). The
 commitment table (§4) has not been started; §2 was the prerequisite work.
