@@ -126,6 +126,13 @@ export default function PortalAnalyticsPage() {
             last_activity_at: c.portal_last_login_at,
             portal_status: c.portal_auth_user_id && c.portal_last_login_at ? 'active' :
                           c.portal_auth_user_id ? 'account_created' :
+                          // Expiry is derived from the timestamp, not read from
+                          // portal_invite_status: that column was only written
+                          // when somebody clicked a lapsed link, so an invite
+                          // nobody visited still read 'pending'.
+                          (c.portal_invite_expires_at &&
+                           new Date(c.portal_invite_expires_at).getTime() < Date.now())
+                            ? 'invite_expired' :
                           c.portal_invite_status === 'pending' ? 'invite_pending' :
                           c.portal_invite_status === 'expired' ? 'invite_expired' :
                           'not_invited',

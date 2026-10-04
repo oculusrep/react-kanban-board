@@ -73,3 +73,9 @@ verify_jwt = false
 # authorization check is _shared/caller-auth.ts.
 [functions.label-inbox]
 verify_jwt = false
+
+# portal-invite-precheck: called from the pre-login invite page, so the caller is
+# logged out by definition and sends no Authorization header. Authorization is
+# the invite token, resolved server-side with the service key.
+[functions.portal-invite-precheck]
+verify_jwt = false
