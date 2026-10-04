@@ -426,3 +426,99 @@ Deliberately **not** in that first migration, because both change behavior for a
 - **Enabling RLS** on the `streetlight_*` tables, `task_category`, `deal_submit_stage_map`. After step 1 these are internal-only, which is likely fine; full RLS is the belt-and-braces version.
 
 Verify after applying, with the same method used here — an anonymous `curl`, not a re-read of the grant tables.
+
+---
+
+## Round three — RPCs, 2026-10-03. OPEN ITEM: the supabase_admin default
+
+This audit covered **relations only** — its method was `has_table_privilege` plus
+live `/rest/v1/` reads, and its closing sweep tested "all 198 `anon`-granted
+**relations**." Database **functions were never in scope**, and neither
+`EDGE_FUNCTION_JWT_AUDIT.md` nor this file classified a single one.
+
+60 `SECURITY DEFINER` functions in `public` were anon-reachable (47 RPC-callable,
+13 triggers, which PostgREST cannot call). `SECURITY DEFINER` removes RLS from the
+question entirely, so this file's central finding — "for the ~175 with RLS enabled,
+RLS is doing its job" — said nothing about them.
+
+**Confirmed by anonymous HTTP and since closed** (migrations `20261003174916`,
+`175011`, `180540`, `180610`, `180656`, `180839`, `211021`, `211145`):
+
+| function | what it returned to an unauthenticated caller |
+|---|---|
+| `get_sweep_staging` | 2,610 bytes of research staging — project names, addresses, descriptions |
+| `get_portal_user_clients` | `client_id` + `client_name` for a portal user |
+| `get_dropbox_folder_path` | a real Dropbox folder path |
+| `resolve_actor_kind` | `"broker"` for any auth user id |
+
+Plus eight **writers** closed on inspection (never called): `submit_research_report`
+(deletes a run's staging rows), `streetlight_record_spend` (the paid-API spend
+ledger), `set/reset_portal_file_visibility`, `calculate_deal_payment_dates`,
+`update_all_payment_estimates`, `update_behind_schedule_status`,
+`record_portal_site_submit_view`, `create_orep_target_area`. And
+`validate_portal_invite_token` is now read-only, with its `auth.identities`
+DELETE moved to the `portal-invite-precheck` edge function.
+
+### Why it took two revokes every time — read this before the next pass
+
+A function in this database is anon-reachable by **two independent grants**:
+
+1. the `PUBLIC` EXECUTE grant Postgres adds to every new function, and
+2. an **explicit `anon` grant** from `ALTER DEFAULT PRIVILEGES` (`pg_default_acl`,
+   objtype `f`).
+
+Round one of this audit revoked the **table** default from `anon`; **functions were
+left**. So `REVOKE … FROM anon` succeeds and changes nothing when the reach comes
+from `PUBLIC`, and `REVOKE … FROM PUBLIC` succeeds and changes nothing when there
+is also an explicit `anon` grant. Both happened, in that order, on the same
+functions. **Closing one path tells you nothing about the other, and a revoke that
+printed `REVOKE` is not evidence — only the anonymous HTTP request is.**
+
+Closing `anon` also left `authenticated` holding EXECUTE on all nine writers from
+the same default, so any logged-in account — portal clients included — could still
+delete staging rows or fabricate spend. That needed its own migration.
+
+### OPEN: the supabase_admin default privileges cannot be changed from here
+
+Applied for the `postgres` owner, so migrations (which run as `postgres`) now
+produce functions that `anon` cannot call unless granted explicitly — CLAUDE.md's
+explicit-grants rule enforced by the database rather than by memory:
+
+```sql
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+```
+
+**The `supabase_admin` half fails:** `ERROR: permission denied to change default
+privileges`. Established, not assumed:
+
+- `pg_has_role('postgres','supabase_admin','MEMBER')` → **false**
+- `SET ROLE supabase_admin` → `ERROR: permission denied to set role "supabase_admin"`
+- `postgres` is **not** a superuser (`rolsuper = false`, `rolbypassrls = true`)
+
+So no session we can open — psql or the dashboard SQL editor, which also connects
+as `postgres` — can alter another role's default privileges. It needs Supabase
+support or a platform-level change.
+
+**Residual risk today is low and should not be overstated.** All 744
+`supabase_admin`-owned functions in `public` are **PostGIS extension functions**
+(`pg_depend` confirms: 744 of 744 belong to `extension postgis`, zero are
+non-extension). They are pure computation and expected to be callable. The gap is
+*future* objects created as `supabase_admin` — Supabase tooling or an extension
+upgrade — which would inherit `anon` EXECUTE silently.
+
+**Watch query**, cheap enough for any later audit:
+
+```sql
+select p.proname
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+left join pg_depend d on d.objid = p.oid and d.deptype = 'e'
+where n.nspname = 'public'
+  and pg_get_userbyid(p.proowner) = 'supabase_admin'
+  and d.objid is null                     -- not from an extension
+  and has_function_privilege('anon', p.oid, 'EXECUTE');
+```
+
+Zero rows today. Anything appearing there is a new anon-callable function nobody
+granted.
