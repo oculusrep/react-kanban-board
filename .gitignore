@@ -93,3 +93,6 @@ start-claude.sh
 
 # Claude Code local worktrees (never commit)
 .claude/worktrees/
+
+# Captured mailbox data: contains sender addresses, never commit
+docs/data/
