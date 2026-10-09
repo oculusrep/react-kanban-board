@@ -6,7 +6,7 @@
 // slide-over and the triage queue.
 
 import { useState } from 'react';
-import { insertBoardNote, upsertBoardState } from '../../lib/boardWrites';
+import { upsertBoardState } from '../../lib/boardWrites';
 import { BoardDeal, formatReviewDate, isParked, PALETTE } from '../../lib/starbucksBoard';
 
 function localDate(offsetDays = 0): string {
@@ -34,15 +34,18 @@ export default function ParkControl({
   const today = localDate(0);
   const canPark = date > today; // strictly future — no indefinite/instant parking
 
+  // One write each way. The history trigger on deal_activity_state posts
+  // "Parked until …: reason" / "Un-parked" to the chat (internal), and that
+  // entry never resets the clock, so the review date set here stands.
   async function park() {
     setSaving(true);
     setErr(null);
     try {
-      const note = `Parked until ${formatReviewDate(date)}${reason.trim() ? `: ${reason.trim()}` : ''}`;
-      // Note first (its reset trigger stamps ball_in_court_since = now); then the
-      // upsert below overwrites it with the review date so the clock runs from then.
-      await insertBoardNote(deal, note);
-      await upsertBoardState(deal, { parked_until: date, ball_in_court_since: new Date(`${date}T00:00:00`).toISOString() });
+      await upsertBoardState(deal, {
+        parked_until: date,
+        parked_reason: reason.trim() || null,
+        ball_in_court_since: new Date(`${date}T00:00:00`).toISOString(),
+      });
       onDone();
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to park');
@@ -54,8 +57,7 @@ export default function ParkControl({
     setSaving(true);
     setErr(null);
     try {
-      await insertBoardNote(deal, 'Un-parked — back on the board.');
-      await upsertBoardState(deal, { parked_until: null, ball_in_court_since: new Date().toISOString() });
+      await upsertBoardState(deal, { parked_until: null, parked_reason: null, ball_in_court_since: new Date().toISOString() });
       onDone();
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to un-park');

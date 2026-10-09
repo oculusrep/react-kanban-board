@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { touchFilter } from '../../lib/boardWrites';
+import { loadBoardThread, touchFilter } from '../../lib/boardWrites';
 import { BoardDeal, CONDENSED_STACK, PALETTE } from '../../lib/starbucksBoard';
 import ClassifyControls from './ClassifyControls';
 import KillPassAction from './KillPassAction';
@@ -47,14 +47,15 @@ export default function TriageQueue({
   const loadHistory = useCallback(async (d: BoardDeal) => {
     setHistory([]);
     try {
+      // Activity log + the card's chat thread (notes, board history, sidebar chat).
       const key = touchFilter(d);
-      const [{ data: acts }, { data: notes }] = await Promise.all([
+      const [{ data: acts }, thread] = await Promise.all([
         supabase.from('activity').select('id, subject, activity_date').eq(key.column, key.value).order('activity_date', { ascending: false }).limit(6),
-        supabase.from('note').select(`id, title, created_at, note_object_link!inner(${key.column})`).eq(`note_object_link.${key.column}`, key.value).order('created_at', { ascending: false }).limit(4),
+        loadBoardThread(d, 6),
       ]);
       const rows: HistoryRow[] = [
         ...((acts as any[]) ?? []).map((a) => ({ id: `a_${a.id}`, kind: 'activity' as const, text: a.subject || '(activity)', date: a.activity_date })),
-        ...((notes as any[]) ?? []).map((n) => ({ id: `n_${n.id}`, kind: 'note' as const, text: n.title || '(note)', date: n.created_at })),
+        ...thread.map((c) => ({ id: `c_${c.id}`, kind: 'note' as const, text: c.content, date: c.created_at })),
       ].sort((x, y) => (y.date ?? '').localeCompare(x.date ?? '')).slice(0, 8);
       setHistory(rows);
     } catch (e) {
