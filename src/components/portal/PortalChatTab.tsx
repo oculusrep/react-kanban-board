@@ -17,6 +17,9 @@ interface Comment {
   replies?: Comment[];
   reply_count?: number;
   activity_type?: string | null; // null = regular message, otherwise activity type like 'field_update', 'file_added', 'status_change'
+  // Written by the Starbucks Deal Board. Always internal (DB CHECK); the
+  // visibility toggle is hidden for these. board_history renders as a system line.
+  origin?: 'board_note' | 'board_history' | null;
 }
 
 interface PortalChatTabProps {
@@ -111,11 +114,17 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
       setError(null);
 
       try {
+        // A site-backed deal shows ONE thread: the site's rows plus any rows
+        // keyed only to the deal (written before the deal had a site, or by
+        // deal-only paths). Linked by reading, never copied, so visibility is
+        // whatever each row already has.
         let query = supabase
           .from('site_submit_comment')
           .select('*')
-          .eq(commentColumn, commentTargetId)
           .order('created_at', { ascending: true });
+        query = commentColumn === 'site_submit_id' && dealId
+          ? query.or(`site_submit_id.eq.${commentTargetId},deal_id.eq.${dealId}`)
+          : query.eq(commentColumn, commentTargetId);
 
         if (!showInternalComments) {
           query = query.eq('visibility', 'client');
@@ -212,7 +221,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
 
     fetchComments();
 
-    const subscription = supabase
+    let channel = supabase
       .channel(`comments-${commentColumn}-${commentTargetId}`)
       .on(
         'postgres_changes',
@@ -225,13 +234,20 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
         () => {
           fetchComments();
         }
-      )
-      .subscribe();
+      );
+    if (commentColumn === 'site_submit_id' && dealId) {
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'site_submit_comment', filter: `deal_id=eq.${dealId}` },
+        () => { fetchComments(); }
+      );
+    }
+    const subscription = channel.subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [commentColumn, commentTargetId, showInternalComments]);
+  }, [commentColumn, commentTargetId, showInternalComments, dealId]);
 
   useEffect(() => {
     commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -616,8 +632,8 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
     isReply: boolean = false,
     parentId?: string
   ) => {
-    // Render activity entries differently
-    if (comment.activity_type) {
+    // Render activity entries (and board history) differently
+    if (comment.activity_type || comment.origin === 'board_history') {
       // For file_added activities, make the filename clickable
       if (comment.activity_type === 'file_added') {
         const { fileName, dropboxPath } = parseFileAttachment(comment.content);
@@ -673,6 +689,9 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
                 )}
               </svg>
               <span>
+                {comment.origin === 'board_history' && (
+                  <span className="mr-1 px-1 rounded bg-amber-200 text-amber-800 font-medium" title="Logged by the Starbucks board · internal only">Board · Internal</span>
+                )}
                 <span className="font-medium text-gray-700">{comment.author_name}</span>
                 {' '}{comment.content}
               </span>
@@ -806,7 +825,12 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
               <span className={`font-semibold text-gray-900 ${isReply ? 'text-[11px]' : 'text-xs'}`}>
                 {comment.author_name}
               </span>
-              {showInternalComments && (isAdmin || comment.author_id === user?.id) ? (
+              {comment.origin && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium" title="Logged from the Starbucks board">
+                  Board
+                </span>
+              )}
+              {showInternalComments && !comment.origin && (isAdmin || comment.author_id === user?.id) ? (
                 <button
                   onClick={() => handleToggleVisibility(comment, isReply, parentId)}
                   className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${

@@ -1,6 +1,7 @@
 // Shared write helpers for the Starbucks board. Keeps note-insertion and
 // deal_activity_state writes identical across the slide-over, triage queue,
-// Pass / Mark lost, Park, Urgent and the agenda star.
+// Pass / Mark lost, Park, Urgent and the agenda star. Notes go into the card's
+// chat thread; court / blocker / park history is posted there by a DB trigger.
 //
 // A board card is a site_submit, with deal data joined in when a deal exists
 // (decisions §2.27). deal_activity_state is dual-keyed: a deal-backed card's
@@ -46,55 +47,53 @@ export async function updateBoardState(s: BoardSubject, patch: Record<string, un
   if (error) throw error;
 }
 
-// Insert a narrative note against a card (note + polymorphic note_object_link):
-// on the deal when there is one, else on the site_submit. The link-insert fires
-// the reset-clock trigger; mirrors NoteFormModal.
+// Insert a note against a card — into the card's chat thread
+// (site_submit_comment), the same thread the deal and site-submit sidebars
+// show (decisions §5, 2026-10-09). Always internal: origin = 'board_note', and
+// a CHECK keeps board rows internal. Keyed on the site_submit when the card has
+// one (the deal sidebar reads the site's thread), else on the deal. The
+// comment trigger resets the card's clock — once.
 export async function insertBoardNote(s: BoardSubject, body: string): Promise<void> {
-  if (s.dealId) return insertDealNote(s.dealId, body);
-  if (!s.siteSubmitId) throw new Error('Board card has neither a deal nor a site submit');
-  const { id: noteId, stamp } = await insertNote(body);
-  const { error: linkErr } = await supabase.from('note_object_link').insert({
-    note_id: noteId,
-    sf_content_document_link_id: `${stamp}_site_submit`,
-    object_type: 'site_submit',
-    object_id: s.siteSubmitId,
-    site_submit_id: s.siteSubmitId,
+  const { data: auth } = await supabase.auth.getUser();
+  const authorId = auth.user?.id;
+  if (!authorId) throw new Error('Not signed in');
+  const target = s.siteSubmitId ? { site_submit_id: s.siteSubmitId } : s.dealId ? { deal_id: s.dealId } : null;
+  if (!target) throw new Error('Board card has neither a deal nor a site submit');
+  const { error } = await supabase.from('site_submit_comment').insert({
+    ...target,
+    author_id: authorId,
+    content: body,
+    visibility: 'internal',
+    origin: 'board_note',
   });
-  if (linkErr) throw linkErr;
+  if (error) throw error;
 }
 
-// Insert a narrative note against a deal.
-export async function insertDealNote(dealId: string, body: string): Promise<void> {
-  const { id: noteId, stamp } = await insertNote(body);
-  const { error: linkErr } = await supabase.from('note_object_link').insert({
-    note_id: noteId,
-    sf_content_document_link_id: `${stamp}_deal`,
-    object_type: 'deal',
-    object_id: dealId,
-    deal_id: dealId,
-  });
-  if (linkErr) throw linkErr;
+export interface ThreadEntry {
+  id: string;
+  content: string;
+  visibility: 'internal' | 'client';
+  origin: 'board_note' | 'board_history' | null;
+  created_at: string;
 }
 
-async function insertNote(body: string): Promise<{ id: string; stamp: string }> {
-  const stamp = `manual_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const title = body.length > 60 ? `${body.slice(0, 57)}…` : body;
-  const { data: note, error: noteErr } = await supabase
-    .from('note')
-    .insert({
-      sf_content_note_id: stamp,
-      title,
-      body,
-      content_size: body.length,
-      share_type: 'V',
-      visibility: 'AllUsers',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single();
-  if (noteErr) throw noteErr;
-  return { id: note!.id, stamp };
+// The card's chat thread, newest first: rows on its site_submit plus rows keyed
+// only to its deal — the same thread PortalChatTab shows on both sidebars.
+export async function loadBoardThread(s: BoardSubject, limit: number): Promise<ThreadEntry[]> {
+  const ors = [
+    s.siteSubmitId ? `site_submit_id.eq.${s.siteSubmitId}` : null,
+    s.dealId ? `deal_id.eq.${s.dealId}` : null,
+  ].filter(Boolean);
+  if (ors.length === 0) return [];
+  const { data, error } = await supabase
+    .from('site_submit_comment')
+    .select('id, content, visibility, origin, created_at')
+    .or(ors.join(','))
+    .is('parent_comment_id', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data as ThreadEntry[]) ?? [];
 }
 
 // Filter column for reads of a card's notes / tasks / activity.

@@ -5,8 +5,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
-import { touchFilter } from '../../lib/boardWrites';
+import { loadBoardThread, type ThreadEntry } from '../../lib/boardWrites';
 import {
   BoardDeal,
   CONDENSED_STACK,
@@ -20,7 +19,6 @@ import ParkControl from './ParkControl';
 import TouchControls from './TouchControls';
 import UrgentToggle from './UrgentToggle';
 
-interface NoteRow { id: string; title: string | null; body: string | null; created_at: string | null; }
 
 export default function DealSlideOver({
   deal,
@@ -36,18 +34,12 @@ export default function DealSlideOver({
   const navigate = useNavigate();
   const px = (n: number) => Math.round(n * scale);
 
-  const [notes, setNotes] = useState<NoteRow[]>([]);
+  const [notes, setNotes] = useState<ThreadEntry[]>([]);
 
+  // The card's chat thread — the same one the deal / site-submit sidebars show.
   const loadDetails = useCallback(async () => {
     try {
-      const key = touchFilter(deal);
-      const { data: noteData } = await supabase
-        .from('note')
-        .select(`id, title, body, created_at, note_object_link!inner(${key.column})`)
-        .eq(`note_object_link.${key.column}`, key.value)
-        .order('created_at', { ascending: false })
-        .limit(3);
-      setNotes((noteData as NoteRow[]) ?? []);
+      setNotes(await loadBoardThread(deal, 5));
     } catch (e) {
       console.error('DealSlideOver.loadDetails', e);
     }
@@ -101,15 +93,18 @@ export default function DealSlideOver({
           {/* Log a note · Set next action — shared with the triage queue (TouchControls) */}
           <TouchControls deal={deal} px={px} onSaved={() => { loadDetails(); onChanged(); }} />
 
-          <Section title="Recent notes" px={px}>
+          <Section title="Recent chat" px={px}>
             {notes.length === 0 ? (
               <div style={{ color: PALETTE.textDim, fontSize: px(14) }}>None yet.</div>
             ) : (
               <div className="flex flex-col gap-2">
                 {notes.map((n) => (
                   <div key={n.id} style={{ fontSize: px(14) }}>
-                    <div style={{ color: PALETTE.text }}>{n.title || stripHtml(n.body)}</div>
-                    <div style={{ color: PALETTE.textDim, fontSize: px(12) }}>{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
+                    <div style={{ color: n.origin === 'board_history' ? PALETTE.textDim : PALETTE.text, fontStyle: n.origin === 'board_history' ? 'italic' : undefined }}>{stripHtml(n.content)}</div>
+                    <div style={{ color: PALETTE.textDim, fontSize: px(12) }}>
+                      {new Date(n.created_at).toLocaleString()}
+                      {n.visibility === 'client' ? ' · client-visible' : ''}
+                    </div>
                   </div>
                 ))}
               </div>

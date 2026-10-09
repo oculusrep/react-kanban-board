@@ -1,6 +1,6 @@
 # Starbucks Board — one history with the deal / site-submit chat
 
-**Status:** plan, not built (2026-10-09). Branch `feature/board-unified-history`.
+**Status:** built on the branch; migration `20261009172325` pending apply (2026-10-09). Decisions: internal chat messages reset the clock (in this build); no urgent/agenda history; existing notes not migrated. Branch `feature/board-unified-history`.
 **Goal:** what you log on the board — notes and court / blocker / park changes — shows in the same chat you see on the deal and site-submit sidebars. One history, not two, and always internal only.
 
 ---

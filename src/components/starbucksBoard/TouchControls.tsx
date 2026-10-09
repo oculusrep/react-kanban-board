@@ -89,8 +89,11 @@ export default function TouchControls({
         category_id: categoryId,
         owner_id: userTableId,
         created_by_id: userTableId,
-        // On the deal when there is one, else the site_submit (§2.27).
-        ...(deal.dealId ? { deal_id: deal.dealId } : { site_submit_id: deal.siteSubmitId }),
+        // Both keys when the card has both, so the task shows in the deal views
+        // and in the sidebar Tasks tab (keyed on the site_submit). One clock reset:
+        // the trigger resolves the card from either key.
+        deal_id: deal.dealId,
+        site_submit_id: deal.siteSubmitId,
         status: 'open',
         is_inbox: true,
         due_at: taskDue ? new Date(`${taskDue}T00:00:00`).toISOString() : null,
