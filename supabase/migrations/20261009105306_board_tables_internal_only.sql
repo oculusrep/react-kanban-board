@@ -21,6 +21,8 @@
 -- The reset-clock / attach / blocker triggers are SECURITY DEFINER owned by
 -- postgres and are unaffected by these policies.
 --
+-- C. is_internal_user() is SECURITY DEFINER with no fixed search_path; pin it.
+--
 -- No BEGIN/COMMIT: apply with psql --single-transaction.
 
 -- ---------------------------------------------------------------------------
@@ -59,3 +61,9 @@ CREATE POLICY task_insert_internal ON public.task
 -- task still had the inherited anon ALL grant (the policies were the only
 -- gate). Nothing pre-auth touches tasks.
 REVOKE ALL ON public.task FROM anon;
+
+-- ---------------------------------------------------------------------------
+-- C. Pin is_internal_user()'s search_path (SECURITY DEFINER hardening). Its
+-- body references "user" unqualified, which resolves in public.
+-- ---------------------------------------------------------------------------
+ALTER FUNCTION public.is_internal_user() SET search_path = public, pg_temp;
