@@ -12,7 +12,7 @@ import { parseISO, format } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCategoryIdByName } from '../../lib/taskCategory';
-import { insertDealNote } from '../../lib/boardWrites';
+import { insertBoardNote, touchFilter } from '../../lib/boardWrites';
 import { BoardDeal, CONDENSED_STACK, PALETTE } from '../../lib/starbucksBoard';
 
 interface TaskRow { id: string; subject: string | null; due_at: string | null; }
@@ -37,10 +37,11 @@ export default function TouchControls({
 
   const loadOpenTask = useCallback(async () => {
     try {
+      const key = touchFilter(deal);
       const { data } = await supabase
         .from('task')
         .select('id, subject, due_at')
-        .eq('deal_id', deal.id)
+        .eq(key.column, key.value)
         .in('status', ['open', 'in_progress'])
         .order('due_at', { ascending: true, nullsFirst: false })
         .limit(1);
@@ -48,7 +49,7 @@ export default function TouchControls({
     } catch (e) {
       console.error('TouchControls.loadOpenTask', e);
     }
-  }, [deal.id]);
+  }, [deal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset inputs and reload the current open action when the deal changes.
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function TouchControls({
     setSaving(true);
     setErr(null);
     try {
-      await insertDealNote(deal.id, body);
+      await insertBoardNote(deal, body);
       setNoteBody('');
       onSaved?.();
     } catch (e: any) {
@@ -88,7 +89,8 @@ export default function TouchControls({
         category_id: categoryId,
         owner_id: userTableId,
         created_by_id: userTableId,
-        deal_id: deal.id,
+        // On the deal when there is one, else the site_submit (§2.27).
+        ...(deal.dealId ? { deal_id: deal.dealId } : { site_submit_id: deal.siteSubmitId }),
         status: 'open',
         is_inbox: true,
         due_at: taskDue ? new Date(`${taskDue}T00:00:00`).toISOString() : null,

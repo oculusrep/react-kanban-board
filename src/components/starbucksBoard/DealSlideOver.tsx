@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import { touchFilter } from '../../lib/boardWrites';
 import {
   BoardDeal,
   CONDENSED_STACK,
@@ -39,17 +40,18 @@ export default function DealSlideOver({
 
   const loadDetails = useCallback(async () => {
     try {
+      const key = touchFilter(deal);
       const { data: noteData } = await supabase
         .from('note')
-        .select('id, title, body, created_at, note_object_link!inner(deal_id)')
-        .eq('note_object_link.deal_id', deal.id)
+        .select(`id, title, body, created_at, note_object_link!inner(${key.column})`)
+        .eq(`note_object_link.${key.column}`, key.value)
         .order('created_at', { ascending: false })
         .limit(3);
       setNotes((noteData as NoteRow[]) ?? []);
     } catch (e) {
       console.error('DealSlideOver.loadDetails', e);
     }
-  }, [deal.id]);
+  }, [deal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadDetails(); }, [loadDetails]);
 
@@ -126,7 +128,11 @@ export default function DealSlideOver({
         </div>
 
         <div className="px-5 py-3" style={{ borderTop: `1px solid ${PALETTE.ground}` }}>
-          <button onClick={() => navigate(`/deal/${deal.id}`)} style={{ color: PALETTE.textDim, fontSize: px(13) }}>Open full deal →</button>
+          {deal.dealId ? (
+            <button onClick={() => navigate(`/deal/${deal.dealId}`)} style={{ color: PALETTE.textDim, fontSize: px(13) }}>Open full deal →</button>
+          ) : (
+            <button onClick={() => navigate(`/site-submit/${deal.siteSubmitId}`)} style={{ color: PALETTE.textDim, fontSize: px(13) }}>No deal yet — open site submit →</button>
+          )}
         </div>
       </div>
     </>
