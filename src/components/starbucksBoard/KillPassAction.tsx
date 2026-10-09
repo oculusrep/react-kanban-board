@@ -7,10 +7,11 @@
 //   Lost  → deal.loss_reason + deal.stage_id = Lost (canonical) AND a note; the
 //           stage-sync trigger flips the site to Lost / Killed.
 // A deal with no site_submit can't be "passed" — it falls back to Mark lost.
+// A site_submit with no deal can't be "lost" — it is always passed (§2.27).
 
 import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { insertDealNote } from '../../lib/boardWrites';
+import { insertBoardNote } from '../../lib/boardWrites';
 import {
   BoardDeal,
   isEarlyStage,
@@ -29,7 +30,8 @@ export default function KillPassAction({
   px: (n: number) => number;
   onDone: () => void; // refetch board + close slide-over
 }) {
-  const mode: 'pass' | 'lost' = isEarlyStage(deal.stageLabel) && deal.siteSubmitId ? 'pass' : 'lost';
+  const mode: 'pass' | 'lost' =
+    deal.siteSubmitId && (isEarlyStage(deal.stageLabel) || !deal.dealId) ? 'pass' : 'lost';
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [category, setCategory] = useState<PassCategory | ''>('');
@@ -52,13 +54,13 @@ export default function KillPassAction({
           .update({ pass_reason: text, pass_reason_category: category, submit_stage_id: ps!.id })
           .eq('id', deal.siteSubmitId);
         if (ssErr) throw ssErr;
-        await insertDealNote(deal.id, `Passed on this site — ${passCategoryLabel(category as PassCategory)}: ${text}`);
+        await insertBoardNote(deal, `Passed on this site — ${passCategoryLabel(category as PassCategory)}: ${text}`);
       } else {
         const { data: ls, error: lsErr } = await supabase.from('deal_stage').select('id').eq('label', 'Lost').single();
         if (lsErr) throw lsErr;
-        const { error: dErr } = await supabase.from('deal').update({ loss_reason: text, stage_id: ls!.id }).eq('id', deal.id);
+        const { error: dErr } = await supabase.from('deal').update({ loss_reason: text, stage_id: ls!.id }).eq('id', deal.dealId);
         if (dErr) throw dErr;
-        await insertDealNote(deal.id, `Marked lost: ${text}`);
+        await insertBoardNote(deal, `Marked lost: ${text}`);
       }
       onDone();
     } catch (e: any) {
@@ -85,7 +87,7 @@ export default function KillPassAction({
 
       <div style={{ fontSize: px(12), color: PALETTE.textDim, marginBottom: 6 }}>
         {mode === 'pass'
-          ? 'Records the pass reason on the site (for the client report) + a note on the deal, and removes the tile. The deal record stays at its stage.'
+          ? `Records the pass reason on the site (for the client report) + a note on the ${deal.dealId ? 'deal' : 'site'}, and removes the tile.${deal.dealId ? ' The deal record stays at its stage.' : ''}`
           : 'Marks the deal Lost (records the reason) + a note, and removes it from the board.'}
       </div>
 

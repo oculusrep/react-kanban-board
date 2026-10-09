@@ -8,7 +8,7 @@
 // dense tiles fit before the fat column scrolls (spec §4.1 tension).
 // Renders fixed inset-0 so it covers the app nav — it's a TV surface.
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useStarbucksBoard, { BoardColumn } from '../hooks/useStarbucksBoard';
 import {
@@ -22,12 +22,14 @@ import {
   landlordTag,
   PALETTE,
 } from '../lib/starbucksBoard';
-import { supabase } from '../lib/supabaseClient';
+import { updateBoardState } from '../lib/boardWrites';
 import DealSlideOver from '../components/starbucksBoard/DealSlideOver';
 import TriageQueue from '../components/starbucksBoard/TriageQueue';
 import ParkingLot from '../components/starbucksBoard/ParkingLot';
 
 // A column denser than this many tiles switches to the compact tile (spec §4.1).
+// A column whose full tiles don't fit its height also goes compact (§1.1 — the
+// board never scrolls; shrink tiles instead). See Column.
 const DENSE_THRESHOLD = 12;
 
 // Text scale — read from context; every font size is `px(base)`. Persisted so
@@ -105,7 +107,7 @@ export default function StarbucksDealBoardPage() {
 
   async function toggleStar(deal: BoardDeal) {
     try {
-      await supabase.from('deal_activity_state').update({ on_agenda: !deal.onAgenda }).eq('deal_id', deal.id);
+      await updateBoardState(deal, { on_agenda: !deal.onAgenda });
       refresh();
     } catch (e) {
       console.error('toggleStar', e);
@@ -433,7 +435,10 @@ function TileBand({
                 {d.urgent && <span title="Urgent" style={{ color: PALETTE.urgent, fontWeight: 700 }}>▲ </span>}
                 {d.name}
               </div>
-              <div className="truncate" style={{ fontSize: px(11), color: PALETTE.textDim }}>{d.city ?? '—'}{showToken ? ` · ${d.accountToken}` : ''} · {d.days}d</div>
+              <div className="flex items-center gap-1 min-w-0" style={{ fontSize: px(11), color: PALETTE.textDim }}>
+                <span className="truncate">{d.city ?? '—'}{showToken ? ` · ${d.accountToken}` : ''} · {d.days}d</span>
+                {!d.dealId && <NoDealBadge px={px} />}
+              </div>
             </div>
             <span className="whitespace-nowrap" style={{ fontSize: px(12), fontWeight: 600, color: verbColor ?? accent }}>{verb}</span>
             <button
@@ -458,7 +463,30 @@ function Column({ col, showToken, onOpen, onToggleStar }: { col: BoardColumn; sh
   const scale = useScale();
   const px = (n: number) => Math.round(n * scale);
   const empty = col.count === 0;
-  const dense = col.deals.length > DENSE_THRESHOLD;
+
+  // Fit check (§1.1): render full tiles, measure, and go compact if they
+  // overflow. Re-measured whenever the tile count, text scale, token display
+  // or the column's height (bands growing/shrinking above it) changes. The
+  // column body is flex-1, so its height doesn't depend on which tile it holds.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [bodyH, setBodyH] = useState(0);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setBodyH(Math.round(el.clientHeight)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const fitKey = `${col.deals.length}|${scale}|${bodyH}|${showToken}`;
+  const [fit, setFit] = useState<{ key: string; dense: boolean }>({ key: '', dense: false });
+  useLayoutEffect(() => {
+    if (fit.key === fitKey) return;
+    const el = bodyRef.current;
+    if (!el) return;
+    // This render used full tiles (fit.key is stale), so this is their real height.
+    setFit({ key: fitKey, dense: el.scrollHeight > el.clientHeight + 1 });
+  });
+  const dense = col.deals.length > DENSE_THRESHOLD || (fit.key === fitKey && fit.dense);
   return (
     <div className="flex flex-col rounded-lg overflow-hidden" style={{ backgroundColor: PALETTE.column, opacity: empty ? 0.5 : 1 }}>
       <div className="px-3 pt-2 pb-2">
@@ -473,7 +501,7 @@ function Column({ col, showToken, onOpen, onToggleStar }: { col: BoardColumn; sh
         </div>
       </div>
 
-      <div className={`flex-1 overflow-y-auto px-2 pb-2 flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
+      <div ref={bodyRef} className={`flex-1 overflow-y-auto px-2 pb-2 flex flex-col ${dense ? 'gap-1' : 'gap-2'}`}>
         {col.deals.map((d) => (
           <Tile key={d.id} deal={d} dense={dense} showToken={showToken} onOpen={onOpen} onToggleStar={onToggleStar} />
         ))}
@@ -497,6 +525,8 @@ function Tile({ deal, dense, showToken, onOpen, onToggleStar }: { deal: BoardDea
       {tag}
     </span>
   ) : null;
+
+  const noDeal = deal.dealId ? null : <NoDealBadge px={px} />;
 
   const star = (
     <button
@@ -533,6 +563,7 @@ function Tile({ deal, dense, showToken, onOpen, onToggleStar }: { deal: BoardDea
           {deal.name}
         </span>
         {showToken && <span className="whitespace-nowrap" style={{ fontSize: px(10), color: PALETTE.textDim }}>{deal.accountToken}</span>}
+        {noDeal}
         {tagChip}
         <span className="tabular-nums whitespace-nowrap" style={{ fontSize: px(12), color: denseRightColor(deal) }}>
           {denseRightText(deal)}
@@ -560,6 +591,7 @@ function Tile({ deal, dense, showToken, onOpen, onToggleStar }: { deal: BoardDea
         <div className="flex items-center gap-2" style={{ fontSize: px(13), color: PALETTE.textDim }}>
           <span className="truncate">{deal.city ?? '—'}</span>
           {showToken && <span style={{ fontSize: px(11) }}>· {deal.accountToken}</span>}
+          {noDeal}
           {tagChip}
         </div>
 
@@ -586,6 +618,20 @@ function Tile({ deal, dense, showToken, onOpen, onToggleStar }: { deal: BoardDea
         </div>
       </div>
     </div>
+  );
+}
+
+// "No deal yet" marker for a site_submit-only card (decisions §2.27). Dim and
+// text-only like the landlord tag — absence information, not a heat signal.
+function NoDealBadge({ px }: { px: (n: number) => number }) {
+  return (
+    <span
+      className="rounded whitespace-nowrap"
+      title="No deal yet — site submit only"
+      style={{ fontSize: px(10), color: PALETTE.textDim, border: `1px dashed ${PALETTE.textDim}`, padding: `0 ${px(4)}px` }}
+    >
+      no deal
+    </span>
   );
 }
 

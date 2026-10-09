@@ -1,5 +1,6 @@
 // Starbucks Deal Board — data hook.
-// Fetches Starbucks deals + their deal_activity_state, assembles the seven
+// Fetches Starbucks site_submits (deal joined in when one exists) + their
+// deal_activity_state, assembles the seven
 // board columns (Pre-Submittal exploded into blocker columns), computes heat
 // client-side, and the daily "need attention" number. Mirrors the
 // useState/useEffect + visibilitychange pattern of useKanbanData.
@@ -25,7 +26,10 @@ import {
   isUrgent,
   needsAttention,
   readyToSubmit as computeReadyToSubmit,
+  SUBMIT_STAGE_TO_BOARD_STAGE,
 } from '../lib/starbucksBoard';
+
+const PAGE_SIZE = 1000;
 
 export interface BoardColumn {
   key: string;
@@ -64,54 +68,85 @@ function embed<T>(v: T | T[] | null | undefined): T | null {
   return v ?? null;
 }
 
-interface RawRow {
-  id: string;
-  deal_name: string | null;
-  client: { id: string | null; client_name: string | null } | { id: string | null; client_name: string | null }[] | null;
-  stage: { label: string | null; sort_order: number | null } | { label: string | null; sort_order: number | null }[] | null;
-  property: { property_name: string | null; city: string | null } | { property_name: string | null; city: string | null }[] | null;
-  site_submit:
-    | { id: string | null; site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }
-    | { id: string | null; site_submit_name: string | null; submit_stage: { name: string | null } | { name: string | null }[] | null }[]
-    | null;
-  activity_state:
-    | {
-        ball_in_court: BallInCourt | null;
-        ball_in_court_party: string | null;
-        ball_in_court_since: string | null;
-        blocked_on: BlockedOn | null;
-        needs_pricing: boolean | null;
-        needs_site_plan: boolean | null;
-        on_agenda: boolean | null;
-        seeded_fallback: boolean | null;
-        parked_until: string | null;
-        urgent_until: string | null;
-      }
-    | any[]
-    | null;
+interface StateRow {
+  ball_in_court: BallInCourt | null;
+  ball_in_court_party: string | null;
+  ball_in_court_since: string | null;
+  blocked_on: BlockedOn | null;
+  needs_pricing: boolean | null;
+  needs_site_plan: boolean | null;
+  on_agenda: boolean | null;
+  seeded_fallback: boolean | null;
+  parked_until: string | null;
+  urgent_until: string | null;
 }
 
-function toBoardDeal(row: RawRow): BoardDeal | null {
-  const stage = embed(row.stage);
-  const stageLabel = stage?.label ?? null;
-  if (!stageLabel || !(BOARD_STAGES as readonly string[]).includes(stageLabel)) {
-    return null; // off-board stage (Lost, paid/terminal, etc.)
+type One<T> = T | T[] | null;
+interface ClientRow { id: string | null; client_name: string | null; starbucks_board_enabled: boolean | null }
+
+interface RawDeal {
+  id: string;
+  deal_name: string | null;
+  client: One<ClientRow>;
+  stage: One<{ label: string | null; sort_order: number | null }>;
+  property?: One<{ property_name: string | null; city: string | null }>;
+  state: One<StateRow>;
+}
+
+// The board unit (decisions §2.27): one row per site_submit, deal joined in.
+interface RawSiteSubmit {
+  id: string;
+  site_submit_name: string | null;
+  client: One<ClientRow>;
+  submit_stage: One<{ name: string | null }>;
+  property: One<{ property_name: string | null; city: string | null }>;
+  deal: One<RawDeal>;
+  site_state: One<StateRow>;
+}
+
+interface CardInput {
+  siteSubmitId: string | null;
+  siteSubmitName: string | null;
+  submitStage: string | null;
+  property: { property_name: string | null; city: string | null } | null;
+  client: ClientRow | null;
+  deal: RawDeal | null;
+  state: StateRow | null; // the card's deal_activity_state row, if any
+}
+
+// Column stage for a card: the deal stage wins when a deal exists; otherwise
+// the site_submit stage decides (§2.27). Null = off-board.
+function cardStage(c: CardInput): { label: string; sortOrder: number } | null {
+  if (c.deal) {
+    const stage = embed(c.deal.stage);
+    const label = stage?.label ?? null;
+    if (!label || !(BOARD_STAGES as readonly string[]).includes(label)) return null; // Lost, paid/terminal…
+    // A deal on a dead site is off the board regardless of deal stage (§2.22).
+    if (c.submitStage && DEAD_SUBMIT_STAGES.has(c.submitStage)) return null;
+    return { label, sortOrder: stage?.sort_order ?? 0 };
   }
-  const property = embed(row.property);
-  const siteSubmit = embed(row.site_submit);
-  // A deal whose linked site_submit is in a dead/declined stage is off the
-  // board regardless of deal stage (decisions §2.22). No site_submit → keep.
-  const ssStage = embed(siteSubmit?.submit_stage)?.name ?? null;
-  if (siteSubmit && ssStage && DEAD_SUBMIT_STAGES.has(ssStage)) return null;
-  const st = embed(row.activity_state);
-  const client = embed(row.client);
-  const clientId = client?.id ?? null;
-  const clientName = client?.client_name ?? null;
+  const label = c.submitStage ? SUBMIT_STAGE_TO_BOARD_STAGE[c.submitStage] : undefined;
+  if (!label) return null; // Pursuing Ownership, Monitor, Store Open, dead stages…
+  return { label, sortOrder: BOARD_STAGES.indexOf(label) };
+}
+
+function toBoardDeal(c: CardInput): BoardDeal | null {
+  // Scope (§2.14): only board-enabled clients — on the site_submit AND, when
+  // there is one, on the deal. The server filter covers the first; this
+  // covers the second.
+  if (c.deal && !embed(c.deal.client)?.starbucks_board_enabled) return null;
+  const stage = cardStage(c);
+  if (!stage) return null;
+  const stageLabel = stage.label;
+
+  const st = c.state;
+  const clientId = c.client?.id ?? null;
+  const clientName = c.client?.client_name ?? null;
 
   const name =
-    property?.property_name ||
-    siteSubmit?.site_submit_name ||
-    row.deal_name ||
+    c.property?.property_name ||
+    c.siteSubmitName ||
+    c.deal?.deal_name ||
     'Untitled site';
 
   // No activity_state row → treat as "no history" (spec §3.3.1).
@@ -127,15 +162,16 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
   const heat = computeHeat({ seededFallback, readyToSubmit: ready, ballInCourt, days });
 
   return {
-    id: row.id,
+    id: c.siteSubmitId ?? c.deal!.id,
+    dealId: c.deal?.id ?? null,
     name,
-    city: property?.city ?? null,
+    city: c.property?.city ?? null,
     clientId,
     clientName,
     accountToken: accountFor(clientId, clientName).token,
-    siteSubmitId: siteSubmit?.id ?? null,
+    siteSubmitId: c.siteSubmitId,
     stageLabel,
-    stageSortOrder: stage?.sort_order ?? 0,
+    stageSortOrder: stage.sortOrder,
     ballInCourt,
     ballInCourtParty: st?.ball_in_court_party ?? null,
     ballInCourtSince,
@@ -151,6 +187,34 @@ function toBoardDeal(row: RawRow): BoardDeal | null {
     urgent: isUrgent({ urgentUntil: st?.urgent_until ?? null }),
     heat,
   };
+}
+
+function fromSiteSubmit(row: RawSiteSubmit): BoardDeal | null {
+  const deal = embed(row.deal);
+  return toBoardDeal({
+    siteSubmitId: row.id,
+    siteSubmitName: row.site_submit_name,
+    submitStage: embed(row.submit_stage)?.name ?? null,
+    property: embed(row.property),
+    client: embed(row.client),
+    deal,
+    // Deal-backed card reads the deal's state row; site_submit-only reads the
+    // site's (the attach trigger moves it onto the deal when one is linked).
+    state: deal ? embed(deal.state) : embed(row.site_state),
+  });
+}
+
+// A deal with no site_submit at all is kept (nothing declared it dead, §2.22).
+function fromOrphanDeal(row: RawDeal): BoardDeal | null {
+  return toBoardDeal({
+    siteSubmitId: null,
+    siteSubmitName: null,
+    submitStage: null,
+    property: embed(row.property ?? null),
+    client: embed(row.client),
+    deal: row,
+    state: embed(row.state),
+  });
 }
 
 // Parking lot order: soonest review date first.
@@ -189,17 +253,35 @@ function computeDaily(deals: BoardDeal[]): DailyNumber {
   return { attention, yours, theirs, unclassified, noHistory };
 }
 
-const SELECT = `
+const STATE_COLS = `
+  ball_in_court, ball_in_court_party, ball_in_court_since,
+  blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until, urgent_until
+`;
+
+// Membership (decisions §2.14, §2.27): every site_submit of a board-enabled
+// client, deal joined in. Embeds name their FK explicitly — deal_activity_state
+// references both deal and site_submit, so unhinted embeds are ambiguous.
+const SITE_SUBMIT_SELECT = `
   id,
-  deal_name,
-  client:client_id!inner ( id, client_name, starbucks_layer_enabled ),
+  site_submit_name,
+  client:client!site_submit_client_id_fkey!inner ( id, client_name, starbucks_board_enabled ),
+  submit_stage:submit_stage!site_submit_submit_stage_id_fkey ( name ),
+  property:property!site_submit_property_id_fkey ( property_name, city ),
+  deal:deal!deal_site_submit_fk (
+    id, deal_name,
+    client:client_id ( id, client_name, starbucks_board_enabled ),
+    stage:stage_id ( label, sort_order ),
+    state:deal_activity_state!deal_activity_state_deal_id_fkey ( ${STATE_COLS} )
+  ),
+  site_state:deal_activity_state!deal_activity_state_site_submit_id_fkey ( ${STATE_COLS} )
+`;
+
+const ORPHAN_DEAL_SELECT = `
+  id, deal_name,
+  client:client_id!inner ( id, client_name, starbucks_board_enabled ),
   stage:stage_id ( label, sort_order ),
   property:property_id ( property_name, city ),
-  site_submit:site_submit_id ( id, site_submit_name, submit_stage!site_submit_submit_stage_id_fkey ( name ) ),
-  activity_state:deal_activity_state (
-    ball_in_court, ball_in_court_party, ball_in_court_since,
-    blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until, urgent_until
-  )
+  state:deal_activity_state!deal_activity_state_deal_id_fkey ( ${STATE_COLS} )
 `;
 
 // Distinct accounts present in the data (from the FULL, unfiltered set) — the
@@ -255,17 +337,32 @@ export default function useStarbucksBoard(accountFilter: string = ACCOUNT_ALL): 
     async function fetchBoard() {
       try {
         setError(null);
-        const { data, error: qErr } = await supabase
+        // site_submit can exceed 1000 rows pipeline-wide, but the client filter
+        // keeps this to the two Starbucks accounts (~200). Paginate anyway.
+        const siteRows: RawSiteSubmit[] = [];
+        for (let offset = 0; ; offset += PAGE_SIZE) {
+          const { data, error: qErr } = await supabase
+            .from('site_submit')
+            .select(SITE_SUBMIT_SELECT)
+            .eq('client.starbucks_board_enabled', true)
+            .order('id')
+            .range(offset, offset + PAGE_SIZE - 1);
+          if (qErr) throw qErr;
+          siteRows.push(...((data as unknown as RawSiteSubmit[]) ?? []));
+          if (!data || data.length < PAGE_SIZE) break;
+        }
+        const { data: orphanRows, error: oErr } = await supabase
           .from('deal')
-          .select(SELECT)
-          .eq('client.starbucks_layer_enabled', true);
-
-        if (qErr) throw qErr;
+          .select(ORPHAN_DEAL_SELECT)
+          .is('site_submit_id', null)
+          .eq('client.starbucks_board_enabled', true);
+        if (oErr) throw oErr;
         if (cancelled) return;
 
-        const deals = (data as RawRow[] | null ?? [])
-          .map(toBoardDeal)
-          .filter((d): d is BoardDeal => d !== null);
+        const deals = [
+          ...siteRows.map(fromSiteSubmit),
+          ...((orphanRows as unknown as RawDeal[]) ?? []).map(fromOrphanDeal),
+        ].filter((d): d is BoardDeal => d !== null);
 
         setAllDeals(deals);
         setLastSynced(new Date());

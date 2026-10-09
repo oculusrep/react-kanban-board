@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { touchFilter } from '../../lib/boardWrites';
 import { BoardDeal, CONDENSED_STACK, PALETTE } from '../../lib/starbucksBoard';
 import ClassifyControls from './ClassifyControls';
 import KillPassAction from './KillPassAction';
@@ -43,12 +44,13 @@ export default function TriageQueue({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const loadHistory = useCallback(async (dealId: string) => {
+  const loadHistory = useCallback(async (d: BoardDeal) => {
     setHistory([]);
     try {
+      const key = touchFilter(d);
       const [{ data: acts }, { data: notes }] = await Promise.all([
-        supabase.from('activity').select('id, subject, activity_date').eq('deal_id', dealId).order('activity_date', { ascending: false }).limit(6),
-        supabase.from('note').select('id, title, created_at, note_object_link!inner(deal_id)').eq('note_object_link.deal_id', dealId).order('created_at', { ascending: false }).limit(4),
+        supabase.from('activity').select('id, subject, activity_date').eq(key.column, key.value).order('activity_date', { ascending: false }).limit(6),
+        supabase.from('note').select(`id, title, created_at, note_object_link!inner(${key.column})`).eq(`note_object_link.${key.column}`, key.value).order('created_at', { ascending: false }).limit(4),
       ]);
       const rows: HistoryRow[] = [
         ...((acts as any[]) ?? []).map((a) => ({ id: `a_${a.id}`, kind: 'activity' as const, text: a.subject || '(activity)', date: a.activity_date })),
@@ -60,7 +62,7 @@ export default function TriageQueue({
     }
   }, []);
 
-  useEffect(() => { if (current) loadHistory(current.id); }, [current, loadHistory]);
+  useEffect(() => { if (current) loadHistory(current); }, [current, loadHistory]);
 
   function advance() {
     onChanged(); // refresh the board + the header counter live
@@ -136,7 +138,7 @@ export default function TriageQueue({
           {/* Log a note / next action — a touch cools the tile but does NOT
               classify, so stay on this deal (refresh history) rather than advance. */}
           <div className="rounded-lg p-4 mt-4" style={{ backgroundColor: PALETTE.column }}>
-            <TouchControls deal={current} px={px} onSaved={() => { loadHistory(current.id); onChanged(); }} />
+            <TouchControls deal={current} px={px} onSaved={() => { loadHistory(current); onChanged(); }} />
           </div>
 
           {/* Pass / Mark lost — removes the deal from the board, so advance (§2.23). */}
