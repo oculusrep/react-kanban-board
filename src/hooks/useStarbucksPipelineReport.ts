@@ -205,6 +205,8 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
         blockedOn: c.blockedOn,
         needsPricing: c.needsPricing,
         needsSitePlan: c.needsSitePlan,
+        days: c.days,
+        heat: c.heat,
         packageStatus: s?.package_status ?? '',
         notes: s?.notes ?? '',
       };

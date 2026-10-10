@@ -20,6 +20,7 @@ import {
   saveLoiStatus,
   savePreStatus,
   statusKind,
+  courtClock,
 } from '../lib/starbucksPipelineReport';
 
 const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
@@ -164,6 +165,7 @@ export default function StarbucksPipelineReportPage() {
               <col style={{ width: 44 }} />
               <col style={{ width: '22%' }} />
               <col style={{ width: 290 }} />
+              <col style={{ width: 110 }} />
               <col style={{ width: 140 }} />
               <col />
               <col style={{ width: 80 }} />
@@ -174,6 +176,7 @@ export default function StarbucksPipelineReportPage() {
                 <th className="px-2 py-2.5 text-center font-semibold">#</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Deal / Site Submit</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Status</th>
+                <th className="px-3 py-2.5 text-center font-semibold">Days in Court</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Package Status</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Notes</th>
                 <th className="px-3 py-2.5 text-center font-semibold">Map</th>
@@ -184,9 +187,9 @@ export default function StarbucksPipelineReportPage() {
                 {(drop) => (
                   <tbody ref={drop.innerRef} {...drop.droppableProps}>
                     {loading && rows.length === 0 ? (
-                      <tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>Loading…</td></tr>
+                      <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>Loading…</td></tr>
                     ) : rows.length === 0 ? (
-                      <tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>No sites in these stages.</td></tr>
+                      <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>No sites in these stages.</td></tr>
                     ) : (
                       rows.map((r, i) => (
                         <Draggable key={r.id} draggableId={r.id} index={i}>
@@ -230,6 +233,9 @@ export default function StarbucksPipelineReportPage() {
                                   </div>
                                 )}
                               </td>
+                              <td className="px-3 py-2.5 text-center" style={{ width: 110 }}>
+                                <CourtClock row={r} />
+                              </td>
                               <td className="px-2 py-1.5" style={{ width: 140 }}>
                                 <EditableCell row={r} field="package_status" value={r.packageStatus} onSave={setField} />
                               </td>
@@ -259,6 +265,32 @@ export default function StarbucksPipelineReportPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Who owes + days on the board clock; warm/hot use the board's thresholds.
+function CourtClock({ row }: { row: ReportRow }) {
+  const c = courtClock(row);
+  if (!c) {
+    return (
+      <span className="text-xs" style={{ color: '#8FA9C8' }} title={row.heat === 'no_history' ? 'No touch history yet' : 'Court not set'}>
+        —
+      </span>
+    );
+  }
+  const late = row.heat === 'hot' || row.heat === 'warm';
+  return (
+    <span
+      className="inline-block text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
+      style={{
+        color: late ? '#A27B5C' : '#4A6B94',
+        border: `1px solid ${late ? '#A27B5C' : '#8FA9C8'}`,
+        fontWeight: row.heat === 'hot' ? 700 : 500,
+      }}
+      title={row.heat === 'hot' ? 'Overdue on the board clock' : row.heat === 'warm' ? 'Getting stale' : undefined}
+    >
+      {c.who} · {c.days}d
+    </span>
   );
 }
 

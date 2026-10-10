@@ -7,7 +7,7 @@
 import { supabase } from './supabaseClient';
 import { exportToExcel, ExcelColumn, getLogoBase64 } from './excelExport';
 import { upsertBoardState } from './boardWrites';
-import { BallInCourt, BlockedOn, BoardStage, BOARD_STAGES, IMPLIED_COURT } from './starbucksBoard';
+import { BallInCourt, BlockedOn, BoardStage, BOARD_STAGES, Heat, IMPLIED_COURT } from './starbucksBoard';
 
 export type ReportField = 'package_status' | 'notes';
 
@@ -27,6 +27,8 @@ export interface ReportRow {
   blockedOn: BlockedOn | null;
   needsPricing: boolean;
   needsSitePlan: boolean;
+  days: number;                // whole days since ball_in_court_since (Eastern)
+  heat: Heat;                  // board heat — same warm/hot thresholds as the tiles
   packageStatus: string;
   notes: string;
 }
@@ -144,6 +146,13 @@ export async function saveLoiStatus(r: ReportRow, v: LoiStatus): Promise<void> {
   }));
 }
 
+// Days in court: who owes + how long, on the board's own clock. Null when there
+// is no clock to read — no history yet, or court not set.
+export function courtClock(r: Pick<ReportRow, 'ballInCourt' | 'days' | 'heat'>): { who: string; days: number } | null {
+  if (r.heat === 'no_history' || !r.ballInCourt || r.ballInCourt === 'none') return null;
+  return { who: r.ballInCourt === 'us' ? 'Us' : 'Them', days: r.days };
+}
+
 export function googleMapsUrl(lat: number | null | undefined, lng: number | null | undefined): string | null {
   return lat != null && lng != null ? `https://www.google.com/maps?q=${lat},${lng}` : null;
 }
@@ -200,6 +209,8 @@ export async function exportPipelineReport(rows: ReportRow[], accountName: strin
     { header: 'Deal / Site Submit', key: 'name', width: 36 },
     { header: 'City', key: 'city', width: 16 },
     { header: 'Status', key: 'status', width: 44 },
+    { header: 'Court', key: 'court', width: 9, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Days in Court', key: 'days', width: 13, style: { alignment: { horizontal: 'center' } } },
     { header: 'Package Status', key: 'package_status', width: 18 },
     { header: 'Notes', key: 'notes', width: 55 },
     { header: 'Map', key: 'map', width: 12, isHyperlink: true, hyperlinkText: 'View Map', style: { alignment: { horizontal: 'center' } } },
@@ -209,6 +220,8 @@ export async function exportPipelineReport(rows: ReportRow[], accountName: strin
     name: r.name,
     city: r.city ?? '',
     status: statusText(r),
+    court: courtClock(r)?.who ?? '',
+    days: courtClock(r)?.days ?? '',
     package_status: r.packageStatus,
     notes: r.notes,
     map: r.mapUrl ?? '',

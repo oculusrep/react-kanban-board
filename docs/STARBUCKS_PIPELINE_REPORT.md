@@ -13,6 +13,7 @@ re-rank; **Export to Excel** writes the rows in exactly the order shown.
 | # | Position in the current order |
 | Deal / Site Submit | `deal.deal_name` when the card has a deal, else `site_submit.site_submit_name`, else the board's name (property) |
 | Status | The stage, plus waiting-on / court detail — see **Status** below |
+| Days in Court | Who owes + days on the board clock (`ball_in_court` / `ball_in_court_since`), e.g. `Them · 12d`. Terracotta when the board calls it warm, bold when hot (same thresholds as the tiles). `—` when court isn't set or the card has no history. Excel: separate **Court** and **Days in Court** (number) columns |
 | Package Status | Editable text for now — `package_status`. Will become a % complete fed by another tool |
 | Notes | Editable text — `notes`. Report text for Starbucks; **not** the internal chat thread |
 | Map | Google Maps link. Coordinates: site_submit verified → property verified → site_submit sf_property → property raw |
