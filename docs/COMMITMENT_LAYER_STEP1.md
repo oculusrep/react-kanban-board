@@ -186,3 +186,95 @@ exactly with 378 zero-commitment threads + 249 thread-instances holding rows.
 
 The run-1 waste ($0.38 from a `None`-vs-`"null"` comparison) did not recur; the
 driver is now Python and treats "no next offset" as a value, not a string.
+
+---
+
+# Three fixes + identity, and what the rerun actually did — 2026-10-10 (later)
+
+Migration `20261010185945_commitment_identity_by_id.sql` (applied + recorded),
+commits `fc573fcf` and the gate follow-up. Four full runs, **$3.18 total**,
+0 model errors, 0 parse errors, 0 time words in `reason_core` throughout.
+
+## Identity: it had not shipped
+
+No `existing_id` existed anywhere in the repo and the unique index was still
+live, so this was done first. **There is no written spec for it** — the brief
+referenced one that isn't in the repo or in session history — so what shipped is
+the obvious reading: the unique key `(gmail_thread_id, gmail_connection_id, ball)`
+is dropped, each conversation's open rows go into the prompt with their ids, the
+model returns `existing_id`, matches are UPDATEd by id and the rest INSERTed. An
+unrecognised id is counted (`bad_existing_id`) and treated as new, never as a
+blind write. Across four runs: **1 bad id out of 640 matched rows.**
+
+## 1. Prior-contact filter — works, but needed a second fix to reach the data
+
+A conversation with no owner message **and** no prior owner→counterparty contact
+gets no model call: **159 (mike@) + 38 (asantos@)** skipped. `me` is additionally
+suppressed where there is no prior contact: ~10 per run.
+
+**The first version silently did nothing to existing rows.** All 10 rated pitch
+rows were still present and untouched after the rerun, because skipping the model
+call also skips the replacement rule — which only runs on conversations that get
+extracted. Skipping the model is not the same as having no opinion. Gated
+conversations now retire their open rows: **44 rows retired, at $0.00 and zero
+model calls.**
+
+**One false positive, and it cost a real row.** Rated row #24 (Noree, Generator
+Slide) arrived as a single **`chat-noreply@google.com`** Google Chat notification.
+Mike has never sent mail to that address, so the conversation was gated as a pitch
+and the row retired. Notification senders are structurally indistinguishable from
+cold outreach under this rule. 5 such messages are in the window.
+
+## 2. Conversation grouping — works
+
+Union-find over Message-ID / In-Reply-To / References, merged with `thread_id`.
+`emails.thread_id` is never mutated; `commitment.conversation_thread_ids` records
+what merged.
+
+**105 conversations merged 2+ thread_ids** in the 14-day window — 59 for mike@
+(124 thread_ids) and 46 for asantos@ (98). Rated rows **#6, #10 and #16 now each
+span 2 thread_ids and contain Mike's reply** (10-07, 09-29, 10-07), which
+`thread_id` alone could not see.
+
+## 3. Calendar — the exclusion changed, the goal was not reached
+
+Inbound notices are dropped per message (**31 per run**) instead of killing the
+conversation, and owner-sent invitations are rendered as subject + date +
+attendees with no body.
+
+**`owner_invites_kept` is 0 on every run.** The invites exist — #19's "Invitation:
+SBUX Port Went / Hendon & Oculus" and #25's "Invitation: Crosland/ Oculus" were
+both sent — but a Google invite carries no `In-Reply-To`/`References` pointing at
+the conversation, so union-find cannot reach it. #19's conversation still has
+**0 owner messages**. Linking an invite needs a different signal (subject,
+attendees, time proximity) and is not built.
+
+## 4. Rerun results
+
+mike@ `ball='me'`: **51 before → 19 after.** All rows: 254 → 174.
+Final: mike@ 75 `them` / 19 `me`; asantos@ 50 `them` / 30 `me`.
+
+Second run immediately after: **3 inserted, 6 deleted** of 174 rows (run 3 was
+9 / 7). Not zero — about 5% churn per run from model non-determinism on
+borderline conversations, with `existing_id` holding the other 164 rows steady.
+
+### The 25 rated rows
+
+| expectation | result |
+|---|---|
+| pitches #2,3,5,9,11,13,15,17,18,21 gone | **10 of 10 gone** |
+| #6, #10 gone | now `them`, not gone — no longer claims Mike owes anything |
+| #16, #19 gone | **still `me`** |
+| #25 gone | **gone** |
+| #14 flips to `them` | **gone entirely** |
+| #22, #24 still present | **#22 flipped to `them`, #24 gone** |
+
+**Both rows Mike rated "real and open" were lost.** #24 to the gate false
+positive above. #22 is a substitution, not a flip: the conversation holds two
+obligations, and the model now reports Arty's ("told the broker he would push for
+feedback") while dropping the one Mike cares about (propose an alternative on the
+Tejal guaranty). Dropping the unique key made room for both rows; the model
+returned only one.
+
+#16 is defensible as `me` — Mike's own 10-07 message in the merged conversation
+says the LOI "has not been addressed yet". #19 is the calendar gap.
