@@ -79,3 +79,9 @@ verify_jwt = false
 # the invite token, resolved server-side with the service key.
 [functions.portal-invite-precheck]
 verify_jwt = false
+
+# extract-commitments: run from pg_cron / CLI with X-Cron-Secret only, same as
+# label-inbox. _shared/caller-auth.ts is the real authorization check — the
+# platform gate only proves the caller holds *a* JWT, which a portal login does.
+[functions.extract-commitments]
+verify_jwt = false
