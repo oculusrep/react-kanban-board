@@ -91,3 +91,57 @@ with the header repeated on every printed page. Columns: #, (Account), Deal / Si
 Status, Court (with party), Court Since, Days in Court (number), Package Status, Notes, Map.
 `exportToExcel` has a `landscape` option, and only converts whole-value dates (free text
 beginning with a date stays text).
+
+## Code map
+
+| File | What it holds |
+|---|---|
+| `src/pages/StarbucksPipelineReportPage.tsx` | Page: account toggle, filters, table, drag-and-drop, Court / Park popovers, Pre-Submittal status picker, sidebar mount |
+| `src/hooks/useStarbucksPipelineReport.ts` | Membership from `useStarbucksBoard`, names + map coordinates, report rows, order / field writes |
+| `src/lib/starbucksPipelineReport.ts` | Row type, status / court logic, `savePreStatus` / `saveCourt`, order + field writes, Excel export |
+| `src/lib/boardWrites.ts` | Shared board writes — `upsertBoardState`, `parkCard` / `unparkCard` (also used by the board's `ParkControl`) |
+| `src/lib/excelExport.ts` | Shared Excel builder (`landscape` option, whole-value date detection) |
+
+Entry points: route in `src/App.tsx`, card in `src/pages/ReportsPage.tsx`, both hamburger menus
+in `src/components/Navbar.tsx`, and the dim **Report** link in the `StarbucksDealBoardPage` header.
+
+## Writes to board state — what to know
+
+Every editor on this report except Package Status, Notes and the drag order writes
+`deal_activity_state`, the same row the deal board reads:
+
+| Action | Fields written | Clock |
+|---|---|---|
+| Pre-Submittal status | court (implied), party (cleared if court changes), blocker, needs_pricing / needs_site_plan | restarts now |
+| Court editor | court, party, ball_in_court_since | the picked start date (today = now) |
+| Park | parked_until, parked_reason | set to the review date |
+| Un-park | parked_until / parked_reason cleared | restarts now |
+
+Each one posts a `board_history` line to the card's chat via the trigger on
+`deal_activity_state` (see `STARBUCKS_DEAL_BOARD_DECISIONS.md`, "One history"). Changes show on an
+open deal board through its realtime subscription.
+
+## Troubleshooting
+
+**An export or the page still shows old behaviour after a deploy.** OVIS ships as a PWA
+(`vite-plugin-pwa`, `registerType: 'autoUpdate'`), so an open tab can keep running the previous
+bundle until it reloads. Seen 2026-10-10: an export still titled "Starbucks Pipeline Report"
+after the "Starbucks GA Pipeline Report" deploy was live. Hard-refresh (Cmd+Shift+R) or close and
+reopen the tab. To check what production is serving:
+
+```bash
+curl -s https://ovis.oculusrep.com/ | grep -oE 'assets/index-[^"]+\.js' | head -1 \
+  | xargs -I{} curl -s https://ovis.oculusrep.com/{} | grep -o 'Starbucks GA Pipeline Report'
+```
+
+## History
+
+| Date | Change | Merge |
+|---|---|---|
+| 2026-10-10 | Report, migration, ranked order, Excel export; board-driven Status; Days in Court; nav + board links | `f3962351` |
+| 2026-10-10 | Filters, Court column + start-date editor, clickable names (map sidebar), All accounts, board header link | `52235b64` |
+| 2026-10-10 | Park / un-park from the report, Parked filter, export titled Starbucks GA Pipeline Report | `26ffbd97` |
+
+Verified with typecheck, production build, sample exports generated through the real export code,
+and impersonated database writes rolled back. **Not yet exercised in a browser session:** the Court
+and Park popovers, opening the sidebar from a name, and dragging while filtered.
