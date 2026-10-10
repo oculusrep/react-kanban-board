@@ -7,7 +7,7 @@
 import { supabase } from './supabaseClient';
 import { exportToExcel, ExcelColumn, getLogoBase64 } from './excelExport';
 import { upsertBoardState } from './boardWrites';
-import { BallInCourt, BlockedOn, BoardStage, BOARD_STAGES, Heat, IMPLIED_COURT } from './starbucksBoard';
+import { BallInCourt, BlockedOn, BoardStage, BOARD_STAGES, formatReviewDate, Heat, IMPLIED_COURT } from './starbucksBoard';
 
 export type ReportField = 'package_status' | 'notes';
 
@@ -22,6 +22,7 @@ export interface ReportRow {
   accountToken: string;        // short account label ("SBUX", "JW") for the All view
   accountName: string;         // filter label ("Starbucks", "Coastal GA")
   parked: boolean;
+  parkedUntil: string | null;  // review date (YYYY-MM-DD) while parked
   mapUrl: string | null;
   sortOrder: number | null;    // null = never ranked
   // Board state (deal_activity_state) — Status detail, Court and the clock.
@@ -206,7 +207,7 @@ function shortDate(iso: string | null): string {
 // Exports exactly the rows shown, in the order shown.
 export async function exportPipelineReport(
   rows: ReportRow[],
-  opts: { title: string; showAccount: boolean; filterNote?: string }
+  opts: { showAccount: boolean; accountName?: string; filterNote?: string }
 ): Promise<void> {
   const columns: ExcelColumn[] = [
     { header: '#', key: 'rank', width: 6, style: { alignment: { horizontal: 'center' } } },
@@ -228,7 +229,7 @@ export async function exportPipelineReport(
       account: r.accountName,
       name: r.name,
       city: r.city ?? '',
-      status: statusText(r),
+      status: r.parked ? `${statusText(r)} (Parked until ${formatReviewDate(r.parkedUntil)})` : statusText(r),
       court: clock ? `${clock.who}${r.ballInCourtParty ? ` (${r.ballInCourtParty})` : ''}` : '',
       // M/D/YYYY text, not an ISO string — exportToExcel would turn ISO into a UTC date
       since: clock ? shortDate(r.ballInCourtSince) : '',
@@ -239,15 +240,16 @@ export async function exportPipelineReport(
     };
   });
   const logoBase64 = await getLogoBase64();
-  const safeName = opts.title.replace(/[^a-zA-Z0-9]+/g, '_');
+  const title = 'Starbucks GA Pipeline Report';
+  const scope = [opts.accountName, opts.filterNote].filter(Boolean).join(' — ');
   await exportToExcel({
-    filename: `${safeName}_${localDateStamp()}.xlsx`,
+    filename: `Starbucks_GA_Pipeline_Report_${localDateStamp()}.xlsx`,
     sheetName: 'Pipeline',
     columns,
     data,
-    title: opts.title,
-    subtitle: opts.filterNote
-      ? `Ordered by expected next to move — ${opts.filterNote}`
+    title,
+    subtitle: scope
+      ? `Ordered by expected next to move — ${scope}`
       : 'Pre-Submittal · Submitted-Reviewing · Negotiating LOI · At Lease/PSA — ordered by expected next to move',
     logoBase64: logoBase64 || undefined,
     landscape: true,

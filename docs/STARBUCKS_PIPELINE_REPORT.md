@@ -44,10 +44,19 @@ stores that day's local midnight, which is what the board's `daysSince()` counts
 Both editors write the **board's** state, so the deal board reflects them (realtime), and the
 history trigger posts court changes to the card's chat.
 
+## Parking
+
+Same rules and write as the board's Park control — both call `parkCard` / `unparkCard` in
+`lib/boardWrites.ts`. Hover a row → **Park** under the name: pick a review date (strictly future;
+2 wks / 1 mo / 3 mo shortcuts) and an optional reason (posted to the chat). The card leaves the
+deal board for the Parking lot and returns on that date with the clock running from then.
+Parked rows stay on the report with a **Parked until <date>** tag; click it to change the date
+or **Un-park now**. Excel keeps parked rows, with "(Parked until <date>)" on the Status.
+
 ## Filters
 
 Search (name, city, notes, package, party, status), Stage chips (with counts), Status (every
-status present), Court (Us / Them / Not set), and Days ≥ N. Remembered per browser. Dragging
+status present), Court (Us / Them / Not set), Days ≥ N, and Parked (Show / Hide / Only). Remembered per browser. Dragging
 works while filtered: a row is re-ranked against its visible neighbours, hidden rows keep their
 place. Export writes only the filtered rows and notes the filter in the subtitle.
 
@@ -74,7 +83,9 @@ ranked ones, furthest-along stage first. **Reset order** re-ranks everything by 
 
 ## Excel
 
-`exportPipelineReport` (src/lib/starbucksPipelineReport.ts) on the shared `exportToExcel`:
+`exportPipelineReport` (src/lib/starbucksPipelineReport.ts) on the shared `exportToExcel`.
+Titled **Starbucks GA Pipeline Report** (file `Starbucks_GA_Pipeline_Report_<date>.xlsx`) for every
+account view; the subtitle names Coastal GA when that account is selected, plus any filter.
 Oculus logo + title, navy header, banded rows, autofilter, frozen header, landscape fit-to-width
 with the header repeated on every printed page. Columns: #, (Account), Deal / Site Submit, City,
 Status, Court (with party), Court Since, Days in Court (number), Package Status, Notes, Map.

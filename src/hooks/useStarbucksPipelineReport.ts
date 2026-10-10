@@ -204,6 +204,7 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
         accountToken: c.accountToken,
         accountName: accountFor(c.clientId, c.clientName).filter,
         parked: parkedIds.has(c.id),
+        parkedUntil: c.parkedUntil,
         mapUrl: ex?.mapUrl ?? null,
         sortOrder: s?.sort_order ?? null,
         ballInCourt: c.ballInCourt,
