@@ -106,3 +106,83 @@ a third party.
   baseline for comparison. Stated in the migration header too.
 - No cron. The function is invoked by hand; batches are resumable via
   `offset` → `next_offset`, carrying `usd_spent` so the cap applies to the run.
+
+---
+
+# Rerun after the fixes — 2026-10-10
+
+Migration `20261010101725_commitment_per_connection.sql` (applied + recorded) and
+commit `892810af`. Both mailboxes, 627 thread-instances, **$1.18 of a $5 cap**,
+**0 model errors, 0 parse errors**.
+
+## What changed
+
+1. **The model may not mention time at all.** It returns a time-free `reason`,
+   stored in the new `reason_core` column. `speakable_reason` is composed in code:
+   `reason_core` + an age computed in Eastern Time from the thread's last message
+   **for that mailbox** + a promised date rendered from `promised_date`. Today's
+   date and per-message timestamps still go into the prompt, but only so
+   `promised_date` can be extracted. A time word in `reason_core` triggers one
+   repair call and is counted.
+2. **One mailbox per invocation, owner named in the prompt.** `connection_id` or
+   `connection_email` is required; a run without one is a 400 that lists the
+   connections. "Mine" is that connection's `google_email` alone, and threads are
+   scoped through `email_visibility`.
+3. **New exclusions:** `onboarding@resend.dev`, and calendar notices by subject
+   prefix **and** by a `text/calendar` part — the subject test alone catches 37
+   window threads where the attachment catches 45.
+4. **Rerun replacement:** an `open` row this extraction no longer claims is
+   deleted; `handled` / `flagged` / `skipped` are never deleted. 103 stale rows
+   were removed on this run.
+
+`gmail_connection_id` **is** `owner_connection_id` now that extraction runs per
+connection — confirmed, no separate column added.
+
+## Results
+
+| | mike@ | asantos@ |
+|---|---|---|
+| threads for mailbox / eligible | 1,738 / **397** | 727 / **230** |
+| `them` rows | **92** | **66** |
+| `me` rows | **51** | **45** |
+| zero-commitment threads | 256 | 122 |
+| with a `deal_id` | 26 | 21 |
+
+254 rows over 188 distinct threads (61 threads carry rows in both mailboxes).
+10 repair calls fired across 637 model calls.
+
+### Time words: 0
+
+`reason_core` matching `today|yesterday|ago|last week`: **0 of 254**. All 254
+composed `speakable_reason` values carry a code-computed age phrase.
+
+### The 5 suspected inversions: 4 flipped, 1 became a miss
+
+Four now read `them`, correctly — Tripp on the lease, Nick Addison on LOI
+comments, Noree on the SOPs, Max on the booth invite.
+
+The fifth (`1a0ee05817d1db72`, *"Mark told Mike he'd shoot over the updated civil
+concept plan"*) now has **no row at all**. It was eligible and attempted — one
+`OVIS/Business` message, no stub, no calendar part — so the model returned zero
+commitments rather than flipping the direction. The promise is conditional ("as
+soon as he receives it from their civil team"), which may be why, but this is a
+**false negative, not a fix**, and it is unresolved.
+
+## Measured: the same-ball collapse is 15%, not a corner case
+
+300 successful upserts produced 254 rows with 0 duplicate keys. 106 run-1 rows
+survived and were all updated in place, 148 rows were new, so **46 extracted
+obligations were collapsed into a row that already held that thread+mailbox+ball**.
+That is the `(gmail_thread_id, gmail_connection_id, ball)` trade-off the migration
+documents, now with a number against it: ~15% of what the model finds is being
+merged away, and the later one overwrites `what`. If that matters, identity needs
+a stable per-obligation key, not a direction.
+
+**Not** caused by the moving 14-day window: only 2 threads sit within ±20 minutes
+of the boundary and 0 dropped out during the run, and attempted (627) reconciles
+exactly with 378 zero-commitment threads + 249 thread-instances holding rows.
+
+## Driving-loop note
+
+The run-1 waste ($0.38 from a `None`-vs-`"null"` comparison) did not recur; the
+driver is now Python and treats "no next offset" as a value, not a string.
