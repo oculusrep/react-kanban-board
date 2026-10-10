@@ -122,6 +122,7 @@ export default function StarbucksDealBoardPage() {
       >
         <Header
           onExit={() => navigate('/master-pipeline')}
+          onReport={() => navigate('/reports/starbucks-pipeline')}
           daily={daily}
           toClassifyCount={toClassify.length}
           onOpenTriage={() => setTriageOpen(true)}
@@ -218,6 +219,7 @@ export default function StarbucksDealBoardPage() {
 // ---- Header: account filter + agenda + to-classify counter + daily + scale --
 function Header({
   onExit,
+  onReport,
   daily,
   toClassifyCount,
   onOpenTriage,
@@ -235,6 +237,7 @@ function Header({
   onScale,
 }: {
   onExit: () => void;
+  onReport: () => void;
   daily: { attention: number; yours: number; theirs: number; unclassified: number; noHistory: number };
   toClassifyCount: number;
   onOpenTriage: () => void;
@@ -273,6 +276,15 @@ function Header({
           title="Back to Master Pipeline"
         >
           ← Pipeline
+        </button>
+        {/* Same dim chrome as the way out — the ranked report for Starbucks. */}
+        <button
+          onClick={onReport}
+          className="rounded px-2 hover:opacity-100"
+          style={{ color: PALETTE.textDim, fontSize: px(14), opacity: 0.75 }}
+          title="Starbucks Pipeline Report"
+        >
+          Report
         </button>
 
         <h1 className="font-semibold tracking-wide" style={{ color: PALETTE.text, fontSize: px(20) }}>
