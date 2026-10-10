@@ -6,7 +6,7 @@
 // slide-over and the triage queue.
 
 import { useState } from 'react';
-import { upsertBoardState } from '../../lib/boardWrites';
+import { parkCard, unparkCard } from '../../lib/boardWrites';
 import { BoardDeal, formatReviewDate, isParked, PALETTE } from '../../lib/starbucksBoard';
 
 function localDate(offsetDays = 0): string {
@@ -41,11 +41,7 @@ export default function ParkControl({
     setSaving(true);
     setErr(null);
     try {
-      await upsertBoardState(deal, {
-        parked_until: date,
-        parked_reason: reason.trim() || null,
-        ball_in_court_since: new Date(`${date}T00:00:00`).toISOString(),
-      });
+      await parkCard(deal, date, reason);
       onDone();
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to park');
@@ -57,7 +53,7 @@ export default function ParkControl({
     setSaving(true);
     setErr(null);
     try {
-      await upsertBoardState(deal, { parked_until: null, parked_reason: null, ball_in_court_since: new Date().toISOString() });
+      await unparkCard(deal);
       onDone();
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to un-park');

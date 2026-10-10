@@ -12,7 +12,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { format, parseISO } from 'date-fns';
 import useStarbucksPipelineReport from '../hooks/useStarbucksPipelineReport';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
-import { ACCOUNT_ALL, BOARD_STAGES, BoardStage } from '../lib/starbucksBoard';
+import { ACCOUNT_ALL, BOARD_STAGES, BoardStage, formatReviewDate } from '../lib/starbucksBoard';
+import { parkCard, unparkCard } from '../lib/boardWrites';
 import {
   COURT_LABEL,
   courtClock,
@@ -50,8 +51,11 @@ interface Filters {
   status: string;         // '' = all; else an exact statusText
   courts: CourtValue[];   // empty = all
   minDays: string;        // '' = any
+  parked: ParkedFilter;
 }
-const NO_FILTERS: Filters = { search: '', stages: [], status: '', courts: [], minDays: '' };
+type ParkedFilter = 'show' | 'hide' | 'only';
+const PARKED_LABEL: Record<ParkedFilter, string> = { show: 'Show', hide: 'Hide', only: 'Only' };
+const NO_FILTERS: Filters = { search: '', stages: [], status: '', courts: [], minDays: '', parked: 'show' };
 
 function readStore<T>(key: string, fallback: T): T {
   try {
@@ -81,6 +85,8 @@ function toggle<T>(xs: T[], x: T): T[] {
 }
 
 function matches(r: ReportRow, f: Filters): boolean {
+  if (f.parked === 'hide' && r.parked) return false;
+  if (f.parked === 'only' && !r.parked) return false;
   if (f.stages.length && !f.stages.includes(r.stageLabel)) return false;
   if (f.status && statusText(r) !== f.status) return false;
   if (f.courts.length && !f.courts.includes(courtOf(r))) return false;
@@ -102,6 +108,8 @@ function filterNote(f: Filters): string | undefined {
   if (f.status) parts.push(f.status);
   if (f.courts.length) parts.push(`Court: ${f.courts.map((c) => COURT_LABEL[c]).join('/')}`);
   if (f.minDays !== '') parts.push(`${f.minDays}+ days in court`);
+  if (f.parked === 'hide') parts.push('parked hidden');
+  if (f.parked === 'only') parts.push('parked only');
   if (f.search.trim()) parts.push(`"${f.search.trim()}"`);
   return parts.length ? `filtered: ${parts.join(' · ')}` : undefined;
 }
@@ -119,6 +127,7 @@ export default function StarbucksPipelineReportPage() {
   const [filters, setFiltersState] = useState<Filters>(() => readStore(FILTER_KEY, NO_FILTERS));
   const [exporting, setExporting] = useState(false);
   const [courtEdit, setCourtEdit] = useState<CourtEdit | null>(null);
+  const [parkEdit, setParkEdit] = useState<CourtEdit | null>(null);
   const [sidebar, setSidebar] = useState<{ siteSubmitId: string | null; dealId: string | null } | null>(null);
 
   useEffect(() => {
@@ -141,6 +150,7 @@ export default function StarbucksPipelineReportPage() {
   const rank = useMemo(() => new Map(rows.map((r, i) => [r.id, i + 1])), [rows]);
   const visible = useMemo(() => rows.filter((r) => matches(r, filters)), [rows, filters]);
   const filtered = visible.length !== rows.length;
+  const parkedCount = useMemo(() => rows.filter((r) => r.parked).length, [rows]);
 
   const stageCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -171,7 +181,7 @@ export default function StarbucksPipelineReportPage() {
   async function onExport() {
     setExporting(true);
     try {
-      await exportPipelineReport(visible, { title, showAccount: isAll, filterNote: filterNote(filters) });
+      await exportPipelineReport(visible, { showAccount: isAll, accountName: isAll || accountId === STARBUCKS_CLIENT_ID ? undefined : accountName, filterNote: filterNote(filters) });
     } finally {
       setExporting(false);
     }
@@ -305,6 +315,22 @@ export default function StarbucksPipelineReportPage() {
               style={{ border: '1px solid #8FA9C8', color: '#002147' }}
             />
           </label>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#8FA9C8' }}>Parked</span>
+            {(['show', 'hide', 'only'] as ParkedFilter[]).map((p) => {
+              const on = filters.parked === p;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setFilters({ ...filters, parked: p })}
+                  className="text-xs px-2.5 py-1 rounded-full"
+                  style={{ border: '1px solid #8FA9C8', ...seg(on), color: on ? '#FFFFFF' : '#002147' }}
+                >
+                  {PARKED_LABEL[p]}{p === 'only' ? ` ${parkedCount}` : ''}
+                </button>
+              );
+            })}
+          </div>
           <span className="text-xs ml-auto" style={{ color: '#4A6B94' }}>
             {filtered ? `${visible.length} of ${rows.length}` : `${rows.length} total`}
           </span>
@@ -369,7 +395,7 @@ export default function StarbucksPipelineReportPage() {
                             <tr
                               ref={drag.innerRef}
                               {...drag.draggableProps}
-                              className="align-top"
+                              className="align-top group"
                               style={{
                                 ...drag.draggableProps.style,
                                 backgroundColor: snap.isDragging ? '#E8EEF5' : i % 2 ? '#F8FAFC' : '#FFFFFF',
@@ -394,10 +420,17 @@ export default function StarbucksPipelineReportPage() {
                                 >
                                   {r.name}
                                 </button>
-                                <div className="text-xs" style={{ color: '#4A6B94' }}>
-                                  {r.city}
-                                  {isAll && <span className="ml-2 font-semibold" style={{ color: '#8FA9C8' }}>{r.accountToken}</span>}
-                                  {r.parked && <span className="ml-2 italic" style={{ color: '#A27B5C' }}>parked</span>}
+                                <div className="text-xs flex flex-wrap items-center gap-x-2" style={{ color: '#4A6B94' }}>
+                                  {r.city && <span>{r.city}</span>}
+                                  {isAll && <span className="font-semibold" style={{ color: '#8FA9C8' }}>{r.accountToken}</span>}
+                                  <button
+                                    onClick={(e) => setParkEdit({ row: r, rect: e.currentTarget.getBoundingClientRect() })}
+                                    className={r.parked ? 'px-1.5 rounded' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 underline'}
+                                    style={r.parked ? { color: '#A27B5C', border: '1px solid #A27B5C' } : { color: '#8FA9C8' }}
+                                    title={r.parked ? 'Change review date or un-park' : 'Park until a review date'}
+                                  >
+                                    {r.parked ? `Parked until ${formatReviewDate(r.parkedUntil)}` : 'Park'}
+                                  </button>
                                 </div>
                               </td>
                               <td className="px-3 py-2" style={{ width: 270 }}>
@@ -456,6 +489,16 @@ export default function StarbucksPipelineReportPage() {
           rect={courtEdit.rect}
           onClose={() => setCourtEdit(null)}
           onSaved={() => { setCourtEdit(null); refresh(); }}
+        />
+      )}
+
+      {parkEdit && (
+        <ParkEditor
+          key={parkEdit.row.id}
+          row={rows.find((r) => r.id === parkEdit.row.id) ?? parkEdit.row}
+          rect={parkEdit.rect}
+          onClose={() => setParkEdit(null)}
+          onSaved={() => { setParkEdit(null); refresh(); }}
         />
       )}
 
@@ -614,6 +657,113 @@ function CourtEditor({ row, rect, onClose, onSaved }: { row: ReportRow; rect: DO
             style={{ backgroundColor: '#002147', color: '#FFFFFF' }}
           >
             {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function addDaysLocal(n: number): string {
+  const t = new Date();
+  return localDateStamp(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+}
+
+// Park popover — same rules and write as the board's Park control: a review
+// date is required and must be in the future (no indefinite parking). The card
+// leaves the board for the Parking lot and comes back on that date with the
+// clock running from then. Parked cards stay on this report, tagged.
+function ParkEditor({ row, rect, onClose, onSaved }: { row: ReportRow; rect: DOMRect; onClose: () => void; onSaved: () => void }) {
+  const [date, setDate] = useState(row.parkedUntil ?? '');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const today = localDateStamp();
+  const canPark = date > today && date !== row.parkedUntil;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function run(fn: () => Promise<void>) {
+    setSaving(true);
+    setErr(null);
+    try {
+      await fn();
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed to save');
+      setSaving(false);
+    }
+  }
+
+  const width = 280;
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+  const below = rect.bottom + 300 < window.innerHeight;
+  const pos = below ? { top: rect.bottom + 4 } : { bottom: window.innerHeight - rect.top + 4 };
+  const quick: Array<[string, number]> = [['2 wks', 14], ['1 mo', 30], ['3 mo', 90]];
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="fixed z-50 bg-white rounded-lg shadow-lg p-3" style={{ left, width, border: '1px solid #8FA9C8', ...pos }}>
+        <div className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#8FA9C8' }}>
+          {row.parked ? 'Parked — change review date' : 'Park until'}
+        </div>
+        <div className="flex gap-1.5 mb-2">
+          {quick.map(([label, n]) => (
+            <button
+              key={label}
+              onClick={() => setDate(addDaysLocal(n))}
+              className="flex-1 text-xs py-1 rounded"
+              style={{ border: '1px solid #8FA9C8', color: date === addDaysLocal(n) ? '#FFFFFF' : '#4A6B94', backgroundColor: date === addDaysLocal(n) ? '#002147' : 'transparent' }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <DatePicker
+          selected={date ? parseISO(date) : null}
+          onChange={(d) => setDate(d ? format(d, 'yyyy-MM-dd') : '')}
+          dateFormat="MM/dd/yyyy"
+          minDate={parseISO(addDaysLocal(1))}
+          placeholderText="Review date"
+          popperProps={{ strategy: 'fixed' }}
+          className="w-full px-2 py-1.5 rounded text-sm border border-[#8FA9C8] text-[#002147]"
+        />
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Why? (optional — posted to the chat)"
+          className="w-full px-2 py-1.5 rounded text-sm mt-2 focus:outline-none"
+          style={{ border: '1px solid #8FA9C8', color: '#002147' }}
+        />
+        <div className="text-[11px] mt-1" style={{ color: '#4A6B94' }}>
+          Leaves the deal board until this date; the clock restarts then.
+        </div>
+        {err && <div className="text-xs mt-2" style={{ color: '#A27B5C' }}>{err}</div>}
+        <div className="flex items-center gap-2 mt-3">
+          {row.parked && (
+            <button
+              onClick={() => run(() => unparkCard(row))}
+              disabled={saving}
+              className="px-3 py-1.5 text-sm rounded disabled:opacity-50"
+              style={{ border: '1px solid #A27B5C', color: '#A27B5C' }}
+            >
+              Un-park now
+            </button>
+          )}
+          <span className="flex-1" />
+          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded" style={{ color: '#4A6B94' }}>Cancel</button>
+          <button
+            onClick={() => run(() => parkCard(row, date, reason))}
+            disabled={!canPark || saving}
+            className="px-3 py-1.5 text-sm font-semibold rounded disabled:opacity-50"
+            style={{ backgroundColor: '#002147', color: '#FFFFFF' }}
+          >
+            {saving ? 'Saving…' : 'Park'}
           </button>
         </div>
       </div>
