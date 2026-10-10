@@ -221,6 +221,7 @@ serve(async (req) => {
     inserted: 0, updated_by_existing_id: 0, bad_existing_id: 0,
     written: { them: 0, me: 0, neither: 0 },
     replaced_rows_deleted: 0,
+    gated_rows_retired: 0,
     upsert_errors: 0,
     convos_zero: 0,
     stopped_on_budget: false,
@@ -417,8 +418,11 @@ serve(async (req) => {
       });
     }
 
+    const skippedConvos: Convo[] = [];
     const gated = live.filter((c) => {
-      if (!c.hasOwnerSent && !c.priorContact) { stats.excluded.no_prior_contact_skipped++; return false; }
+      if (!c.hasOwnerSent && !c.priorContact) {
+        stats.excluded.no_prior_contact_skipped++; skippedConvos.push(c); return false;
+      }
       return true;
     });
     gated.sort((a, b) => b.lastAt - a.lastAt);
@@ -444,6 +448,32 @@ serve(async (req) => {
         existingByTid.get(t)!.push({ id: String(r.id), ball: String(r.ball), status: String(r.status), what: String(r.what ?? '') });
       }
       if ((data ?? []).length < 1000) break;
+    }
+
+    // ---- RETIRE WHAT THE GATE DISQUALIFIES.
+    // A conversation skipped before the model call used to keep its old rows
+    // forever: the replacement rule only runs on conversations that ARE
+    // extracted, so every pitch row written before the gate existed survived
+    // untouched. Skipping the model is not the same as having no opinion --
+    // the gate's opinion is "this is a pitch", and that has to reach the data.
+    // Also drops open 'me' rows on conversations with no prior contact, which
+    // is the same rule applied to a conversation that still gets extracted.
+    {
+      const rowsFor = (c: Convo) => c.threadIds.flatMap((t) => existingByTid.get(t) ?? []);
+      const doomed: string[] = [];
+      for (const c of skippedConvos) {
+        for (const p of rowsFor(c)) if (p.status === 'open') doomed.push(p.id);
+      }
+      for (const c of live) {
+        if (c.priorContact) continue;
+        for (const p of rowsFor(c)) if (p.status === 'open' && p.ball === 'me') doomed.push(p.id);
+      }
+      for (const part of chunks([...new Set(doomed)], 100)) {
+        const { error: delErr } = await supabase
+          .from('commitment').delete().in('id', part).eq('status', 'open');
+        if (delErr) console.error(`[extract-commitments] gate retire: ${delErr.message}`);
+        else stats.gated_rows_retired += part.length;
+      }
     }
 
     let stop = false, consumed = 0;
