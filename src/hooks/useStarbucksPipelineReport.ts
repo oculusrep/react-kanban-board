@@ -128,6 +128,7 @@ export interface PipelineReportData {
   move: (from: number, to: number) => void;
   setField: (row: ReportRow, field: ReportField, value: string) => void;
   resetOrder: () => void;
+  refresh: () => void;   // re-read board state after a status write
 }
 
 export default function useStarbucksPipelineReport(accountFilter: string): PipelineReportData {
@@ -200,6 +201,11 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
         parked: parkedIds.has(c.id),
         mapUrl: ex?.mapUrl ?? null,
         sortOrder: s?.sort_order ?? null,
+        ballInCourt: c.ballInCourt,
+        ballInCourtParty: c.ballInCourtParty,
+        blockedOn: c.blockedOn,
+        needsPricing: c.needsPricing,
+        needsSitePlan: c.needsSitePlan,
         status: s?.status ?? '',
         packageStatus: s?.package_status ?? '',
         notes: s?.notes ?? '',
@@ -269,5 +275,6 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
     move,
     setField,
     resetOrder,
+    refresh: board.refresh,
   };
 }

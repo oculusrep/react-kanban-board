@@ -7,7 +7,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
 import useStarbucksPipelineReport from '../hooks/useStarbucksPipelineReport';
 import { BoardStage } from '../lib/starbucksBoard';
-import { exportPipelineReport, ReportField, ReportRow } from '../lib/starbucksPipelineReport';
+import {
+  exportPipelineReport,
+  LOI_STATUS_LABEL,
+  LOI_STATUS_OPTIONS,
+  loiStatusOf,
+  PRE_STATUS_LABEL,
+  PRE_STATUS_OPTIONS,
+  preStatusOf,
+  ReportField,
+  ReportRow,
+  saveLoiStatus,
+  savePreStatus,
+  statusKind,
+} from '../lib/starbucksPipelineReport';
 
 const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
 const ACCOUNT_KEY = 'sbPipelineReportAccount';
@@ -29,7 +42,7 @@ function loadAccount(): string {
 
 export default function StarbucksPipelineReportPage() {
   const [accountId, setAccountIdState] = useState<string>(loadAccount);
-  const { rows, accounts, loading, error, saveError, move, setField, resetOrder } =
+  const { rows, accounts, loading, error, saveError, move, setField, resetOrder, refresh } =
     useStarbucksPipelineReport(accountId);
   const [exporting, setExporting] = useState(false);
 
@@ -215,7 +228,11 @@ export default function StarbucksPipelineReportPage() {
                                 </span>
                               </td>
                               <td className="px-2 py-1.5">
-                                <EditableCell row={r} field="status" value={r.status} onSave={setField} multiline />
+                                {statusKind(r) === 'text' ? (
+                                  <EditableCell row={r} field="status" value={r.status} onSave={setField} multiline />
+                                ) : (
+                                  <BoardStatusCell row={r} onSaved={refresh} />
+                                )}
                               </td>
                               <td className="px-2 py-1.5" style={{ width: 140 }}>
                                 <EditableCell row={r} field="package_status" value={r.packageStatus} onSave={setField} />
@@ -245,6 +262,63 @@ export default function StarbucksPipelineReportPage() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Status for Pre-Submittal (what we're waiting on) and Negotiating LOI (whose
+// court). Writes the card's board state — the deal board shows the change.
+// Holds the picked value until the board refetch catches up.
+function BoardStatusCell({ row, onSaved }: { row: ReportRow; onSaved: () => void }) {
+  const isPre = statusKind(row) === 'pre';
+  const current = isPre ? preStatusOf(row) : loiStatusOf(row);
+  const [pending, setPending] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPending(null);
+  }, [current]);
+
+  async function pick(v: string) {
+    if (v === current) return;
+    setPending(v);
+    setErr(null);
+    try {
+      if (isPre) await savePreStatus(row, v as Parameters<typeof savePreStatus>[1]);
+      else await saveLoiStatus(row, v as Parameters<typeof saveLoiStatus>[1]);
+      onSaved();
+    } catch (e: any) {
+      setPending(null);
+      setErr(e?.message ?? 'Failed to save');
+    }
+  }
+
+  const value = pending ?? current;
+  const options: string[] = isPre
+    ? [...PRE_STATUS_OPTIONS, ...(current === 'll' ? ['ll'] : [])]
+    : LOI_STATUS_OPTIONS;
+  const label = (v: string) =>
+    isPre ? PRE_STATUS_LABEL[v as keyof typeof PRE_STATUS_LABEL] : `Court: ${LOI_STATUS_LABEL[v as keyof typeof LOI_STATUS_LABEL]}`;
+  const unset = value === 'unset';
+
+  return (
+    <div>
+      <select
+        value={value}
+        onChange={(e) => pick(e.target.value)}
+        disabled={pending !== null}
+        className="w-full px-1.5 py-1 rounded text-sm bg-white focus:outline-none"
+        style={{ color: unset ? '#8FA9C8' : '#002147', border: `1px solid ${unset ? '#A27B5C' : '#8FA9C8'}` }}
+        title="Saved to the deal board (resets its clock)"
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>{o === 'unset' ? 'Not set' : label(o)}</option>
+        ))}
+      </select>
+      {!isPre && row.ballInCourtParty && value === current && current !== 'unset' && (
+        <div className="text-xs mt-0.5 px-1.5" style={{ color: '#4A6B94' }}>{row.ballInCourtParty}</div>
+      )}
+      {err && <div className="text-xs mt-0.5 px-1.5" style={{ color: '#A27B5C' }}>{err}</div>}
     </div>
   );
 }
