@@ -42,7 +42,6 @@ interface StoredRow {
   site_submit_id: string | null;
   deal_id: string | null;
   sort_order: number | null;
-  status: string | null;
   package_status: string | null;
   notes: string | null;
 }
@@ -109,7 +108,7 @@ async function fetchStoredRows(): Promise<StoredRow[]> {
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('starbucks_pipeline_report_row')
-      .select('site_submit_id, deal_id, sort_order, status, package_status, notes')
+      .select('site_submit_id, deal_id, sort_order, package_status, notes')
       .order('id')
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
@@ -206,7 +205,6 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
         blockedOn: c.blockedOn,
         needsPricing: c.needsPricing,
         needsSitePlan: c.needsSitePlan,
-        status: s?.status ?? '',
         packageStatus: s?.package_status ?? '',
         notes: s?.notes ?? '',
       };
@@ -247,7 +245,6 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
           site_submit_id: row.siteSubmitId,
           deal_id: row.siteSubmitId ? null : row.dealId,
           sort_order: null,
-          status: null,
           package_status: null,
           notes: null,
           [field]: v,

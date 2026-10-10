@@ -12,26 +12,31 @@ re-rank; **Export to Excel** writes the rows in exactly the order shown.
 |---|---|
 | # | Position in the current order |
 | Deal / Site Submit | `deal.deal_name` when the card has a deal, else `site_submit.site_submit_name`, else the board's name (property) |
-| Stage | Board stage (same rules as the deal board — see `useStarbucksBoard`) |
-| Status | Depends on stage — see **Status** below |
+| Status | The stage, plus waiting-on / court detail — see **Status** below |
 | Package Status | Editable text for now — `package_status`. Will become a % complete fed by another tool |
 | Notes | Editable text — `notes`. Report text for Starbucks; **not** the internal chat thread |
 | Map | Google Maps link. Coordinates: site_submit verified → property verified → site_submit sf_property → property raw |
 
 ## Status
 
-| Stage | Status shows | Edited by | Stored in |
-|---|---|---|---|
-| Pre-Submittal | What we're waiting on: *Waiting on LL Pricing and Site Plan* / *LL Pricing* / *LL Site Plan* / *Site Control*, *Ready to Submit*, or *Not set* | Dropdown | `deal_activity_state` (blocker + needs_pricing / needs_site_plan) |
-| Negotiating LOI | Whose court: *Court: Us* / *Court: Them* (party appended when set, e.g. "Them (Landlord)") | Dropdown | `deal_activity_state.ball_in_court` |
-| Submitted-Reviewing, At Lease/PSA | Free text | Inline text | `starbucks_pipeline_report_row.status` |
+Status **is the stage** (same rules as the deal board — see `useStarbucksBoard`). Two stages
+add a detail from the board's state, edited by a dropdown under the stage pill:
+
+| Stage | Detail | Stored in |
+|---|---|---|
+| Pre-Submittal | What we're waiting on: *Waiting on LL Pricing and Site Plan* / *LL Pricing* / *LL Site Plan* / *Site Control*, *Ready to Submit*, or *Not set* | `deal_activity_state` (blocker + needs_pricing / needs_site_plan) |
+| Negotiating LOI | Whose court: *Court: Us* / *Court: Them* (party appended when set) | `deal_activity_state.ball_in_court` |
+| Submitted-Reviewing, At Lease/PSA | none — the stage is the status | — |
+
+Excel writes one Status column: `Pre-Submittal – Waiting on LL Pricing`,
+`Negotiating LOI – Court: Them (Landlord)`, `At Lease/PSA`. An unset detail is left off.
 
 The dropdowns write the **board's** state, with the same patch the board's classify controls
 save (`savePreStatus` / `saveLoiStatus` → `upsertBoardState`), so a change made on the report
 shows on the deal board (realtime) and vice versa. Like any classification it is a touch: it
 **restarts the card's clock** and the history trigger posts the change to the card's chat.
 Blocker choices set the implied court (Them); *Ready to Submit* sets court Us; *Not set* returns
-the card to unclassified. Changing who owes clears a stale party label. "Not set" exports blank.
+the card to unclassified. Changing who owes clears a stale party label.
 
 ## Membership
 
@@ -42,7 +47,8 @@ switch (Starbucks / Coastal GA) is the board's account list; default is Starbuck
 ## Storage
 
 `public.starbucks_pipeline_report_row` (migration `20261010091850_starbucks_pipeline_report.sql`,
-applied + recorded in prod 2026-10-10). Keyed like the board: `site_submit_id` when the card has
+applied + recorded in prod 2026-10-10; its `status` column dropped by
+`20261010094132_starbucks_pipeline_report_drop_status.sql` while the table was empty). Keyed like the board: `site_submit_id` when the card has
 one, else `deal_id` (CHECK: exactly one). Deliberately separate from `deal_activity_state` —
 writes there drive the board clock and post history into the chat.
 

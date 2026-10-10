@@ -163,8 +163,7 @@ export default function StarbucksPipelineReportPage() {
               <col style={{ width: 36 }} />
               <col style={{ width: 44 }} />
               <col style={{ width: '22%' }} />
-              <col style={{ width: 150 }} />
-              <col style={{ width: '20%' }} />
+              <col style={{ width: 290 }} />
               <col style={{ width: 140 }} />
               <col />
               <col style={{ width: 80 }} />
@@ -174,7 +173,6 @@ export default function StarbucksPipelineReportPage() {
                 <th />
                 <th className="px-2 py-2.5 text-center font-semibold">#</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Deal / Site Submit</th>
-                <th className="px-3 py-2.5 text-left font-semibold">Stage</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Status</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Package Status</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Notes</th>
@@ -186,9 +184,9 @@ export default function StarbucksPipelineReportPage() {
                 {(drop) => (
                   <tbody ref={drop.innerRef} {...drop.droppableProps}>
                     {loading && rows.length === 0 ? (
-                      <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>Loading…</td></tr>
+                      <tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>Loading…</td></tr>
                     ) : rows.length === 0 ? (
-                      <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>No sites in these stages.</td></tr>
+                      <tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: '#8FA9C8' }}>No sites in these stages.</td></tr>
                     ) : (
                       rows.map((r, i) => (
                         <Draggable key={r.id} draggableId={r.id} index={i}>
@@ -219,19 +217,17 @@ export default function StarbucksPipelineReportPage() {
                                   {r.parked && <span className="ml-2 italic" style={{ color: '#A27B5C' }}>parked</span>}
                                 </div>
                               </td>
-                              <td className="px-3 py-2.5" style={{ width: 150 }}>
+                              <td className="px-3 py-2" style={{ width: 290 }}>
                                 <span
                                   className="inline-block text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap"
                                   style={{ backgroundColor: STAGE_STYLE[r.stageLabel].bg, color: STAGE_STYLE[r.stageLabel].fg, border: '1px solid #8FA9C8' }}
                                 >
                                   {r.stageLabel}
                                 </span>
-                              </td>
-                              <td className="px-2 py-1.5">
-                                {statusKind(r) === 'text' ? (
-                                  <EditableCell row={r} field="status" value={r.status} onSave={setField} multiline />
-                                ) : (
-                                  <BoardStatusCell row={r} onSaved={refresh} />
+                                {statusKind(r) !== 'stage' && (
+                                  <div className="mt-1.5">
+                                    <BoardStatusCell row={r} onSaved={refresh} />
+                                  </div>
                                 )}
                               </td>
                               <td className="px-2 py-1.5" style={{ width: 140 }}>

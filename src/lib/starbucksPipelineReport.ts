@@ -9,7 +9,7 @@ import { exportToExcel, ExcelColumn, getLogoBase64 } from './excelExport';
 import { upsertBoardState } from './boardWrites';
 import { BallInCourt, BlockedOn, BoardStage, BOARD_STAGES, IMPLIED_COURT } from './starbucksBoard';
 
-export type ReportField = 'status' | 'package_status' | 'notes';
+export type ReportField = 'package_status' | 'notes';
 
 export interface ReportRow {
   id: string;                  // card key (site_submit id, or deal id when none)
@@ -27,7 +27,6 @@ export interface ReportRow {
   blockedOn: BlockedOn | null;
   needsPricing: boolean;
   needsSitePlan: boolean;
-  status: string;              // free-text status (stages without a board status)
   packageStatus: string;
   notes: string;
 }
@@ -67,11 +66,13 @@ export const PRE_STATUS_OPTIONS: PreStatus[] = ['ll_both', 'll_pricing', 'll_sit
 export const LOI_STATUS_LABEL: Record<LoiStatus, string> = { us: 'Us', them: 'Them', unset: 'Not set' };
 export const LOI_STATUS_OPTIONS: LoiStatus[] = ['us', 'them', 'unset'];
 
-export type StatusKind = 'pre' | 'loi' | 'text';
+// Status = the stage. Pre-Submittal adds what we're waiting on, Negotiating
+// LOI adds whose court; the other two stages are the stage alone.
+export type StatusKind = 'pre' | 'loi' | 'stage';
 export function statusKind(r: Pick<ReportRow, 'stageLabel'>): StatusKind {
   if (r.stageLabel === 'Pre-Submittal') return 'pre';
   if (r.stageLabel === 'Negotiating LOI') return 'loi';
-  return 'text';
+  return 'stage';
 }
 
 export function preStatusOf(r: Pick<ReportRow, 'blockedOn' | 'needsPricing' | 'needsSitePlan' | 'ballInCourt'>): PreStatus {
@@ -89,20 +90,20 @@ export function loiStatusOf(r: Pick<ReportRow, 'ballInCourt'>): LoiStatus {
   return r.ballInCourt === 'us' ? 'us' : r.ballInCourt === 'them' ? 'them' : 'unset';
 }
 
-// The Status text shown on the report and written to Excel. "Not set" exports
-// blank — it's an internal gap, not a status for Starbucks.
-export function statusText(r: ReportRow, forExport = false): string {
+// The Status text written to Excel: "Pre-Submittal – Waiting on LL Pricing",
+// "Negotiating LOI – Court: Them (Landlord)", "At Lease/PSA". A detail that
+// isn't set is left off — it's an internal gap, not a status for Starbucks.
+export function statusText(r: ReportRow): string {
   const kind = statusKind(r);
+  let detail: string | null = null;
   if (kind === 'pre') {
     const v = preStatusOf(r);
-    return v === 'unset' && forExport ? '' : PRE_STATUS_LABEL[v];
-  }
-  if (kind === 'loi') {
+    detail = v === 'unset' ? null : PRE_STATUS_LABEL[v];
+  } else if (kind === 'loi') {
     const v = loiStatusOf(r);
-    if (v === 'unset') return forExport ? '' : LOI_STATUS_LABEL.unset;
-    return `Court: ${LOI_STATUS_LABEL[v]}${r.ballInCourtParty ? ` (${r.ballInCourtParty})` : ''}`;
+    detail = v === 'unset' ? null : `Court: ${LOI_STATUS_LABEL[v]}${r.ballInCourtParty ? ` (${r.ballInCourtParty})` : ''}`;
   }
-  return r.status;
+  return detail ? `${r.stageLabel} – ${detail}` : r.stageLabel;
 }
 
 // Same patch shape ClassifyControls saves: a classification is a touch, so the
@@ -198,8 +199,7 @@ export async function exportPipelineReport(rows: ReportRow[], accountName: strin
     { header: '#', key: 'rank', width: 6, style: { alignment: { horizontal: 'center' } } },
     { header: 'Deal / Site Submit', key: 'name', width: 36 },
     { header: 'City', key: 'city', width: 16 },
-    { header: 'Stage', key: 'stage', width: 20 },
-    { header: 'Status', key: 'status', width: 36 },
+    { header: 'Status', key: 'status', width: 44 },
     { header: 'Package Status', key: 'package_status', width: 18 },
     { header: 'Notes', key: 'notes', width: 55 },
     { header: 'Map', key: 'map', width: 12, isHyperlink: true, hyperlinkText: 'View Map', style: { alignment: { horizontal: 'center' } } },
@@ -208,8 +208,7 @@ export async function exportPipelineReport(rows: ReportRow[], accountName: strin
     rank: i + 1,
     name: r.name,
     city: r.city ?? '',
-    stage: r.stageLabel,
-    status: statusText(r, true),
+    status: statusText(r),
     package_status: r.packageStatus,
     notes: r.notes,
     map: r.mapUrl ?? '',
