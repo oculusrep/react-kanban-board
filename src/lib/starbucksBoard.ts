@@ -79,13 +79,15 @@ export interface BoardDeal {
   stageSortOrder: number;
   ballInCourt: BallInCourt | null;   // null = unclassified
   ballInCourtParty: string | null;
-  ballInCourtSince: string | null; // ISO
+  ballInCourtSince: string | null; // ISO — heat clock (touches, park reset it)
+  courtSince: string | null;       // ISO — when the current court started (court_since)
   blockedOn: BlockedOn | null;
   needsPricing: boolean;   // detail of awaiting_ll
   needsSitePlan: boolean;  // detail of awaiting_ll
   onAgenda: boolean;
   seededFallback: boolean;
   parkedUntil: string | null; // review date (YYYY-MM-DD); parked while future
+  parkedReason: string | null;
   urgentUntil: string | null; // ISO; manual priority while future (§2.25)
   // derived
   days: number;          // whole days since ball_in_court_since (local/Eastern)

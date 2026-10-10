@@ -72,12 +72,14 @@ interface StateRow {
   ball_in_court: BallInCourt | null;
   ball_in_court_party: string | null;
   ball_in_court_since: string | null;
+  court_since: string | null;
   blocked_on: BlockedOn | null;
   needs_pricing: boolean | null;
   needs_site_plan: boolean | null;
   on_agenda: boolean | null;
   seeded_fallback: boolean | null;
   parked_until: string | null;
+  parked_reason: string | null;
   urgent_until: string | null;
 }
 
@@ -175,12 +177,14 @@ function toBoardDeal(c: CardInput): BoardDeal | null {
     ballInCourt,
     ballInCourtParty: st?.ball_in_court_party ?? null,
     ballInCourtSince,
+    courtSince: st?.court_since ?? null,
     blockedOn,
     needsPricing: st?.needs_pricing ?? false,
     needsSitePlan: st?.needs_site_plan ?? false,
     onAgenda,
     seededFallback,
     parkedUntil: st?.parked_until ?? null,
+    parkedReason: st?.parked_reason ?? null,
     urgentUntil: st?.urgent_until ?? null,
     days,
     readyToSubmit: ready,
@@ -254,8 +258,8 @@ function computeDaily(deals: BoardDeal[]): DailyNumber {
 }
 
 const STATE_COLS = `
-  ball_in_court, ball_in_court_party, ball_in_court_since,
-  blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until, urgent_until
+  ball_in_court, ball_in_court_party, ball_in_court_since, court_since,
+  blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until, parked_reason, urgent_until
 `;
 
 // Membership (decisions §2.14, §2.27): every site_submit of a board-enabled
