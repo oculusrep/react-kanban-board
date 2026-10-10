@@ -476,6 +476,15 @@ export default function Navbar() {
                   </button>
                   <button
                     onClick={() => {
+                      navigate('/reports/starbucks-pipeline');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    📋 Starbucks Pipeline Report
+                  </button>
+                  <button
+                    onClick={() => {
                       navigate('/reports');
                       setIsReportsMenuOpen(false);
                     }}
@@ -801,6 +810,15 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   📺 Starbucks Deal Board
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/reports/starbucks-pipeline');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  📋 Starbucks Pipeline Report
                 </button>
               </div>
             </div>
