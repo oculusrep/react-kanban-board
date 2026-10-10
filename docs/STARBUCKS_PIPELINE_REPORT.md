@@ -1,6 +1,6 @@
 # Starbucks Pipeline Report
 
-Route: `/reports/starbucks-pipeline` (also listed on the Reports page).
+Route: `/reports/starbucks-pipeline`. Reached from the nav menu (both hamburgers, under Starbucks Deal Board), the Reports page card, and the report header has a Deal Board button back.
 
 A ranked list of every Starbucks board card in **Pre-Submittal, Submitted-Reviewing,
 Negotiating LOI and At Lease/PSA**, ordered by which deal we think moves next. Drag rows to

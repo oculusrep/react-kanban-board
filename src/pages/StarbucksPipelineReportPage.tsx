@@ -4,6 +4,7 @@
 // Notes edit inline. Export to Excel writes the rows in the order shown.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
 import useStarbucksPipelineReport from '../hooks/useStarbucksPipelineReport';
 import { BoardStage } from '../lib/starbucksBoard';
@@ -42,6 +43,7 @@ function loadAccount(): string {
 }
 
 export default function StarbucksPipelineReportPage() {
+  const navigate = useNavigate();
   const [accountId, setAccountIdState] = useState<string>(loadAccount);
   const { rows, accounts, loading, error, saveError, move, setField, resetOrder, refresh } =
     useStarbucksPipelineReport(accountId);
@@ -119,6 +121,13 @@ export default function StarbucksPipelineReportPage() {
                 })}
               </div>
             )}
+            <button
+              onClick={() => navigate('/starbucks-board')}
+              className="px-3 py-1.5 text-sm font-medium rounded-md"
+              style={{ border: '1px solid #8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
+            >
+              📺 Deal Board
+            </button>
             <button
               onClick={onResetOrder}
               disabled={rows.length === 0}
