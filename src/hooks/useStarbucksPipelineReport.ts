@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import useStarbucksBoard from './useStarbucksBoard';
-import { Account, BoardDeal, BoardStage } from '../lib/starbucksBoard';
+import { Account, accountFor, BoardDeal, BoardStage } from '../lib/starbucksBoard';
 import {
   compareReportRows,
   googleMapsUrl,
@@ -124,7 +124,9 @@ export interface PipelineReportData {
   loading: boolean;
   error: string | null;
   saveError: string | null;
-  move: (from: number, to: number) => void;
+  // Re-rank one row next to its new visible neighbours. Works in a filtered
+  // view: hidden rows keep their positions in the full order.
+  move: (id: string, afterId: string | null, beforeId: string | null) => void;
   setField: (row: ReportRow, field: ReportField, value: string) => void;
   resetOrder: () => void;
   refresh: () => void;   // re-read board state after a status write
@@ -138,6 +140,7 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
   const [extrasLoading, setExtrasLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0); // bumps a re-read of names / coords
 
   // Every card in the four stages: columns, both bands, and the parking lot.
   const cards = useMemo(() => {
@@ -178,7 +181,7 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
     };
     // idKey stands in for `cards` — refetch only when membership changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idKey, board.loading]);
+  }, [idKey, board.loading, nonce]);
 
   const rows = useMemo<ReportRow[]>(() => {
     const bySite = new Map<string, StoredRow>();
@@ -197,11 +200,15 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
         name: ex?.name || c.name,
         city: c.city,
         stageLabel: c.stageLabel as BoardStage,
+        clientId: c.clientId,
+        accountToken: c.accountToken,
+        accountName: accountFor(c.clientId, c.clientName).filter,
         parked: parkedIds.has(c.id),
         mapUrl: ex?.mapUrl ?? null,
         sortOrder: s?.sort_order ?? null,
         ballInCourt: c.ballInCourt,
         ballInCourtParty: c.ballInCourtParty,
+        ballInCourtSince: c.ballInCourtSince,
         blockedOn: c.blockedOn,
         needsPricing: c.needsPricing,
         needsSitePlan: c.needsSitePlan,
@@ -222,11 +229,14 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
   }, [cards, extras, stored, order, parkedIds]);
 
   const move = useCallback(
-    (from: number, to: number) => {
-      if (from === to) return;
-      const next = [...rows];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
+    (id: string, afterId: string | null, beforeId: string | null) => {
+      const next = rows.filter((r) => r.id !== id);
+      const moved = rows.find((r) => r.id === id);
+      if (!moved) return;
+      let at = afterId ? next.findIndex((r) => r.id === afterId) + 1 : beforeId ? next.findIndex((r) => r.id === beforeId) : 0;
+      if (at < 0) at = 0;
+      next.splice(at, 0, moved);
+      if (next.every((r, i) => r.id === rows[i].id)) return;
       setOrder(next.map((r) => r.id));
       setSaveError(null);
       saveReportOrder(next).catch((e) => setSaveError(e?.message ?? 'Failed to save order'));
@@ -274,6 +284,9 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
     move,
     setField,
     resetOrder,
-    refresh: board.refresh,
+    refresh: () => {
+      board.refresh();
+      setNonce((n) => n + 1);
+    },
   };
 }
