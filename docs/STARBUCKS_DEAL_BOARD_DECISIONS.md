@@ -185,6 +185,31 @@ Pre-Submittal site_submits with no deal were invisible because membership was de
 
 Recon at decision time: 6 site_submit-only cards come on (4 Pre-Submittal: Warner Robins, Cumming/Canton Hwy, Senoia, Baxley; 2 Submitted-Reviewing: Eastman, Waynesboro), all with no history and no court. Board goes 38 → 44 tiles; the 4 Pre-Submittal ones land in the To classify band (6 → 10).
 
+### 2.29 Package Tracker (scoped 2026-10-11, not built; spec `docs/PACKAGE_TRACKER_SPEC.md`)
+Locked with Mike at scoping:
+
+- **The package lives on the deal, not the site_submit.** No deal means no package. Site_submit-only cards show no bar.
+- **Manual start.** A "Start Package" button on the deal sidebar creates the package and Noree's first tasks. Nothing auto-starts.
+- **11 slides with editable defaults.** Owner, setup/finish split, approval and inputs are settings Mike changes as he trains Noree. Never hard-coded.
+- **Statuses:** not started → in progress → waiting on Mike → done, plus N/A. **% = done ÷ applicable**; N/A is excluded; waiting on Mike is not done.
+- **An input Mike hasn't produced counts as waiting on Mike.** This covers Market Research not run, Site Story not run, site plan not in and DOT study not in.
+- **Noree's check-off goes to waiting on Mike** on both the approve and the setup/finish slides.
+- **Gates come from ball-in-court history in Negotiating LOI:**
+  - Gate 1 is the first flip to their court.
+  - Gate 2 is the first flip back to ours.
+  - Gate 3 is ready for Adam to sign; detection is still open.
+  - **Nothing is added to `deal`.** Recon found that no structured flip history exists, so this needs a court-event log (spec §9 Q1). That is new schema, not a deal field.
+- **Package state never changes card heat, sort or the daily number** (§1.2, §1.4). The card shows a bar plus "N waiting on Mike" only.
+- **Noree gets her own queue screen**, holding package slides plus the other tasks Mike assigns her, in an order Mike sets by drag and drop. Dependent slides appear only when their inputs are ready. This doesn't reopen §3's "no separate task view": that rule is about Mike's surface.
+
+**Open, needs Mike:**
+- The bar colours. The design said green / amber / red, which conflicts with §2.7 and puts the heat palette on a non-heat signal.
+- The Gate 3 signal. The recommendation is the timestamped "Final LOI in" checkbox.
+- Backfill of gate dates for deals already in LOI.
+- Whether Noree's restriction should be UI-only or also enforced in the data.
+
+**Landmine:** `task` inserts with `deal_id` / `site_submit_id` reset the board clock. Package tasks must be excluded from the reset triggers, or Start Package cools the card.
+
 ### 2.12 Pre-Submittal blockers, the ready-to-submit band, and the triage counter
 `blocked_on` is a set of parallel blockers, not a sequence. **`blocked_on = awaiting_ll | site_control`** — just two (migrations `20260831130000`, `20260831140000`). The board is **five columns**: Awaiting landlord · Awaiting site control · Submitted-Reviewing · Negotiating LOI · At Lease/PSA. The first two carry a small "Pre-Submittal" super-label. This retires the "one column with subheads" design, the two-column-grid stopgap (§5), *and* the Unset/Ready columns.
 
@@ -258,7 +283,7 @@ Not oversights. Do not build, do not ask about, do not add "small versions of" o
 |---|---|
 | A separate "today" or task view | Never. The board **is** the list. A second place to look means neither gets looked at. This is permanent, not phase-ordering. |
 | Kanban drag-and-drop between stages | DnD stays deferred (imprecise on a wall TV). A **non-drag** stage change via a slide-over dropdown **is** in scope — see 2.17. |
-| Deck completion progress bar | Phase 2, separate spec. Dependency chain already defined. |
+| ~~Deck completion progress bar~~ | **Now scoped** as the Package Tracker — `docs/PACKAGE_TRACKER_SPEC.md`, decisions §2.29. Not built. |
 | Rolling AI deal summary | Phase 2. Reserve space in the slide-over; wire nothing. |
 | Weighted pipeline value / delta scoreboard | Phase 3. |
 | Commission cash flow forecast | Phase 3. |
