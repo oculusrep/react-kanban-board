@@ -274,13 +274,14 @@ serve(async (req) => {
     // ---- window pass: metadata only, plus the headers conversations need ----
     type Meta = {
       id: string; thread_id: string; message_id: string | null; in_reply_to: string | null;
-      references_header: string | null; subject: string | null; sender_email: string | null; received_at: string;
+      references_header: string | null; subject: string | null; sender_email: string | null;
+      sender_name: string | null; received_at: string;
     };
     const meta: Meta[] = [];
     for (let off = 0; ; off += 1000) {
       const { data, error } = await supabase
         .from('emails')
-        .select('id, thread_id, message_id, in_reply_to, references_header, subject, sender_email, received_at')
+        .select('id, thread_id, message_id, in_reply_to, references_header, subject, sender_email, sender_name, received_at')
         .gte('received_at', since)
         .not('thread_id', 'is', null)
         .order('received_at', { ascending: false })
@@ -461,11 +462,21 @@ serve(async (req) => {
         const t = firstSentTo.get(em);
         if (t !== undefined && t < firstAt) return true;                  // prior contact
         if (RELAY_SENDER.test(em)) {
-          // Resolve the human behind the relay from the display name.
+          // Resolve the human behind the relay. Display name first -- "Noree
+          // Corias (via Google Chat)" -- then any address quoted in the
+          // subject, which is how Google Chat names the real sender:
+          // "Noree Corias <noree@oculusrep.com> messaged you on Google Chat".
           const human = String(r.sender_name ?? '').replace(VIA_SUFFIX, '').toLowerCase().trim();
           if (human && (internalNames.has(human) || contactNames.has(human))) {
             stats.relay_humans_resolved++;
             return true;
+          }
+          for (const addr of String(r.subject ?? '').match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi) ?? []) {
+            const a = addr.toLowerCase();
+            if (a.endsWith(INTERNAL_DOMAIN) || contactEmails.has(a) || firstSentTo.has(a)) {
+              stats.relay_humans_resolved++;
+              return true;
+            }
           }
         }
         return false;
