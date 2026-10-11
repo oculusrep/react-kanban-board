@@ -51,7 +51,8 @@ const USD_PER_OUTPUT_TOKEN = 5.00 / 1_000_000;
 
 const WINDOW_DAYS = 14;
 const MESSAGES_PER_CONVO = 6;
-const BODY_CHARS = 1200;
+const BODY_CHARS = 1300;          // quoted context
+const NEW_TEXT_CHARS = 700;       // this message's own new text, shown first
 const CHUNK = 200;
 const CONCURRENCY = 4;
 const DEADLINE_MS = 110_000;
@@ -86,6 +87,25 @@ const prettyDay = (ymd: string) => {
   }).format(dt);
 };
 const ageText = (days: number) => (days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`);
+/**
+ * These bodies are 10-20KB forwarded chains where the new text is a single line
+ * and everything after it is quoted history. A flat 1200-char slice gave the
+ * model a wall of quotes, so each message is rendered as its OWN new text first
+ * and the quoted context second. The context is kept, not stripped: on the
+ * Oakwood thread the fact that matters (the Tejal guaranty) is inside the quotes.
+ */
+const newTextOf = (raw: string): string => {
+  let t = String(raw ?? '').replace(/\r/g, '');
+  const cuts = [
+    t.search(/^\s*On .{0,160}\bwrote:/m),
+    t.search(/^\s*-{2,}\s*Original Message/mi),
+    t.search(/^\s*\*?From:\*?\s/m),
+    t.search(/^\s*>/m),
+  ].filter((i) => i > 0);
+  if (cuts.length) t = t.slice(0, Math.min(...cuts));
+  return t.replace(/\s+/g, ' ').trim();
+};
+
 const msgIdTokens = (s: string | null) => (s ? (s.match(/<[^<>\s]+>/g) ?? []) : []);
 
 function systemPrompt(ownerName: string, ownerEmail: string, todayEt: string): string {
@@ -639,7 +659,10 @@ serve(async (req) => {
             .map((x) => String(x?.email ?? '')).filter(Boolean).join(', ');
           return `--- sent ${sentDay} INVITATION SENT BY OWNER\nSubject: ${m.subject ?? ''}\nAttendees: ${attendees}`;
         }
-        const body = String(m.body_text ?? '').replace(/\s+/g, ' ').trim().slice(0, BODY_CHARS);
+        const raw = String(m.body_text ?? '');
+        const newText = newTextOf(raw).slice(0, NEW_TEXT_CHARS);
+        const body = (newText ? `[this message says] ${newText}\n[quoted context] ` : '')
+          + raw.replace(/\s+/g, ' ').trim().slice(0, BODY_CHARS);
         // A relay message is written BY a human; showing the robot address made
         // the model mis-assign the direction ("Noree asked you..." came back as
         // ball=them). Name the human the resolver found.
