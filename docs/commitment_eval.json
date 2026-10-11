@@ -1,0 +1,159 @@
+{
+  "_what": "Mike's 2026-10-10 rating of the 25 ball='me' rows for mike@oculusrep.com, oldest first. The regression set for commitment recall.",
+  "_scoring": "pitch/done conversations must hold NO ball='me' row; open_me conversations MUST hold one. open_me_missing must be 0 for any change to ship.",
+  "_no_emails_on_purpose": "conversation keys only; counterparty addresses are sender data and stay out of git.",
+  "owner": "mike@oculusrep.com",
+  "rated_on": "2026-10-10",
+  "rows": [
+    {
+      "rn": 1,
+      "conversation_key": "1a0d3fe1943bd895",
+      "expected": "done",
+      "what": "Send email intro to Jared Wright and Kev"
+    },
+    {
+      "rn": 2,
+      "conversation_key": "1a0c83a9578306e7",
+      "expected": "pitch",
+      "what": "Review OFS Solutions Referral Partner Pr"
+    },
+    {
+      "rn": 3,
+      "conversation_key": "1a0e7ef2972aa4f9",
+      "expected": "pitch",
+      "what": "Reply to Madison about 1031 referral fit"
+    },
+    {
+      "rn": 4,
+      "conversation_key": "1a0e91077f0bde05",
+      "expected": "pitch",
+      "what": "Identify buyer interested in Columbus GA"
+    },
+    {
+      "rn": 5,
+      "conversation_key": "1a0e98743f46f7eb",
+      "expected": "pitch",
+      "what": "Decide whether to pursue commercial brok"
+    },
+    {
+      "rn": 6,
+      "conversation_key": "1a0cfad008b4c42f",
+      "expected": "done",
+      "what": "Get Jared's read on Sbux Albany GA oppor"
+    },
+    {
+      "rn": 7,
+      "conversation_key": "1a0ee1052b5e4ce8",
+      "expected": "done",
+      "what": "Review LOI for Barrio Burrito Bar"
+    },
+    {
+      "rn": 8,
+      "conversation_key": "1a0ede2c41177cf0",
+      "expected": "done",
+      "what": "Send kml of polygons if needed"
+    },
+    {
+      "rn": 9,
+      "conversation_key": "1a0ee2c8817938e0",
+      "expected": "pitch",
+      "what": "Decide whether to explore RentFlow partn"
+    },
+    {
+      "rn": 10,
+      "conversation_key": "1a0e8b5e638507ce",
+      "expected": "done",
+      "what": "Confirm attendance and time slot for por"
+    },
+    {
+      "rn": 11,
+      "conversation_key": "1a0eeb7bbbef2819",
+      "expected": "pitch",
+      "what": "Respond to Alberta about podcast guest a"
+    },
+    {
+      "rn": 12,
+      "conversation_key": "1a0eee1fd0a1ea01",
+      "expected": "done",
+      "what": "Approve or suggest venue for Monday cock"
+    },
+    {
+      "rn": 13,
+      "conversation_key": "1a0d89f6838a42aa",
+      "expected": "pitch",
+      "what": "Reply to Rachel about incentive negotiat"
+    },
+    {
+      "rn": 14,
+      "conversation_key": "1a0f2feacc0bc944",
+      "expected": "done",
+      "what": "Provide meeting times for Tuesday at ICS"
+    },
+    {
+      "rn": 15,
+      "conversation_key": "1a0f31ad0788938b",
+      "expected": "pitch",
+      "what": "Call or meet with Spencer Fisher"
+    },
+    {
+      "rn": 16,
+      "conversation_key": "1a0f516b4a24ae26",
+      "expected": "done",
+      "what": "Re-execute LOI with cooler update"
+    },
+    {
+      "rn": 17,
+      "conversation_key": "1a0f8cee5489dd94",
+      "expected": "pitch",
+      "what": "Review specs and decide on call with Leo"
+    },
+    {
+      "rn": 18,
+      "conversation_key": "1a0f8e68812036e5",
+      "expected": "pitch",
+      "what": "Decide whether to appear on Keys to Grow"
+    },
+    {
+      "rn": 19,
+      "conversation_key": "1a0f8a2a2da14c6f",
+      "expected": "done",
+      "what": "Confirm availability for Starbucks meeti"
+    },
+    {
+      "rn": 20,
+      "conversation_key": "1a0fc9d561c71de0",
+      "expected": "done",
+      "what": "Invoice Kim Moore at Skyline Seven for F"
+    },
+    {
+      "rn": 21,
+      "conversation_key": "1a0fd06098432d5b",
+      "expected": "pitch",
+      "what": "Answer whether you evaluate real estate "
+    },
+    {
+      "rn": 22,
+      "conversation_key": "19e8ed7e6bec573e",
+      "expected": "open_me",
+      "what": "Propose alternative solution to spousal "
+    },
+    {
+      "rn": 23,
+      "conversation_key": "1a0fd484c897b7ff",
+      "expected": "done",
+      "what": "Add Wendy Wu to thread with Developer, A"
+    },
+    {
+      "rn": 24,
+      "conversation_key": "1a0fe984c3593ccc",
+      "expected": "open_me",
+      "what": "Review Piedmont Fayette Hospital inclusi"
+    },
+    {
+      "rn": 25,
+      "conversation_key": "1a0d338f40839a10",
+      "expected": "done",
+      "what": "Send calendar invite for 9am RBN booth m"
+    }
+  ]
+}

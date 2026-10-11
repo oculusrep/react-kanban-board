@@ -60,6 +60,15 @@ const EXCLUDED_LABELS = ['OVIS/Personal', 'OVIS/Junk', 'OVIS/Reading', 'OVIS/Eve
 const EXCLUDED_SENDERS = ['onboarding@resend.dev'];
 const CALENDAR_SUBJECT = /^\s*(accepted|declined|tentative|invitation|updated invitation)\s*:/i;
 
+/**
+ * Notification relays. The sender address is a robot; the human is in the
+ * display name as "Noree Corias (via Google Chat)". Gating on the relay address
+ * retired a real commitment, because nobody has ever emailed chat-noreply.
+ */
+const RELAY_SENDER = /(^|[.-])(no-?reply|notifications?-noreply|messages-noreply|updates-noreply)@/i;
+const VIA_SUFFIX = /\s*\((?:via|through)\s+[^)]*\)\s*$/i;
+const INTERNAL_DOMAIN = '@oculusrep.com';
+
 const TIME_WORDS_REPORTED = /\b(today|yesterday|ago|last week)\b/i;
 const TIME_WORDS_RETRY = /\b(today|yesterday|tomorrow|ago|recently|this (week|morning|afternoon)|last (week|month|night)|next week|just now)\b/i;
 
@@ -99,6 +108,12 @@ ball:
 Read the direction carefully. "X said he'd send the plan" means X owes it: ball
 is "them". "I'll get you the plan" from (OWNER) means ball is "me". A question
 PUT TO someone by (OWNER) is owed BY them, not by the owner.
+
+LIST EVERY OBLIGATION IN THIS CONVERSATION SEPARATELY. One conversation can
+hold several obligations for the same person. ALWAYS REPORT THE OWNER'S OWN
+OBLIGATIONS EVEN IF ANOTHER PERSON'S ARE MORE PROMINENT — if the thread is
+mostly about what someone else owes, the owner's own outstanding item still gets
+its own entry.
 
 Judge from the LAST messages. If the owner already answered what was asked, or
 sent what was promised, the obligation is DISCHARGED — do not report it. A line
@@ -222,6 +237,8 @@ serve(async (req) => {
     written: { them: 0, me: 0, neither: 0 },
     replaced_rows_deleted: 0,
     gated_rows_retired: 0,
+    relay_humans_resolved: 0,
+    rows_missed_once: 0,
     upsert_errors: 0,
     convos_zero: 0,
     stopped_on_budget: false,
@@ -382,6 +399,34 @@ serve(async (req) => {
       if ((data ?? []).length < 1000) break;
     }
 
+    // ---- WHO COUNTS AS A STRANGER. The gate is for external strangers only.
+    // Anyone in the CRM, anyone internal, and any relay whose human we can
+    // resolve is exempt -- the gate exists to kill cold pitches, and it already
+    // cost one real commitment by treating a Google Chat relay as a stranger.
+    const contactEmails = new Set<string>();
+    const contactNames = new Set<string>();
+    for (let off = 0; ; off += 1000) {
+      const { data, error } = await supabase
+        .from('contact').select('email, personal_email, first_name, last_name').range(off, off + 999);
+      if (error) throw new Error(`contact page ${off}: ${error.message}`);
+      for (const c of data ?? []) {
+        for (const e of [c.email, c.personal_email]) {
+          if (e) contactEmails.add(String(e).toLowerCase().trim());
+        }
+        const nm = [c.first_name, c.last_name].filter(Boolean).join(' ').toLowerCase().trim();
+        if (nm) contactNames.add(nm);
+      }
+      if ((data ?? []).length < 1000) break;
+    }
+    const { data: internalUsers } = await supabase.from('user').select('name, first_name, last_name, email');
+    const internalNames = new Set<string>();
+    for (const u2 of internalUsers ?? []) {
+      for (const nm of [u2.name, [u2.first_name, u2.last_name].filter(Boolean).join(' ')]) {
+        if (nm) internalNames.add(String(nm).toLowerCase().trim());
+      }
+      if (u2.email) contactEmails.add(String(u2.email).toLowerCase());
+    }
+
     for (const reason of excludedBy.values()) {
       if (reason === 'OVIS/Personal') stats.excluded.label_personal++;
       else if (reason === 'OVIS/Junk') stats.excluded.label_junk++;
@@ -403,15 +448,29 @@ serve(async (req) => {
       const times = list.map((r) => Date.parse(r.received_at));
       const firstAt = Math.min(...times);
       const hasOwnerSent = list.some((r) => String(r.sender_email ?? '').toLowerCase() === ownerEmail);
-      const counterparties = [...new Set(list
-        .map((r) => String(r.sender_email ?? '').toLowerCase())
-        .filter((e) => e && e !== ownerEmail))];
-      // "has this counterparty ever received mail from the owner, before this
-      // conversation started?"
-      const priorContact = counterparties.some((e) => {
-        const t = firstSentTo.get(e);
-        return t !== undefined && t < firstAt;
-      });
+      const inbound = list.filter((r) => String(r.sender_email ?? '').toLowerCase() !== ownerEmail);
+      const counterparties = [...new Set(inbound.map((r) => String(r.sender_email ?? '').toLowerCase()).filter(Boolean))];
+
+      // A counterparty is KNOWN if any of these hold, and the gate only ever
+      // fires when every counterparty is an unknown stranger.
+      const known = (r: Meta): boolean => {
+        const em = String(r.sender_email ?? '').toLowerCase();
+        if (!em) return false;
+        if (em.endsWith(INTERNAL_DOMAIN)) return true;                    // internal
+        if (contactEmails.has(em)) return true;                           // in the CRM
+        const t = firstSentTo.get(em);
+        if (t !== undefined && t < firstAt) return true;                  // prior contact
+        if (RELAY_SENDER.test(em)) {
+          // Resolve the human behind the relay from the display name.
+          const human = String(r.sender_name ?? '').replace(VIA_SUFFIX, '').toLowerCase().trim();
+          if (human && (internalNames.has(human) || contactNames.has(human))) {
+            stats.relay_humans_resolved++;
+            return true;
+          }
+        }
+        return false;
+      };
+      const priorContact = inbound.length === 0 || inbound.some(known);
       live.push({
         key: k, rows: list, threadIds, primaryTid: threadIds[0],
         lastAt: Math.max(...times), firstAt, hasOwnerSent, priorContact,
@@ -436,19 +495,45 @@ serve(async (req) => {
     }
 
     // ---- existing rows for THIS mailbox, keyed by thread_id for conversation lookup ----
-    const existingByTid = new Map<string, { id: string; ball: string; status: string; what: string }[]>();
+    const existingByTid = new Map<string, { id: string; ball: string; status: string; what: string; missed: number }[]>();
     for (let off = 0; ; off += 1000) {
       const { data, error } = await supabase
-        .from('commitment').select('id, gmail_thread_id, ball, status, what')
+        .from('commitment').select('id, gmail_thread_id, ball, status, what, missed_runs')
         .eq('gmail_connection_id', cid).range(off, off + 999);
       if (error) throw new Error(`commitment page ${off}: ${error.message}`);
       for (const r of data ?? []) {
         const t = String(r.gmail_thread_id);
         if (!existingByTid.has(t)) existingByTid.set(t, []);
-        existingByTid.get(t)!.push({ id: String(r.id), ball: String(r.ball), status: String(r.status), what: String(r.what ?? '') });
+        existingByTid.get(t)!.push({
+          id: String(r.id), ball: String(r.ball), status: String(r.status),
+          what: String(r.what ?? ''), missed: Number(r.missed_runs ?? 0),
+        });
       }
       if ((data ?? []).length < 1000) break;
     }
+
+    /**
+     * DELETION HYSTERESIS. One run's silence is model noise, not evidence: ~5%
+     * of rows churn per run on borderline conversations, and two rows the owner
+     * had confirmed open were deleted on a single run's judgement. A row must be
+     * missed TWICE. Any run that returns it resets missed_runs to 0.
+     */
+    const retireOrBump = async (cands: { id: string; missed: number }[], gate: boolean) => {
+      const del = cands.filter((c) => c.missed >= 1).map((c) => c.id);
+      const bump = cands.filter((c) => c.missed < 1).map((c) => c.id);
+      for (const part of chunks(del, 100)) {
+        const { error } = await supabase.from('commitment').delete().in('id', part).eq('status', 'open');
+        if (error) console.error(`[extract-commitments] retire: ${error.message}`);
+        else if (gate) stats.gated_rows_retired += part.length;
+        else stats.replaced_rows_deleted += part.length;
+      }
+      for (const part of chunks(bump, 100)) {
+        const { error } = await supabase.from('commitment')
+          .update({ missed_runs: 1 }).in('id', part).eq('status', 'open');
+        if (error) console.error(`[extract-commitments] bump: ${error.message}`);
+        else stats.rows_missed_once += part.length;
+      }
+    };
 
     // ---- RETIRE WHAT THE GATE DISQUALIFIES.
     // A conversation skipped before the model call used to keep its old rows
@@ -458,22 +543,23 @@ serve(async (req) => {
     // the gate's opinion is "this is a pitch", and that has to reach the data.
     // Also drops open 'me' rows on conversations with no prior contact, which
     // is the same rule applied to a conversation that still gets extracted.
-    {
+    // ONLY on the first batch of a run. The gate's candidate set is
+    // mailbox-wide, so running it in every invocation would bump a row to 1 in
+    // batch 1 and delete it in batch 2 -- two strikes inside ONE run, which is
+    // exactly the hysteresis this is supposed to provide. A resumed run
+    // (offset > 0) therefore does not re-apply the gate.
+    if (offset === 0) {
       const rowsFor = (c: Convo) => c.threadIds.flatMap((t) => existingByTid.get(t) ?? []);
-      const doomed: string[] = [];
+      const cands = new Map<string, { id: string; missed: number }>();
       for (const c of skippedConvos) {
-        for (const p of rowsFor(c)) if (p.status === 'open') doomed.push(p.id);
+        for (const p of rowsFor(c)) if (p.status === 'open') cands.set(p.id, p);
       }
       for (const c of live) {
         if (c.priorContact) continue;
-        for (const p of rowsFor(c)) if (p.status === 'open' && p.ball === 'me') doomed.push(p.id);
+        for (const p of rowsFor(c)) if (p.status === 'open' && p.ball === 'me') cands.set(p.id, p);
       }
-      for (const part of chunks([...new Set(doomed)], 100)) {
-        const { error: delErr } = await supabase
-          .from('commitment').delete().in('id', part).eq('status', 'open');
-        if (delErr) console.error(`[extract-commitments] gate retire: ${delErr.message}`);
-        else stats.gated_rows_retired += part.length;
-      }
+      // Gated conversations follow the SAME two-strike rule as everything else.
+      await retireOrBump([...cands.values()], true);
     }
 
     let stop = false, consumed = 0;
@@ -612,6 +698,7 @@ serve(async (req) => {
             deal_id: links?.[0]?.object_id ?? null,
             would_set_ball_in_court: ball === 'them' ? 'counterparty' : ball === 'me' ? 'us' : null,
             model: MODEL,
+            missed_runs: 0,                    // returned this run -> counter resets
             confidence: typeof x.confidence === 'number' ? Math.max(0, Math.min(1, x.confidence)) : null,
           };
 
@@ -635,13 +722,8 @@ serve(async (req) => {
 
       // REPLACEMENT: an open row this extraction no longer claims is retired.
       // handled / flagged / skipped are never deleted.
-      const doomed = openPrior.filter((p) => !claimed.has(p.id)).map((p) => p.id);
-      if (doomed.length) {
-        const { error: delErr } = await supabase
-          .from('commitment').delete().in('id', doomed).eq('status', 'open');
-        if (delErr) console.error(`[extract-commitments] replace ${c.primaryTid}: ${delErr.message}`);
-        else stats.replaced_rows_deleted += doomed.length;
-      }
+      const doomed = openPrior.filter((p) => !claimed.has(p.id));
+      if (doomed.length) await retireOrBump(doomed, false);
     };
 
     for (const part of chunks(batch, CONCURRENCY)) {
