@@ -278,3 +278,82 @@ returned only one.
 
 #16 is defensible as `me` — Mike's own 10-07 message in the merged conversation
 says the LOI "has not been addressed yet". #19 is the calendar gap.
+
+---
+
+# Recall round — 2026-10-11
+
+Migration `20261011120034` (missed_runs). Ship criterion **open-me missing = 0
+is NOT met**: 1 of 2.
+
+## The regression set
+
+[docs/commitment_eval.json](commitment_eval.json) holds Mike's 2026-10-10 rating
+of 25 rows as conversation keys + expected outcome. **No counterparty addresses**
+— sender data stays out of git — so matching is by conversation key against
+`gmail_thread_id` or any member of `conversation_thread_ids`.
+
+`scripts/score-commitment-eval.py` prints three lines and **exits 1 when any
+`open_me` row is missing**, so it can gate a deploy.
+
+| | baseline | after run 1 | after run 2 |
+|---|---|---|---|
+| pitches present (of 11) | 1 | 1 | **1** |
+| done-but-present (of 12) | 4 | 5 | **5** |
+| **open-me missing (of 2)** | 2 | 1 | **1** |
+
+mike@ `ball='me'`: 19 → **35**. All rows 174 → **222**. Run 2: **1 inserted,
+10 deleted** (8 more rows are at `missed_runs = 1`, awaiting a second miss).
+
+## What fixed #24, and what did not fix #22
+
+**#24 is restored.** Three things were wrong at once: the gate treated
+`chat-noreply@google.com` as a stranger; `sender_name` was never selected in the
+window query, so the `"(via Google Chat)"` resolver silently compared against an
+empty string (`relay_humans_resolved` was 0 on every run until that was found);
+and the transcript showed the robot as the author, which inverted the direction.
+The relay now renders as `Noree Corias <noree@oculusrep.com> (sent via a
+notification relay)` and resolves via display name **or** any address quoted in
+the subject.
+
+**#22 is a judgement disagreement, not missing data.** Its conversation has 4
+messages in the window, all included, and "Tejal" appears at offsets 654, 1089
+and 1480 — inside the context the model is given. The model consistently reads
+the Oakwood thread as Arty-led: *"Arty Santos is waiting for the broker to push
+the landlord for feedback on the spousal consent proposal"*, `ball=them`. Mike is
+a participant on a thread his colleague is running, and whether "propose an
+alternative" is Mike's or Arty's is genuinely ambiguous in the text.
+
+Three attempts were made before stopping: the multi-obligation instruction, a
+required `owner_owes` field answered before the list (with
+`owner_owes_without_me_row` counted so a disagreement is visible), and a body
+rendering that shows each message's own de-quoted text ahead of the quoted
+context. **No further prompt tuning was done, deliberately** — pushing until one
+named eval row appears is overfitting to the eval, and it would buy a green
+number without buying recall.
+
+What would actually address it: a cross-mailbox view of a conversation (the same
+thread is richer in asantos@'s copy), or a CC-aware signal distinguishing "you
+were asked" from "your colleague was asked". Neither is built.
+
+## Gate exemptions
+
+The gate is now for external strangers only — exempt: any `@oculusrep.com`
+sender, any address in `contact` or `user`, and relays whose human resolves.
+**23 previously gated conversations are now ungated** (mike@ 159 → 140,
+asantos@ 38 → 34), with 10 relay humans resolved per run.
+
+## Hysteresis
+
+`missed_runs + 1` on a miss, delete at `>= 2`, reset to 0 whenever a run returns
+the row. The gate pass runs **only on a batch at `offset 0`**: its candidate set
+is mailbox-wide, so running it per batch would spend both strikes inside one run.
+Run 1 deleted 0 rows (everything was a first miss); run 2 deleted 10.
+
+## State
+
+The function is **deployed** while the criterion fails, because each attempt had
+to run against live mail to be measured. The data is better than before the round
+(10 of 11 pitches gone, #24 restored, 0 time words, 0 errors) but #22 is absent.
+Rolling the function back to `dbb2101a` is one deploy if the panel needs the
+previous behaviour instead.
