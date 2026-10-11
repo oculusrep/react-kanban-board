@@ -131,14 +131,22 @@ one of those, put its id in "existing_id". Use null when it is a new obligation.
 Do not report an existing commitment that the latest messages have discharged —
 leave it out and it will be retired.
 
+ANSWER THE OWNER QUESTION FIRST. Before listing anything, decide: what, if
+anything, does ${ownerName} owe anyone here? Put it in "owner_owes" ("none" if
+genuinely nothing). If "owner_owes" is not "none", there MUST be a commitment
+with ball="me" that says it. A conversation where someone asks ${ownerName} for
+an opinion, a document, a time or a decision, and ${ownerName} has not yet given
+it, is ball="me" — the asker is not the one who owes.
+
 Return STRICT JSON, no prose, no markdown fence:
-{"commitments":[{"existing_id":"<id or null>","ball":"them|me|neither",
+{"owner_owes":"<what the owner owes, or none>",
+ "commitments":[{"existing_id":"<id or null>","ball":"them|me|neither",
 "what":"<8 words max, concrete>","reason":"<ONE sentence to be read ALOUD to
 ${ownerName}, naming who and what, with NO time language>",
 "counterparty_name":"<name or null>","counterparty_email":"<email or null>",
 "promised_date":"<YYYY-MM-DD or null>","confidence":<0.0-1.0>}]}
 
-Return {"commitments":[]} when nothing is owed. That is a common and correct
+Return {"owner_owes":"none","commitments":[]} when nothing is owed. That is a common and correct
 answer — most conversations hold nothing. Do not invent one.
 
 reason examples (no time words anywhere):
@@ -239,6 +247,7 @@ serve(async (req) => {
     gated_rows_retired: 0,
     relay_humans_resolved: 0,
     rows_missed_once: 0,
+    owner_owes_without_me_row: 0,
     upsert_errors: 0,
     convos_zero: 0,
     stopped_on_budget: false,
@@ -631,7 +640,16 @@ serve(async (req) => {
           return `--- sent ${sentDay} INVITATION SENT BY OWNER\nSubject: ${m.subject ?? ''}\nAttendees: ${attendees}`;
         }
         const body = String(m.body_text ?? '').replace(/\s+/g, ' ').trim().slice(0, BODY_CHARS);
-        return `--- sent ${sentDay} from ${m.sender_name ?? ''} <${m.sender_email}>${who}\nSubject: ${m.subject ?? ''}\n${body}`;
+        // A relay message is written BY a human; showing the robot address made
+        // the model mis-assign the direction ("Noree asked you..." came back as
+        // ball=them). Name the human the resolver found.
+        let fromLine = `${m.sender_name ?? ''} <${m.sender_email}>`;
+        if (RELAY_SENDER.test(String(m.sender_email ?? '').toLowerCase())) {
+          const human = String(m.sender_name ?? '').replace(VIA_SUFFIX, '').trim();
+          const addr = (String(m.subject ?? '').match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i) ?? [])[0] ?? '';
+          if (human || addr) fromLine = `${human} <${addr || m.sender_email}> (sent via a notification relay)`;
+        }
+        return `--- sent ${sentDay} from ${fromLine}${who}\nSubject: ${m.subject ?? ''}\n${body}`;
       }).join('\n');
 
       // existing OPEN rows across every thread_id in this conversation
@@ -656,6 +674,11 @@ serve(async (req) => {
             'YOUR PREVIOUS ANSWER CONTAINED TIME LANGUAGE AND WAS REJECTED. Rewrite each "reason" with no time word of any kind. State only who owes what.');
           const retried = (parsed?.commitments ?? []).filter((x) => x && x.ball && x.what && x.reason);
           if (retried.length) list = retried;
+        }
+        const ownerOwes = String((parsed as any)?.owner_owes ?? 'none').trim().toLowerCase();
+        if (ownerOwes && ownerOwes !== 'none' && !list.some((x) => x.ball === 'me')) {
+          // The model said the owner owes something and then did not list it.
+          stats.owner_owes_without_me_row++;
         }
         found = list;
       } catch (err: any) {
