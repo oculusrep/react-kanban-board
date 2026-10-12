@@ -129,6 +129,12 @@ Read the direction carefully. "X said he'd send the plan" means X owes it: ball
 is "them". "I'll get you the plan" from (OWNER) means ball is "me". A question
 PUT TO someone by (OWNER) is owed BY them, not by the owner.
 
+WHO WAS ADDRESSED DECIDES WHOSE REQUEST IT IS. Every message lists To: and Cc:.
+When a colleague (an @oculusrep.com address) addresses the owner directly in
+To:, requests in that message belong to the owner. When the owner is only in
+Cc:, requests belong to the To: recipients — a colleague running a thread the
+owner is copied on owes it, not the owner.
+
 LIST EVERY OBLIGATION IN THIS CONVERSATION SEPARATELY. One conversation can
 hold several obligations for the same person. ALWAYS REPORT THE OWNER'S OWN
 OBLIGATIONS EVEN IF ANOTHER PERSON'S ARE MORE PROMINENT — if the thread is
@@ -653,11 +659,17 @@ serve(async (req) => {
         const who = isOwner ? ' (OWNER)' : '';
         const sentDay = etDay(new Date(m.received_at));
         const isCal = CALENDAR_SUBJECT.test(String(m.subject ?? '')) || calendarMsgIds.has(String(m.id));
+        const rcpt = (m.recipient_list ?? []) as any[];
+        const addrs = (kind: string) => rcpt
+          .filter((x) => String(x?.type ?? '').toLowerCase() === kind)
+          .map((x) => String(x?.email ?? '').toLowerCase()).filter(Boolean);
+        const toList = addrs('to'), ccList = addrs('cc');
+        const ownerIn = (l: string[]) => (l.includes(ownerEmail) ? ' <-- THE OWNER' : '');
+        const header = `To: ${toList.join(', ') || '(none)'}${ownerIn(toList)}\nCc: ${ccList.join(', ') || '(none)'}${ownerIn(ccList)}`;
+
         if (isCal && isOwner) {
           stats.owner_invites_kept++;
-          const attendees = ((m.recipient_list ?? []) as any[])
-            .map((x) => String(x?.email ?? '')).filter(Boolean).join(', ');
-          return `--- sent ${sentDay} INVITATION SENT BY OWNER\nSubject: ${m.subject ?? ''}\nAttendees: ${attendees}`;
+          return `--- sent ${sentDay} INVITATION SENT BY OWNER\nSubject: ${m.subject ?? ''}\nAttendees: ${rcpt.map((x) => String(x?.email ?? '')).filter(Boolean).join(', ')}`;
         }
         const raw = String(m.body_text ?? '');
         const newText = newTextOf(raw).slice(0, NEW_TEXT_CHARS);
@@ -672,7 +684,7 @@ serve(async (req) => {
           const addr = (String(m.subject ?? '').match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i) ?? [])[0] ?? '';
           if (human || addr) fromLine = `${human} <${addr || m.sender_email}> (sent via a notification relay)`;
         }
-        return `--- sent ${sentDay} from ${fromLine}${who}\nSubject: ${m.subject ?? ''}\n${body}`;
+        return `--- sent ${sentDay} from ${fromLine}${who}\n${header}\nSubject: ${m.subject ?? ''}\n${body}`;
       }).join('\n');
 
       // existing OPEN rows across every thread_id in this conversation
