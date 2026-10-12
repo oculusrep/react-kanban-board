@@ -202,11 +202,16 @@ Locked with Mike at scoping:
 - **Package state never changes card heat, sort or the daily number** (§1.2, §1.4). The card shows a bar plus "N waiting on Mike" only.
 - **Noree gets her own queue screen**, holding package slides plus the other tasks Mike assigns her, in an order Mike sets by drag and drop. Dependent slides appear only when their inputs are ready. This doesn't reopen §3's "no separate task view": that rule is about Mike's surface.
 
-**Open, needs Mike:**
-- The bar colours. The design said green / amber / red, which conflicts with §2.7 and puts the heat palette on a non-heat signal.
-- The Gate 3 signal. The recommendation is the timestamped "Final LOI in" checkbox.
-- Backfill of gate dates for deals already in LOI.
-- Whether Noree's restriction should be UI-only or also enforced in the data.
+**Decided 2026-10-12 (Mike):**
+- **Court history:** build `deal_court_event` (trigger on `deal_activity_state`, dated by `court_since`), backfilled from `document_handoff` LOI turns. Deals with no recoverable dates show **"gate date unknown"** (absence, §1.7). Mike enters first-draft / first-response dates once, on the package.
+- **Gate 3** is the timestamped "Final LOI in" checkbox on the package (option A).
+- **Bar colours:** slate when on pace, terracotta outline when behind, solid terracotta when late. **No green** (§2.7 holds).
+- **Package tasks are excluded from the clock-reset triggers**, proven by `supabase/tests/package_task_clock_test.sql`.
+- **The bar fits the current compact tile height** (§1.1).
+- **Pipeline report** shows computed progress. `package_status` stays until Mike confirms, then gets dropped.
+- **Noree:** no access restriction, no route guard and no new permission keys. Her Tasks queue becomes her default landing page.
+- **Deals without a site_submit** get Start Package and the slide list in `DealHeaderBar` too.
+- **Phased build:** 1 schema; 2 sidebar + settings; 3 Noree queue; 4 board card + report. Stop for review after each phase. Each migration is shown to Mike and needs his OK before it's applied.
 
 **Landmine:** `task` inserts with `deal_id` / `site_submit_id` reset the board clock. Package tasks must be excluded from the reset triggers, or Start Package cools the card.
 

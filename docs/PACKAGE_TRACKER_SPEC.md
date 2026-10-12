@@ -1,6 +1,17 @@
 # Starbucks Package Tracker — Spec
 
-**Status (2026-10-11): scoping only. Nothing built, nothing migrated.** Branch `feature/package-tracker`.
+**Status (2026-10-12): Phase 1 (schema) written and round-trip tested. Not applied: waiting on Mike's OK.** Branch `feature/package-tracker`.
+
+Decisions from 2026-10-12 are in the decisions file §2.29. Where this spec still describes the earlier proposal, those decisions override it: colours locked, no access restriction for Noree, and a `DealHeaderBar` mount for deals with no site.
+
+## Build phases (stop for review after each)
+
+| Phase | Scope | State |
+|---|---|---|
+| 1 | Tables, `deal_court_event` + backfill, task link + clock-trigger fix + test, progress views | Written; round trip passes; **not applied** |
+| 2 | Start Package, badge, slide list (SiteSubmitSidebar + DealHeaderBar), once-only gate-date entry, slide-template settings | — |
+| 3 | Noree's Tasks queue (drag order, input-gated release), set as her default landing page | — |
+| 4 | Board card bar + "N waiting on Mike"; pipeline report shows computed progress | — |
 
 Read `STARBUCKS_DEAL_BOARD_DECISIONS.md` first. Its principles govern this feature too. The locked
 package decisions are in its §2.29. This file replaces the board's "Deck completion tracking (phase
@@ -148,11 +159,9 @@ A deal that hasn't reached Negotiating LOI has no gate yet and is always on pace
   > 0.
 - **Card heat stays ball-in-court only.** Package state never changes heat, sort order or the daily
   number. Pace is shown on the bar only.
-- **The bar's colours must be decided by Mike. They conflict with §2.7 and §1.6.** The design asks
-  for green / amber / red. §2.7 says "No green anywhere", and amber / red are the heat palette, so a
-  red bar on a cool card reads as heat. The proposal uses slate for on pace, a terracotta outline
-  (`#A27B5C`, the CLAUDE.md warning style) for behind, and terracotta solid for late. That keeps it
-  outside the heat spectrum. **Not locked.**
+- **Bar colours (locked 2026-10-12):** slate when on pace, a terracotta outline (`#A27B5C`) when
+  behind, solid terracotta when late. No green (§2.7), and nothing from the heat palette. Unknown
+  gate dates render as absence (dashed and dim), never as on pace.
 - **§1.1 (the board never scrolls).** Columns already fall back to compact tiles to fit (§5,
   2026-10-09). The bar has to fit inside the existing tile height. Compact tiles get a 2px bar and
   no text.
@@ -298,3 +307,39 @@ uses, no anon.
 
 Permission keys (§8) are JSONB on `role` / `user` and need no migration. They are a data update to
 `role.permissions` and to Noree's `user.permissions`.
+
+---
+
+## 11. Phase 1 as built (2026-10-12)
+
+| Migration | Notes |
+|---|---|
+| `20261012161837_package_tracker_tables.sql` | Template (seeded, owners by `user.id`), `deal_package`, `deal_package_slide`. Template handoff is `none` / `approve` / `finish`. Gate requirements are `done_by_gate` / `started_by_gate`. RLS: internal read/write; template updates are admin only. |
+| `20261012161838_deal_court_event.sql` | Trigger: an event on a court change, a correction on a `court_since` back-date, nothing on touches, party edits or parking. `court_log_start()` = apply time. Backfill copies every LOI `document_handoff` turn. **Later handoff entries aren't mirrored.** |
+| `20261012161839_task_package_link.sql` | `task.package_slide_id` (unique, cascade) and `task.queue_rank`. Both reset triggers re-created with `AND NEW.package_slide_id IS NULL`. |
+| `20261012161840_package_progress_views.sql` | `v_deal_package_slide` (effective status, missing inputs) and `v_deal_package_progress` (counts, gate dates/states, `behind_since`). Pace thresholds live client-side. |
+
+**Gate trust rules:**
+- Board events count toward Gate 1 only when the deal entered Negotiating LOI after `court_log_start()`.
+- They count toward Gate 2 only when Gate 1 itself falls after `court_log_start()`.
+- Handoff turns always count.
+- Once Mike saves the once-only form (`gates_confirmed_at`), a blank gate is filled by the first board event recorded after that save.
+
+**Known edge:** a deal that enters LOI with the court already "them" logs no flip when the draft actually goes out. Gate 1 stays not-reached until the court is set to "us" and back to "them".
+
+**Phase 2 notes:**
+- `task.category_id` is NOT NULL. Package tasks use the global `pipeline` category.
+- Rolled-back dry run with a package on all 17 LOI / At Lease deals:
+  - 4 resolve gates from the handoff backfill (Big Chicken, E Cobb, Peachtree City, Grovetown).
+  - Cedartown is `not_reached` (its handoff log holds only "us" turns).
+  - **11 are `unknown`** and need the once-only entry.
+  - With no work done, every fresh package is 4 short at Gate 1: Drive Time, Placer, Analogous Store, Rent Comps. Road Improvements slips to Gate 2 until the DOT study is in.
+
+**Test:** `supabase/tests/package_task_clock_test.sql` runs wrapped in BEGIN / ROLLBACK (the commands are in its header). Passed 9 of 9 in the pre-apply round trip against production, with nothing persisted:
+- package task insert, due_at change and completion leave the clock alone;
+- an ordinary task still resets it;
+- a court flip logs one event;
+- a back-date corrects that event;
+- a touch or party edit logs nothing;
+- the views read correctly when impersonating Mike;
+- anon is denied.
