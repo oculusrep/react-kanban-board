@@ -214,7 +214,7 @@ Locked with Mike at scoping:
 - **Starbucks family only, enforced in the database (2026-10-13).** `client_in_starbucks_family(client_id)` is true when the client **or any `parent_id` ancestor** has `starbucks_board_enabled`. A new Starbucks child account qualifies with no flag and no list.
   - Trigger `trg_deal_package_starbucks_only` refuses a package for any other deal, including one with no client. It fires on insert and on re-pointing `deal_id`, and applies to every writer.
   - Both progress views filter on the same function.
-  - **The board still checks the flag on each client, not parents.** A new child would get packages but wouldn't appear on the board until it's flagged, or until the board switches to the same function. Not changed here.
+  - The board now uses the same function (§2.14, amended 2026-10-13).
 - **Phased build:** 1 schema; 2 sidebar + settings; 3 Noree queue; 4 board card + report. Stop for review after each phase. Each migration is shown to Mike and needs his OK before it's applied.
 
 **Landmine:** `task` inserts with `deal_id` / `site_submit_id` reset the board clock. Package tasks must be excluded from the reset triggers, or Start Package cools the card.
@@ -260,6 +260,11 @@ Named `activity_state`, not `board_state`, because phase 3 generalizes this to t
 Hardcoded IDs break when a third Starbucks entity appears — there are already two. Membership keys off a flag.
 
 **Amended 2026-10-08:** the flag is now **`client.starbucks_board_enabled`**, true on exactly the two clients `Starbucks` and `Starbucks - JW (Coastal GA)` (migration `20261008090044`). It replaces `starbucks_layer_enabled` for board membership, because that flag also gates the Starbucks map layer/portal — enabling it for a third client for map reasons would silently have put that client on the board. **No other client's site_submits or deals touch the board**, and the filter is enforced server-side in the membership query, not in the UI.
+
+**Amended 2026-10-13 (Mike): membership follows the parent relationship.**
+- The board selects clients through `client_in_starbucks_family()`, exposed to PostgREST as the computed field `client.in_starbucks_family` (migration `20261013090455`). A client qualifies when it **or any `parent_id` ancestor** has `starbucks_board_enabled`, so a new Starbucks child account joins with no flag and no list.
+- The Package Tracker trigger and views use the same function: one membership definition, in the database.
+- Checked before the switch with a SQL mirror of the board rules: 46 cards under the flag and 46 under the family function, identical IDs.
 
 ### 2.15 The daily number is the only game mechanic
 Count of tiles needing attention, target zero. No points, streaks, or badges — those reward touching things rather than closing them.
