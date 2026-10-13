@@ -314,7 +314,7 @@ Permission keys (§8) are JSONB on `role` / `user` and need no migration. They a
 
 | Migration | Notes |
 |---|---|
-| `20261012161837_package_tracker_tables.sql` | Template (seeded, owners by `user.id`), `deal_package`, `deal_package_slide`. Template handoff is `none` / `approve` / `finish`. Gate requirements are `done_by_gate` / `started_by_gate`. RLS: internal read/write; template updates are admin only. |
+| `20261012161837_package_tracker_tables.sql` | `client_in_starbucks_family()` + trigger `trg_deal_package_starbucks_only`: packages only for deals whose client or a `parent_id` ancestor has `starbucks_board_enabled`, enforced for every writer. Template (seeded, owners by `user.id`), `deal_package`, `deal_package_slide`. Template handoff is `none` / `approve` / `finish`. Gate requirements are `done_by_gate` / `started_by_gate`. RLS: internal read/write; template updates are admin only. |
 | `20261012161838_deal_court_event.sql` | Trigger: an event on a court change, a correction on a `court_since` back-date, nothing on touches, party edits or parking. `court_log_start()` = apply time. Backfill copies every LOI `document_handoff` turn. **Later handoff entries aren't mirrored.** |
 | `20261012161839_task_package_link.sql` | `task.package_slide_id` (unique, cascade) and `task.queue_rank`. Both reset triggers re-created with `AND NEW.package_slide_id IS NULL`. |
 | `20261012161840_package_progress_views.sql` | `v_deal_package_slide` (effective status, missing inputs) and `v_deal_package_progress` (counts, gate dates/states, `behind_since`). Pace thresholds live client-side. |
@@ -335,11 +335,15 @@ Permission keys (§8) are JSONB on `role` / `user` and need no migration. They a
   - **11 are `unknown`** and need the once-only entry.
   - With no work done, every fresh package is 4 short at Gate 1: Drive Time, Placer, Analogous Store, Rent Comps. Road Improvements slips to Gate 2 until the DOT study is in.
 
-**Test:** `supabase/tests/package_task_clock_test.sql` runs wrapped in BEGIN / ROLLBACK (the commands are in its header). Passed 9 of 9 in the pre-apply round trip against production, with nothing persisted:
+**Test:** `supabase/tests/package_task_clock_test.sql` runs wrapped in BEGIN / ROLLBACK (the commands are in its header). Passed 12 of 12 in the pre-apply round trip (rerun 2026-10-13 with the family checks) against production, with nothing persisted:
 - package task insert, due_at change and completion leave the clock alone;
 - an ordinary task still resets it;
 - a court flip logs one event;
 - a back-date corrects that event;
 - a touch or party edit logs nothing;
 - the views read correctly when impersonating Mike;
-- anon is denied.
+- anon is denied;
+- a non-Starbucks or client-less deal is refused;
+- a new, unflagged child of Starbucks is accepted;
+- re-pointing a package at a non-Starbucks deal is refused;
+- a client that leaves the family drops out of the views.

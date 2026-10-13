@@ -33,7 +33,46 @@
 -- None of these tables carries deal_id/site_submit_id into a clock-reset
 -- trigger: package writes never move the board clock (§1.4, §2.29).
 --
+-- Starbucks-only, enforced in the database (decision 2026-10-13):
+--   client_in_starbucks_family(client_id) is true when the client OR ANY
+--   ANCESTOR (client.parent_id chain) has starbucks_board_enabled — the deal
+--   board's membership flag (§2.14). Children inherit through parent_id, so a
+--   new Starbucks child account qualifies without being flagged or listed.
+--   trg_deal_package_starbucks_only refuses a package whose deal's client
+--   isn't in the family (every writer: app, SQL, service role). The views
+--   (..161840) apply the same test, so a deal later moved off a Starbucks
+--   client drops out of progress rather than lingering.
+--
 -- No BEGIN/COMMIT: apply with psql --single-transaction.
+
+-- ─── Starbucks family ───────────────────────────────────────────────────────
+
+CREATE FUNCTION public.client_in_starbucks_family(p_client_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  WITH RECURSIVE chain AS (
+    SELECT c.id, c.parent_id, c.starbucks_board_enabled, 1 AS depth
+      FROM client c
+     WHERE c.id = p_client_id
+    UNION ALL
+    SELECT p.id, p.parent_id, p.starbucks_board_enabled, chain.depth + 1
+      FROM client p
+      JOIN chain ON p.id = chain.parent_id
+     WHERE chain.depth < 10          -- cycle / runaway guard
+  )
+  SELECT COALESCE(bool_or(starbucks_board_enabled), false) FROM chain;
+$$;
+
+COMMENT ON FUNCTION public.client_in_starbucks_family(uuid) IS
+  'True when the client or any parent_id ancestor has starbucks_board_enabled. Package Tracker eligibility.';
+
+-- Invoker: reads client under the caller's RLS (internal users see all clients;
+-- anyone who can't see the client gets false — fails closed).
+REVOKE ALL ON FUNCTION public.client_in_starbucks_family(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.client_in_starbucks_family(uuid) TO authenticated;
 
 -- ─── Template ───────────────────────────────────────────────────────────────
 
@@ -110,6 +149,28 @@ CREATE TABLE public.deal_package (
 CREATE TRIGGER trg_deal_package_updated_at
   BEFORE UPDATE ON public.deal_package
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE FUNCTION public.deal_package_starbucks_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NOT public.client_in_starbucks_family(
+           (SELECT d.client_id FROM deal d WHERE d.id = NEW.deal_id)) THEN
+    RAISE EXCEPTION 'Package Tracker is limited to Starbucks-family deals (deal %)', NEW.deal_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- Trigger-only.
+REVOKE ALL ON FUNCTION public.deal_package_starbucks_only() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER trg_deal_package_starbucks_only
+  BEFORE INSERT OR UPDATE OF deal_id ON public.deal_package
+  FOR EACH ROW EXECUTE FUNCTION public.deal_package_starbucks_only();
 
 -- ─── Slides ─────────────────────────────────────────────────────────────────
 

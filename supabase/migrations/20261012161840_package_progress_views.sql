@@ -39,6 +39,10 @@
 --   (corrected_date wins). 6 of 13 current LOI deals have none; for those only
 --   the handoff backfill or manual entry can supply gates.
 --
+-- Starbucks family only: both views keep packages whose deal's client passes
+-- client_in_starbucks_family() (..161837), so a deal moved off a Starbucks
+-- client drops out instead of lingering.
+--
 -- security_invoker: every base table is internal-only, so the views are too.
 --
 -- No BEGIN/COMMIT: apply with psql --single-transaction.
@@ -58,6 +62,7 @@ WITH pkg AS (
                AND tr.kind = 'deep_pass' AND tr.state = 'complete'))                    AS has_site_story
     FROM public.deal_package p
     JOIN public.deal d ON d.id = p.deal_id
+   WHERE public.client_in_starbucks_family(d.client_id)
 ),
 resolved AS (
   SELECT s.*,
@@ -137,6 +142,7 @@ WITH base AS (
     FROM public.deal_package p
     JOIN public.deal d        ON d.id = p.deal_id
     LEFT JOIN public.deal_stage ds ON ds.id = d.stage_id
+   WHERE public.client_in_starbucks_family(d.client_id)
 ),
 ev AS (
   SELECT b.package_id, e.court, e.source, e.effective_at, e.recorded_at

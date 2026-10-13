@@ -211,6 +211,10 @@ Locked with Mike at scoping:
 - **Pipeline report** shows computed progress. `package_status` stays until Mike confirms, then gets dropped.
 - **Noree:** no access restriction, no route guard and no new permission keys. Her Tasks queue becomes her default landing page.
 - **Deals without a site_submit** get Start Package and the slide list in `DealHeaderBar` too.
+- **Starbucks family only, enforced in the database (2026-10-13).** `client_in_starbucks_family(client_id)` is true when the client **or any `parent_id` ancestor** has `starbucks_board_enabled`. A new Starbucks child account qualifies with no flag and no list.
+  - Trigger `trg_deal_package_starbucks_only` refuses a package for any other deal, including one with no client. It fires on insert and on re-pointing `deal_id`, and applies to every writer.
+  - Both progress views filter on the same function.
+  - **The board still checks the flag on each client, not parents.** A new child would get packages but wouldn't appear on the board until it's flagged, or until the board switches to the same function. Not changed here.
 - **Phased build:** 1 schema; 2 sidebar + settings; 3 Noree queue; 4 board card + report. Stop for review after each phase. Each migration is shown to Mike and needs his OK before it's applied.
 
 **Landmine:** `task` inserts with `deal_id` / `site_submit_id` reset the board clock. Package tasks must be excluded from the reset triggers, or Start Package cools the card.
