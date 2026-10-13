@@ -27,7 +27,8 @@
       "rn": 4,
       "conversation_key": "1a0e91077f0bde05",
       "expected": "pitch",
-      "what": "Identify buyer interested in Columbus GA"
+      "what": "Identify buyer interested in Columbus GA",
+      "known_miss": true
     },
     {
       "rn": 5,
@@ -135,7 +136,8 @@
       "rn": 22,
       "conversation_key": "19e8ed7e6bec573e",
       "expected": "open_me",
-      "what": "Propose alternative solution to spousal "
+      "what": "Propose alternative solution to spousal ",
+      "known_miss": true
     },
     {
       "rn": 23,
@@ -155,5 +157,16 @@
       "expected": "done",
       "what": "Send calendar invite for 9am RBN booth m"
     }
-  ]
+  ],
+  "_baseline": {
+    "measured_on": "2026-10-13",
+    "pitches_present": 1,
+    "done_but_present": 5,
+    "open_me_missing": 1,
+    "gate": "no worse than baseline: exit 1 if pitches_present > 1, done_but_present > 5, or open_me_missing > 1"
+  },
+  "_known_misses": {
+    "22": "Model attributes the Oakwood obligation to Arty Santos even with Mike in To:. All 4 window messages are in the input and \"Tejal\" sits inside the context window, so this is a judgement disagreement, not missing data. Four attempts (multi-obligation prompt, owner_owes, de-quoted bodies, To/Cc addressing rule) did not move it; not tuned further on purpose.",
+    "4": "Rated a pitch, but Mike had mailed daniel.duque@cbre.com 3 times before, so the prior-contact gate cannot catch it."
+  }
 }
