@@ -93,3 +93,6 @@ start-claude.sh
 
 # Claude Code local worktrees (never commit)
 .claude/worktrees/
+
+# Sender data: captured Gmail history and exported CSVs never go to git.
+docs/data/
