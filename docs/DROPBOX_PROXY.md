@@ -1,7 +1,8 @@
 # Dropbox proxy — Dropbox credentials out of the browser
 
-**Status (2026-10-16):** code complete on branch `fix/dropbox-server-side` (stacked on
-`feature/portal-deal-file-upload`). Nothing below the "Rollout" line has been done yet.
+**Status (2026-10-16):** rollout steps 1–5 DONE and live (migration applied, proxy deployed
+and live-tested as admin + Jared, merged/pushed, live bundle verified secret-free, Vercel
+`VITE_DROPBOX_*` deleted). Step 6 (rotation) needs Mike: `node scripts/rotateDropboxCredentials.mjs`.
 
 ## The problem
 
@@ -59,7 +60,9 @@ leaked token).
    push (deploys). Check the new bundle no longer contains the secret.
 5. Delete the four `VITE_DROPBOX_*` variables from the Vercel project `ovis` (and from
    `.env` once nothing local needs them — `npm run dropbox:auth` writes them).
-6. **Rotate** — the old values are in every bundle already downloaded and cached:
+6. **Rotate** — the old values are in every bundle already downloaded and cached.
+   `scripts/rotateDropboxCredentials.mjs` does 6.2–6.4 plus the `.env` update in one run
+   (it never prints a secret). Manual equivalent:
    1. Dropbox App Console → regenerate the app secret.
    2. Run the OAuth flow (`token_access_type=offline`) for a new refresh token.
    3. `supabase secrets set DROPBOX_APP_SECRET=… DROPBOX_REFRESH_TOKEN=…`
