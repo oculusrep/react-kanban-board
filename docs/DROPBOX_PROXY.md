@@ -1,8 +1,13 @@
 # Dropbox proxy — Dropbox credentials out of the browser
 
-**Status (2026-10-16):** rollout steps 1–5 DONE and live (migration applied, proxy deployed
-and live-tested as admin + Jared, merged/pushed, live bundle verified secret-free, Vercel
-`VITE_DROPBOX_*` deleted). Step 6 (rotation) needs Mike: `node scripts/rotateDropboxCredentials.mjs`.
+**Status (2026-10-16): COMPLETE.** Rollout steps 1–6 done. Rotation ran via
+`scripts/rotateDropboxCredentials.mjs`: new refresh token in `.env` and edge secrets
+(digests match), old leaked refresh token verified revoked (`invalid_grant`), proxy
+re-tested end to end on the new credentials. The Dropbox console offered no
+app-secret regeneration, so the leaked **app key + secret remain valid** — on their own
+they grant no file access (no refresh token), the residual risk is someone using them to
+run a look-alike OAuth consent for this app. Full retirement = create a new Dropbox app
+and run the rotation script against it.
 
 ## The problem
 
