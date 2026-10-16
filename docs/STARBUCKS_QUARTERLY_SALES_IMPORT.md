@@ -14,6 +14,8 @@ Replace `M.D.YY` with the date in the filename (e.g. `9.30.26`). The quotes are 
 
 The script prints `Snapshot date: YYYY-MM-DD` and `Format: legacy|atlas` first — sanity check both. Add `--dry-run` to parse and print a summary without writing anything.
 
+**When filtering the spreadsheet before export, make sure Ops District `Central - D0912` is checked.** The Q3 2026 file left it out, and 10 Georgia drive-thrus in Cobb/Paulding went missing. The import doesn't warn about missing stores; they just keep the previous quarter's numbers on the map.
+
 **Sanity check the file before importing.** The Q3 2026 file was first sent as the wrong region (682 VA/NC/SC stores, zero Georgia). The right file has ~270 open stores, mostly GA plus FL.
 
 Nothing else to do. The map picks up the new snapshot automatically on next page load.
