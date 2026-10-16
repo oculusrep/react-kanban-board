@@ -138,4 +138,4 @@ Keep a one-line note here each quarter so we can see history at a glance:
 |---------------|------|--------|-------|
 | 2026-03-31 | `CONFIDENTIAL_OCULUS BROKER SALES_3.31.26.xlsx` | | Initial import |
 | 2026-07-08 | `CONFIDENTIAL_OCULUS BROKER SALES_7.8.26.xlsx` | Mike | 238 stores (4 more than prior quarter) |
-| 2026-09-30 | `CONFIDENTIAL_OCULUS BROKER SALES_9.30.26.xlsx` | Mike | First Atlas-format file. 269 stores (224 GA, 41 FL, 4 SC). 41 new (all FL); 10 GA stores from Q2 absent (all ops area 92 drive-thrus in Cobb/Paulding: 11045, 14637, 69923, 8575, 8530, 26561, 55844, 18951, 8293, 13879); left in place showing Q2 numbers. A wrong-region file (VA/NC/SC) was sent first. Q1/Q2 re-imported the same day to fix dates. |
+| 2026-09-30 | `CONFIDENTIAL_OCULUS BROKER SALES_9.30.26.xlsx` | Mike | First Atlas-format file. Final: 279 stores (234 GA, 41 FL, 4 SC); 41 new (all FL). Sent three times: wrong region (VA/NC/SC), then 269 stores missing 10 ops-area-92 Cobb/Paulding drive-thrus, then the full file. Each re-import overwrote the same quarter (no duplicates). Q1/Q2 re-imported the same day to fix dates. |
