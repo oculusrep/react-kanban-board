@@ -398,22 +398,11 @@ export default function PortalFilesTab({
     const currentPath = sectionCurrentPath[section];
     try {
       setSectionUploadError(section, null);
-      const uploaded = await hook.uploadFiles(fileList as any, currentPath);
-      // Deal files are hidden by default, so a portal client's upload would vanish from
-      // their own view. Share each one as it lands (uses Dropbox's final path, which
-      // differs from the local name when autorename adds " (1)").
-      if (!canUpload && section === 'deal' && dealId) {
-        const { data: user } = await supabase.auth.getUser();
-        for (const f of uploaded) {
-          await supabase.rpc('set_portal_file_visibility', {
-            p_dropbox_path: f.path,
-            p_entity_type: 'deal',
-            p_entity_id: dealId,
-            p_is_visible: true,
-            p_site_submit_id: siteSubmitId || null,
-            p_user_id: user.user?.id || null,
-          });
-        }
+      const uploaded = await hook.uploadFiles(fileList as any, currentPath, siteSubmitId);
+      // Deal files are hidden by default. dropbox-proxy shares a portal client's upload
+      // server-side (portal users can't call set_portal_file_visibility); mirror that
+      // locally so the file shows without refetching the overrides.
+      if (!canUpload && section === 'deal') {
         setDealVisibility(prev => {
           const next = new Map(prev);
           uploaded.forEach(f => next.set(f.path, true));
