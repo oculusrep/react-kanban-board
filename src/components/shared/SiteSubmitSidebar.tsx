@@ -219,6 +219,8 @@ interface SiteSubmitSidebarProps {
   initialData?: InitialSiteSubmitData;
   // Tab to focus when sidebar opens (e.g. from a deep link in an alert email)
   initialTab?: TabType;
+  // Portal client opted in (contact.portal_can_upload_deal_files) to upload into the deal folder
+  portalDealUpload?: boolean;
 }
 
 // Broadcast when a sidebar edits a site submit, so other open instances stay in sync.
@@ -252,6 +254,7 @@ export default function SiteSubmitSidebar({
   siteSubmitRefreshTrigger,
   initialData,
   initialTab,
+  portalDealUpload = false,
 }: SiteSubmitSidebarProps) {
   const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const navigate = useNavigate();
@@ -1744,6 +1747,7 @@ export default function SiteSubmitSidebar({
                 siteSubmitId={siteSubmit.id}
                 canUpload={isEditable}
                 isInternalUser={isEditable}
+                portalDealUpload={portalDealUpload}
               />
             )}
             {activeTab === 'contacts' && (context === 'map' || context === 'deal') && (
