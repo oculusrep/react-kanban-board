@@ -560,12 +560,7 @@ let syncDetectionServiceInstance: DropboxSyncDetectionService | null = null;
 
 export function getDropboxSyncDetectionService(): DropboxSyncDetectionService {
   if (!syncDetectionServiceInstance) {
-    const accessToken = import.meta.env.VITE_DROPBOX_ACCESS_TOKEN;
-    const refreshToken = import.meta.env.VITE_DROPBOX_REFRESH_TOKEN;
-    const appKey = import.meta.env.VITE_DROPBOX_APP_KEY;
-    const appSecret = import.meta.env.VITE_DROPBOX_APP_SECRET;
-
-    const dropboxService = new DropboxService(accessToken, refreshToken, appKey, appSecret);
+    const dropboxService = new DropboxService();
     syncDetectionServiceInstance = new DropboxSyncDetectionService(dropboxService);
   }
 

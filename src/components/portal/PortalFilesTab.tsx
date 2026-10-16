@@ -9,6 +9,7 @@ interface PortalFilesTabProps {
   siteSubmitId?: string | null;
   canUpload: boolean; // True for brokers/admins
   isInternalUser: boolean; // True for brokers/admins who can see/modify visibility
+  portalDealUpload?: boolean; // Portal client opted in (contact.portal_can_upload_deal_files) to upload into the deal folder
 }
 
 // Three Dropbox roots per site: the property's folder, the site submit's own folder
@@ -36,12 +37,20 @@ export default function PortalFilesTab({
   siteSubmitId,
   canUpload,
   isInternalUser,
+  portalDealUpload = false,
 }: PortalFilesTabProps) {
   // Property files hook
   const propertyFiles = useDropboxFiles('property', propertyId || '');
 
   // Deal files hook
   const dealFiles = useDropboxFiles('deal', dealId || '');
+
+  // Brokers can upload into any section. A portal client with portalDealUpload can
+  // upload into an existing deal folder only: no folder creation (that writes
+  // dropbox_mapping, which portal users can't), and no move/delete/visibility controls,
+  // which stay on canUpload / isInternalUser.
+  const canUploadTo = (section: FileSection) =>
+    canUpload || (portalDealUpload && section === 'deal' && !!dealFiles.folderPath);
 
   // Site submit's own folder. Most site submits don't have one yet; the first upload
   // into this section creates it.
@@ -389,7 +398,17 @@ export default function PortalFilesTab({
     const currentPath = sectionCurrentPath[section];
     try {
       setSectionUploadError(section, null);
-      await hook.uploadFiles(fileList as any, currentPath);
+      const uploaded = await hook.uploadFiles(fileList as any, currentPath, siteSubmitId);
+      // Deal files are hidden by default. dropbox-proxy shares a portal client's upload
+      // server-side (portal users can't call set_portal_file_visibility); mirror that
+      // locally so the file shows without refetching the overrides.
+      if (!canUpload && section === 'deal') {
+        setDealVisibility(prev => {
+          const next = new Map(prev);
+          uploaded.forEach(f => next.set(f.path, true));
+          return next;
+        });
+      }
       await hook.refreshFiles();
       if (section === 'site_submit') return;
       if (siteSubmitId && hook.folderPath) {
@@ -411,7 +430,7 @@ export default function PortalFilesTab({
     e.stopPropagation();
     setSectionDragOver(section, false);
 
-    if (!canUpload) return;
+    if (!canUploadTo(section)) return;
 
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
@@ -667,9 +686,9 @@ export default function PortalFilesTab({
         className={`border rounded-lg mb-4 overflow-hidden transition-all ${
           dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
         }`}
-        onDragOver={(e) => canUpload && handleDragOver(e, entityType)}
-        onDragLeave={(e) => canUpload && handleDragLeave(e, entityType)}
-        onDrop={(e) => canUpload && handleDrop(e, entityType)}
+        onDragOver={(e) => canUploadTo(entityType) && handleDragOver(e, entityType)}
+        onDragLeave={(e) => canUploadTo(entityType) && handleDragLeave(e, entityType)}
+        onDrop={(e) => canUploadTo(entityType) && handleDrop(e, entityType)}
       >
         {/* Section Header */}
         <div
@@ -698,7 +717,7 @@ export default function PortalFilesTab({
             )}
           </div>
           <div className="flex items-center space-x-2">
-            {canUpload && (
+            {canUploadTo(entityType) && (
               <>
                 <input
                   type="file"
@@ -1156,7 +1175,7 @@ export default function PortalFilesTab({
             )}
 
             {/* Drag overlay */}
-            {dragOver && canUpload && (
+            {dragOver && canUploadTo(entityType) && (
               <div className="absolute inset-0 bg-blue-500 bg-opacity-10 flex items-center justify-center pointer-events-none">
                 <div className="bg-white rounded-lg shadow-lg p-4 flex items-center space-x-2">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,4 +1,4 @@
-import { Dropbox } from 'dropbox';
+import { supabase } from '../lib/supabaseClient';
 
 // TypeScript interfaces
 export interface DropboxFile {
@@ -25,98 +25,52 @@ export function siteSubmitFolderName(name: string | null | undefined, id: string
   return `${base} - ${id.slice(0, 8)}`;
 }
 
+/**
+ * Which record a portal user is browsing. Internal users don't need it; portal
+ * users must send it so the dropbox-proxy edge function can check, through portal
+ * RLS, that they may see this record and that the path is inside its folder.
+ */
+export interface DropboxScope {
+  entityType: 'property' | 'deal' | 'site_submit';
+  entityId: string;
+}
+
+/**
+ * Dropbox access for the browser. Every call goes through the dropbox-proxy edge
+ * function, which holds the Dropbox credentials and authorizes the caller — the
+ * browser never sees a token. (Until 2026-10-16 this class was built from
+ * VITE_DROPBOX_* env vars, which put the app secret and refresh token in the
+ * public JS bundle.)
+ */
 class DropboxService {
-  private dbx: Dropbox;
   private readonly ALLOWED_BASE_PATH = '/Salesforce Documents';
-  private accessToken: string;
-  private refreshToken: string;
-  private appKey: string;
-  private appSecret: string;
-  private refreshPromise: Promise<void> | null = null;
+  private getScope: () => DropboxScope | undefined;
 
-  constructor(accessToken: string, refreshToken?: string, appKey?: string, appSecret?: string) {
-    if (!accessToken) {
-      throw new Error('Dropbox access token is required. Please set VITE_DROPBOX_ACCESS_TOKEN in your .env file.');
-    }
-    this.accessToken = accessToken;
-    this.refreshToken = refreshToken || '';
-    this.appKey = appKey || '';
-    this.appSecret = appSecret || '';
-    this.dbx = new Dropbox({ accessToken });
+  /** @param scope - fixed scope, or a getter so a long-lived instance follows the current record */
+  constructor(scope?: DropboxScope | (() => DropboxScope | undefined)) {
+    this.getScope = typeof scope === 'function' ? scope : () => scope;
   }
 
-  /**
-   * Refresh the access token using the refresh token
-   */
-  private async refreshAccessToken(): Promise<void> {
-    // Deduplicate concurrent refresh calls — if a refresh is already in progress, wait for it
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
-
-    if (!this.refreshToken || !this.appKey || !this.appSecret) {
-      console.warn('Cannot auto-refresh token: missing refresh token or app credentials');
-      return;
-    }
-
-    this.refreshPromise = (async () => {
+  private async call<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+    const { data, error } = await supabase.functions.invoke('dropbox-proxy', {
+      body: { op, scope: this.getScope(), ...args },
+    });
+    if (error) {
+      let message = error.message;
       try {
-        const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: this.refreshToken,
-            client_id: this.appKey,
-            client_secret: this.appSecret,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Token refresh failed: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        this.accessToken = data.access_token;
-
-        // Update Dropbox client with new token
-        this.dbx = new Dropbox({ accessToken: this.accessToken });
-
-        console.log('✅ Dropbox access token refreshed automatically');
-      } catch (error) {
-        console.error('Failed to refresh access token:', error);
-        throw error;
-      } finally {
-        this.refreshPromise = null;
+        const body = await (error as any).context?.json?.();
+        if (body?.error) message = body.error;
+      } catch {
+        // keep the generic message
       }
-    })();
-
-    return this.refreshPromise;
-  }
-
-  /**
-   * Wrapper to handle token expiration and auto-refresh
-   */
-  private async executeWithTokenRefresh<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error: any) {
-      // Check if error is due to expired token (401 Unauthorized)
-      if (error.status === 401 || error.error?.error === 'expired_access_token') {
-        console.log('🔄 Access token expired, refreshing...');
-        await this.refreshAccessToken();
-        // Retry the operation with new token
-        return await operation();
-      }
-      throw error;
+      throw new Error(message);
     }
+    return data as T;
   }
 
   /**
    * CRITICAL: Validate all paths before operations
-   * Prevents access to files outside the allowed directory
+   * Prevents access to files outside the allowed directory (the proxy enforces this too)
    */
   private validatePath(path: string): void {
     if (!path.startsWith(this.ALLOWED_BASE_PATH)) {
@@ -125,424 +79,154 @@ class DropboxService {
   }
 
   /**
-   * List contents of a Dropbox folder
-   * @param folderPath - Full path to the folder
-   * @returns Array of files and folders (excluding .sfdb marker files)
+   * List contents of a Dropbox folder, recursively (excluding .sfdb marker files).
+   * Portal users only get entries visible to the portal.
    */
   async listFolderContents(folderPath: string): Promise<DropboxFile[]> {
     this.validatePath(folderPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      let allEntries: any[] = [];
-      let response = await this.dbx.filesListFolder({
-        path: folderPath,
-        recursive: true,  // Fetch all files recursively so subfolders work
-        include_deleted: false
-      });
-      allEntries.push(...response.result.entries);
-
-      // Handle pagination - Dropbox returns results in pages
-      while (response.result.has_more) {
-        response = await this.dbx.filesListFolderContinue({
-          cursor: response.result.cursor
-        });
-        allEntries.push(...response.result.entries);
-      }
-
-      // Filter out .sfdb files and map to DropboxFile interface
-      const files = allEntries
-        .filter(entry => !entry.name.endsWith('.sfdb'))
-        .map(entry => {
-          const isFolder = entry['.tag'] === 'folder';
-          return {
-            id: entry.id || entry.path_lower || '',
-            name: entry.name,
-            path: entry.path_display || entry.path_lower || '',
-            type: isFolder ? 'folder' : 'file',
-            size: !isFolder && 'size' in entry ? entry.size : null,
-            modified: !isFolder && 'server_modified' in entry ? entry.server_modified : null,
-            shared_link: null
-          } as DropboxFile;
-        });
-
-      return files;
-    });
+    const { files } = await this.call<{ files: DropboxFile[] }>('list', { path: folderPath, recursive: true });
+    return files;
   }
 
-  /**
-   * Get the latest cursor for a folder (for change detection)
-   * @param folderPath - Full path to the folder
-   * @returns Cursor string
-   */
+  /** Get the latest cursor for a folder (for change detection) */
   async getLatestCursor(folderPath: string): Promise<string> {
     this.validatePath(folderPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesListFolderGetLatestCursor({
-        path: folderPath,
-        recursive: true,
-        include_deleted: false
-      });
-
-      return response.result.cursor;
-    });
+    const { cursor } = await this.call<{ cursor: string }>('latest_cursor', { path: folderPath });
+    return cursor;
   }
 
   /**
-   * Long poll for changes in a folder
-   * @param cursor - The cursor from getLatestCursor or previous longpoll
-   * @param timeout - Timeout in seconds (default 30, max 480)
-   * @returns Object indicating if there are changes
+   * Long poll for changes in a folder. list_folder/longpoll is a no-auth Dropbox
+   * endpoint (the cursor is the credential), so it's called directly.
+   * @param timeout - seconds (default 30, max 480)
    */
   async longpollForChanges(cursor: string, timeout: number = 30): Promise<{ changes: boolean; backoff?: number }> {
-    // Note: Longpoll doesn't need token refresh because it uses a different endpoint
-    // and the cursor contains the authentication info
-    const response = await this.dbx.filesListFolderLongpoll({
-      cursor,
-      timeout
+    const response = await fetch('https://notify.dropboxapi.com/2/files/list_folder/longpoll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cursor, timeout }),
+    });
+    if (!response.ok) throw new Error(`Longpoll failed: ${response.status}`);
+    const result = await response.json();
+    return { changes: result.changes, backoff: result.backoff };
+  }
+
+  /** Get or create a public shared link for a file/folder */
+  async getSharedLink(path: string): Promise<string> {
+    this.validatePath(path);
+    const { link } = await this.call<{ link: string }>('shared_link', { path });
+    return link;
+  }
+
+  /**
+   * Upload a file. The proxy picks a free name (Dropbox-style "name (1).ext") and
+   * returns a one-time upload link; the bytes go straight from the browser to Dropbox.
+   * @param siteSubmitId - optional, attributes a portal upload's "file shared" activity
+   */
+  async uploadFile(file: File, folderPath: string, fileName?: string, siteSubmitId?: string | null): Promise<DropboxFile> {
+    this.validatePath(folderPath);
+
+    const { link, path, name } = await this.call<{ link: string; path: string; name: string }>('upload_link', {
+      folder: folderPath,
+      name: fileName || file.name,
+      siteSubmitId: siteSubmitId || undefined,
     });
 
+    const response = await fetch(link, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status} ${await response.text().catch(() => '')}`);
+    }
+
     return {
-      changes: response.result.changes,
-      backoff: response.result.backoff
+      id: path,
+      name,
+      path,
+      type: 'file',
+      size: file.size,
+      modified: new Date().toISOString(),
+      shared_link: null
     };
   }
 
-  /**
-   * Get or create a shared link for a file/folder
-   * @param path - Full path to the file/folder
-   * @returns Public shared link URL
-   */
-  async getSharedLink(path: string): Promise<string> {
-    this.validatePath(path);
-
-    return this.executeWithTokenRefresh(async () => {
-      try {
-        // Try to create a new shared link
-        const response = await this.dbx.sharingCreateSharedLinkWithSettings({
-          path: path,
-          settings: {
-            requested_visibility: 'public',
-            audience: 'public',
-            access: 'viewer'
-          }
-        });
-
-        return response.result.url;
-      } catch (error: any) {
-        // If link already exists (error 409), fetch existing link
-        if (error.status === 409 || error.error?.error?.['.tag'] === 'shared_link_already_exists') {
-          const existingLinks = await this.dbx.sharingListSharedLinks({ path });
-          if (existingLinks.result.links.length > 0) {
-            return existingLinks.result.links[0].url;
-          }
-          throw new Error('Shared link exists but could not be retrieved');
-        }
-
-        throw new Error(`Failed to get shared link: ${error.error?.error_summary || error.message}`);
-      }
-    });
-  }
-
-  /**
-   * Upload a file to Dropbox
-   * @param file - File object to upload
-   * @param folderPath - Destination folder path
-   * @param fileName - Optional custom file name (defaults to file.name)
-   * @returns Uploaded file info
-   */
-  async uploadFile(file: File, folderPath: string, fileName?: string): Promise<DropboxFile> {
-    this.validatePath(folderPath);
-
-    const uploadFileName = fileName || file.name;
-    const uploadPath = `${folderPath}/${uploadFileName}`;
-
-    this.validatePath(uploadPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesUpload({
-        path: uploadPath,
-        contents: file,
-        mode: { '.tag': 'add' },
-        autorename: true // Adds (1), (2) if file exists
-      });
-
-      const result = response.result;
-
-      return {
-        id: result.id,
-        name: result.name,
-        path: result.path_display || result.path_lower,
-        type: 'file',
-        size: result.size,
-        modified: result.server_modified,
-        shared_link: null
-      };
-    });
-  }
-
-  /**
-   * Create a new folder in Dropbox
-   * @param folderPath - Full path for the new folder
-   * @returns Created folder info
-   */
+  /** Create a new folder (no autorename) */
   async createFolder(folderPath: string): Promise<DropboxFile> {
     this.validatePath(folderPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesCreateFolderV2({
-        path: folderPath,
-        autorename: false
-      });
-
-      const result = response.result.metadata;
-
-      return {
-        id: result.id,
-        name: result.name,
-        path: result.path_display || result.path_lower,
-        type: 'folder',
-        size: null,
-        modified: null,
-        shared_link: null
-      };
-    });
+    const { file } = await this.call<{ file: DropboxFile }>('create_folder', { path: folderPath });
+    return file;
   }
 
-  /**
-   * Delete a file or folder from Dropbox
-   * @param path - Full path to the file/folder to delete
-   */
+  /** Delete a file or folder */
   async deleteFileOrFolder(path: string): Promise<void> {
     this.validatePath(path);
-
-    return this.executeWithTokenRefresh(async () => {
-      await this.dbx.filesDeleteV2({ path });
-    });
+    await this.call('delete', { path });
   }
 
-  /**
-   * Rename/move a folder in Dropbox
-   * @param oldPath - Current full path to the folder
-   * @param newPath - New full path for the folder
-   * @returns Updated folder info
-   */
+  /** Rename/move a folder to a new full path (fails on conflict) */
   async renameFolder(oldPath: string, newPath: string): Promise<DropboxFile> {
     this.validatePath(oldPath);
     this.validatePath(newPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesMoveV2({
-        from_path: oldPath,
-        to_path: newPath,
-        autorename: false, // Don't auto-rename if conflict exists
-        allow_ownership_transfer: false
-      });
-
-      const result = response.result.metadata;
-
-      console.log('✅ Dropbox folder renamed successfully:', {
-        from: oldPath,
-        to: newPath
-      });
-
-      return {
-        id: result.id,
-        name: result.name,
-        path: result.path_display || result.path_lower,
-        type: 'folder',
-        size: null,
-        modified: null,
-        shared_link: null
-      };
-    });
+    const { file } = await this.call<{ file: DropboxFile }>('move', { from: oldPath, to: newPath, autorename: false });
+    console.log('✅ Dropbox folder renamed successfully:', { from: oldPath, to: newPath });
+    return file;
   }
 
-  /**
-   * Rename a file or folder in Dropbox
-   * @param currentPath - Current full path to the file/folder
-   * @param newName - New name for the item (just the name, not the full path)
-   * @returns Updated file/folder info
-   */
+  /** Rename a file or folder in place (newName is just the name, fails on conflict) */
   async renameItem(currentPath: string, newName: string): Promise<DropboxFile> {
     this.validatePath(currentPath);
-
-    // Build the new path by replacing the last segment with the new name
     const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
     const newPath = `${parentPath}/${newName}`;
-
     this.validatePath(newPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesMoveV2({
-        from_path: currentPath,
-        to_path: newPath,
-        autorename: false, // Don't auto-rename if conflict exists
-        allow_ownership_transfer: false
-      });
-
-      const result = response.result.metadata;
-      const isFolder = result['.tag'] === 'folder';
-
-      console.log('✅ Dropbox item renamed successfully:', {
-        from: currentPath,
-        to: newPath
-      });
-
-      return {
-        id: result.id,
-        name: result.name,
-        path: result.path_display || result.path_lower,
-        type: isFolder ? 'folder' : 'file',
-        size: !isFolder && 'size' in result ? result.size : null,
-        modified: !isFolder && 'server_modified' in result ? result.server_modified : null,
-        shared_link: null
-      };
-    });
+    const { file } = await this.call<{ file: DropboxFile }>('move', { from: currentPath, to: newPath, autorename: false });
+    console.log('✅ Dropbox item renamed successfully:', { from: currentPath, to: newPath });
+    return file;
   }
 
-  /**
-   * Move a file or folder to a new location
-   * @param sourcePath - Current full path to the file/folder
-   * @param destinationFolderPath - Destination folder path
-   * @returns Updated file/folder info
-   */
+  /** Move a file or folder into another folder (auto-renames on conflict) */
   async moveItem(sourcePath: string, destinationFolderPath: string): Promise<DropboxFile> {
     this.validatePath(sourcePath);
     this.validatePath(destinationFolderPath);
-
-    // Extract the item name from the source path
     const itemName = sourcePath.split('/').pop() || '';
     const newPath = `${destinationFolderPath}/${itemName}`;
-
     this.validatePath(newPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesMoveV2({
-        from_path: sourcePath,
-        to_path: newPath,
-        autorename: true, // Auto-rename if conflict exists
-        allow_ownership_transfer: false
-      });
-
-      const result = response.result.metadata;
-      const isFolder = result['.tag'] === 'folder';
-
-      console.log('✅ Dropbox item moved successfully:', {
-        from: sourcePath,
-        to: newPath
-      });
-
-      return {
-        id: result.id,
-        name: result.name,
-        path: result.path_display || result.path_lower,
-        type: isFolder ? 'folder' : 'file',
-        size: !isFolder && 'size' in result ? result.size : null,
-        modified: !isFolder && 'server_modified' in result ? result.server_modified : null,
-        shared_link: null
-      };
-    });
+    const { file } = await this.call<{ file: DropboxFile }>('move', { from: sourcePath, to: newPath, autorename: true });
+    console.log('✅ Dropbox item moved successfully:', { from: sourcePath, to: newPath });
+    return file;
   }
 
-  /**
-   * Download a file from Dropbox
-   * @param path - Full path to the file
-   * @returns Blob of the file content
-   */
+  /** Download a file's content */
   async downloadFile(path: string): Promise<Blob> {
-    this.validatePath(path);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesDownload({ path });
-
-      // The file content is attached to the result as a Blob
-      const result = response.result as any;
-      if (result.fileBlob) {
-        return result.fileBlob;
-      }
-
-      throw new Error('Failed to download file: No content received');
-    });
+    const link = await this.getTemporaryDownloadLink(path);
+    const response = await fetch(link);
+    if (!response.ok) throw new Error(`Failed to download file: ${response.status}`);
+    return response.blob();
   }
 
-  /**
-   * Get a direct download link for a file (temporary link valid for 4 hours)
-   * @param path - Full path to the file
-   * @returns Temporary direct download URL
-   */
+  /** Get a direct download link for a file (temporary link valid for 4 hours) */
   async getTemporaryDownloadLink(path: string): Promise<string> {
     this.validatePath(path);
-
-    return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesGetTemporaryLink({ path });
-      return response.result.link;
-    });
+    const { link } = await this.call<{ link: string }>('temp_link', { path });
+    return link;
   }
 
-  /**
-   * Check if a folder exists in Dropbox
-   * @param path - Full path to check
-   * @returns True if folder exists, false otherwise
-   */
+  /** Check if a file or folder exists */
   async folderExists(path: string): Promise<boolean> {
     this.validatePath(path);
-
-    try {
-      return await this.executeWithTokenRefresh(async () => {
-        await this.dbx.filesGetMetadata({ path });
-        return true;
-      });
-    } catch (error: any) {
-      if (error.status === 409 || error.error?.error?.['.tag'] === 'path' || error.error?.error?.path?.['.tag'] === 'not_found') {
-        return false;
-      }
-      throw error;
-    }
+    const { exists } = await this.call<{ exists: boolean }>('exists', { path });
+    return exists;
   }
 
   /**
-   * List folders in a directory (non-recursive)
-   * Handles pagination to fetch ALL folders, not just the first page
-   * @param folderPath - Path to the directory
-   * @returns Object containing entries array
+   * List folders in a directory (non-recursive), all pages. Raw Dropbox entries.
    */
   async listFolders(folderPath: string): Promise<{ entries: any[] }> {
     this.validatePath(folderPath);
-
-    return this.executeWithTokenRefresh(async () => {
-      let allEntries: any[] = [];
-      let hasMore = true;
-      let cursor: string | undefined = undefined;
-
-      // Initial request
-      const response = await this.dbx.filesListFolder({
-        path: folderPath,
-        recursive: false,
-        include_deleted: false
-      });
-
-      allEntries.push(...response.result.entries);
-      hasMore = response.result.has_more;
-      cursor = response.result.cursor;
-
-      // Fetch remaining pages if there are more results
-      while (hasMore && cursor) {
-        const continueResponse = await this.dbx.filesListFolderContinue({
-          cursor: cursor
-        });
-
-        allEntries.push(...continueResponse.result.entries);
-        hasMore = continueResponse.result.has_more;
-        cursor = continueResponse.result.cursor;
-      }
-
-      console.log(`📂 listFolders fetched ${allEntries.length} total entries from ${folderPath}`);
-
-      return {
-        entries: allEntries
-      };
-    });
+    const { entries } = await this.call<{ entries: any[] }>('list_raw', { path: folderPath, recursive: false });
+    console.log(`📂 listFolders fetched ${entries.length} total entries from ${folderPath}`);
+    return { entries };
   }
 
   /**

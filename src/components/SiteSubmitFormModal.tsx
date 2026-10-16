@@ -638,12 +638,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
           if (dropboxMapping?.dropbox_folder_path) {
             // Initialize Dropbox service
-            const dropboxService = new DropboxService(
-              import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
-              import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
-              import.meta.env.VITE_DROPBOX_APP_KEY || '',
-              import.meta.env.VITE_DROPBOX_APP_SECRET || ''
-            );
+            const dropboxService = new DropboxService();
 
             // Fetch files from the folder
             const files = await dropboxService.listFolderContents(dropboxMapping.dropbox_folder_path);
@@ -685,12 +680,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
             .single();
 
           if (dropboxMapping?.dropbox_folder_path) {
-            const dropboxService = new DropboxService(
-              import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
-              import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
-              import.meta.env.VITE_DROPBOX_APP_KEY || '',
-              import.meta.env.VITE_DROPBOX_APP_SECRET || ''
-            );
+            const dropboxService = new DropboxService();
 
             const contents = await dropboxService.listFolderContents(dropboxMapping.dropbox_folder_path);
 
