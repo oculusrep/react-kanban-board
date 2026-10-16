@@ -14,7 +14,7 @@ interface UseDropboxFilesReturn {
   uploading: boolean;
   error: string | null;
   refreshFiles: (silent?: boolean) => Promise<void>;
-  uploadFiles: (fileList: UploadableFiles, subPath?: string) => Promise<void>;
+  uploadFiles: (fileList: UploadableFiles, subPath?: string) => Promise<DropboxFile[]>;
   createFolder: (folderName: string, parentSubPath?: string) => Promise<void>;
   deleteItem: (path: string) => Promise<void>;
   moveItem: (sourcePath: string, destinationFolderPath: string) => Promise<void>;
@@ -465,10 +465,11 @@ export function useDropboxFiles(
 
         // Upload files sequentially to avoid Dropbox 429 rate limits
         console.log('📤 Uploading', filesArray.length, 'files sequentially...');
+        const uploaded: DropboxFile[] = [];
         for (let i = 0; i < filesArray.length; i++) {
           const file = filesArray[i];
           console.log(`📤 Uploading file ${i + 1}/${filesArray.length}:`, file.name, file.size, 'bytes');
-          await dropboxService!.uploadFile(file, targetFolderPath);
+          uploaded.push(await dropboxService!.uploadFile(file, targetFolderPath));
         }
         console.log('✅ All uploads completed');
 
@@ -476,6 +477,7 @@ export function useDropboxFiles(
         console.log('🔄 Refreshing files...');
         await refreshFiles();
         console.log('✅ Files refreshed');
+        return uploaded;
       } catch (err: any) {
         console.error('❌ Error uploading files:', err);
         setError(err.message || 'Failed to upload files');
