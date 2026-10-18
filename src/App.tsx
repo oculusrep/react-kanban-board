@@ -55,6 +55,7 @@ import CalendarSettingsPage from "./pages/CalendarSettingsPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserManagementPage from "./pages/UserManagementPage";
+import PackageSlideSettingsPage from "./pages/PackageSlideSettingsPage";
 import KPIDashboardPage from "./pages/KPIDashboardPage";
 import RobReportPage from "./pages/RobReportPage";
 import RobReport2025Page from "./pages/RobReport2025Page";
@@ -209,6 +210,7 @@ function App() {
           <Route path="prospecting" element={<Navigate to="/hunter" replace />} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+          <Route path="admin/package-slides" element={<AdminRoute><PackageSlideSettingsPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/quickbooks/customers" element={<AdminRoute><QuickBooksCustomerMappingPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />

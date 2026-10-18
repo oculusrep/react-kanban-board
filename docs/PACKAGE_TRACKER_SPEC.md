@@ -8,8 +8,8 @@ Decisions from 2026-10-12 are in the decisions file §2.29. Where this spec stil
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Tables, `deal_court_event` + backfill, task link + clock-trigger fix + test, progress views | Written; round trip passes; **not applied** |
-| 2 | Start Package, badge, slide list (SiteSubmitSidebar + DealHeaderBar), once-only gate-date entry, slide-template settings | — |
+| 1 | Tables, `deal_court_event` + backfill, task link + clock-trigger fix + test, progress views | **Applied 2026-10-13** |
+| 2 | Start Package, badge, slide list (SiteSubmitSidebar + DealHeaderBar), once-only gate-date entry, slide-template settings | Code built (tsc baseline unchanged, build passes); migration `20261013124653` round-trip tested, **awaiting OK to apply** |
 | 3 | Noree's Tasks queue (drag order, input-gated release), set as her default landing page | — |
 | 4 | Board card bar + "N waiting on Mike"; pipeline report shows computed progress | — |
 
@@ -347,3 +347,35 @@ Permission keys (§8) are JSONB on `role` / `user` and need no migration. They a
 - a new, unflagged child of Starbucks is accepted;
 - re-pointing a package at a non-Starbucks deal is refused;
 - a client that leaves the family drops out of the views.
+
+---
+
+## 12. Phase 2 as built (2026-10-18)
+
+**Migration `20261013124653_package_gate_dates_and_start.sql`** (round-trip tested 2026-10-18, not applied):
+- **`deal_gate_date`** holds the once-only gate dates, keyed by deal, so they can be entered before a package exists.
+  - A row means "answered": a blank date means it hasn't happened yet, and live court events fill it in after `confirmed_at`.
+  - Starbucks family only (same trigger function as packages). Internal access only, no delete.
+- **The three gate columns on `deal_package` are dropped.** Both views are dropped and recreated: `v_deal_package_slide` used `SELECT p.*`, which had pinned every `deal_package` column.
+- **`start_deal_package(deal_id)`** is an invoker RPC that creates the package, its slides (a snapshot of the active template) and the owner tasks in one transaction.
+  - A task is created for every slide not owned by the person starting the package, in the global `pipeline` category, carrying `package_slide_id`, so it never resets the clock.
+  - A second start, or a start on a non-Starbucks deal, is refused.
+
+**UI:**
+- **Code:**
+  - `src/lib/packageTracker.ts`: types; config (`PACKAGE_STALE_DAYS` 3, `PACKAGE_LATE_DAYS` 7); reads and writes; pace; locked bar colours.
+  - `src/hooks/useDealPackage.ts`: loads one deal's package. Badge and panel stay in sync through a window event.
+  - `src/components/package/`: `PackageBadge`, `PackagePanel`, `GateDatesForm`.
+  - `src/pages/PackageSlideSettingsPage.tsx`: `/admin/package-slides`, admin only, linked from both navbar menus.
+- **Where it mounts:**
+  - `SiteSubmitSidebar` header: the badge, for any deal including deal-direct mode.
+  - `SiteSubmitSidebar` DATA tab: the full panel, under `DealDataTab`.
+  - `DealHeaderBar`: an expandable badge (popover panel) for deals with no site_submit.
+  - Everything renders nothing for non-Starbucks deals.
+- **Correction to §9 Q4:** the deal sidebar already had a deal-direct mode, so it works for deals with no site_submit. The `DealHeaderBar` mount is additional, as decided.
+- **Slide actions:** Start → Done (`none`), or Submit for approval / hand to Mike (`approve` / `finish`) → Approve / Finish. Also Reopen, and N/A where allowed.
+- **Inputs:** Market Research and Site Story are shown as resolved by the database. Site plan, DOT study and Final LOI are checkboxes that store a timestamp; Final LOI in is Gate 3.
+- **Gate dates form:** offered unprompted only when the view says `gates_unknown` and no answer is on file. Otherwise it's behind "Edit" / "Enter gate dates".
+- **Not in Phase 2:** keeping Noree's task and her slide in step (Phase 3). Until then, a slide moved in the sidebar doesn't close or reopen its task.
+
+**Merge order:** this branch must not merge before `20261013124653` is applied. The panel reads `deal_gate_date` and calls `start_deal_package`.
