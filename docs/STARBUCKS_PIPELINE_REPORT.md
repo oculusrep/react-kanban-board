@@ -22,7 +22,7 @@ token and adds an **Account** column to the export.
 | Deal / Site Submit | `deal.deal_name` when the card has a deal, else `site_submit_name`, else the board's name. **Click** opens the map's `SiteSubmitSidebar` (context `deal`) — the site submit with its deal tab, or deal-direct mode for a card with no site submit |
 | Status | The stage. Pre-Submittal adds what we're waiting on, edited by a dropdown (see below) |
 | Court | Us / Them / Not set, plus the party label. **Click** opens the court editor |
-| Days in Court | Days on the board clock + "since" date. Terracotta when the board calls it warm, bold when hot. **Click** opens the court editor |
+| Days in Court | Days since the current court started (`court_since`) + "since" date. Colour follows the board's heat (terracotta warm, bold hot); a parked row shows "· paused" and no heat colour. **Click** opens the court editor |
 | Package Status | Editable text (`package_status`). Will become a % complete fed by another tool |
 | Notes | Editable text (`notes`). Report text for Starbucks; **not** the internal chat thread |
 | Map | Google Maps link. Coordinates: site_submit verified → property verified → site_submit sf_property → property raw |
@@ -34,13 +34,41 @@ token and adds an **Account** column to the export.
 classify controls save (`savePreStatus` → `upsertBoardState`): blocker choices imply court Them,
 Ready implies Us, Not set returns the card to unclassified. It's a touch — the clock restarts now.
 
+## Court start vs. the board clock (`court_since`, 2026-10-10)
+
+`deal_activity_state.ball_in_court_since` is the board's **heat clock**: every touch (note, task,
+chat, activity) resets it to now, and parking sets it to the review date so the card comes back
+fresh. It can't also answer "how long has this been in their court". Found on SBUX Jasper: parked
+until Oct 24, court never set, clock = Oct 24 — so the report showed nothing.
+
+Migration `20261010185423_board_court_since.sql` (applied + recorded 2026-10-10) adds
+`court_since`, backfilled from the clock for the 28 rows with a court (clamped to now). A BEFORE
+trigger (`set_court_since`) keeps it right for every writer:
+
+| Write | `court_since` |
+|---|---|
+| Court changes (board classify, Pre-Submittal status, trigger-free writes) | the save's clock date — a back-dated classify back-dates the court |
+| Explicit `court_since` in the write (report Court editor) | as written |
+| Court unchanged — touches, park, un-park, party edits | kept |
+| Court cleared | NULL |
+
+Never later than now. Verified by impersonated writes rolled back (set Them since 7/13 on parked
+Jasper → clock stays 10/24; touch → court start kept; court change with back-dated clock → court
+start follows; un-park → kept; clear → NULL; history lines still posted).
+
+On a **parked** card the report never moves the heat clock: the Court editor writes
+`court_since` only, and a Pre-Submittal status pick skips `ball_in_court_since`, so the park's
+pause stands. The board's own "Clock started" back-date with an unchanged court moves the heat
+clock only (by rule 3) — set the court start from the report.
+
 ## Court editor
 
-Ball in court (Us / Them / Clear), party ("Landlord"), and **Court started** date. A new court
+Ball in court (Us / Them / Clear), party ("Landlord"), and **Court started** date (seeded from
+`court_since`). A new court
 defaults to today; any date up to today can be picked, so a court that changed on a day nobody
 recorded (LOI comments came back on the 3rd) can be corrected. Today stamps now; an earlier date
-stores that day's local midnight, which is what the board's `daysSince()` counts from.
-`saveCourt` writes only court / party / since / seeded_fallback — blockers are untouched.
+stores that day's local midnight. `saveCourt` writes court / party / `court_since`, and the heat
+clock to the same date **unless the card is parked**. Blockers are untouched.
 Both editors write the **board's** state, so the deal board reflects them (realtime), and the
 history trigger posts court changes to the card's chat.
 
@@ -50,8 +78,9 @@ Same rules and write as the board's Park control — both call `parkCard` / `unp
 `lib/boardWrites.ts`. Hover a row → **Park** under the name: pick a review date (strictly future;
 2 wks / 1 mo / 3 mo shortcuts) and an optional reason (posted to the chat). The card leaves the
 deal board for the Parking lot and returns on that date with the clock running from then.
-Parked rows stay on the report with a **Parked until <date>** tag; click it to change the date
-or **Un-park now**. Excel keeps parked rows, with "(Parked until <date>)" on the Status.
+Parked rows stay on the report with a **Parked until <date> · <reason>** tag (`parked_reason`);
+click it to change the date / reason or **Un-park now**. Excel keeps parked rows, with
+"(Parked until <date>: <reason>)" on the Status. Days in Court keeps counting while parked.
 
 ## Filters
 
@@ -112,8 +141,8 @@ Every editor on this report except Package Status, Notes and the drag order writ
 
 | Action | Fields written | Clock |
 |---|---|---|
-| Pre-Submittal status | court (implied), party (cleared if court changes), blocker, needs_pricing / needs_site_plan | restarts now |
-| Court editor | court, party, ball_in_court_since | the picked start date (today = now) |
+| Pre-Submittal status | court (implied), party (cleared if court changes), blocker, needs_pricing / needs_site_plan | restarts now; parked: unchanged |
+| Court editor | court, party, court_since (+ ball_in_court_since unless parked) | the picked start date (today = now); parked: unchanged |
 | Park | parked_until, parked_reason | set to the review date |
 | Un-park | parked_until / parked_reason cleared | restarts now |
 
@@ -141,6 +170,7 @@ curl -s https://ovis.oculusrep.com/ | grep -oE 'assets/index-[^"]+\.js' | head -
 | 2026-10-10 | Report, migration, ranked order, Excel export; board-driven Status; Days in Court; nav + board links | `f3962351` |
 | 2026-10-10 | Filters, Court column + start-date editor, clickable names (map sidebar), All accounts, board header link | `52235b64` |
 | 2026-10-10 | Park / un-park from the report, Parked filter, export titled Starbucks GA Pipeline Report | `26ffbd97` |
+| 2026-10-10 | `court_since`: Days in Court counts from the court start, not the heat clock; parked rows keep counting; park reason shown | (this branch) |
 
 Verified with typecheck, production build, sample exports generated through the real export code,
 and impersonated database writes rolled back. **Not yet exercised in a browser session:** the Court

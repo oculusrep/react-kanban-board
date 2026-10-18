@@ -7,7 +7,7 @@
 import { supabase } from './supabaseClient';
 import { exportToExcel, ExcelColumn, getLogoBase64 } from './excelExport';
 import { upsertBoardState } from './boardWrites';
-import { BallInCourt, BlockedOn, BoardStage, BOARD_STAGES, formatReviewDate, Heat, IMPLIED_COURT } from './starbucksBoard';
+import { BallInCourt, BlockedOn, BoardStage, BOARD_STAGES, daysSince, formatReviewDate, Heat, IMPLIED_COURT } from './starbucksBoard';
 
 export type ReportField = 'package_status' | 'notes';
 
@@ -23,16 +23,18 @@ export interface ReportRow {
   accountName: string;         // filter label ("Starbucks", "Coastal GA")
   parked: boolean;
   parkedUntil: string | null;  // review date (YYYY-MM-DD) while parked
+  parkedReason: string | null;
   mapUrl: string | null;
   sortOrder: number | null;    // null = never ranked
   // Board state (deal_activity_state) — Status detail, Court and the clock.
   ballInCourt: BallInCourt | null;
   ballInCourtParty: string | null;
-  ballInCourtSince: string | null; // ISO — when the current court started
+  ballInCourtSince: string | null; // ISO — the board's heat clock (touches + park reset it)
+  courtSince: string | null;       // ISO — when the current court started; Days in Court counts from it
   blockedOn: BlockedOn | null;
   needsPricing: boolean;
   needsSitePlan: boolean;
-  days: number;                // whole days since ball_in_court_since (Eastern)
+  days: number;                // board heat-clock days (drives heat, not Days in Court)
   heat: Heat;                  // board heat — same warm/hot thresholds as the tiles
   packageStatus: string;
   notes: string;
@@ -117,7 +119,9 @@ export async function savePreStatus(r: ReportRow, v: PreStatus): Promise<void> {
   await upsertBoardState(r, {
     ball_in_court: next.court,
     ball_in_court_party: next.court === r.ballInCourt ? r.ballInCourtParty : null,
-    ball_in_court_since: new Date().toISOString(),
+    // A parked card's clock stays on its review date; court_since (trigger)
+    // records when the new court started.
+    ...(r.parked ? {} : { ball_in_court_since: new Date().toISOString() }),
     seeded_fallback: false,
     blocked_on: next.blockedOn,
     needs_pricing: next.blockedOn === 'awaiting_ll' ? next.pricing : false,
@@ -126,27 +130,35 @@ export async function savePreStatus(r: ReportRow, v: PreStatus): Promise<void> {
 }
 
 // Court edit: who owes, the optional party, and WHEN the court started. A start
-// date of today stamps now (as the board does); an earlier date is that day's
-// local midnight — what daysSince() measures from. Blockers are left alone.
+// date of today stamps now; an earlier date is that day's local midnight.
+// court_since gets the date (Days in Court counts from it). The board's heat
+// clock follows it too — unless the card is parked, where the clock stays on
+// the review date so the park keeps its pause. Blockers are left alone.
 export async function saveCourt(
   r: ReportRow,
   next: { court: CourtValue; party: string; since: string /* YYYY-MM-DD local */ }
 ): Promise<void> {
+  const since = next.since === localDateStamp()
+    ? new Date().toISOString()
+    : new Date(`${next.since}T00:00:00`).toISOString();
   await upsertBoardState(r, {
     ball_in_court: next.court === 'unset' ? null : next.court,
     ball_in_court_party: next.party.trim() || null,
-    ball_in_court_since: next.since === localDateStamp()
-      ? new Date().toISOString()
-      : new Date(`${next.since}T00:00:00`).toISOString(),
+    court_since: next.court === 'unset' ? null : since,
+    ...(r.parked ? {} : { ball_in_court_since: since }),
     seeded_fallback: false,
   });
 }
 
-// Days in court: who owes + how long, on the board's own clock. Null when there
-// is no clock to read — no history yet, or court not set.
-export function courtClock(r: Pick<ReportRow, 'ballInCourt' | 'days' | 'heat'>): { who: string; days: number } | null {
-  if (r.heat === 'no_history' || !r.ballInCourt || r.ballInCourt === 'none') return null;
-  return { who: r.ballInCourt === 'us' ? 'Us' : 'Them', days: r.days };
+// Days in court: who owes + how long since that court started (court_since —
+// not the heat clock, which touches and parking reset). Null when court is not
+// set. Falls back to the heat clock for a row the court_since backfill missed.
+export function courtClock(
+  r: Pick<ReportRow, 'ballInCourt' | 'courtSince' | 'ballInCourtSince'>
+): { who: string; days: number; since: string | null } | null {
+  if (!r.ballInCourt || r.ballInCourt === 'none') return null;
+  const since = r.courtSince ?? r.ballInCourtSince;
+  return { who: r.ballInCourt === 'us' ? 'Us' : 'Them', days: daysSince(since), since };
 }
 
 export function googleMapsUrl(lat: number | null | undefined, lng: number | null | undefined): string | null {
@@ -229,10 +241,12 @@ export async function exportPipelineReport(
       account: r.accountName,
       name: r.name,
       city: r.city ?? '',
-      status: r.parked ? `${statusText(r)} (Parked until ${formatReviewDate(r.parkedUntil)})` : statusText(r),
+      status: r.parked
+        ? `${statusText(r)} (Parked until ${formatReviewDate(r.parkedUntil)}${r.parkedReason ? `: ${r.parkedReason}` : ''})`
+        : statusText(r),
       court: clock ? `${clock.who}${r.ballInCourtParty ? ` (${r.ballInCourtParty})` : ''}` : '',
       // M/D/YYYY text, not an ISO string — exportToExcel would turn ISO into a UTC date
-      since: clock ? shortDate(r.ballInCourtSince) : '',
+      since: clock ? shortDate(clock.since) : '',
       days: clock?.days ?? '',
       package_status: r.packageStatus,
       notes: r.notes,

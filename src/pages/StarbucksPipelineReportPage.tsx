@@ -96,7 +96,7 @@ function matches(r: ReportRow, f: Filters): boolean {
   }
   const q = f.search.trim().toLowerCase();
   if (q) {
-    const hay = [r.name, r.city, r.notes, r.packageStatus, r.ballInCourtParty, statusText(r)].join(' ').toLowerCase();
+    const hay = [r.name, r.city, r.notes, r.packageStatus, r.ballInCourtParty, r.parkedReason, statusText(r)].join(' ').toLowerCase();
     if (!hay.includes(q)) return false;
   }
   return true;
@@ -427,9 +427,9 @@ export default function StarbucksPipelineReportPage() {
                                     onClick={(e) => setParkEdit({ row: r, rect: e.currentTarget.getBoundingClientRect() })}
                                     className={r.parked ? 'px-1.5 rounded' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 underline'}
                                     style={r.parked ? { color: '#A27B5C', border: '1px solid #A27B5C' } : { color: '#8FA9C8' }}
-                                    title={r.parked ? 'Change review date or un-park' : 'Park until a review date'}
+                                    title={r.parked ? `${r.parkedReason ? `${r.parkedReason} — ` : ''}change review date or un-park` : 'Park until a review date'}
                                   >
-                                    {r.parked ? `Parked until ${formatReviewDate(r.parkedUntil)}` : 'Park'}
+                                    {r.parked ? `Parked until ${formatReviewDate(r.parkedUntil)}${r.parkedReason ? ` · ${r.parkedReason}` : ''}` : 'Park'}
                                   </button>
                                 </div>
                               </td>
@@ -535,26 +535,28 @@ function CourtCell({ row, onEdit }: { row: ReportRow; onEdit: (rect: DOMRect) =>
   );
 }
 
-// Days on the board clock + the start date; warm/hot use the board's thresholds.
+// Days since the current court started (court_since). Colour still follows
+// the board's heat (staleness since the last touch); a parked card is paused.
 function DaysCell({ row, onEdit }: { row: ReportRow; onEdit: (rect: DOMRect) => void }) {
   const c = courtClock(row);
   if (!c) {
     return (
-      <span className="text-xs" style={{ color: '#8FA9C8' }} title={row.heat === 'no_history' ? 'No touch history yet' : 'Court not set'}>
-        —
+      <span className="text-xs" style={{ color: '#8FA9C8' }} title={row.parked ? `Parked until ${formatReviewDate(row.parkedUntil)} — court not set` : 'Court not set'}>
+        {row.parked ? 'paused' : '—'}
       </span>
     );
   }
-  const late = row.heat === 'hot' || row.heat === 'warm';
+  const late = !row.parked && (row.heat === 'hot' || row.heat === 'warm');
+  const title = row.parked
+    ? `In ${c.who === 'Us' ? 'our' : 'their'} court ${c.days} days. Board clock paused until ${formatReviewDate(row.parkedUntil)}. Click to correct the start date`
+    : `${row.heat === 'hot' ? 'Overdue on the board clock. ' : row.heat === 'warm' ? 'Getting stale. ' : ''}Click to correct the start date`;
   return (
-    <button
-      onClick={(e) => onEdit(e.currentTarget.getBoundingClientRect())}
-      className="px-2 py-0.5 rounded hover:bg-[#F8FAFC]"
-      title={`${row.heat === 'hot' ? 'Overdue on the board clock. ' : row.heat === 'warm' ? 'Getting stale. ' : ''}Click to correct the start date`}
-    >
-      <div className="text-sm" style={{ color: late ? '#A27B5C' : '#002147', fontWeight: row.heat === 'hot' ? 700 : 500 }}>{c.days}d</div>
-      {row.ballInCourtSince && (
-        <div className="text-[11px]" style={{ color: '#8FA9C8' }}>since {format(new Date(row.ballInCourtSince), 'M/d/yy')}</div>
+    <button onClick={(e) => onEdit(e.currentTarget.getBoundingClientRect())} className="px-2 py-0.5 rounded hover:bg-[#F8FAFC]" title={title}>
+      <div className="text-sm" style={{ color: late ? '#A27B5C' : '#002147', fontWeight: !row.parked && row.heat === 'hot' ? 700 : 500 }}>{c.days}d</div>
+      {c.since && (
+        <div className="text-[11px]" style={{ color: '#8FA9C8' }}>
+          since {format(new Date(c.since), 'M/d/yy')}{row.parked ? ' · paused' : ''}
+        </div>
       )}
     </button>
   );
@@ -564,7 +566,8 @@ function DaysCell({ row, onEdit }: { row: ReportRow; onEdit: (rect: DOMRect) => 
 // that changed on a date nobody recorded (LOI comments came back on the 3rd)
 // can be corrected here. Writes the board's state; the board shows it.
 function CourtEditor({ row, rect, onClose, onSaved }: { row: ReportRow; rect: DOMRect; onClose: () => void; onSaved: () => void }) {
-  const initialSince = row.ballInCourtSince ? localDateStamp(new Date(row.ballInCourtSince)) : localDateStamp();
+  const startIso = courtClock(row)?.since ?? null;
+  const initialSince = startIso ? localDateStamp(new Date(startIso)) : localDateStamp();
   const [court, setCourt] = useState<CourtValue>(courtOf(row));
   const [party, setParty] = useState(row.ballInCourtParty ?? '');
   const [since, setSince] = useState(initialSince);
@@ -645,7 +648,9 @@ function CourtEditor({ row, rect, onClose, onSaved }: { row: ReportRow; rect: DO
           className="w-full px-2 py-1.5 rounded text-sm border border-[#8FA9C8] text-[#002147]"
         />
         <div className="text-[11px] mt-1" style={{ color: '#4A6B94' }}>
-          The board's clock counts from this date.
+          {row.parked
+            ? `Days in Court counts from this date. The board's clock stays paused until ${formatReviewDate(row.parkedUntil)}.`
+            : "Days in Court and the board's clock count from this date."}
         </div>
         {err && <div className="text-xs mt-2" style={{ color: '#A27B5C' }}>{err}</div>}
         <div className="flex justify-end gap-2 mt-3">
@@ -675,11 +680,11 @@ function addDaysLocal(n: number): string {
 // clock running from then. Parked cards stay on this report, tagged.
 function ParkEditor({ row, rect, onClose, onSaved }: { row: ReportRow; rect: DOMRect; onClose: () => void; onSaved: () => void }) {
   const [date, setDate] = useState(row.parkedUntil ?? '');
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState(row.parkedReason ?? '');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const today = localDateStamp();
-  const canPark = date > today && date !== row.parkedUntil;
+  const canPark = date > today && (date !== row.parkedUntil || reason.trim() !== (row.parkedReason ?? ''));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
