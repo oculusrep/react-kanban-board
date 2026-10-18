@@ -9,7 +9,7 @@ Decisions from 2026-10-12 are in the decisions file §2.29. Where this spec stil
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Tables, `deal_court_event` + backfill, task link + clock-trigger fix + test, progress views | **Applied 2026-10-13** |
-| 2 | Start Package, badge, slide list (SiteSubmitSidebar + DealHeaderBar), once-only gate-date entry, slide-template settings | Code built (tsc baseline unchanged, build passes); migration `20261013124653` round-trip tested, **awaiting OK to apply** |
+| 2 | Start Package, badge, slide list (SiteSubmitSidebar + DealHeaderBar), once-only gate-date entry, slide-template settings | Migration `20261013124653` **applied 2026-10-18**; UI on branch, not merged |
 | 3 | Noree's Tasks queue (drag order, input-gated release), set as her default landing page | — |
 | 4 | Board card bar + "N waiting on Mike"; pipeline report shows computed progress | — |
 
@@ -379,3 +379,20 @@ Permission keys (§8) are JSONB on `role` / `user` and need no migration. They a
 - **Not in Phase 2:** keeping Noree's task and her slide in step (Phase 3). Until then, a slide moved in the sidebar doesn't close or reopen its task.
 
 **Merge order:** this branch must not merge before `20261013124653` is applied. The panel reads `deal_gate_date` and calls `start_deal_package`.
+
+### Gate dates entered (2026-10-18, as Mike, `deal_gate_date`)
+
+| Deal | Draft sent | LL first response | Source |
+|---|---|---|---|
+| Jasper | 7-13 | not yet | chat |
+| Powder Springs | 8-11 | 8-25 | landlord's redlined-LOI email |
+| Hiram | 6-16 | 7-08 | chat / landlord's redline email |
+| Cumming | 10-11 | not yet | chat |
+| Cedartown | 7-11 | 7-26 | chat |
+| Grovetown | 9-08 | 9-16 | chat (the handoff log says 9-10) / landlord's response email |
+
+- **Still unanswered:**
+  - Culpepper: the response came between 8-31 and 9-21, exact date not found.
+  - Capital City Bank Macon, Dublin and Publix at Riverbrook: no evidence.
+  - Big Chicken: Gate 1 comes from the handoff log; Gate 2 is unknown.
+- **Jasper's court** was set to Them since 7-13 (written as Mike; board history "Ball → Them"). The park review clock was left as it was.
