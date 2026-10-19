@@ -51,6 +51,8 @@ Read: any user `is_internal_user()` accepts (admin, broker_full, broker_lite, va
 
 Entry + links + tags + correction in **one transaction**. `SECURITY INVOKER` on purpose — every insert passes through the RLS policies as the calling user, so the function grants no privilege the caller doesn't have; it exists for atomicity, because a filed entry with half its links is worse than a failed file. `p_embedding` arrives as text (`'[0.1,…]'`) and is cast inside, so callers never need the `vector` type on their `search_path`.
 
+EXECUTE is granted to `authenticated` and `service_role` only (migration `20261019153427` revoked it from `PUBLIC` and `anon`). The edge function calls it through the user's own client, so filing is unaffected.
+
 ## Edge function `ovis-knowledge-capture`
 
 Two actions, both requiring a user JWT from an internal user (`is_internal_user()` — the UI gate is a convenience, this is the control):
