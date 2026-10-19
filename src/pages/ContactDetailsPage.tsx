@@ -128,15 +128,24 @@ const ContactDetailsPage: React.FC = () => {
         }
       }
 
-      // Delete all activities associated with this contact
-      const { error: activitiesError } = await supabase
-        .from('activity')
-        .delete()
-        .eq('contact_id', contactId);
+      // Clear the child records that block the delete. These FKs are
+      // ON DELETE NO ACTION, so Postgres rejects the contact delete with a 409
+      // unless they are removed (join rows) or detached (soft references) first.
+      const childCleanups: { label: string; run: () => PromiseLike<{ error: any }> }[] = [
+        { label: 'associated activities', run: () => supabase.from('activity').delete().eq('contact_id', contactId) },
+        { label: 'deal associations', run: () => supabase.from('deal_contact').delete().eq('contact_id', contactId) },
+        { label: 'property associations', run: () => supabase.from('property_contact').delete().eq('contact_id', contactId) },
+        { label: 'note links', run: () => supabase.from('note_object_link').delete().eq('contact_id', contactId) },
+        { label: 'tenant rep references', run: () => supabase.from('contact').update({ tenant_rep_contact_id: null }).eq('tenant_rep_contact_id', contactId) },
+        { label: 'prospecting target links', run: () => supabase.from('prospecting_target').update({ converted_contact_id: null }).eq('converted_contact_id', contactId) },
+      ];
 
-      if (activitiesError) {
-        console.error('Error deleting associated activities:', activitiesError);
-        throw new Error('Failed to delete associated activities');
+      for (const cleanup of childCleanups) {
+        const { error: cleanupError } = await cleanup.run();
+        if (cleanupError) {
+          console.error(`Error clearing ${cleanup.label}:`, cleanupError);
+          throw new Error(`Failed to clear ${cleanup.label}`);
+        }
       }
 
       // Then delete the contact
@@ -147,7 +156,7 @@ const ContactDetailsPage: React.FC = () => {
 
       if (error) throw error;
 
-      showToast('Contact and associated activities deleted successfully!', { type: 'success' });
+      showToast('Contact and associated records deleted successfully!', { type: 'success' });
 
       // Navigate after a brief delay to show the toast
       setTimeout(() => {

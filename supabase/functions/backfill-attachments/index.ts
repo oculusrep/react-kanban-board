@@ -15,6 +15,7 @@ import {
   refreshAccessToken,
   isTokenExpired,
 } from '../_shared/gmail.ts';
+import { authorizeCaller } from '../_shared/caller-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,6 +38,11 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Caller authorization — see _shared/caller-auth.ts. Manual ops tool with no UI caller. Its response echoes email subjects and
+  // attachment filenames.
+  const caller = await authorizeCaller(req, { allowService: true, allowInternalUser: true }, corsHeaders);
+  if (caller instanceof Response) return caller;
 
   const startTime = Date.now();
   const results: BackfillResult[] = [];

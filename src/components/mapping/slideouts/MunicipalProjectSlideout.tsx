@@ -2,9 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { geocodingService } from '../../../services/geocodingService';
+import { classifyGeocode, unplacedLabel } from '../../../services/placementPrecision';
+import { adapterFor, applyParcelBoundary } from '../../../services/parcelFabric';
 import type { MunicipalProjectMapRow } from '../layers/MunicipalProjectLayer';
 import { formatUnitsLabel } from '../../../utils/municipalProjectUnitsLabel';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
+import PrecisionBadge from '../PrecisionBadge';
+import { useMunicipalPrecision } from '../../../hooks/useMunicipalPrecision';
 
 interface ProjectStageOption {
   id: string;
@@ -28,8 +32,13 @@ interface Props {
     notes?: string | null;
     location_description?: string | null;
     geometry_geojson?: MunicipalProjectMapRow['geometry_geojson'];
-    centroid_lat?: number;
-    centroid_lng?: number;
+    geometry_source?: MunicipalProjectMapRow['geometry_source'];
+    centroid_lat?: number | null;
+    centroid_lng?: number | null;
+    is_unplaced?: boolean;
+    unplaced_reason?: string | null;
+    geometry_unreviewed?: boolean;
+    geometry_needs_review?: boolean;
   }) => void;
   onProjectDeleted?: (id: string) => void;
   // Phase 3: invoked when the user clicks "Draw polygon" — the parent activates terra-draw
@@ -37,6 +46,12 @@ interface Props {
   onStartDrawingPolygon?: (projectId: string) => void;
   // When true, this project is currently in drawing mode (parent passes back to disable button).
   isDrawingPolygon?: boolean;
+  // Pin-drop mode, for "I only know roughly where it is". The parent puts the map
+  // into click-to-pick and hands the chosen point back through droppedPin; the
+  // write stays here so the placement rules live in one component.
+  onStartDroppingPin?: (projectId: string) => void;
+  isDroppingPin?: boolean;
+  droppedPin?: { lat: number; lng: number } | null;
 }
 
 const BRAND = {
@@ -87,6 +102,9 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   onProjectDeleted,
   onStartDrawingPolygon,
   isDrawingPolygon,
+  onStartDroppingPin,
+  isDroppingPin,
+  droppedPin,
 }) => {
   const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const [stages, setStages] = useState<ProjectStageOption[]>([]);
@@ -109,7 +127,27 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [savingLocDesc, setSavingLocDesc] = useState(false);
   const [locDescError, setLocDescError] = useState<string>('');
   const [removingPolygon, setRemovingPolygon] = useState(false);
+  const [droppingPin, setDroppingPin] = useState(false);
+  const [markingReviewed, setMarkingReviewed] = useState(false);
+  const [fetchingParcel, setFetchingParcel] = useState(false);
+  const [parcelNotice, setParcelNotice] = useState<string>('');
+  // Phase 3 is flagged off until the Forsyth adapter has been exercised on real
+  // records. Offered only where a county adapter exists, the project has parcel
+  // ids, and there is no boundary yet — re-fetching over an existing one is the
+  // thing we specifically do not do.
+  const parcelFetchAvailable =
+    import.meta.env.VITE_PARCEL_FETCH_ENABLED === 'true'
+    && !!project
+    && !project.geometry_geojson
+    && (project.parcel_numbers?.length ?? 0) > 0
+    && !!adapterFor(project.municipality_name);
   const [polygonError, setPolygonError] = useState<string>('');
+
+  // How well-located this record is. The same hook the map overlay and the
+  // unplaced worklist use, so the badge here, the badge in the list and the
+  // shape drawn on the map cannot disagree. Kept above the early return — this
+  // file has a React #310 history, see the comment there.
+  const precision = useMunicipalPrecision(project);
 
   // Load project stages once for the override dropdown.
   useEffect(() => {
@@ -144,6 +182,26 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     project?.total_housing_units,
     project?.location_description,
   ]);
+
+  // The slideout is REUSED across records — it is not unmounted between them — so
+  // every transient bit of placement state has to be cleared when the record
+  // changes. Without this, a fetch result carried over: fetching a boundary on one
+  // project and then opening an unplaced one showed that project's
+  // "Boundary set from 2 parcels · 32.19 ac" under "Not on the map yet".
+  //
+  // MUST stay above the `if (!isOpen || !project) return null` below. It was
+  // originally placed after it, which made the hook count differ between the
+  // closed and open renders and crashed the whole Mapping page with React error
+  // #310 ("rendered more hooks than during the previous render"). Hooks go before
+  // every early return, always.
+  useEffect(() => {
+    setParcelNotice('');
+    setPolygonError('');
+    setRemovingPolygon(false);
+    setDroppingPin(false);
+    setFetchingParcel(false);
+    setMarkingReviewed(false);
+  }, [project?.id]);
 
   if (!isOpen || !project) return null;
 
@@ -279,38 +337,145 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
 
   async function removePolygon() {
     if (!project) return;
-    if (!confirm('Remove the drawn polygon? The pin will snap back to the original geocoded address.')) {
-      return;
-    }
     setRemovingPolygon(true);
     setPolygonError('');
     try {
-      // Prefer the previously-geocoded address; fall back to the raw address + muni/state.
+      // The pin used to "snap back to the geocoded address" — re-geocoding and
+      // writing whatever came out, county centroid included. That is the
+      // fabrication this work removes. Now the address is re-geocoded only to see
+      // whether it is PRECISE enough to stand on its own; if it isn't, the record
+      // goes back on the unplaced list rather than getting an invented pin.
       const target =
         project.geocoded_address ||
         [project.address, project.municipality_name, project.municipality_state]
           .filter(Boolean)
           .join(', ');
-      const geo = await geocodingService.geocodeAddress(target);
-      if ('error' in geo) throw new Error(`Could not re-geocode address: ${geo.error}`);
+      const geo = target ? await geocodingService.geocodeAddress(target) : null;
+      const placement = classifyGeocode(geo, !!target);
 
-      const newCentroid = `SRID=4326;POINT(${geo.longitude} ${geo.latitude})`;
-      const { error } = await supabase
-        .from('municipal_project')
-        .update({ geometry: null, centroid: newCentroid })
-        .eq('id', project.id);
+      if (!confirm(
+        placement.placed
+          ? 'Remove the drawn boundary? The pin falls back to the geocoded address.'
+          : `Remove the drawn boundary? ${unplacedLabel(placement.reason)}, so this project `
+            + 'will have no pin until you draw a boundary or drop one by hand.',
+      )) {
+        setRemovingPolygon(false);
+        return;
+      }
+
+      const { error } = await supabase.rpc('clear_municipal_project_polygon', {
+        p_id: project.id,
+        p_lat: placement.latitude,
+        p_lng: placement.longitude,
+        p_unplaced_reason: placement.reason ?? 'geocode_failed',
+      });
       if (error) throw error;
 
       onProjectUpdated?.({
         id: project.id,
         geometry_geojson: null,
-        centroid_lat: geo.latitude,
-        centroid_lng: geo.longitude,
+        geometry_source: null,
+        centroid_lat: placement.latitude ?? null,
+        centroid_lng: placement.longitude ?? null,
+        is_unplaced: !placement.placed,
+        unplaced_reason: placement.reason,
       });
     } catch (e) {
       setPolygonError(e instanceof Error ? e.message : String(e));
     } finally {
       setRemovingPolygon(false);
+    }
+  }
+
+  // Pull the boundary from the county parcel map. Behind a flag, and only offered
+  // where a county adapter exists and the project actually has parcel ids.
+  // Deliberately a one-shot at the user's request, never an automatic refetch:
+  // the fabric refreshes nightly and a re-plat would overwrite a correct boundary.
+  async function fetchParcelBoundary() {
+    if (!project) return;
+    setFetchingParcel(true);
+    setPolygonError('');
+    setParcelNotice('');
+    try {
+      const r = await applyParcelBoundary({
+        projectId: project.id,
+        municipalityName: project.municipality_name ?? null,
+        parcelNumbers: project.parcel_numbers ?? [],
+        statedAcres: null,   // the RPC parses it from parcel_boundary_notes
+      });
+      const bits = [`Boundary set from ${r.parts} parcel${r.parts === 1 ? '' : 's'}`];
+      if (r.computedAcres != null) bits.push(`${r.computedAcres} ac`);
+      if (r.missing.length) {
+        bits.push(
+          `${r.missing.length} parcel id${r.missing.length === 1 ? '' : 's'} `
+          + `no longer in the parcel map (${r.missing.join(', ')}) — usually re-platted`,
+        );
+      }
+      if (r.needsReview && r.variancePct != null) {
+        bits.push(`acreage is ${r.variancePct > 0 ? '+' : ''}${r.variancePct}% against the ${r.statedAcres} ac stated — check it`);
+      }
+      setParcelNotice(bits.join(' · '));
+      onProjectUpdated?.({ id: project.id, is_unplaced: false, unplaced_reason: null });
+    } catch (e) {
+      setPolygonError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetchingParcel(false);
+    }
+  }
+
+  // Confirm a fetched boundary. Until this happens the polygon renders dashed —
+  // the dashes mean "nobody has checked this yet", not "this is suspect".
+  //
+  // Editing a fetched boundary ALSO counts as review and needs no button: the
+  // write RPC stamps geometry_reviewed_at on anything that isn't a fresh
+  // parcel_fetch, because having reshaped it by hand you have plainly looked at
+  // it. This button is for the case where the fetched shape was already right.
+  async function markBoundaryReviewed() {
+    if (!project) return;
+    setMarkingReviewed(true);
+    setPolygonError('');
+    try {
+      const { error } = await supabase.rpc('mark_municipal_project_geometry_reviewed', {
+        p_id: project.id,
+      });
+      if (error) throw error;
+      onProjectUpdated?.({
+        id: project.id,
+        geometry_unreviewed: false,
+        geometry_needs_review: false,
+      });
+    } catch (e) {
+      setPolygonError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMarkingReviewed(false);
+    }
+  }
+
+  // "I only know roughly where it is." Available only while the project has no
+  // boundary — a project with one takes its pin from the shape, and the RPC
+  // refuses a manual pin in that case.
+  async function dropPinHere() {
+    if (!project || !droppedPin) return;
+    setDroppingPin(true);
+    setPolygonError('');
+    try {
+      const { error } = await supabase.rpc('set_municipal_project_pin', {
+        p_id: project.id,
+        p_lat: droppedPin.lat,
+        p_lng: droppedPin.lng,
+      });
+      if (error) throw error;
+      onProjectUpdated?.({
+        id: project.id,
+        centroid_lat: droppedPin.lat,
+        centroid_lng: droppedPin.lng,
+        is_unplaced: false,
+        unplaced_reason: null,
+      });
+    } catch (e) {
+      setPolygonError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDroppingPin(false);
     }
   }
 
@@ -349,6 +514,11 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
           <div className="min-w-0">
             <div className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>
               {project.municipality_name}, {project.municipality_state}
+            </div>
+            {/* Precision first: whether this record is worth going looking for
+                is the thing you need before you start, not after. */}
+            <div className="mt-1">
+              <PrecisionBadge badge={precision.badge} loading={precision.loading} size="md" />
             </div>
             <h2
               className="text-lg font-semibold mt-0.5 truncate"
@@ -470,6 +640,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
               <span className="font-semibold uppercase tracking-wide block mb-1"
                     style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
                 Pin placement hint
+                {project.is_unplaced && precision.badge.tier === 'county' && (
+                  <span className="ml-1 normal-case font-normal"
+                        style={{ color: BRAND.terracotta }}>
+                    — this is the best locator we have for this record
+                  </span>
+                )}
               </span>
               <textarea
                 value={locDescDraft}
@@ -712,15 +888,106 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
               </div>
             )}
             <div className="mt-1.5">
-              {project.geometry_geojson ? (
+              {/* Placement state. An unplaced record is a COMPLETE record with no
+                  trustworthy coordinate — never a stub — so this says what is
+                  missing and offers the two ways to fix it, right here. */}
+              {project.is_unplaced ? (
+                <div className="text-xs mb-2 px-2 py-1.5 rounded"
+                     style={{ backgroundColor: '#FFF7F0', color: BRAND.midnight,
+                              borderLeft: `3px solid ${BRAND.terracotta}` }}>
+                  <span className="font-semibold">Not on the map yet.</span>{' '}
+                  <span style={{ color: BRAND.steel }}>{unplacedLabel(project.unplaced_reason)}.</span>
+                  {/* Say what the shape on the map IS, so a circle around an
+                      intersection is never mistaken for a placement — and so a
+                      county outline is read as "we cannot see it", not as
+                      "there is nothing there". */}
+                  <div style={{ color: BRAND.slate }} className="mt-0.5">
+                    {precision.badge.tier === 'county'
+                      ? 'The map is showing the whole municipality — that\u2019s all we can '
+                        + 'narrow it to. Read the pin placement hint above and place it by hand.'
+                      : precision.geocode
+                        ? `The shaded circle is the approximate area around ${precision.geocode.formattedAddress}`
+                          + ' \u2014 orientation only, not a placement.'
+                        : null}
+                  </div>
+                  <div style={{ color: BRAND.slate }} className="mt-0.5">
+                    Draw the boundary below, or drop a pin if you only know roughly where it is.
+                  </div>
+                </div>
+              ) : project.geometry_geojson ? (
                 <div className="text-xs mb-2" style={{ color: BRAND.steel }}>
-                  Polygon drawn — pin is positioned at the polygon's centroid.
+                  {project.geometry_source === 'parcel_fetch'
+                    ? 'Boundary from the county parcel map'
+                    : project.geometry_source === 'parcel_fetch_adjusted'
+                      ? 'Boundary from the county parcel map, adjusted by hand'
+                      : 'Boundary drawn by hand'}
+                  {' — the pin sits inside the shape.'}
+                  {project.geometry_computed_acres != null && (
+                    <span style={{ color: BRAND.slate }}> · {project.geometry_computed_acres} ac</span>
+                  )}
                 </div>
               ) : (
                 <div className="text-xs mb-2" style={{ color: BRAND.slate }}>
-                  No polygon yet — pin is at the geocoded address.
+                  No boundary — pin is at the geocoded address.
                 </div>
               )}
+
+              {/* Acreage validation. A fetched boundary that disagrees with the
+                  acreage the source stated is the retired-parcel-id signal: the
+                  fabric gave us the wrong parcels, or not all of them. */}
+              {project.geometry_area_variance_pct != null && (
+                <div className="text-xs mb-2 px-2 py-1.5 rounded"
+                     style={{
+                       backgroundColor: project.geometry_needs_review ? '#FFF7F0' : '#F8FAFC',
+                       color: BRAND.midnight,
+                       borderLeft: `3px solid ${project.geometry_needs_review ? BRAND.terracotta : BRAND.slate}`,
+                     }}>
+                  <span className="font-semibold">
+                    {project.geometry_needs_review ? '⚠ Acreage doesn’t match' : 'Acreage checks out'}
+                  </span>
+                  <div style={{ color: BRAND.steel }} className="mt-0.5">
+                    Source says {project.geometry_stated_acres} ac · boundary measures{' '}
+                    {project.geometry_computed_acres} ac ·{' '}
+                    <b style={{ color: project.geometry_needs_review ? BRAND.terracotta : BRAND.steel }}>
+                      {project.geometry_area_variance_pct > 0 ? '+' : ''}
+                      {project.geometry_area_variance_pct}%
+                    </b>
+                  </div>
+                  {project.geometry_needs_review && (
+                    <div style={{ color: BRAND.slate }} className="mt-0.5">
+                      Usually a parcel id that was re-platted away, or a parcel missing
+                      from the set. Check the boundary before trusting it.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Pin-drop: only when there is no boundary. A project with one takes
+                  its pin from the shape, and the RPC refuses a manual pin there. */}
+              {!project.geometry_geojson && (
+                <div className="mb-2">
+                  {isDroppingPin && droppedPin ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs" style={{ color: BRAND.steel }}>
+                        Pin at {droppedPin.lat.toFixed(5)}, {droppedPin.lng.toFixed(5)}
+                      </span>
+                      <button type="button" onClick={dropPinHere} disabled={droppingPin}
+                              className="px-2.5 py-1 rounded text-white text-xs font-semibold disabled:opacity-40"
+                              style={{ backgroundColor: BRAND.midnight }}>
+                        {droppingPin ? 'Placing…' : 'Place pin here'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => project && onStartDroppingPin?.(project.id)}
+                            disabled={isDroppingPin || isDrawingPolygon || !onStartDroppingPin}
+                            className="px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 border"
+                            style={{ borderColor: BRAND.slate, color: BRAND.steel }}>
+                      {isDroppingPin ? 'Click the map…' : 'Drop a pin instead'}
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -732,9 +999,23 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                   {isDrawingPolygon
                     ? 'Drawing on map…'
                     : project.geometry_geojson
-                      ? 'Edit polygon'
-                      : 'Draw polygon'}
+                      ? 'Edit boundary'
+                      : project.is_unplaced
+                        ? 'Draw boundary to place it'
+                        : 'Draw boundary'}
                 </button>
+                {project.geometry_unreviewed && (
+                  <button
+                    type="button"
+                    onClick={markBoundaryReviewed}
+                    disabled={markingReviewed || isDrawingPolygon}
+                    className="px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 border"
+                    style={{ borderColor: BRAND.midnight, color: BRAND.midnight }}
+                    title="Confirm this fetched boundary is right — it stops rendering dashed"
+                  >
+                    {markingReviewed ? 'Marking…' : 'Mark boundary reviewed'}
+                  </button>
+                )}
                 {project.geometry_geojson && (
                   <button
                     type="button"
@@ -747,6 +1028,28 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                   </button>
                 )}
               </div>
+              {parcelFetchAvailable && (
+                <div className="mt-2">
+                  <button type="button" onClick={fetchParcelBoundary}
+                          disabled={fetchingParcel || isDrawingPolygon}
+                          className="px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 border"
+                          style={{ borderColor: BRAND.steel, color: BRAND.steel }}
+                          title={`Pull the boundary for ${(project.parcel_numbers ?? []).join(', ')} from the county parcel map`}>
+                    {fetchingParcel
+                      ? 'Fetching parcel boundary…'
+                      : `Fetch boundary from ${(project.parcel_numbers ?? []).length} parcel`
+                        + `${(project.parcel_numbers ?? []).length === 1 ? '' : 's'}`}
+                  </button>
+                  <div className="text-xs mt-0.5" style={{ color: BRAND.slate }}>
+                    Fetched once, on request — never refreshed, so a re-plat can&rsquo;t overwrite it.
+                  </div>
+                </div>
+              )}
+              {parcelNotice && (
+                <div className="mt-1.5 text-xs" style={{ color: BRAND.steel }}>
+                  {parcelNotice}
+                </div>
+              )}
               {polygonError && (
                 <div className="mt-1.5 text-xs" style={{ color: BRAND.terracotta }}>
                   {polygonError}

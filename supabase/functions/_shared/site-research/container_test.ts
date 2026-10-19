@@ -210,3 +210,56 @@ Deno.test('containerErrorMessage: "can only be provided" is a request-shape bug,
   assert(containerErrorMessage(Object.assign(new Error('404 {"error":{"message":"Container container_x not found"}}'), { status: 404 }), CONTAINER)!
     .startsWith('code_execution_container_unavailable'))
 })
+
+// ---------------------------------------------------------------------------
+// Run a6e0aa0e (2026-09-26): budget spent -> locked request -> end_turn with thinking and no prose.
+// ---------------------------------------------------------------------------
+Deno.test('an empty end_turn releases for retry and keeps the searches already spent', async () => {
+  const { run, db, log, finalized } = engine()
+  run.iteration = 3
+  run.web_search_requests = 14 // budget already spent; a restart would lose this
+  run.container_id = CONTAINER
+  let call = 0
+  const create: CreateFn = () => {
+    call++
+    // First: what the API actually returned — thinking only, no text block.
+    if (call === 1) return Promise.resolve({ stop_reason: 'end_turn', usage: { output_tokens: 250 }, content: [{ type: 'thinking', thinking: '…' }] })
+    return Promise.resolve({ stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: 'Report written on the second attempt.' }] })
+  }
+  assertEquals(await runOneIteration('run1', 'w1', deps(db, create)), 'released')
+  assert(log[0].startsWith('release:empty_model_response'), log[0])
+  assert(log[0].includes('retrying this iteration'), log[0])
+  assertEquals(finalized.length, 0)
+  // The retry resumes the same iteration with the spent budget intact, and finishes the run.
+  assertEquals(run.iteration, 3)
+  assertEquals(run.web_search_requests, 14)
+  assertEquals(await runOneIteration('run1', 'w2', deps(db, create)), 'finalized')
+  assertEquals(finalized, ['Report written on the second attempt.'])
+})
+
+Deno.test('a locked request tells the model its budget is spent, without touching the prompt or snapshot', async () => {
+  const sent: Array<Record<string, unknown>> = []
+  const create: CreateFn = (p) => { sent.push(p); return Promise.resolve({ stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: 'ok' }] }) }
+  const base = { model: 'm', system: [{ type: 'text', text: 'PROMPT' }, { type: 'text', text: 'SNAPSHOT' }] }
+  await requestOnce({
+    create, baseParams: base, convo: [{ role: 'user', content: 'go' }, { role: 'assistant', content: CODE_EXEC_TURN },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'g1', content: '{}' }] }],
+    clientTools: [{ name: 'geocode_address' }], webSearchTool: WEB_SEARCH, searchBudget: 12, searchesUsed: 14,
+    dropRejected: false, containerId: CONTAINER, log: () => {},
+  })
+  const system = sent[0].system as Array<{ text: string }>
+  assertEquals(system.length, 3)
+  assertEquals([system[0].text, system[1].text], ['PROMPT', 'SNAPSHOT'])
+  assert(system[2].text.startsWith('YOUR WEB SEARCH BUDGET FOR THIS RUN IS SPENT'), system[2].text)
+  assert(system[2].text.includes('Write your final answer now'))
+  assertEquals(sent[0].tool_choice, { type: 'none' })
+  assertEquals((base.system as unknown[]).length, 2) // the caller's array is not mutated
+
+  // A request that is not locked carries the prompt and snapshot only.
+  sent.length = 0
+  await requestOnce({
+    create, baseParams: base, convo: [{ role: 'user', content: 'go' }], clientTools: [], webSearchTool: WEB_SEARCH,
+    searchBudget: 12, searchesUsed: 0, dropRejected: false, containerId: null, log: () => {},
+  })
+  assertEquals((sent[0].system as unknown[]).length, 2)
+})

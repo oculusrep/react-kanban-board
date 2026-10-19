@@ -4,6 +4,7 @@ import ClientPipelineBoard from '../components/client-pipeline/ClientPipelineBoa
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import { supabase } from '../lib/supabaseClient';
+import { loadSelectedClient, saveSelectedClient } from '../utils/mapViewPersistence';
 
 /**
  * MappingWorkspace - Internal workspace that hosts both the map and the
@@ -16,7 +17,17 @@ import { supabase } from '../lib/supabaseClient';
  */
 export default function MappingWorkspace() {
   const [view, setView] = useState<'map' | 'pipeline'>('map');
-  const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
+
+  // Restored from localStorage so leaving /mapping and coming back keeps the
+  // client the user was working in — the map view and layer toggles already
+  // persist, and losing just the client meant starting the task over.
+  const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(
+    () => loadSelectedClient()
+  );
+
+  useEffect(() => {
+    saveSelectedClient(selectedClient);
+  }, [selectedClient]);
 
   // Currently-open site submit, shared across map and pipeline views so the
   // sidebar, pin highlight, and pipeline row highlight all stay in sync when

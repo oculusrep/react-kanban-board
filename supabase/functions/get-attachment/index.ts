@@ -5,6 +5,16 @@
  * for download or preview.
  *
  * GET /functions/v1/get-attachment?attachment_id=<uuid>
+ *
+ * AUTHORIZATION (added 2026-09-21): this function used to check nothing. It read
+ * the attachment with the service-role key and streamed the file, so the
+ * platform's JWT gate was the only guard — any logged-in account, including a
+ * client-portal login, could fetch any of the 2,265 attachments by id.
+ *
+ * It now resolves the caller's JWT and re-reads the parent email through a
+ * USER-SCOPED client, so public.emails' RLS policy decides. That keeps one
+ * definition of "may this person see this email" in the database instead of
+ * duplicating the rule here: own mailbox, or a linked email for an internal user.
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -44,6 +54,27 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ---- Who is asking? ----
+    const bearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+    if (!bearer) {
+      return new Response(
+        JSON.stringify({ error: 'missing_jwt' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    // Carries the caller's JWT, so auth.uid() resolves and RLS applies to it.
+    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: `Bearer ${bearer}` } },
+      auth: { persistSession: false },
+    });
+    const { data: authData, error: authErr } = await userClient.auth.getUser(bearer);
+    if (authErr || !authData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'invalid_jwt' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Get attachment record with email and connection info
     const { data: attachment, error: attachError } = await supabase
       .from('email_attachments')
@@ -69,6 +100,33 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Attachment not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ---- May this caller see the email this attachment belongs to? ----
+    // Asked of the database AS THE CALLER: if emails' RLS returns the row they
+    // can see the email, so they can have its attachment. No policy logic is
+    // re-implemented here, so the two can never drift apart.
+    const emailId = (attachment as any).email_id;
+    const { data: visible, error: visibleErr } = await userClient
+      .from('emails')
+      .select('id')
+      .eq('id', emailId)
+      .maybeSingle();
+    if (visibleErr) {
+      console.error('[get-attachment] visibility check failed:', visibleErr.message);
+      return new Response(
+        JSON.stringify({ error: 'visibility_check_failed' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (!visible) {
+      // Deliberately 403 with no detail: whether a given attachment id exists is
+      // itself information a portal user shouldn't get.
+      console.warn(`[get-attachment] denied: user ${authData.user.id} cannot see email ${emailId}`);
+      return new Response(
+        JSON.stringify({ error: 'forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

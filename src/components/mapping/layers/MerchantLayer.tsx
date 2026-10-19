@@ -4,6 +4,15 @@ import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import MerchantPopup from '../popups/MerchantPopup';
 import { loadMarkerLibrary } from '../utils/advancedMarkers';
+// The guards live in ONE place; ingest, map render and site research all import them.
+import {
+  isAncillarySubListing, nameMatchesBrand,
+} from '../../../../supabase/functions/_shared/merchant-brand-guards';
+
+/** Prefer the admin-uploaded custom logo over the Brandfetch URL. */
+function brandDisplayLogo(b: Pick<MerchantBrand, 'logo_url' | 'custom_logo_url'>): string | null {
+  return b.custom_logo_url ?? b.logo_url ?? null;
+}
 
 export interface MerchantBrand {
   id: string;
@@ -20,109 +29,6 @@ export interface MerchantBrand {
   category_id: string | null;
 }
 
-// Default ancillary-service tokens that show up as separate Google Places
-// entries at the same physical storefront (Kroger Pharmacy, Wells Fargo ATM,
-// Lowe's Garden Center, etc.). Matching names get filtered so the map shows
-// one pin per store. Case-insensitive whole-word match.
-const DEFAULT_ANCILLARY_TOKENS = [
-  'ATM',
-  'Pharmacy',
-  'Fuel Center',
-  'Fuel Kiosk',
-  'Fueling Center',
-  'Deli',
-  'Bakery',
-  'Floral',
-  'Money Services',
-  'Advisors',
-  'Clicklist',
-  'Garden Center',
-  'Pro Services',
-  'Pro Center',
-  'Pro Desk',
-  'Tool Rental',
-  'Auto Center',
-  'Vision Center',
-  'Optical Center',
-  'Photo Lab',
-];
-
-function tokensToRegex(tokens: string[]): RegExp {
-  // Whole-word / phrase match, case-insensitive. Escape special chars in tokens.
-  const escaped = tokens
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  if (escaped.length === 0) return /$^/; // never matches
-  return new RegExp(`\\b(?:${escaped.join('|')})\\b`, 'i');
-}
-
-const DEFAULT_ANCILLARY_REGEX = tokensToRegex(DEFAULT_ANCILLARY_TOKENS);
-
-/**
- * True if a location name looks like an ancillary sub-listing (Kroger Pharmacy,
- * Wells Fargo ATM, etc.) that should be hidden so only the primary storefront pin
- * shows. Combines the default token list with any per-brand overrides from
- * merchant_brand.places_name_exclude.
- */
-function isAncillarySubListing(
-  placesName: string | null,
-  brand: Pick<MerchantBrand, 'places_name_exclude'>,
-): boolean {
-  if (!placesName) return false;
-  if (DEFAULT_ANCILLARY_REGEX.test(placesName)) return true;
-  const custom = brand.places_name_exclude?.trim();
-  if (!custom) return false;
-  const customTokens = custom.split(',').map((s) => s.trim()).filter(Boolean);
-  if (customTokens.length === 0) return false;
-  return tokensToRegex(customTokens).test(placesName);
-}
-
-/** Prefer the admin-uploaded custom logo over the Brandfetch URL. */
-function brandDisplayLogo(b: Pick<MerchantBrand, 'logo_url' | 'custom_logo_url'>): string | null {
-  return b.custom_logo_url ?? b.logo_url ?? null;
-}
-
-/** Alphanumeric-only, lowercased. Used for the render-time name-match filter. */
-function normalizeForMatch(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-/**
- * Does the Places-returned location name look like it belongs to this brand?
- *
- * Google Places Text Search is overly permissive — searching "24 Hour Fitness"
- * returns Anytime Fitness, YMCAs, dance studios, etc. To keep the map honest,
- * we require the location name to contain the brand's expected display name
- * (or its stem — see below) after alphanumeric normalization.
- *
- * Match against brand.places_display_name if set (the admin's override for
- * brands whose Places name differs from brand.name, e.g. "Truist Bank" -> "Truist")
- * else against brand.name. Also accepts a "brand-minus-last-word" stem so that
- * type suffixes like Bank/Wireless/Store don't force a manual override for
- * every such brand.
- */
-function nameMatchesBrand(
-  placesName: string | null,
-  brand: Pick<MerchantBrand, 'name' | 'places_display_name'>,
-): boolean {
-  if (!placesName) return false;
-  const expected = brand.places_display_name?.trim() || brand.name;
-  if (!expected) return false;
-  const nPlaces = normalizeForMatch(placesName);
-  const nFull = normalizeForMatch(expected);
-  if (nFull.length >= 3 && nPlaces.includes(nFull)) return true;
-  // Try stem = brand-minus-last-word (handles "Truist Bank" -> "Truist" when
-  // places_display_name isn't set yet). Only apply when stem is >= 4 chars so
-  // "The X" doesn't match everything.
-  const parts = expected.trim().split(/\s+/);
-  if (parts.length > 1) {
-    const stem = parts.slice(0, -1).join('');
-    const nStem = normalizeForMatch(stem);
-    if (nStem.length >= 4 && nPlaces.includes(nStem)) return true;
-  }
-  return false;
-}
 
 export interface MerchantLocationRow {
   id: string;

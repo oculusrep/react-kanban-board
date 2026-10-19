@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
-  bandFor, buildEmployerRow, buildSchoolRow, byDistance, csvEscape, EMPLOYERS_COLUMNS,
+  bandFor, buildCompetitorRow, buildEmployerRow, buildSchoolRow, byDistance, COMPETITORS_COLUMNS, csvEscape, EMPLOYERS_COLUMNS,
   fullAddress, oneDecimal, SCHOOLS_COLUMNS, toCsv,
 } from './csv.ts'
 import {
@@ -84,7 +84,7 @@ Deno.test('a non-integer or negative web enrollment is rejected (no estimates)',
 })
 Deno.test('schools.csv header matches the spec exactly', () => {
   assertEquals(SCHOOLS_COLUMNS.join(','),
-    'name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
+    'flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
 })
 
 // ---------------- employers.csv row ----------------
@@ -95,7 +95,7 @@ Deno.test('employer: headcount only as a stated integer; blank distance means un
   assertEquals(r.employer_type, 'hospital') // its own column, for map pins — not buried in notes
 })
 Deno.test('employers.csv header matches the spec exactly', () => {
-  assertEquals(EMPLOYERS_COLUMNS.join(','), 'name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
+  assertEquals(EMPLOYERS_COLUMNS.join(','), 'flag,name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
 })
 Deno.test('sorted by distance ascending, unknown distance last', () => {
   const rows = [{ name: 'b', distance_mi: null }, { name: 'c', distance_mi: 2.1 }, { name: 'a', distance_mi: 0.4 }]
@@ -141,4 +141,24 @@ Deno.test('browser and server cleaning regexes are textually identical', async (
   if (!browser.includes(re) || !server.includes(re)) throw new Error('cleaning regex drifted between browser and server')
   const fn = "const base = (name ?? '').trim() || 'Unnamed Site Submit';"
   if (!browser.includes(fn)) throw new Error('browser siteSubmitFolderName changed')
+})
+
+Deno.test('competitors.csv header matches the spec exactly', () => {
+  assertEquals(COMPETITORS_COLUMNS.join(','),
+    'flag,name,brand,operator_type,street,city,state,zip,lat,lng,distance_mi,drive_thru,company_operated,rtm_sales,sales_as_of,source,notes')
+})
+
+Deno.test('competitor row: placed rows carry lat/lng, unplaced are flagged CHECK, 0 sales is not zero', () => {
+  const placed = buildCompetitorRow({
+    name: 'Dutch Bros Zebulon', brand: 'Dutch Bros', operator_type: 'national_dt', street: '5781 Zebulon Rd',
+    city: 'Macon', state: 'GA', zip: '31210', latitude: 32.88, longitude: -83.76, distance_miles: 0.63,
+    drive_thru: true, company_operated: false, rtm_sales: null, sales_as_of: null, source: 'https://wgxa',
+  })
+  assertEquals([placed.flag, placed.distance_mi, placed.lat, placed.drive_thru], [null, 0.6, 32.88, true])
+  const unplaced = buildCompetitorRow({
+    name: 'Cathedral Coffee', brand: null, operator_type: 'institutional', street: null, city: 'Macon',
+    state: 'GA', zip: null, latitude: null, longitude: null, distance_miles: null, drive_thru: true,
+    company_operated: false, rtm_sales: 0, sales_as_of: null, source: 'https://x', notes: 'inside Northway Church',
+  })
+  assertEquals([unplaced.flag, unplaced.lat, unplaced.distance_mi, unplaced.rtm_sales], ['CHECK', null, null, null])
 })

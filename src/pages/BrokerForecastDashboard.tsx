@@ -95,6 +95,10 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 export default function BrokerForecastDashboard() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
+  // Company expense/budget figures come from account_budget, which is admin-only
+  // (RLS on account_budget + security_invoker on budget_vs_actual_monthly). Hide
+  // the tiles that depend on it rather than render $0 to everyone else.
+  const isAdmin = userRole === 'admin';
   const currentYear = new Date().getFullYear();
 
   const [loading, setLoading] = useState(true);
@@ -736,15 +740,17 @@ export default function BrokerForecastDashboard() {
             <p className="text-xl font-bold text-gray-900">{formatCurrency(companyYtdRevenue)}</p>
           </div>
 
-          {/* YTD Expenses */}
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className="h-4 w-4 text-red-500" />
-              <p className="text-xs font-medium text-gray-500 uppercase">YTD Expenses</p>
+          {/* YTD Expenses — admin only (account_budget is admin-only) */}
+          {isAdmin && (
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp className="h-4 w-4 text-red-500" />
+                <p className="text-xs font-medium text-gray-500 uppercase">YTD Expenses</p>
+              </div>
+              <p className="text-xl font-bold text-gray-900">{formatCurrency(companyYtdExpenses)}</p>
+              <p className="text-xs text-gray-500">of {formatCurrency(annualBudget)} budget</p>
             </div>
-            <p className="text-xl font-bold text-gray-900">{formatCurrency(companyYtdExpenses)}</p>
-            <p className="text-xs text-gray-500">of {formatCurrency(annualBudget)} budget</p>
-          </div>
+          )}
 
           {/* House Gross YTD */}
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
@@ -765,17 +771,19 @@ export default function BrokerForecastDashboard() {
             <p className="text-xs text-gray-500">({formatCurrency(housePipelineTotals.unweighted)} unweighted)</p>
           </div>
 
-          {/* Net Profit Forecast */}
-          <div className={`bg-white rounded-lg shadow p-4 border-l-4 ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'border-emerald-500' : 'border-red-500'}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className={`h-4 w-4 ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'text-emerald-500' : 'text-red-500'}`} />
-              <p className="text-xs font-medium text-gray-500 uppercase">Net Profit Forecast</p>
+          {/* Net Profit Forecast — admin only (nets off budgeted expenses) */}
+          {isAdmin && (
+            <div className={`bg-white rounded-lg shadow p-4 border-l-4 ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'border-emerald-500' : 'border-red-500'}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp className={`h-4 w-4 ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'text-emerald-500' : 'text-red-500'}`} />
+                <p className="text-xs font-medium text-gray-500 uppercase">Net Profit Forecast</p>
+              </div>
+              <p className={`text-xl font-bold ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {formatCurrency(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses)}
+              </p>
+              <p className="text-xs text-gray-500">({formatCurrency(houseYtdProfit + housePipelineTotals.unweighted - blendedExpenses)} unweighted)</p>
             </div>
-            <p className={`text-xl font-bold ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-              {formatCurrency(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses)}
-            </p>
-            <p className="text-xs text-gray-500">({formatCurrency(houseYtdProfit + housePipelineTotals.unweighted - blendedExpenses)} unweighted)</p>
-          </div>
+          )}
 
           {/* Audit Issues */}
           <div className={`bg-white rounded-lg shadow p-4 border-l-4 ${auditIssues.length > 0 ? 'border-amber-500' : 'border-green-500'}`}>

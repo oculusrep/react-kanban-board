@@ -69,6 +69,7 @@ import QuickBooksCustomerMappingPage from "./pages/QuickBooksCustomerMappingPage
 import GmailSettingsPage from "./pages/GmailSettingsPage";
 import SuggestedContactsPage from "./pages/SuggestedContactsPage";
 import AgentRulesPage from "./pages/AgentRulesPage";
+import LabelRulesPage from "./pages/LabelRulesPage";
 import EmailClassificationReviewPage from "./pages/EmailClassificationReviewPage";
 import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
@@ -93,6 +94,7 @@ import ArtyDrawReportPage from "./pages/ArtyDrawReportPage";
 import MikeIsOwedReportPage from "./pages/MikeIsOwedReportPage";
 import UnpaidReferralFeesReportPage from "./pages/UnpaidReferralFeesReportPage";
 import StarbucksTargetAreasReportPage from "./pages/StarbucksTargetAreasReportPage";
+import StarbucksPipelineReportPage from "./pages/StarbucksPipelineReportPage";
 import TypographyTestPage from "./pages/TypographyTestPage";
 import VelocityAnalyticsPage from "./pages/VelocityAnalyticsPage";
 import HistoricalVelocityPage from "./pages/HistoricalVelocityPage";
@@ -126,8 +128,8 @@ function RoleBasedRedirect() {
     return <Navigate to="/coach-dashboard" replace />;
   }
 
-  // All other users go to master pipeline
-  return <Navigate to="/master-pipeline" replace />;
+  // All other users land on the map
+  return <Navigate to="/mapping" replace />;
 }
 
 function App() {
@@ -203,6 +205,7 @@ function App() {
           <Route path="reports/mike-is-owed" element={<CoachRoute><MikeIsOwedReportPage /></CoachRoute>} />
           <Route path="reports/unpaid-referral-fees" element={<CoachRoute><UnpaidReferralFeesReportPage /></CoachRoute>} />
           <Route path="reports/starbucks-target-areas" element={<CoachRoute><StarbucksTargetAreasReportPage /></CoachRoute>} />
+          <Route path="reports/starbucks-pipeline" element={<CoachRoute><StarbucksPipelineReportPage /></CoachRoute>} />
           <Route path="reports/velocity-analytics" element={<CoachRoute><VelocityAnalyticsPage /></CoachRoute>} />
           <Route path="reports/historical-velocity" element={<CoachRoute><HistoricalVelocityPage /></CoachRoute>} />
           <Route path="reports/prospecting-scorecard" element={<CoachRoute><ProspectingScorecardPage /></CoachRoute>} />
@@ -228,6 +231,7 @@ function App() {
           <Route path="admin/municipal-import" element={<MunicipalRoute><MunicipalImportPage /></MunicipalRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
+          <Route path="admin/label-rules" element={<GmailRoute><LabelRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />
           <Route path="admin/flagged-emails" element={<GmailRoute><FlaggedEmailQueuePage /></GmailRoute>} />
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />

@@ -1,7 +1,20 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = 'https://rqbvcvwbziilnycqtmnc.supabase.co';
-const supabaseKey = process.env.SUPABASE_SECRET_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxYnZjdndiemlpbG55Y3F0bW5jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNjE2MzI2NCwiZXhwIjoyMDQxNzM5MjY0fQ.WKuhf_yQiA1lMDJR9_JWdSsxpZnX6y9fNMLkMDWCPqA';
+
+// No fallback. This previously defaulted to a service_role JWT hardcoded in the
+// file — a live-looking credential committed to the repo. Those legacy JWTs were
+// disabled on 2025-10-23 and authenticate nothing, so the fallback only served to
+// mislead: the script appeared to run without a key and then failed obscurely.
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+if (!supabaseKey) {
+  console.error(
+    'SUPABASE_SECRET_KEY is not set.\n\n' +
+    'This script needs the secret key to read schema metadata. Run it as:\n' +
+    '  set -a && . ./.env && set +a && node verify-property-cascade.js\n'
+  );
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

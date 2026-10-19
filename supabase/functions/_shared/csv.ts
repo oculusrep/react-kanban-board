@@ -104,8 +104,16 @@ export function byDistance<T extends { distance_mi: CsvCell; name: CsvCell }>(a:
 // schools.csv
 // ---------------------------------------------------------------------------
 
+/**
+ * First column of every export. Blank when the row needs nothing; CHECK when a value the mapper will
+ * care about is missing or unverified (no enrollment or headcount on file, an address NCES could not
+ * confirm as physical, a competitor that would not geocode). NOTHING is ever filtered out of an
+ * export because of it — filtering happens at the mapping step, not here (decided 2026-09-25).
+ */
+export const FLAG_CHECK = 'CHECK'
+
 export const SCHOOLS_COLUMNS = [
-  'name', 'street', 'city', 'state', 'zip', 'full_address', 'enrollment',
+  'flag', 'name', 'street', 'city', 'state', 'zip', 'full_address', 'enrollment',
   'school_level', 'grade_low', 'grade_high', 'public_private', 'distance_mi',
   'band', 'school_year', 'enrollment_source', 'address_source', 'notes',
 ] as const
@@ -165,6 +173,8 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
     .filter(Boolean).join('; ')
 
   return {
+    // CHECK when the mapper needs to look: no enrollment on file, or no confirmed physical street.
+    flag: enrollment === null || street === null ? FLAG_CHECK : null,
     name: blankToNull(s.name),
     street,
     city,
@@ -190,7 +200,7 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
 // ---------------------------------------------------------------------------
 
 export const EMPLOYERS_COLUMNS = [
-  'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
+  'flag', 'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
   'distance_mi', 'band', 'source', 'source_year', 'notes',
 ] as const
 export type EmployersColumn = (typeof EMPLOYERS_COLUMNS)[number]
@@ -216,7 +226,9 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
   const city = blankToNull(e.city)
   const state = blankToNull(e.state)
   const zip = blankToNull(e.zip)
+  const headcount = typeof e.headcount === 'number' && Number.isInteger(e.headcount) && e.headcount >= 0 ? e.headcount : null
   return {
+    flag: headcount === null ? FLAG_CHECK : null,
     name: blankToNull(e.name),
     employer_type: blankToNull(e.employer_type),
     street,
@@ -224,11 +236,231 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
     state,
     zip,
     full_address: fullAddress(street, city, state, zip),
-    headcount: typeof e.headcount === 'number' && Number.isInteger(e.headcount) && e.headcount >= 0 ? e.headcount : null,
+    headcount,
     distance_mi: oneDecimal(e.distance_miles),
     band: bandFor(e.distance_miles),
     source: blankToNull(e.source),
     source_year: e.source_year === null || e.source_year === undefined || e.source_year === '' ? null : e.source_year,
     notes: blankToNull(e.notes),
   }
+}
+
+// ---------------------------------------------------------------------------
+// competitors.csv — every coffee operation within 5 mi, mapped in Sites USA
+// ---------------------------------------------------------------------------
+
+export const COMPETITORS_COLUMNS = [
+  'flag', 'name', 'brand', 'operator_type', 'street', 'city', 'state', 'zip', 'lat', 'lng',
+  'distance_mi', 'drive_thru', 'company_operated', 'rtm_sales', 'sales_as_of', 'source', 'notes',
+] as const
+export type CompetitorsColumn = (typeof COMPETITORS_COLUMNS)[number]
+export type CompetitorsRow = Record<CompetitorsColumn, CsvCell>
+
+/**
+ * How a coffee operation competes, which is not the same question as whether it has a lane:
+ *   national_dt   national or regional drive-thru brand (Dutch Bros, 7 Brew, Scooter's, Dunkin', Caribou)
+ *   local_dt      independent or local operator with a drive-thru
+ *   institutional coffee inside a church, school, hospital, grocery, campus or office building,
+ *                 with or without a lane — Cathedral Coffee inside Northway Church is the case that
+ *                 made this necessary (counted as a drive-thru competitor on 2026-09-16; it is not)
+ *   cafe          no drive-thru
+ * Only national_dt and local_dt may support a competitive-density claim; every type is exported.
+ */
+export const COMPETITOR_OPERATOR_TYPES = ['national_dt', 'local_dt', 'institutional', 'cafe'] as const
+export type CompetitorOperatorType = (typeof COMPETITOR_OPERATOR_TYPES)[number]
+/** The types a "N drive-thru competitors within X mi" claim may count. */
+export const DENSITY_COUNTING_TYPES: readonly CompetitorOperatorType[] = ['national_dt', 'local_dt']
+
+export interface CompetitorInput {
+  name: string | null
+  brand: string | null
+  operator_type: CompetitorOperatorType | string | null
+  street: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  latitude: number | null
+  longitude: number | null
+  distance_miles: number | null // unrounded
+  drive_thru: boolean | null
+  company_operated: boolean | null
+  rtm_sales: number | null
+  sales_as_of: string | null
+  source: string | null
+  notes?: string | null
+}
+
+export function buildCompetitorRow(c: CompetitorInput): CompetitorsRow {
+  const street = blankToNull(c.street)
+  const city = blankToNull(c.city)
+  const state = blankToNull(c.state)
+  const zip = blankToNull(c.zip)
+  const located = typeof c.latitude === 'number' && typeof c.longitude === 'number'
+  return {
+    // CHECK when it could not be placed on a map, or when its operator type is unknown.
+    flag: !located || !blankToNull(String(c.operator_type ?? '')) ? FLAG_CHECK : null,
+    name: blankToNull(c.name),
+    brand: blankToNull(c.brand),
+    operator_type: blankToNull(String(c.operator_type ?? '')),
+    street,
+    city,
+    state,
+    zip,
+    lat: located ? c.latitude : null,
+    lng: located ? c.longitude : null,
+    distance_mi: oneDecimal(c.distance_miles),
+    drive_thru: c.drive_thru === null || c.drive_thru === undefined ? null : c.drive_thru,
+    company_operated: c.company_operated === null || c.company_operated === undefined ? null : c.company_operated,
+    // 0 upstream means NOT REPORTED, never zero sales.
+    rtm_sales: typeof c.rtm_sales === 'number' && c.rtm_sales > 0 ? c.rtm_sales : null,
+    sales_as_of: blankToNull(c.sales_as_of),
+    source: blankToNull(c.source),
+    notes: blankToNull(c.notes),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// pipeline.csv — every municipal housing project on file, counted or not
+// ---------------------------------------------------------------------------
+
+export const PIPELINE_COLUMNS = [
+  'flag', 'name', 'units', 'phase', 'distance_mi', 'drive_time_band', 'street', 'city', 'state', 'zip',
+  'lat', 'lng', 'status_source', 'source', 'notes',
+] as const
+export type PipelineColumn = (typeof PIPELINE_COLUMNS)[number]
+export type PipelineRow = Record<PipelineColumn, CsvCell>
+
+export interface PipelineInput {
+  name: string | null
+  units: number | null
+  /** Recently Completed / Under Construction / Approved / Planning / unreviewed / Unspecified. */
+  phase: string | null
+  distance_miles: number | null // unrounded; blank for a pending row that was never geocoded
+  drive_time_band: string | null // '5min' | '10min' | blank
+  street: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  latitude: number | null
+  longitude: number | null
+  status_source: string | null
+  source: string | null
+  notes?: string | null
+}
+
+/**
+ * CHECK marks a row the mapper must look at: an unreviewed (agent-discovered) row, one with no unit
+ * count, or one that cannot be placed on a map. Nothing is ever filtered out of the export.
+ */
+export function buildPipelineRow(p: PipelineInput): PipelineRow {
+  const units = typeof p.units === 'number' && Number.isFinite(p.units) && p.units >= 0 ? p.units : null
+  const located = typeof p.latitude === 'number' && typeof p.longitude === 'number'
+  const unreviewed = (p.phase ?? '').toLowerCase() === 'unreviewed'
+  return {
+    flag: unreviewed || units === null || !located ? FLAG_CHECK : null,
+    name: blankToNull(p.name),
+    units,
+    phase: blankToNull(p.phase),
+    distance_mi: oneDecimal(p.distance_miles),
+    drive_time_band: blankToNull(p.drive_time_band),
+    street: blankToNull(p.street),
+    city: blankToNull(p.city),
+    state: blankToNull(p.state),
+    zip: blankToNull(p.zip),
+    lat: located ? p.latitude : null,
+    lng: located ? p.longitude : null,
+    status_source: blankToNull(p.status_source),
+    source: blankToNull(p.source),
+    notes: blankToNull(p.notes),
+  }
+}
+
+/** CHECK rows first, then by distance ascending with unplaced rows last. */
+export function pipelineSort(a: PipelineRow, b: PipelineRow): number {
+  const flagged = (r: PipelineRow) => (r.flag === FLAG_CHECK ? 0 : 1)
+  return flagged(a) - flagged(b) || byDistance(a as never, b as never)
+}
+
+// ---------------------------------------------------------------------------
+// generators.csv — the traffic generators that are not schools or employers
+// ---------------------------------------------------------------------------
+
+export const GENERATORS_COLUMNS = [
+  'flag', 'name', 'category', 'size_value', 'size_unit', 'street', 'city', 'state', 'zip',
+  'lat', 'lng', 'distance_mi', 'drive_time_band', 'source', 'notes',
+] as const
+export type GeneratorsColumn = (typeof GENERATORS_COLUMNS)[number]
+export type GeneratorsRow = Record<GeneratorsColumn, CsvCell>
+
+/** Each generator is sized in its OWN unit: a church in seats, a hotel in rooms, a store in sf. */
+export const GENERATOR_SIZE_UNITS = ['seats', 'beds', 'rooms', 'sf', 'headcount'] as const
+export type GeneratorSizeUnit = (typeof GENERATOR_SIZE_UNITS)[number]
+
+export const GENERATOR_CATEGORIES = [
+  'grocery', 'big_box', 'home_improvement', 'drug', 'fitness', 'destination_retail',
+  'church', 'hospital_medical', 'civic', 'hotel',
+] as const
+export type GeneratorCategory = (typeof GENERATOR_CATEGORIES)[number]
+
+export interface GeneratorInput {
+  name: string | null
+  category: GeneratorCategory | string | null
+  size_value: number | null
+  size_unit: GeneratorSizeUnit | string | null
+  street: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  latitude: number | null
+  longitude: number | null
+  distance_miles: number | null // unrounded
+  drive_time_band: string | null
+  source: string | null
+  /** "daypart: weekend — Sourced" / "daypart: 24hr — Inferred", plus anything else worth keeping. */
+  notes?: string | null
+  /**
+   * True when a size was expected and is missing, so the row wants a look. Retail from
+   * merchant_location never carries a size (Places has none), and flagging all 120 of those would
+   * make the column noise — only the researched categories and unverified rows flag.
+   */
+  size_expected?: boolean
+  /** Something else the mapper must check, e.g. a Places name that does not match its brand. */
+  check_reason?: string | null
+}
+
+/** CHECK when the mapper must look: a missing size that was expected, unplaced, or flagged upstream. */
+export function buildGeneratorRow(g: GeneratorInput): GeneratorsRow {
+  const size = typeof g.size_value === 'number' && Number.isFinite(g.size_value) && g.size_value >= 0 ? g.size_value : null
+  const unit = size === null ? null : blankToNull(String(g.size_unit ?? ''))
+  const located = typeof g.latitude === 'number' && typeof g.longitude === 'number'
+  const street = blankToNull(g.street)
+  return {
+    flag: (g.size_expected !== false && size === null) || !located || blankToNull(g.check_reason) ? FLAG_CHECK : null,
+    name: blankToNull(g.name),
+    category: blankToNull(String(g.category ?? '')),
+    size_value: size,
+    size_unit: unit,
+    street,
+    city: blankToNull(g.city),
+    state: blankToNull(g.state),
+    zip: blankToNull(g.zip),
+    lat: located ? g.latitude : null,
+    lng: located ? g.longitude : null,
+    distance_mi: oneDecimal(g.distance_miles),
+    drive_time_band: blankToNull(g.drive_time_band),
+    source: blankToNull(g.source),
+    notes: blankToNull(g.notes),
+  }
+}
+
+/** CHECK rows first, then nearest first. */
+export function generatorSort(a: GeneratorsRow, b: GeneratorsRow): number {
+  const flagged = (r: GeneratorsRow) => (r.flag === FLAG_CHECK ? 0 : 1)
+  return flagged(a) - flagged(b) || byDistance(a as never, b as never)
+}
+
+/** Slide form: "Eastside Baptist (1,249 seats)". Blank size means no callout at all. */
+export function generatorCallout(row: GeneratorsRow): string | null {
+  if (typeof row.size_value !== 'number' || !row.size_unit || !row.name) return null
+  return `${row.name} (${row.size_value.toLocaleString('en-US')} ${row.size_unit})`
 }

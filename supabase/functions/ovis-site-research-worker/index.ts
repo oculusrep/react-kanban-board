@@ -28,7 +28,9 @@ import { anthropicCreate } from '../_shared/site-research/model.ts';
 import { executeTool, TOOL_DEFINITIONS, WEB_SEARCH_TOOL } from '../_shared/site-research/tools.ts';
 import { kickWorker } from '../_shared/site-research/kick.ts';
 import { runDeepPassIteration, supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
-import { edgePrivateLocations } from '../_shared/site-research/deep-pass.ts';
+import { atlasCoffeeWithin, edgePrivateLocations, merchantGenerators } from '../_shared/site-research/deep-pass.ts';
+import { buildMunicipalityKmls } from '../_shared/site-research/municipal-kml.ts';
+import { BRIEF_MAX_WORDS, wordCount } from '../_shared/site-research/brief.ts';
 import { resolveSiteSubmitFolder, uploadFile } from '../_shared/dropbox.ts';
 import { notifySiteResearch } from '../_shared/site-research/alerts.ts';
 
@@ -73,7 +75,10 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
     db,
     create: anthropicCreate(apiKey),
     execute: (name: string, input: Record<string, unknown>, r: typeof run) =>
-      executeTool(service, name, input, { siteSubmitId: r.site_submit_id, site: site(r) }),
+      executeTool(service, name, input, {
+        siteSubmitId: r.site_submit_id, site: site(r),
+        demographics: (r.pinned_context as { demographics?: unknown } | null)?.demographics,
+      }),
     chain: async (id: string) => {
       // Self-chain the next iteration. If this call fails, the tick picks the run up
       // within a minute or two (its heartbeat ages past the kick threshold).
@@ -82,12 +87,38 @@ async function advance(service: SupabaseClient, runId: string, secret: string): 
     onFailed: (id: string, error: string) => notifySiteResearch(`❌ Site research run ${id} failed: ${error.slice(0, 300)}`),
   };
 
+  // brief and record_qa read the finished record: no client tools, no web search, nothing to spend.
+  if (run.kind === 'brief' || run.kind === 'record_qa') {
+    const outcome = await runModelIteration(run, owner, {
+      ...common,
+      clientTools: [],
+      webSearchTool: null,
+      onEndTurn: run.kind === 'record_qa' ? undefined : async ({ text, convo }) => {
+        const words = wordCount(text);
+        if (words > BRIEF_MAX_WORDS * 1.25) {
+          console.warn(`[site-research] run=${run.id} brief is ${words} words, over the ${BRIEF_MAX_WORDS}-word brief`);
+        }
+        const result = await db.finalizeBrief!({
+          runId: run.id, owner, iteration: run.iteration, attempt: run.attempt, convo, briefText: text,
+        });
+        console.log(`[site-research] run=${run.id} brief finalize=${result.status} words=${words}`);
+        return result.status;
+      },
+    });
+    console.log(`[site-research] run=${runId} invocation outcome=${outcome}`);
+    return;
+  }
+
   const outcome = run.kind === 'deep_pass'
     ? await runDeepPassIteration(run, owner, {
         ...common,
         dp: supabaseDeepPassDb(service),
+        rpc: service,
         webSearchTool: WEB_SEARCH_TOOL,
         edgePrivate: edgePrivateLocations,
+        atlasCoffee: (site) => atlasCoffeeWithin(service, site),
+        merchantGenerators: (site) => merchantGenerators(service, site),
+        municipalityKmls: (site) => buildMunicipalityKmls(service, site),
         exportFiles: async (siteSubmitId, files) => {
           const folder = await resolveSiteSubmitFolder(service, siteSubmitId);
           const out = [];

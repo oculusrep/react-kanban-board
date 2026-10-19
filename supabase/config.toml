@@ -5,11 +5,11 @@
 [functions.quickbooks-callback]
 verify_jwt = false
 
-# Cron-driven queue drainer. Takes no parameters, has no side effects beyond
-# sending already-queued portal-comment alerts. Skipping JWT verification
-# avoids needing a vault-stored service_role_key for the pg_cron job.
-[functions.send-portal-comment-alert]
-verify_jwt = false
+# send-portal-comment-alert: verify_jwt back ON (2026-09-22). It used to be
+# disabled so the pg_cron drain could call it without a service-role key in
+# vault, which left it callable by anyone on the internet. The cron now sends a
+# gateway-valid JWT plus X-Cron-Secret, and the function rejects anything else
+# (_shared/caller-auth.ts, service-only). No [functions.*] block = default true.
 
 # MCP server consumed by the OpenClaw market-research subagent. Auth is via the
 # Authorization: Bearer <OVIS_MCP_BEARER_TOKEN> header, validated inside the
@@ -17,3 +17,65 @@ verify_jwt = false
 [functions.ovis-research-mcp]
 verify_jwt = false
 
+
+# ovis-site-research-worker: internal only, and it must stay verify_jwt = false.
+# Both callers — kickWorker() and the per-minute pg_cron tick — send X-Worker-Secret
+# and no Authorization header, so JWT verification at the gateway 401s them before the
+# function runs and every run sits queued forever. The function checks the secret itself
+# against vault (index.ts:147). This block exists because a plain `supabase functions
+# deploy` applies config.toml and silently reset a server-side --no-verify-jwt to the
+# default true on 2026-09-27, which stopped site research dead until it was spotted.
+[functions.ovis-site-research-worker]
+verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# verify_jwt = false, pinned deliberately (2026-09-27 audit)
+#
+# These functions are called WITHOUT an Authorization header, so gateway JWT
+# verification would 401 them. Without a block here, a plain `supabase functions
+# deploy` resets whatever was set with --no-verify-jwt back to the default true
+# and the caller starts failing silently — which is exactly what happened to
+# ovis-site-research-worker. Each one below carries its own caller check.
+#
+# NOT pinned, on purpose: every other function currently sitting at
+# verify_jwt = false. Several have no internal auth at all and are open on the
+# internet today; pinning them would bless that. Letting the next deploy flip
+# them to the default true is the SAFE direction — they are called from the
+# browser, where supabase-js sends the Authorization header already. See
+# docs/EDGE_FUNCTION_JWT_AUDIT.md.
+# ---------------------------------------------------------------------------
+
+# OAuth callbacks: the provider redirects the user's browser here. No header is
+# possible, and each validates its own state/code.
+[functions.gmail-callback]
+verify_jwt = false
+
+[functions.gcal-callback]
+verify_jwt = false
+
+# pg_cron targets that send X-*-Secret and no Authorization. Each compares the
+# secret against vault before doing anything.
+[functions.gcal-sync]
+verify_jwt = false
+
+[functions.ovis-sweep-tick]
+verify_jwt = false
+
+[functions.label-watcher]
+verify_jwt = false
+
+# label-canary: same reasoning as label-watcher -- pg_cron calls it with
+# X-Cron-Secret only and caller-auth is the real check.
+[functions.label-canary]
+verify_jwt = false
+
+# label-inbox: pg_cron drives it on the live path (X-Cron-Secret only); the real
+# authorization check is _shared/caller-auth.ts.
+[functions.label-inbox]
+verify_jwt = false
+
+# portal-invite-precheck: called from the pre-login invite page, so the caller is
+# logged out by definition and sends no Authorization header. Authorization is
+# the invite token, resolved server-side with the service key.
+[functions.portal-invite-precheck]
+verify_jwt = false

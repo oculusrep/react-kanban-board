@@ -65,7 +65,7 @@ export default function PortalMapPage() {
  */
 function PortalMapContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh } = usePortal();
+  const { selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh, canUploadDealFiles } = usePortal();
   const { trackEvent } = usePortalActivityTracker();
   const { refreshLayer } = useLayerManager();
 
@@ -931,6 +931,7 @@ function PortalMapContent() {
           onStatusChange={handleStatusChange}
           accessibleClients={accessibleClients}
           siteSubmitRefreshTrigger={siteSubmitRefreshTrigger}
+          portalDealUpload={!isInternalUser && canUploadDealFiles}
         />
 
         {/* Save Shape Modal - After quick draw (brokers only) */}

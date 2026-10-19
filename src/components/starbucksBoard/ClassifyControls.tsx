@@ -8,6 +8,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
+import { upsertBoardState } from '../../lib/boardWrites';
 import {
   BallInCourt,
   BlockedOn,
@@ -16,6 +17,7 @@ import {
   BOARD_STAGES,
   BoardDeal,
   BoardStage,
+  BOARD_STAGE_TO_SUBMIT_STAGE,
   COURT_OPTIONS,
   IMPLIED_COURT,
   PALETTE,
@@ -104,15 +106,22 @@ export default function ClassifyControls({
       // Stage change is a SHARED-pipeline write (decisions §2.17): deal.stage_id
       // propagates to site_submit via the sync trigger, and leaving Pre-Submittal
       // clears blocked_on via trg_clear_blocked_on_stage_change. Do it first.
+      // No deal yet → the site_submit stage is the card's stage (§2.27).
       if (stage !== deal.stageLabel) {
-        const { data: sd, error: sErr } = await supabase.from('deal_stage').select('id').eq('label', stage).single();
-        if (sErr) throw sErr;
-        const { error: dErr } = await supabase.from('deal').update({ stage_id: sd!.id }).eq('id', deal.id);
-        if (dErr) throw dErr;
+        if (deal.dealId) {
+          const { data: sd, error: sErr } = await supabase.from('deal_stage').select('id').eq('label', stage).single();
+          if (sErr) throw sErr;
+          const { error: dErr } = await supabase.from('deal').update({ stage_id: sd!.id }).eq('id', deal.dealId);
+          if (dErr) throw dErr;
+        } else {
+          const { data: ss, error: sErr } = await supabase.from('submit_stage').select('id').eq('name', BOARD_STAGE_TO_SUBMIT_STAGE[stage]).single();
+          if (sErr) throw sErr;
+          const { error: uErr } = await supabase.from('site_submit').update({ submit_stage_id: ss!.id }).eq('id', deal.siteSubmitId);
+          if (uErr) throw uErr;
+        }
       }
 
       const patch: Record<string, unknown> = {
-        deal_id: deal.id,
         ball_in_court: court, // null = unclassified
         ball_in_court_party: party.trim() || null,
         // today → stamp now (unchanged); an edited date → that local midnight,
@@ -126,8 +135,7 @@ export default function ClassifyControls({
         needs_pricing: isPre && blockedOn === 'awaiting_ll' ? needsPricing : false,
         needs_site_plan: isPre && blockedOn === 'awaiting_ll' ? needsSitePlan : false,
       };
-      const { error } = await supabase.from('deal_activity_state').upsert(patch, { onConflict: 'deal_id' });
-      if (error) throw error;
+      await upsertBoardState(deal, patch);
       onSaved?.();
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to save');

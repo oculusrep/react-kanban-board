@@ -62,8 +62,13 @@ export interface Account {
 
 export const ACCOUNT_ALL = 'all';
 
+// A board card (decisions §2.27). The unit is the site_submit; deal data joins
+// in when a deal exists. `id` is the card key — the site_submit id, or the deal
+// id for the rare deal with no site_submit. Writes go through dealId /
+// siteSubmitId (lib/boardWrites), never `id`.
 export interface BoardDeal {
-  id: string;
+  id: string;            // card key (stable React key / selection id)
+  dealId: string | null; // null = site_submit only ("no deal yet")
   name: string;          // site name: property → site_submit → deal_name
   city: string | null;
   clientId: string | null;
@@ -74,13 +79,15 @@ export interface BoardDeal {
   stageSortOrder: number;
   ballInCourt: BallInCourt | null;   // null = unclassified
   ballInCourtParty: string | null;
-  ballInCourtSince: string | null; // ISO
+  ballInCourtSince: string | null; // ISO — heat clock (touches, park reset it)
+  courtSince: string | null;       // ISO — when the current court started (court_since)
   blockedOn: BlockedOn | null;
   needsPricing: boolean;   // detail of awaiting_ll
   needsSitePlan: boolean;  // detail of awaiting_ll
   onAgenda: boolean;
   seededFallback: boolean;
   parkedUntil: string | null; // review date (YYYY-MM-DD); parked while future
+  parkedReason: string | null;
   urgentUntil: string | null; // ISO; manual priority while future (§2.25)
   // derived
   days: number;          // whole days since ball_in_court_since (local/Eastern)
@@ -99,6 +106,22 @@ export const BOARD_STAGES = [
 export type BoardStage = (typeof BOARD_STAGES)[number];
 
 export const PRE_SUBMITTAL: BoardStage = 'Pre-Submittal';
+
+// A site_submit with no deal takes its column from its own stage (§2.27).
+// Mirrors deal_submit_stage_map for the four board stages. Any other submit
+// stage (Pursuing Ownership, Monitor, Store Open, dead stages…) is off-board.
+export const SUBMIT_STAGE_TO_BOARD_STAGE: Record<string, BoardStage> = {
+  'Pre-Submittal': 'Pre-Submittal',
+  'Submitted-Reviewing': 'Submitted-Reviewing',
+  LOI: 'Negotiating LOI',
+  'At Lease/PSA': 'At Lease/PSA',
+};
+export const BOARD_STAGE_TO_SUBMIT_STAGE: Record<BoardStage, string> = {
+  'Pre-Submittal': 'Pre-Submittal',
+  'Submitted-Reviewing': 'Submitted-Reviewing',
+  'Negotiating LOI': 'LOI',
+  'At Lease/PSA': 'At Lease/PSA',
+};
 
 // site_submit stages that mean the site is declined/dead. A deal whose linked
 // site_submit is in one of these is OFF the board regardless of its deal stage

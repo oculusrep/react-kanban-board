@@ -93,6 +93,19 @@ export default function PortalInviteAcceptPage() {
     setError(null);
 
     try {
+      // Clear any orphaned auth identity for this invite BEFORE signUp.
+      // An auth.identities row whose user_id points at a deleted auth.users row
+      // makes signUp fail with 422. This used to run inside
+      // validate_portal_invite_token, which anon can call -- so a public read
+      // endpoint carried a delete against auth.identities and took an arbitrary
+      // email. The edge function takes the TOKEN and resolves the email itself.
+      // Never blocks signup: if it fails, signUp is still attempted.
+      try {
+        await supabase.functions.invoke('portal-invite-precheck', { body: { token } });
+      } catch (precheckError) {
+        console.warn('[Portal Invite] precheck failed, continuing to signUp:', precheckError);
+      }
+
       // Create the auth user account
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: contact.email,

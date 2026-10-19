@@ -1,5 +1,23 @@
 # Row Level Security (RLS) Strategy for OVIS
 
+> **Status: this is the original 2025 plan, not the current state.** Read
+> [SUPABASE_ANON_EXPOSURE_AUDIT.md](SUPABASE_ANON_EXPOSURE_AUDIT.md) (2026-09-28) for what is
+> actually enforced today, and [PORTAL_AUTHZ_HOTFIX.md](PORTAL_AUTHZ_HOTFIX.md) for the portal model.
+>
+> Two things in this document will mislead you:
+>
+> 1. **The role names below are not real.** `ovis_role` values in production are
+>    `admin`, `broker_full`, `broker_lite`, `va` and `coach` — there is no
+>    `broker_limited`, `assistant` or `client`. A stale `broker_limited` string is
+>    why `PortalAnalyticsPage`'s access gate never matches that role.
+> 2. **The "too permissive `USING (true)`" problem described below was still real
+>    in 2026-09** for municipal, prospecting and lookup tables, and was partly
+>    fixed then. Do not assume the rest of this plan was implemented.
+>
+> The helper functions in Step 2 *are* real and are the ones to use:
+> `get_user_role()`, `can_manage_operations()`, `is_internal_user()`,
+> `portal_user_contact_id()`. Prefer `is_internal_user()` for "staff only" reads.
+
 ## Current Problem
 
 Your database currently has **overly permissive RLS policies** that allow any authenticated user to see ALL data:

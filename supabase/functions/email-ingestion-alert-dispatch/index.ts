@@ -265,9 +265,230 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ------------------------------------------------------------------------
+    // CRON HTTP -- added 2026-09-27. A third failure class: the cron job itself
+    // reporting success while every call it made was rejected. net.http_post is
+    // fire-and-forget, so pg_cron goes green the moment the request is queued.
+    // On 09-27 a deploy turned verify_jwt back on for ovis-site-research-worker
+    // and 80 minutes of ticks 401'd behind a green job. Rows come from
+    // cron_http_post_verified(); same one-email-per-incident throttle.
+    // ------------------------------------------------------------------------
+    const { data: cronRows, error: cronError } = await supabase
+      .from('cron_http_alert')
+      .select('*')
+      .or('notified.eq.false,and(resolved_at.not.is.null,resolved_notified.eq.false)')
+      .order('fired_at', { ascending: true });
+
+    if (cronError) throw new Error(`cron http alert query failed: ${cronError.message}`);
+
+    for (const row of cronRows ?? []) {
+      const needsAlert = !row.notified;
+      const needsClear = row.resolved_at && !row.resolved_notified;
+
+      if (needsAlert) {
+        const subject = `[OVIS] Cron call failing — ${esc(row.job)}${row.status_code ? ` (HTTP ${row.status_code})` : ' (no response)'}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">A scheduled job's HTTP call is failing</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            <strong>${esc(row.job)}</strong> is still running on schedule, but the request it makes
+            is being rejected. Whatever that job drives is <strong>not happening</strong>.
+          </p>
+          <table style="font-family:system-ui,sans-serif;color:#002147;border-collapse:collapse">
+            <tr><td style="padding:4px 12px 4px 0">Job</td>
+                <td style="padding:4px 0"><strong>${esc(row.job)}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Response</td>
+                <td style="padding:4px 0"><strong>${row.status_code ?? 'none — the request was never answered'}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Detected</td>
+                <td style="padding:4px 0">${et(row.fired_at)}</td></tr>
+          </table>
+          <p style="font-family:system-ui,sans-serif;color:#A27B5C;border-left:3px solid #A27B5C;padding-left:8px">
+            ${esc((row.detail ?? '').slice(0, 500))}
+          </p>
+          <p style="font-family:system-ui,sans-serif;color:#4A6B94">
+            A 401 here usually means the function's gateway JWT check came back on: a plain
+            <code>supabase functions deploy</code> applies config.toml and resets a server-side
+            <code>--no-verify-jwt</code>. Check for a <code>[functions.&lt;name&gt;]</code> block
+            with <code>verify_jwt = false</code>. cron.job_run_details will read "succeeded"
+            regardless — it only means the request was queued.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('cron_http_alert')
+            .update({ notified: true, notify_error: null,
+                      notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          sent.push(`cron:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('cron_http_alert')
+            .update({ notify_error: String(e).slice(0, 500),
+                      notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          failed.push(`cron:${row.id}:${e}`);
+        }
+      }
+
+      if (needsClear) {
+        const subject = `[OVIS] Cron call recovered — ${esc(row.job)}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">${esc(row.job)} is answering again</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            The alert opened at ${et(row.fired_at)} and resolved at ${et(row.resolved_at)}.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('cron_http_alert')
+            .update({ resolved_notified: true, notify_error: null })
+            .eq('id', row.id);
+          sent.push(`cron-clear:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('cron_http_alert')
+            .update({ notify_error: String(e).slice(0, 500) })
+            .eq('id', row.id);
+          failed.push(`cron-clear:${row.id}:${e}`);
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // CANARY — the label pipeline probe. Rows come from label-canary, which
+    // asserts specific expected values (owner attribution, correction/handled
+    // gesture) rather than "a row exists". Same one-email-per-incident throttle.
+    // ------------------------------------------------------------------------
+    const { data: canRows, error: canError } = await supabase
+      .from('email_canary_alert')
+      .select('*')
+      .or('notified.eq.false,and(resolved_at.not.is.null,resolved_notified.eq.false)')
+      .order('fired_at', { ascending: true });
+
+    if (canError) throw new Error(`canary alert query failed: ${canError.message}`);
+
+    for (const row of canRows ?? []) {
+      if (!row.notified) {
+        const subject = `[OVIS] Label pipeline canary FAILED — ${row.reason}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">The label pipeline is not working</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            The canary applies a label to one dedicated message and checks that the watcher
+            recorded it with the right attribution and gesture. That check <strong>failed</strong>,
+            so hand-labelling is probably not being captured.
+          </p>
+          <table style="font-family:system-ui,sans-serif;color:#002147;border-collapse:collapse">
+            <tr><td style="padding:4px 12px 4px 0">Reason</td>
+                <td style="padding:4px 0"><strong>${esc(row.reason)}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Stuck in</td>
+                <td style="padding:4px 0">${esc(row.stuck_state)} since ${et(row.stuck_since)}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Detected</td>
+                <td style="padding:4px 0">${et(row.fired_at)}</td></tr>
+          </table>
+          <p style="font-family:system-ui,sans-serif;color:#A27B5C;border-left:3px solid #A27B5C;padding-left:8px">
+            ${esc((row.detail ?? '').slice(0, 800))}
+          </p>
+          <p style="font-family:system-ui,sans-serif;color:#4A6B94">
+            Corrections made in Gmail during this window may not have been recorded.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_canary_alert')
+            .update({ notified: true, notify_error: null, notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          sent.push(`canary:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_canary_alert')
+            .update({ notify_error: String(e).slice(0, 500), notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          failed.push(`canary:${row.id}:${e}`);
+        }
+      }
+
+      if (row.resolved_at && !row.resolved_notified) {
+        const subject = '[OVIS] Label pipeline canary recovered';
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">The label pipeline is working again</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            A full canary cycle passed. The alert opened at ${et(row.fired_at)} and resolved at
+            ${et(row.resolved_at)}.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_canary_alert')
+            .update({ resolved_notified: true, notify_error: null }).eq('id', row.id);
+          sent.push(`canary-clear:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_canary_alert')
+            .update({ notify_error: String(e).slice(0, 500) }).eq('id', row.id);
+          failed.push(`canary-clear:${row.id}:${e}`);
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // LABELER — freshness. The canary proves label CHANGES are recorded; this
+    // proves mail is actually being LABELLED. Nothing watched that until
+    // 2026-10-01, which is how 600 messages sat bare for two days.
+    // ------------------------------------------------------------------------
+    const { data: lblRows, error: lblError } = await supabase
+      .from('email_labeler_alert')
+      .select('*')
+      .or('notified.eq.false,and(resolved_at.not.is.null,resolved_notified.eq.false)')
+      .order('fired_at', { ascending: true });
+
+    if (lblError) throw new Error(`labeler alert query failed: ${lblError.message}`);
+
+    for (const row of lblRows ?? []) {
+      if (!row.notified) {
+        const subject = `[OVIS] Mail is not being labelled — ${row.bare_stale} bare in ${row.mailbox}`;
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">The labeler is not keeping up</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            <strong>${row.bare_stale}</strong> messages in ${esc(row.mailbox)} have been triaged but
+            carry no OVIS label, and have been sitting that way for over two hours.
+          </p>
+          <table style="font-family:system-ui,sans-serif;color:#002147;border-collapse:collapse">
+            <tr><td style="padding:4px 12px 4px 0">Bare, past grace</td>
+                <td style="padding:4px 0"><strong>${row.bare_stale}</strong></td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Labellable in inbox</td>
+                <td style="padding:4px 0">${row.labelable_total}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0">Detected</td>
+                <td style="padding:4px 0">${et(row.fired_at)}</td></tr>
+          </table>
+          <p style="font-family:system-ui,sans-serif;color:#4A6B94">${esc((row.detail ?? '').slice(0, 600))}</p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_labeler_alert')
+            .update({ notified: true, notify_error: null, notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          sent.push(`labeler:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_labeler_alert')
+            .update({ notify_error: String(e).slice(0, 500), notify_attempts: (row.notify_attempts ?? 0) + 1 })
+            .eq('id', row.id);
+          failed.push(`labeler:${row.id}:${e}`);
+        }
+      }
+
+      if (row.resolved_at && !row.resolved_notified) {
+        const subject = '[OVIS] Labelling has caught up';
+        const html = `
+          <h2 style="color:#002147;font-family:system-ui,sans-serif">Mail is being labelled again</h2>
+          <p style="font-family:system-ui,sans-serif;color:#002147">
+            The alert opened at ${et(row.fired_at)} and resolved at ${et(row.resolved_at)}.
+          </p>`;
+        try {
+          const id = await sendViaResend(subject, html, selfTest);
+          await supabase.from('email_labeler_alert')
+            .update({ resolved_notified: true, notify_error: null }).eq('id', row.id);
+          sent.push(`labeler-clear:${row.id}:${id}`);
+        } catch (e) {
+          await supabase.from('email_labeler_alert')
+            .update({ notify_error: String(e).slice(0, 500) }).eq('id', row.id);
+          failed.push(`labeler-clear:${row.id}:${e}`);
+        }
+      }
+    }
+
     // Report failures as a non-200 so a silently-failing alerter is itself visible.
     return new Response(
-      JSON.stringify({ success: failed.length === 0, sent, failed, considered: (rows?.length ?? 0) + (clfRows?.length ?? 0) }),
+      JSON.stringify({ success: failed.length === 0, sent, failed, considered: (rows?.length ?? 0) + (clfRows?.length ?? 0) + (cronRows?.length ?? 0) }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: failed.length ? 500 : 200 }
     );

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { geocodingService } from '../../services/geocodingService';
+import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../services/placementPrecision';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface ResearchRunApprovalModalProps {
@@ -206,6 +207,42 @@ function diceCoefficient(a: string, b: string): number {
   return (2 * overlap) / (sizeA + sizeB);
 }
 
+// ---- run header: the municipality list a run was actually fired against ----
+// Sourced from the run's research_checklist_item rows — the list FROZEN at trigger
+// time — never from a live radius query, so the header keeps saying what the run
+// covered even after the site submit moves or the radius changes.
+//
+// "Cumming" (kind 'city') reads as "City of Cumming". Names that already carry
+// County or a consolidated-government suffix are left alone: Georgia files
+// Macon-Bibb County and Athens-Clarke County unified government under kind 'city',
+// and "City of Macon-Bibb County" would be wrong.
+const muniLabel = (name: string, kind: string) =>
+  (kind === 'city' && !/\bcount(y|ies)\b|government/i.test(name) ? `City of ${name}` : name);
+
+// One line, trigger order (checklist priority), deduped by municipality id — a
+// run's checklist is not guaranteed unique per municipality.
+const muniSummary = (
+  rows: { boundary_municipality_id: string; muni_name: string; muni_kind: string }[],
+) => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    if (seen.has(r.boundary_municipality_id)) continue;
+    seen.add(r.boundary_municipality_id);
+    out.push(muniLabel(r.muni_name, r.muni_kind));
+  }
+  return out.join(', ');
+};
+
+// "0", "0, 2, 5", "0–5" — a compact label for the chunks sharing one summary.
+const chunkRangeLabel = (indices: (number | null)[]) => {
+  const ns = [...new Set(indices.filter((n): n is number => n != null))].sort((a, b) => a - b);
+  if (ns.length === 0) return 'Chunks';
+  if (ns.length === 1) return `Chunk ${ns[0]}`;
+  const contiguous = ns.every((n, i) => i === 0 || n === ns[i - 1] + 1);
+  return contiguous ? `Chunks ${ns[0]}–${ns[ns.length - 1]}` : `Chunks ${ns.join(', ')}`;
+};
+
 // A duplicate cluster is resolved in TWO steps, because real clusters are mixed:
 // the same address can hold two distinct projects, one of which the sweep recorded
 // four times. Step 1 sorts the rows into groups (or marks rows to reject outright);
@@ -307,6 +344,12 @@ export default function ResearchRunApprovalModal({
   const [rerunConfirm, setRerunConfirm] = useState(false);
   const [rerunning, setRerunning] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
+  // Sweep mode: the frozen municipality line per chunk run, collapsed so chunks
+  // covering the SAME municipalities share one line. Deep Sweep chunks are time
+  // windows over one geography, so in practice every chunk carries the same list
+  // and six identical header lines would be noise; a chunk whose coverage really
+  // does differ still gets its own line. `chunks` is the label for the group.
+  const [chunkMunis, setChunkMunis] = useState<{ chunks: string; summary: string }[]>([]);
   const [staging, setStaging] = useState<StagingRow[]>([]);
   // stagingId -> sibling stagingIds within ~150m in the same sweep.
   const [inSweepDupes, setInSweepDupes] = useState<Record<string, string[]>>({});
@@ -322,6 +365,10 @@ export default function ResearchRunApprovalModal({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
+  // Rows that committed without a pin, grouped by why. Shown after a commit so
+  // a record silently missing from the map is never a surprise.
+  const [unplacedNotice, setUnplacedNotice] = useState<
+    { reason: UnplacedReason; count: number; sample: string[] }[]>([]);
   // Soft dedupe: stagingId -> nearby committed projects, plus an in-flight flag.
   const [possibleDupes, setPossibleDupes] = useState<Record<string, NearbyProject[]>>({});
   const [checkingDupes, setCheckingDupes] = useState(false);
@@ -356,11 +403,22 @@ export default function ResearchRunApprovalModal({
       try {
         if (isSweep) {
           // ---- unified sweep mode: all staged rows across the sweep's runs ----
-          const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }, { data: gaps }] = await Promise.all([
+          const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }, { data: gaps }, { data: chunkChecklist }] = await Promise.all([
             supabase.from('research_sweep').select('state').eq('id', sweepId!).single(),
             supabase.rpc('get_sweep_staging', { p_sweep_id: sweepId! }),
             // Non-blocking: a gap-lookup failure must never break the approval view.
             supabase.rpc('get_sweep_gaps', { p_sweep_id: sweepId! }),
+            // Every chunk run's frozen checklist, for the per-chunk municipality
+            // line. Also non-blocking — a header summary is never worth failing
+            // the approval view over. Bounded by chunks × municipalities per run
+            // (a 6-chunk sweep is a few dozen rows), but ranged past the default
+            // 1000 anyway so a wide sweep can't silently truncate the list.
+            supabase
+              .from('research_checklist_item')
+              .select('boundary_municipality_id, priority, research_run!inner(id, sweep_chunk_index, sweep_id), boundary_municipality(name, kind)')
+              .eq('research_run.sweep_id', sweepId!)
+              .order('priority')
+              .range(0, 4999),
           ]);
           if (swErr) throw swErr;
           if (stErr) throw stErr;
@@ -369,6 +427,33 @@ export default function ResearchRunApprovalModal({
           setGapInfo((gaps as SweepGapInfo | null) ?? null);
           setRun(null);
           setChecklist([]);
+          // Group the chunk runs' checklist rows by run, in chunk order.
+          const byRun = new Map<string, { chunkIndex: number | null; rows: { boundary_municipality_id: string; muni_name: string; muni_kind: string }[] }>();
+          for (const r of (chunkChecklist ?? []) as any[]) {
+            const rr = r.research_run;
+            if (!rr?.id) continue;
+            if (!byRun.has(rr.id)) byRun.set(rr.id, { chunkIndex: rr.sweep_chunk_index ?? null, rows: [] });
+            byRun.get(rr.id)!.rows.push({
+              boundary_municipality_id: r.boundary_municipality_id,
+              muni_name: r.boundary_municipality?.name ?? '(unknown)',
+              muni_kind: r.boundary_municipality?.kind ?? '',
+            });
+          }
+          // A chunk index can have more than one run (a re-fired chunk), so group
+          // by the summary text, not by run, and label each group with its chunks.
+          const bySummary = new Map<string, (number | null)[]>();
+          for (const v of byRun.values()) {
+            const summary = muniSummary(v.rows);
+            if (!summary) continue;
+            if (!bySummary.has(summary)) bySummary.set(summary, []);
+            bySummary.get(summary)!.push(v.chunkIndex);
+          }
+          setChunkMunis(
+            [...bySummary.entries()]
+              .map(([summary, idx]) => ({ summary, chunks: chunkRangeLabel(idx), first: Math.min(...idx.map((n) => n ?? 0)) }))
+              .sort((a, b) => a.first - b.first)
+              .map(({ summary, chunks }) => ({ summary, chunks })),
+          );
           const stagingNorm: StagingRow[] = ((stagingRows ?? []) as any[]).map((r) => ({
             id: r.id,
             research_run_id: r.research_run_id,
@@ -438,6 +523,7 @@ export default function ResearchRunApprovalModal({
 
         setRun(runRow as RunRow);
         setNeedsReview(runRow?.needs_review ?? '');
+        setChunkMunis([]);
         setChecklist((checklistRows ?? []).map((r: any) => ({
           boundary_municipality_id: r.boundary_municipality_id,
           priority: r.priority,
@@ -1210,29 +1296,34 @@ export default function ResearchRunApprovalModal({
         if (nrErr) console.warn('needs_review update skipped (RLS):', nrErr.message);
       }
 
-      // Geocode each selected row before submitting so the new municipal_project
-      // rows land with a centroid + geocoded_address — without those the
-      // Municipal Projects map layer can't render a pin. Mirrors the importer's
-      // pre-insert geocode pass.
+      // Geocode each selected row before submitting.
+      //
+      // A PRECISE geocode (ROOFTOP / RANGE_INTERPOLATED) becomes the project's
+      // centroid. A coarse one does NOT: a county/city centroid or a road centre
+      // is not a location, and writing it puts a pin somewhere the project isn't.
+      // Those rows commit UNPLACED, with the reason recorded, and are placed by
+      // hand from the project card. See services/placementPrecision.ts.
       const geocodeFailures: string[] = [];
+      const unplacedOnCommit: { name: string; reason: UnplacedReason }[] = [];
       const payload = await Promise.all(
         ids.map(async (id) => {
           const row = staging.find((s) => s.id === id);
           const e = edits[id] ?? {};
           const finalAddress = (e.address ?? row?.address ?? '').trim();
 
-          let lat: number | null = null;
-          let lng: number | null = null;
-          let formatted: string | null = null;
-          if (finalAddress) {
-            const g = await geocodingService.geocodeAddress(finalAddress);
-            if ('latitude' in g && 'longitude' in g) {
-              lat = g.latitude;
-              lng = g.longitude;
-              formatted = g.formatted_address ?? null;
-            } else {
-              geocodeFailures.push(`${row?.project_name ?? id}: ${('error' in g) ? g.error : 'geocode failed'}`);
+          const g = finalAddress ? await geocodingService.geocodeAddress(finalAddress) : null;
+          const placement = classifyGeocode(g, !!finalAddress);
+          const lat = placement.latitude;
+          const lng = placement.longitude;
+          const formatted = placement.formattedAddress;
+          if (!placement.placed) {
+            if (placement.reason === 'geocode_failed' && g && 'error' in g) {
+              geocodeFailures.push(`${row?.project_name ?? id}: ${g.error}`);
             }
+            unplacedOnCommit.push({
+              name: row?.project_name ?? '(unnamed)',
+              reason: placement.reason!,
+            });
           }
 
           return {
@@ -1252,13 +1343,30 @@ export default function ResearchRunApprovalModal({
             ...(e.notes               !== undefined ? { notes:                   e.notes               } : {}),
             ...(lat !== null && lng !== null ? { latitude: lat, longitude: lng } : {}),
             ...(formatted ? { geocoded_address: formatted } : {}),
+            // Only sent when no coordinate is: the RPC's placement invariant
+            // requires a reason for every row that commits without a pin.
+            ...(placement.placed ? {} : { unplaced_reason: placement.reason }),
           };
         }),
       );
 
       if (geocodeFailures.length > 0) {
-        // Surface but don't block — backfill script can fill these in later.
-        console.warn('Geocoding failed for some rows; they will land without a centroid:', geocodeFailures);
+        console.warn('Geocoding failed for some rows:', geocodeFailures);
+      }
+      if (unplacedOnCommit.length > 0) {
+        // Not an error and not blocking — these are complete records that simply
+        // have no trustworthy coordinate yet. Say so plainly, because a pin
+        // quietly missing from the map is exactly what went unnoticed before.
+        const byReason = new Map<UnplacedReason, string[]>();
+        for (const u of unplacedOnCommit) {
+          if (!byReason.has(u.reason)) byReason.set(u.reason, []);
+          byReason.get(u.reason)!.push(u.name);
+        }
+        setUnplacedNotice(
+          [...byReason.entries()].map(([reason, names]) => ({
+            reason, count: names.length, sample: names.slice(0, 3),
+          })),
+        );
       }
 
       // Fan out per research_run — approve_research_staging_rows rejects a batch
@@ -1319,6 +1427,8 @@ export default function ResearchRunApprovalModal({
   };
   const isReadOnlyRun = !canApprove || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
   const cleanSelectable = triage.clean.filter((r) => !r.matched_existing_id).map((r) => r.id);
+  // Single-run header line: the frozen checklist municipalities, in trigger order.
+  const runMuniSummary = useMemo(() => muniSummary(checklist), [checklist]);
 
   // ---- compact-row render helpers ----
   const toggleExpand = (id: string) =>
@@ -1910,11 +2020,25 @@ export default function ResearchRunApprovalModal({
                 {run.radius_miles}-mile radius · state: {run.state} · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected{mergedCount > 0 ? ` · ${mergedCount} merged` : ''}
               </p>
             )}
+            {/* Single run: the municipalities it was fired against, at a glance. */}
+            {run && runMuniSummary && (
+              <p className="text-xs mt-1" style={{ color: '#4A6B94' }}
+                 title="Municipalities this run was fired against, as frozen on its checklist at trigger time">
+                {runMuniSummary}
+              </p>
+            )}
             {isSweep && (
               <p className="text-xs mt-1" style={{ color: '#8FA9C8' }}>
                 Deep Sweep{sweepState ? ` · ${sweepState}` : ''} · all chunks · {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected{mergedCount > 0 ? ` · ${mergedCount} merged` : ''}
               </p>
             )}
+            {/* Sweep: the chunk runs' municipalities, one line per distinct list. */}
+            {isSweep && chunkMunis.map((c) => (
+              <p key={c.chunks} className="text-xs mt-0.5" style={{ color: '#4A6B94' }}
+                 title="Municipalities these chunk runs were fired against, as frozen on their checklists at trigger time">
+                <span style={{ color: '#8FA9C8' }}>{c.chunks} · </span>{c.summary}
+              </p>
+            ))}
             {isSweep && (gapInfo?.healable_count ?? 0) > 0 && (
               <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
                 {gapInfo!.healable_count} chunk{gapInfo!.healable_count === 1 ? '' : 's'} finished after the timeout — their records are already included below and won't be re-run.
@@ -1988,6 +2112,28 @@ export default function ResearchRunApprovalModal({
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
               {error}
+            </div>
+          )}
+          {unplacedNotice.length > 0 && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#8FA9C8', color: '#002147', backgroundColor: '#F8FAFC' }}>
+              <div className="font-semibold mb-1">
+                {unplacedNotice.reduce((n, u) => n + u.count, 0)} record
+                {unplacedNotice.reduce((n, u) => n + u.count, 0) === 1 ? '' : 's'} committed without a pin
+              </div>
+              <div className="text-xs mb-2" style={{ color: '#4A6B94' }}>
+                Everything else about them was saved. They&rsquo;re on the unplaced list on the map,
+                where you can draw the boundary or drop a pin.
+              </div>
+              <ul className="text-xs space-y-0.5" style={{ color: '#4A6B94' }}>
+                {unplacedNotice.map((u) => (
+                  <li key={u.reason}>
+                    <b style={{ color: '#002147' }}>{u.count}</b> · {unplacedLabel(u.reason)}
+                    <span style={{ color: '#8FA9C8' }}> — {u.sample.join(', ')}
+                      {u.count > u.sample.length ? `, +${u.count - u.sample.length} more` : ''}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {!loading && !canApprove && (

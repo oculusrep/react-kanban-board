@@ -17,6 +17,7 @@
 import { parseArchetypeBlock } from './archetype.ts';
 import {
   type Block, containerErrorMessage, type CreateFn, type ExecuteFn, MAX_ITERATIONS, type ModelResponse, requestOnce,
+  sanitizeModelText,
   tokenCostUsd, USD_PER_WEB_SEARCH, webSearchRequests,
 } from './loop.ts';
 import { buildBaseParams, isPermanentApiError, MODEL, PRICING } from './model.ts';
@@ -26,7 +27,7 @@ export const LEASE_SECONDS = 420; // 400 s edge wall clock + margin
 export interface ClaimedRun {
   id: string;
   thread_id: string;
-  kind: 'archetype' | 'turn' | 'deep_pass';
+  kind: 'archetype' | 'turn' | 'deep_pass' | 'brief' | 'record_qa';
   target_seq: number;
   prompt_template_id: string | null;
   iteration: number;
@@ -71,6 +72,11 @@ export interface WorkerDb {
     content: string; model: string; parsed: boolean;
     archetypePrimary: string | null; archetypeSecondary: string | null; storyCarriers: string[] | null;
   }): Promise<{ status: 'finalized' | 'already_final' | 'lease_lost'; message_id?: string | null }>;
+  /** brief runs only: writes the brief onto the thread and completes the run — no thread message. */
+  finalizeBrief?(a: {
+    runId: string; owner: string; iteration: number; attempt: number;
+    convo: Array<Record<string, unknown>>; briefText: string;
+  }): Promise<{ status: 'finalized' | 'already_final' | 'lease_lost' }>;
   release(runId: string, owner: string, iteration: number, attempt: number, error: string): Promise<void>;
   fail(runId: string, error: string): Promise<void>;
   promptBody(promptTemplateId: string | null): Promise<string>;
@@ -218,12 +224,23 @@ export async function runModelIteration(run: ClaimedRun, owner: string, deps: It
     }
 
     // end_turn / max_tokens: the final iteration.
-    const text = resp.content
-      .filter((b) => b.type === 'text' && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .join('\n')
-      .trim();
-    if (!text) throw new PermanentError(`empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'})`);
+    const text = sanitizeModelText(
+      resp.content
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text as string)
+        .join('\n'),
+    );
+    if (!text) {
+      // An end_turn with no prose is RETRYABLE, not fatal (run a6e0aa0e, 2026-09-26: the search budget
+      // was spent, the request went out locked with tool_choice none, and the model returned 250 tokens
+      // of thinking and no text). Releasing keeps the conversation, the container, the tokens already
+      // paid for and — crucially — web_search_requests, so the retry resumes this iteration on the
+      // budget already spent instead of restarting the run. The attempt counter still caps it at 3.
+      const detail = `empty_model_response (stop_reason: ${resp.stop_reason ?? 'null'}); retrying this iteration`;
+      await deps.db.release(run.id, owner, run.iteration, run.attempt, detail);
+      log(`${tag} ${detail} — attempt ${run.attempt}/${run.max_attempts ?? 3}`);
+      return 'released';
+    }
 
     if (deps.onEndTurn) {
       const outcome = await deps.onEndTurn({ run, owner, text, convo: [...run.convo, assistant as Record<string, unknown>] });
@@ -285,6 +302,10 @@ export function supabaseWorkerDb(service: Rpc): WorkerDb {
       p_run_id: a.runId, p_owner: a.owner, p_iteration: a.iteration, p_attempt: a.attempt, p_convo: a.convo,
       p_content: a.content, p_model: a.model, p_parsed: a.parsed,
       p_archetype_primary: a.archetypePrimary, p_archetype_secondary: a.archetypeSecondary, p_story_carriers: a.storyCarriers,
+    }),
+    finalizeBrief: (a) => call('finalize_brief_run', {
+      p_run_id: a.runId, p_owner: a.owner, p_iteration: a.iteration, p_attempt: a.attempt,
+      p_convo: a.convo, p_brief_text: a.briefText,
     }),
     release: (runId, owner, iteration, attempt, error) =>
       call('release_thread_run', { p_run_id: runId, p_owner: owner, p_iteration: iteration, p_attempt: attempt, p_error: error }),

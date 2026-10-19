@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
@@ -10,6 +10,8 @@ import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../component
 import MunicipalProjectInlineFilters from '../components/mapping/layers/MunicipalProjectInlineFilters';
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
+import MunicipalProjectUnplacedPanel from '../components/mapping/layers/MunicipalProjectUnplacedPanel';
+import MunicipalProjectOrientationOverlay from '../components/mapping/layers/MunicipalProjectOrientationOverlay';
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
@@ -117,6 +119,60 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [verifyingRestaurantStoreNo, setVerifyingRestaurantStoreNo] = useState<string | null>(null);
   const [selectedMunicipalProject, setSelectedMunicipalProject] = useState<MunicipalProjectMapRow | null>(null);
   const [drawingMunicipalProjectId, setDrawingMunicipalProjectId] = useState<string | null>(null);
+  // Pin-drop mode for an unplaced municipal project: the next map click picks a
+  // point, which the slideout then confirms and writes.
+  const [pinDropMunicipalProjectId, setPinDropMunicipalProjectId] = useState<string | null>(null);
+  const [pinDropPoint, setPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
+  // Move the map to a PLACED municipal project so the user can see what just
+  // happened. Re-reads the row rather than trusting whatever the caller has in
+  // hand, because after a fetch or a draw the geometry is newer than any cached
+  // copy. An UNPLACED record has nothing to move to — panning somewhere plausible
+  // would be inventing a location, which is the whole thing this work removed —
+  // so it is a deliberate no-op until the record is actually placed, and
+  // MunicipalProjectOrientationOverlay handles the "where do I look" problem.
+  const focusMunicipalProject = useCallback(async (id: string) => {
+    if (!mapInstance) return;
+    const { data, error } = await supabase
+      .from('municipal_project_v')
+      .select('centroid_lat, centroid_lng, geometry_geojson')
+      .eq('id', id)
+      .maybeSingle();
+    if (error || !data) return;
+
+    const gj = data.geometry_geojson as { type?: string; coordinates?: unknown } | null;
+    if (gj?.coordinates) {
+      // Fit the whole boundary, so a large parcel set doesn't land half off-screen.
+      const bounds = new google.maps.LatLngBounds();
+      const rings: unknown[] =
+        gj.type === 'MultiPolygon'
+          ? (gj.coordinates as unknown[][]).flat()
+          : (gj.coordinates as unknown[]);
+      for (const ring of rings) {
+        for (const pt of ring as [number, number][]) {
+          bounds.extend({ lat: pt[1], lng: pt[0] });
+        }
+      }
+      if (!bounds.isEmpty()) {
+        mapInstance.fitBounds(bounds, 80);
+        return;
+      }
+    }
+    if (typeof data.centroid_lat === 'number' && typeof data.centroid_lng === 'number') {
+      mapInstance.panTo({ lat: data.centroid_lat, lng: data.centroid_lng });
+      mapInstance.setZoom(17);
+      return;
+    }
+
+    // Still unplaced: it has nothing of its own to move to. Orienting on the
+    // municipality is MunicipalProjectOrientationOverlay's job now. Framing an
+    // area the reviewer cannot see is a viewport change they have to take on
+    // faith, so the outline and the fit belong in one place — and there the
+    // orientation fires on every path that opens an unplaced record, including
+    // a pin click and a deep link, which never reached this helper at all.
+  }, [mapInstance]);
+
+  // Bumped after a placement so the unplaced worklist re-reads itself.
+  const [unplacedRefreshToken, setUnplacedRefreshToken] = useState(0);
   const [verifyingMunicipalProjectId, setVerifyingMunicipalProjectId] = useState<string | null>(null);
   const [showMunicipalProjectModal, setShowMunicipalProjectModal] = useState(false);
   const [municipalProjectContextMenu, setMunicipalProjectContextMenu] = useState<{
@@ -249,7 +305,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     return new Set(allStages);
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
-  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  // Start expanded when a client is already selected at mount (restored from a
+  // previous visit), matching what handleClientSelection does on a fresh pick.
+  const [isLegendExpanded, setIsLegendExpanded] = useState(() => !!selectedClient);
 
   // Clustering configuration
   const [clusterConfig, setClusterConfig] = useState({
@@ -438,10 +496,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // onMapLoad reference changes, stacking listeners with stale closures over time — these
   // refs give all of them a consistent way to read current state.
   const drawingMunicipalProjectIdRef = useRef<string | null>(null);
+  // Same stale-listener problem as drawingMunicipalProjectId: the map click
+  // handlers stack one closure per render, so the live value must come from a ref.
+  const pinDropMunicipalProjectIdRef = useRef<string | null>(null);
   const createModeRef = useRef<typeof createMode>(null);
   useEffect(() => {
     drawingMunicipalProjectIdRef.current = drawingMunicipalProjectId;
   }, [drawingMunicipalProjectId]);
+  useEffect(() => {
+    pinDropMunicipalProjectIdRef.current = pinDropMunicipalProjectId;
+  }, [pinDropMunicipalProjectId]);
   useEffect(() => {
     createModeRef.current = createMode;
   }, [createMode]);
@@ -977,6 +1041,13 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
       // Likewise, while drawing an OREP target-area polygon, clicks are vertices — don't drop pins.
       if (sbuxDrawingActiveRef.current) return;
+
+      // Placing an unplaced municipal project by hand: this click IS the pin. It
+      // must not also fall through to createMode and open the "new" modal.
+      if (pinDropMunicipalProjectIdRef.current && event.latLng) {
+        setPinDropPoint({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+        return;
+      }
 
       // Read createMode from the ref so stacked stale listeners (one per render) all see
       // the current value rather than whatever was set when their closure was captured.
@@ -3094,6 +3165,27 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </span>
                       </div>
 
+                      {/* Unplaced worklist. Deliberately OUTSIDE the isVisible
+                          guard below: these records are absent from the map by
+                          design, so if the count only appeared when the layer was
+                          switched on, the queue could grow unnoticed. */}
+                      <div className="pl-11 pr-1">
+                        <MunicipalProjectUnplacedPanel
+                          onSelect={(row) => {
+                            setSelectedMunicipalProject(row);
+                            // Close the menu, otherwise it covers the card the
+                            // user just asked to open.
+                            setShowCustomLayersMenu(false);
+                            // No-op while the record is genuinely unplaced; it
+                            // matters for a row that has since been placed and is
+                            // still listed from a stale read.
+                            void focusMunicipalProject(row.id);
+                          }}
+                          selectedId={selectedMunicipalProject?.id ?? null}
+                          refreshToken={unplacedRefreshToken}
+                        />
+                      </div>
+
                       {/* Filters appear when the layer is on */}
                       {layerState.municipal_projects?.isVisible && (
                         <div className="mt-2 pl-11 pr-1">
@@ -3530,6 +3622,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setSelectedPinData(restaurant);
                 setIsPinDetailsOpen(true);
               }}
+            />
+
+            {/* Search area for an UNPLACED project: the approximate area around
+                its road/intersection geocode, falling back to the municipality
+                outline only when nothing finer resolves.
+                Mounted beside the layer, not inside it, because an unplaced
+                record is by design absent from that layer — the whole reason it
+                had no anchor on the map. Also owns the orientation fitBounds, so
+                the viewport change and the thing it frames arrive together. */}
+            <MunicipalProjectOrientationOverlay
+              map={mapInstance}
+              project={selectedMunicipalProject}
             />
 
             {/* Municipal Projects Layer — imported development tracking from cities */}
@@ -4189,6 +4293,18 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           setSelectedMunicipalProject((prev) =>
             prev && prev.id === updated.id ? { ...prev, ...updated } : prev
           );
+          // A successful placement ends pin-drop mode; leaving it on would make
+          // the next map click silently re-pick a point.
+          if (updated.is_unplaced === false) {
+            setPinDropMunicipalProjectId(null);
+            setPinDropPoint(null);
+          }
+          // Any change to placement moves a record on or off the worklist.
+          if (updated.is_unplaced !== undefined) setUnplacedRefreshToken((n) => n + 1);
+          // Just placed (fetch or pin) — show the result rather than leaving the
+          // user to hunt for it. refreshLayer below re-reads the layer; this
+          // re-reads the one row and moves the viewport to it.
+          if (updated.is_unplaced === false) void focusMunicipalProject(updated.id);
           // Reload the layer so the pin re-colors or refreshes against the saved edits.
           refreshLayer('municipal_projects');
         }}
@@ -4198,6 +4314,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         }}
         onStartDrawingPolygon={(id) => setDrawingMunicipalProjectId(id)}
         isDrawingPolygon={drawingMunicipalProjectId === selectedMunicipalProject?.id}
+        onStartDroppingPin={(id) => { setPinDropPoint(null); setPinDropMunicipalProjectId(id); }}
+        isDroppingPin={pinDropMunicipalProjectId === selectedMunicipalProject?.id}
+        droppedPin={pinDropMunicipalProjectId === selectedMunicipalProject?.id ? pinDropPoint : null}
       />
 
       {/* Comp Database Slideout — view/edit an existing comp or create one at dropped coords */}
@@ -4231,8 +4350,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           }
           onCancel={() => setDrawingMunicipalProjectId(null)}
           onSaved={() => {
+            const drawnId = drawingMunicipalProjectId;
             setDrawingMunicipalProjectId(null);
             refreshLayer('municipal_projects');
+            // Drawing can also place a previously unplaced record.
+            setUnplacedRefreshToken((n) => n + 1);
+            if (drawnId) void focusMunicipalProject(drawnId);
           }}
         />
       )}

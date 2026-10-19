@@ -605,10 +605,19 @@ function AddDealContactsModal({
     let cancelled = false;
     setSearching(true);
     (async () => {
+      // Match each field against the whole term, plus "First Last" / "Last First"
+      // for multi-word input (e.g. "nick roc" → first ILIKE nick AND last ILIKE roc).
+      const fieldFilters = `first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,company.ilike.%${term}%`;
+      const parts = term.split(/\s+/);
+      const filter = parts.length >= 2
+        ? `and(first_name.ilike.%${parts[0]}%,last_name.ilike.%${parts[1]}%),` +
+          `and(first_name.ilike.%${parts[1]}%,last_name.ilike.%${parts[0]}%),` +
+          fieldFilters
+        : fieldFilters;
       const { data, error } = await supabase
         .from('contact')
         .select('id, first_name, last_name, email, phone, mobile_phone, title, company')
-        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,company.ilike.%${term}%`)
+        .or(filter)
         .limit(20);
       if (cancelled) return;
       if (error) {

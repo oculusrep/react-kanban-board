@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import DropboxService, { DropboxFile, siteSubmitFolderName } from '../services/dropboxService';
+import DropboxService, { DropboxFile, DropboxScope, siteSubmitFolderName } from '../services/dropboxService';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 
 // Type for files that can be uploaded - supports both FileList and File[]
@@ -14,7 +14,7 @@ interface UseDropboxFilesReturn {
   uploading: boolean;
   error: string | null;
   refreshFiles: (silent?: boolean) => Promise<void>;
-  uploadFiles: (fileList: UploadableFiles, subPath?: string) => Promise<void>;
+  uploadFiles: (fileList: UploadableFiles, subPath?: string, siteSubmitId?: string | null) => Promise<DropboxFile[]>;
   createFolder: (folderName: string, parentSubPath?: string) => Promise<void>;
   deleteItem: (path: string) => Promise<void>;
   moveItem: (sourcePath: string, destinationFolderPath: string) => Promise<void>;
@@ -43,21 +43,15 @@ export function useDropboxFiles(
   const [error, setError] = useState<string | null>(null);
   const [folderCreatedMessage, setFolderCreatedMessage] = useState<string | null>(null);
 
-  // Initialize Dropbox service with access token and refresh credentials from environment
-  // Memoize to avoid recreating on every render
-  const dropboxService = useMemo(() => {
-    try {
-      return new DropboxService(
-        import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
-        import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
-        import.meta.env.VITE_DROPBOX_APP_KEY || '',
-        import.meta.env.VITE_DROPBOX_APP_SECRET || ''
-      );
-    } catch (err: any) {
-      // Token not configured - will be handled in fetchFiles
-      return null;
-    }
-  }, []); // Empty deps - env vars don't change at runtime
+  // Calls go through the dropbox-proxy edge function. The scope tells it which record a
+  // portal user is browsing; it's read through a ref because several callbacks below
+  // have empty deps and would otherwise keep the first record's scope.
+  const scopeRef = useRef<DropboxScope | undefined>(undefined);
+  scopeRef.current =
+    entityId && (entityType === 'property' || entityType === 'deal' || entityType === 'site_submit')
+      ? { entityType, entityId }
+      : undefined;
+  const dropboxService = useMemo(() => new DropboxService(() => scopeRef.current), []);
 
   /**
    * Fetch files from Dropbox for the current entity
@@ -76,7 +70,7 @@ export function useDropboxFiles(
     // Check if Dropbox service is initialized
     if (!dropboxService) {
       console.log('🔍 No dropboxService, setting error');
-      setError('Dropbox access token is required. Please set VITE_DROPBOX_ACCESS_TOKEN in your .env file.');
+      setError('Dropbox service not initialized');
       setFiles([]);
       setFolderPath(null);
       setLoading(false);
@@ -414,7 +408,7 @@ export function useDropboxFiles(
    * @param subPath - Optional subfolder path relative to base folder (e.g., "/_Closed")
    */
   const uploadFiles = useCallback(
-    async (fileList: UploadableFiles, subPath: string = '') => {
+    async (fileList: UploadableFiles, subPath: string = '', siteSubmitId?: string | null) => {
       // Convert to array for consistent handling
       const filesArray = Array.from(fileList);
 
@@ -465,10 +459,11 @@ export function useDropboxFiles(
 
         // Upload files sequentially to avoid Dropbox 429 rate limits
         console.log('📤 Uploading', filesArray.length, 'files sequentially...');
+        const uploaded: DropboxFile[] = [];
         for (let i = 0; i < filesArray.length; i++) {
           const file = filesArray[i];
           console.log(`📤 Uploading file ${i + 1}/${filesArray.length}:`, file.name, file.size, 'bytes');
-          await dropboxService!.uploadFile(file, targetFolderPath);
+          uploaded.push(await dropboxService!.uploadFile(file, targetFolderPath, undefined, siteSubmitId));
         }
         console.log('✅ All uploads completed');
 
@@ -476,6 +471,7 @@ export function useDropboxFiles(
         console.log('🔄 Refreshing files...');
         await refreshFiles();
         console.log('✅ Files refreshed');
+        return uploaded;
       } catch (err: any) {
         console.error('❌ Error uploading files:', err);
         setError(err.message || 'Failed to upload files');
