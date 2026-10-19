@@ -2,7 +2,7 @@
 
 **"Intel" is what the user sees** — panel header, launcher tooltip. The table, edge function and file names all use the `knowledge_*` / `knowledge-capture` prefix, and this doc keeps that name for anything code-facing.
 
-**Status (2026-09-20):** built on branch `feature/knowledge-capture` (worktree `../react-kanban-board-knowledge-capture`). Migration applied and recorded on the shared production database; edge function `ovis-knowledge-capture` deployed. Typechecks, builds, 20 unit tests pass. **Not yet exercised in a real browser session** — see [Before this ships](#before-this-ships).
+**Status (2026-10-19):** merged to main (`b1b623fa`) and live in production; edge function `ovis-knowledge-capture` redeployed from main (v9). Browser end-to-end test passed 2026-10-19 (entry filed and linked). **Embeddings are not populating** — `OPENAI_API_KEY` is not set as a Supabase secret, so entries file with no embedding (item 3 below). Set it, then re-embed the entries filed without one.
 
 An always-available way to capture ad hoc facts that arrive by phone call, text or scribbled note — "the Starbucks work letter says drywall on the Bridge prototype runs $18/sf". You type the note, the AI tidies it into one fact and proposes which OVIS records and topics it belongs to, you confirm or correct in conversation, and it's filed permanently for the whole company.
 
