@@ -1287,7 +1287,17 @@ export default function SiteSubmitSidebar({
         {/* Starbucks slide package (Package Tracker) — any deal, incl. deal-direct mode; renders nothing off-family */}
         {(context === 'map' || context === 'deal') && siteSubmit?.deal_id && (
           <div className="mt-2">
-            <PackageBadge dealId={siteSubmit.deal_id} tone="dark" />
+            <PackageBadge
+              dealId={siteSubmit.deal_id}
+              tone="dark"
+              onOpen={() => {
+                const id = siteSubmit.deal_id;
+                setActiveTab('data');
+                requestAnimationFrame(() =>
+                  document.getElementById(`package-panel-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                );
+              }}
+            />
           </div>
         )}
 
@@ -1616,13 +1626,14 @@ export default function SiteSubmitSidebar({
               <div className="flex-1 min-h-0 overflow-y-auto">
                 {siteSubmit.deal_id ? (
                   <>
+                    {/* Slide package first on Starbucks deals (collapsible); renders nothing off-family */}
+                    {(context === 'map' || context === 'deal') && <PackagePanel dealId={siteSubmit.deal_id} collapsible />}
                     <DealDataTab
                       siteSubmit={siteSubmit}
                       dealId={siteSubmit.deal_id}
                       isEditable={isEditable}
                       onUpdate={handleUpdate}
                     />
-                    {(context === 'map' || context === 'deal') && <PackagePanel dealId={siteSubmit.deal_id} />}
                   </>
                 ) : (
                   <SiteSubmitDataTab

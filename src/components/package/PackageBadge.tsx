@@ -11,12 +11,14 @@ interface PackageBadgeProps {
   tone?: 'dark' | 'light';
   // Click opens the full panel in a popover (DealHeaderBar, where there is no DATA tab).
   expandable?: boolean;
+  // Click jumps to the full panel (sidebar: opens the DATA tab and scrolls to it).
+  onOpen?: () => void;
 }
 
 // Sidebar badge (spec §2): Start Package → "Sent to Noree · date" (terracotta
 // outline after PACKAGE_STALE_DAYS with nothing started) → progress bar
 // "X of Y · N waiting on Mike". Renders nothing for non-Starbucks deals.
-export default function PackageBadge({ dealId, tone = 'dark', expandable = false }: PackageBadgeProps) {
+export default function PackageBadge({ dealId, tone = 'dark', expandable = false, onOpen }: PackageBadgeProps) {
   const { info } = useDealPackage(dealId);
   const [starting, setStarting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -93,6 +95,10 @@ export default function PackageBadge({ dealId, tone = 'dark', expandable = false
     <div ref={ref} className="relative inline-flex items-center gap-2">
       {expandable && info.pkg ? (
         <button type="button" onClick={() => setOpen((v) => !v)} className="hover:opacity-90" aria-expanded={open}>
+          {body}
+        </button>
+      ) : onOpen && info.pkg ? (
+        <button type="button" onClick={onOpen} className="hover:opacity-90" title="Open the slide package">
           {body}
         </button>
       ) : body}

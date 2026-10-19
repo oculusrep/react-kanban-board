@@ -8,6 +8,16 @@ import GateDatesForm from './GateDatesForm';
 
 interface PackagePanelProps {
   dealId: string;
+  // Sidebar: header toggles the body; open/closed is remembered in this browser.
+  collapsible?: boolean;
+}
+
+const COLLAPSE_KEY = 'ovis.packagePanel.collapsed';
+function readCollapsed(): boolean {
+  try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
+}
+function writeCollapsed(v: boolean) {
+  try { localStorage.setItem(COLLAPSE_KEY, v ? '1' : '0'); } catch { /* storage unavailable */ }
 }
 
 const CHIP: Record<SlideStatus, React.CSSProperties> = {
@@ -32,8 +42,9 @@ function gateText(at: string | null, state: GateState): string {
 
 // Full package section (spec §2–§5): progress + pace, gates, inputs, slide list.
 // Overlay-first: takes a dealId, works in the sidebar DATA tab or a popover.
-export default function PackagePanel({ dealId }: PackagePanelProps) {
+export default function PackagePanel({ dealId, collapsible = false }: PackagePanelProps) {
   const { info, error } = useDealPackage(dealId);
+  const [collapsed, setCollapsed] = useState(() => collapsible && readCollapsed());
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [editingGates, setEditingGates] = useState(false);
@@ -53,11 +64,35 @@ export default function PackagePanel({ dealId }: PackagePanelProps) {
   const showGateForm = editingGates || (!!progress?.gates_unknown && !gateDates);
 
   return (
-    <div className="px-4 pb-4 pt-3 border-t mt-4 text-xs" style={{ borderColor: BRAND.slate, color: BRAND.navy }}>
+    <div
+      id={`package-panel-${dealId}`}
+      className={`px-4 pb-4 pt-3 text-xs ${collapsible ? 'border-b' : 'border-t mt-4'}`}
+      style={{ borderColor: BRAND.slate, color: BRAND.navy }}
+    >
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-semibold">Slide package</h4>
-        {pkg && <span style={{ color: BRAND.steel }}>Started {shortDate(pkg.started_at)}</span>}
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => { const v = !collapsed; setCollapsed(v); writeCollapsed(v); }}
+            className="flex items-center gap-1 hover:opacity-80"
+            aria-expanded={!collapsed}
+          >
+            <h4 className="text-sm font-semibold">Slide package</h4>
+            <svg className={`w-4 h-4 transition-transform ${collapsed ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        ) : (
+          <h4 className="text-sm font-semibold">Slide package</h4>
+        )}
+        {pkg && (
+          <span style={{ color: BRAND.steel }}>
+            {collapsed && progress ? `${progress.done} of ${progress.applicable} · ` : ''}Started {shortDate(pkg.started_at)}
+          </span>
+        )}
       </div>
+
+      {collapsed ? null : (<>
 
       {err && <p className="mb-2" style={{ color: BRAND.terracotta }}>{err}</p>}
 
@@ -160,6 +195,7 @@ export default function PackagePanel({ dealId }: PackagePanelProps) {
           </ul>
         </>
       )}
+      </>)}
     </div>
   );
 }
