@@ -4,6 +4,7 @@ import { ObjectPicker } from './ObjectPicker';
 import ContactFormModal from '../ContactFormModal';
 import InlinePropertyCreationModal from '../mapping/InlinePropertyCreationModal';
 import { geocodingService } from '../../services/geocodingService';
+import { FAB_SIZE, useDraggableFab } from '../../hooks/useDraggableFab';
 import {
   type FiledEntry,
   type KnowledgeLink,
@@ -41,11 +42,12 @@ const COLORS = {
 const Z_FAB = 10006;
 const Z_PANEL = 10008;
 
-// Stacked directly above Quick Notes' default corner (which is bottom-6 right-6,
-// 48px tall) so neither button covers the other out of the box.
-const FAB_SIZE = 48;
-const FAB_BOTTOM = 24 + FAB_SIZE + 12;
-const FAB_RIGHT = 24;
+// Default spot: stacked directly above Quick Notes' default corner (bottom-6
+// right-6, 48px tall) so neither button covers the other out of the box. Like
+// Quick Notes, the button can be dragged anywhere and the spot persists per
+// browser (useDraggableFab).
+const FAB_CORNER = { right: 24, bottom: 24 + FAB_SIZE + 12 };
+const POS_KEY = 'intel.fabPos';
 
 const PANEL_WIDTH = 460;
 
@@ -372,6 +374,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
 
   const capture = useKnowledgeCapture(user?.id ?? null);
   const toggle = useCallback(() => setOpen((o) => !o), []);
+  const fab = useDraggableFab(POS_KEY, FAB_CORNER);
 
   // Alt+K / Option+K. e.code, not e.key, because Option+K types "˚" on a Mac.
   useEffect(() => {
@@ -418,19 +421,24 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
     <>
       <button
         type="button"
-        onClick={toggle}
-        className="fixed flex items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2"
+        onClick={fab.clickUnlessDragged(toggle)}
+        {...fab.handlers}
+        className={`fixed flex items-center justify-center rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          fab.dragging ? '' : 'transition-transform hover:scale-105'
+        }`}
         style={{
-          bottom: FAB_BOTTOM,
-          right: FAB_RIGHT,
+          left: fab.pos.left,
+          top: fab.pos.top,
           height: FAB_SIZE,
           width: FAB_SIZE,
           // Steel blue + a lightbulb, against Quick Notes' midnight "+".
           backgroundColor: COLORS.steel,
           color: COLORS.white,
           zIndex: Z_FAB,
+          cursor: fab.dragging ? 'grabbing' : 'pointer',
+          touchAction: 'none', // let a touch drag move the button instead of scrolling
         }}
-        title={open ? 'Close Intel (Alt+K)' : 'Capture intel (Alt+K)'}
+        title={open ? 'Close Intel (Alt+K) · drag to move' : 'Capture intel (Alt+K) · drag to move'}
         aria-label={open ? 'Close Intel' : 'Capture intel'}
         aria-expanded={open}
       >
