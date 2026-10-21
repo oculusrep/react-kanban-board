@@ -118,6 +118,10 @@ export interface RolePermissions {
   can_view_starbucks_layer?: boolean;
   can_view_site_analysis?: boolean;
   can_edit_starbucks_target_area?: boolean;
+
+  // Site Story (site research thread on Starbucks site submits)
+  can_view_site_story?: boolean;
+  can_run_site_story?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -143,7 +147,8 @@ export type PermissionCategory =
   | 'integrations'
   | 'map_features'
   | 'traffic_data'
-  | 'starbucks_layer';
+  | 'starbucks_layer'
+  | 'site_story';
 
 /**
  * Standard permission definitions with descriptions
@@ -695,6 +700,22 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'starbucks_layer',
     defaultValue: false,
   },
+
+  // Site Story
+  {
+    key: 'can_view_site_story',
+    label: 'View Site Story',
+    description: 'See the Site Story section on Starbucks site submits and read existing stories, briefs and records',
+    category: 'site_story',
+    defaultValue: false,
+  },
+  {
+    key: 'can_run_site_story',
+    label: 'Run Site Story',
+    description: 'Start site stories, run the deep pass, write briefs and ask follow-ups (spends AI tokens). Implies View Site Story',
+    category: 'site_story',
+    defaultValue: false,
+  },
 ];
 
 /**
@@ -760,6 +781,10 @@ export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; 
   starbucks_layer: {
     label: 'Starbucks Layer',
     description: 'Confidential Starbucks store data — grant only to authorized users',
+  },
+  site_story: {
+    label: 'Site Story',
+    description: 'Site research thread on Starbucks site submits — archetype call, deep pass, brief',
   },
 };
 

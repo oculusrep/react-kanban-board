@@ -33,7 +33,7 @@
  *   6. { action: 'ask_record', thread_id, question } -> { thread_id, run_id, seq }
  *      Answers a question from the stored record, citing the section. No tools, no search.
  *
- * The gate (Starbucks account family + can_run_market_research) is re-checked here on
+ * The gate (Starbucks account family + can_run_site_story) is re-checked here on
  * every call. The UI gate is a convenience, not a control.
  */
 
@@ -224,12 +224,12 @@ serve(async (req: Request) => {
 
   // Permission gate via the SQL helper. Called on anonClient so auth.uid() resolves.
   const { data: hasAccess, error: permErr } = await anonClient.rpc(
-    'user_has_market_research_run_access',
+    'user_has_site_story_run_access',
   );
   if (permErr) return jsonResponse({ error: 'permission_check_failed', detail: permErr.message }, 500);
   if (!hasAccess) {
     return jsonResponse(
-      { error: 'forbidden', detail: 'can_run_market_research permission required' },
+      { error: 'forbidden', detail: 'can_run_site_story permission required' },
       403,
     );
   }

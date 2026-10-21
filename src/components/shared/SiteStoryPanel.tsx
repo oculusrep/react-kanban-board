@@ -124,6 +124,9 @@ interface SiteStoryPanelProps {
   siteSubmitId: string;
   /** Bump to force a re-fetch of the thread list. */
   refreshTrigger?: number;
+  /** can_run_site_story (+ a resolvable coordinate). False = read-only: every
+   *  control that calls ovis-site-research is hidden. The edge function re-checks. */
+  canRun?: boolean;
 }
 
 function formatTimestamp(iso: string): string {
@@ -200,7 +203,7 @@ function StatusBadge({ state }: { state: ThreadState | RunState }) {
   );
 }
 
-export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: SiteStoryPanelProps) {
+export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0, canRun = false }: SiteStoryPanelProps) {
   const [threads, setThreads] = useState<ThreadRow[] | null>(null);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -478,8 +481,9 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             <div className="text-xs" style={{ color: SLATE }}>Loading…</div>
           ) : threads.length === 0 ? (
             <div className="text-xs mb-2" style={{ color: STEEL }}>
-              No site story yet. Starting one makes the archetype call and writes an executive summary
-              from this site's frozen snapshot. It runs in the background — you can close this panel.
+              {canRun
+                ? "No site story yet. Starting one makes the archetype call and writes an executive summary from this site's frozen snapshot. It runs in the background — you can close this panel."
+                : 'No site story yet.'}
             </div>
           ) : (
             <div className="space-y-1.5 mb-2">
@@ -521,15 +525,17 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={starting}
-            className="px-3 py-1.5 rounded text-xs font-medium disabled:opacity-60"
-            style={{ backgroundColor: NAVY, color: '#FFFFFF' }}
-          >
-            {starting ? 'Starting…' : threads && threads.length > 0 ? 'New site story' : 'Start site story'}
-          </button>
+          {canRun && (
+            <button
+              type="button"
+              onClick={handleStart}
+              disabled={starting}
+              className="px-3 py-1.5 rounded text-xs font-medium disabled:opacity-60"
+              style={{ backgroundColor: NAVY, color: '#FFFFFF' }}
+            >
+              {starting ? 'Starting…' : threads && threads.length > 0 ? 'New site story' : 'Start site story'}
+            </button>
+          )}
         </>
       )}
 
@@ -567,7 +573,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                   ))}
                 </ul>
               )}
-              {openThread.archetype_primary && (
+              {canRun && openThread.archetype_primary && (
                 <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
@@ -604,6 +610,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 </span>
               </div>
               <div className="text-xs whitespace-pre-wrap break-words" style={{ color: '#1f2937' }}>{openThread.brief_text}</div>
+              {canRun && (
               <button
                 type="button"
                 onClick={handleBrief}
@@ -613,6 +620,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
               >
                 {writingBrief ? 'Rewriting…' : 'Rewrite brief from this record'}
               </button>
+              )}
             </div>
           )}
 
@@ -693,6 +701,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 {run.error && (
                   <div className="text-[11px] mt-0.5 break-words" style={{ color: TERRACOTTA }}>{run.error}</div>
                 )}
+                {canRun && (
                 <button
                   type="button"
                   onClick={handleRetry}
@@ -702,13 +711,14 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 >
                   {retrying ? 'Retrying…' : 'Retry'}
                 </button>
+                )}
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
           {/* Ask the record: answered from what is stored, with the section cited. No research. */}
-          {openThread?.brief_text && (
+          {canRun && openThread?.brief_text && (
             <div className="flex gap-1.5 mb-1.5">
               <input
                 value={question}
@@ -731,6 +741,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             </div>
           )}
 
+          {canRun && (
           <div className="flex gap-1.5">
             <textarea
               value={draft}
@@ -757,6 +768,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
               {sending ? '…' : 'Send'}
             </button>
           </div>
+          )}
         </>
       )}
     </div>

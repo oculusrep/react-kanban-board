@@ -310,20 +310,25 @@ export default function SiteSubmitSidebar({
     && (siteSubmit.property?.verified_latitude != null
         || siteSubmit.property?.latitude != null);
 
-  // Site research thread gate. Same client-family + permission checks as
-  // market research, but the coordinate test uses the FULL documented
-  // precedence rather than property-only — a site whose only coordinate is its
+  // Site Story gates. Same client-family check as market research, with its own
+  // permissions (can_view_site_story / can_run_site_story). The run gate's
+  // coordinate test uses the FULL documented precedence rather than property-only — a site whose only coordinate is its
   // own verified override is perfectly researchable. The edge function resolves
   // the coordinate again server-side and refuses with 422 if it can't; this
   // gate is convenience, not control.
   const resolvedCoordinate = siteSubmit
     ? resolveSiteCoordinate(siteSubmit, siteSubmit.property)
     : null;
-  const canStartResearchThread =
-    !!siteSubmit
-    && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)
-    && hasPermission('can_run_market_research')
+  const isStarbucksSite =
+    !!siteSubmit && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id);
+  const canRunSiteStory =
+    isStarbucksSite
+    && hasPermission('can_run_site_story')
     && resolvedCoordinate != null;
+  // Run implies view. Viewing needs no coordinate — it only reads stored stories.
+  const canViewSiteStory =
+    isStarbucksSite
+    && (hasPermission('can_view_site_story') || hasPermission('can_run_site_story'));
   const [createFormKey, setCreateFormKey] = useState(0);
   const [editingHeaderField, setEditingHeaderField] = useState<'site_submit_name' | 'deal_name' | null>(null);
   const [headerEditValue, setHeaderEditValue] = useState('');
@@ -1706,7 +1711,7 @@ export default function SiteSubmitSidebar({
                 {/* Site story — the in-app research thread (archetype call +
                     executive summary). Deliberately a section in the DATA tab,
                     not a sixth tab: the strip is full at 500px. */}
-                {canStartResearchThread && (
+                {canViewSiteStory && (
                   <div className="px-4 pb-4 pt-2 border-t mt-4" style={{ borderColor: '#8FA9C8' }}>
                     <button
                       type="button"
@@ -1727,7 +1732,7 @@ export default function SiteSubmitSidebar({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
-                    {siteStoryExpanded && <SiteStoryPanel siteSubmitId={siteSubmit.id} />}
+                    {siteStoryExpanded && <SiteStoryPanel siteSubmitId={siteSubmit.id} canRun={canRunSiteStory} />}
                   </div>
                 )}
               </div>
