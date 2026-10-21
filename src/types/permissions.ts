@@ -106,6 +106,7 @@ export interface RolePermissions {
   can_access_cfo_dashboard?: boolean;
   can_access_finance_hub?: boolean;
   can_access_municipal_import?: boolean;
+  can_view_market_research?: boolean;
   can_run_market_research?: boolean;
   can_approve_market_research?: boolean;
 
@@ -641,9 +642,16 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     defaultValue: false,
   },
   {
+    key: 'can_view_market_research',
+    label: 'View Market Research',
+    description: 'See the Market research runs section on Starbucks site submits and open staged findings (read-only)',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
     key: 'can_run_market_research',
     label: 'Run Market Research',
-    description: 'Trigger market research runs on Starbucks site_submits (spends OpenClaw tokens) and cancel hung runs',
+    description: 'Trigger market research runs on Starbucks site_submits (spends OpenClaw tokens) and cancel hung runs. Implies View Market Research',
     category: 'system_admin',
     defaultValue: false,
   },

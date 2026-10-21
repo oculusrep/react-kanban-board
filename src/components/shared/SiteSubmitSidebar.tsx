@@ -309,6 +309,15 @@ export default function SiteSubmitSidebar({
     && hasPermission('can_run_market_research')
     && (siteSubmit.property?.verified_latitude != null
         || siteSubmit.property?.latitude != null);
+  // Runs section visibility. Run and approve both imply view. Run-side controls
+  // (cancel, skip chunk) need can_run_market_research and are re-checked by their RPCs.
+  const canManageResearchRuns = hasPermission('can_run_market_research');
+  const canViewResearch =
+    !!siteSubmit
+    && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)
+    && (hasPermission('can_view_market_research')
+        || canManageResearchRuns
+        || hasPermission('can_approve_market_research'));
 
   // Site Story gates. Same client-family check as market research, with its own
   // permissions (can_view_site_story / can_run_site_story). The run gate's
@@ -1627,8 +1636,8 @@ export default function SiteSubmitSidebar({
                     onUpdate={handleUpdate}
                   />
                 )}
-                {/* Market research runs — only shown when the action is available, to keep the surface clean. */}
-                {canStartResearch && (
+                {/* Market research runs — shown with can_view_market_research (or run/approve). */}
+                {canViewResearch && (
                   <div className="px-4 pb-4 pt-2 border-t mt-4" style={{ borderColor: '#8FA9C8' }}>
                     <button
                       type="button"
@@ -1655,7 +1664,7 @@ export default function SiteSubmitSidebar({
                         refreshTrigger={researchRunsRefresh}
                         onRunClick={(runId) => setOpenApprovalRunId(runId)}
                         onSweepClick={(sweepId) => setOpenApprovalSweepId(sweepId)}
-                        onCancelSweepClick={async (sweepId) => {
+                        onCancelSweepClick={!canManageResearchRuns ? undefined : async (sweepId) => {
                           if (!window.confirm('Cancel this Deep Sweep? Remaining chunks won\'t fire and the in-flight chunk (if any) will be stopped. Chunks already completed keep their staged records.')) return;
                           try {
                             const { data, error } = await supabase.rpc('cancel_sweep', { p_sweep_id: sweepId });
@@ -1670,7 +1679,7 @@ export default function SiteSubmitSidebar({
                             showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
                           }
                         }}
-                        onSkipChunkClick={async (sweepId) => {
+                        onSkipChunkClick={!canManageResearchRuns ? undefined : async (sweepId) => {
                           if (!window.confirm('Skip the chunk running now? Use this when you already know the agent is dead and don\'t want to wait out the stall cooldown. Its 6-month window is marked a GAP (recoverable later with Re-run gaps), and the next chunk fires on the next tick, within a minute. The rest of the sweep continues.')) return;
                           try {
                             const { data, error } = await supabase.rpc('skip_sweep_chunk', { p_sweep_id: sweepId });
@@ -1689,7 +1698,7 @@ export default function SiteSubmitSidebar({
                             showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
                           }
                         }}
-                        onCancelClick={async (runId) => {
+                        onCancelClick={!canManageResearchRuns ? undefined : async (runId) => {
                           if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
                           try {
                             const { data, error } = await supabase.rpc('cancel_research_run', { p_run_id: runId });
