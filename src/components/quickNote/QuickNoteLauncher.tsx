@@ -3,6 +3,7 @@ import { matchPath, useLocation } from 'react-router-dom';
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
 import { supabase } from '../../lib/supabaseClient';
 import { QuickNote, useQuickNotes } from './useQuickNotes';
+import { FAB_EDGE, FAB_SIZE, FabPos, useDraggableFab } from '../../hooks/useDraggableFab';
 
 // Personal quick-capture list: a floating button (bottom right by default, on
 // every internal page) that opens a panel next to it, over the current view.
@@ -26,59 +27,19 @@ const COLORS = {
 const Z_FAB = 10006;
 const Z_PANEL = 10007;
 
-// Launcher geometry / drag persistence.
-const FAB_SIZE = 48; // h-12 w-12
+// Launcher geometry. Dragging + persistence live in useDraggableFab.
 const GUTTER = 24; // default inset from the viewport edges (was bottom-6 right-6)
-const EDGE = 8; // how close to an edge a drag may park the button
+const EDGE = FAB_EDGE;
 const GAP = 12; // launcher-to-panel gap
 const PANEL_WIDTH = 384; // sm:w-96
 const POS_KEY = 'quickNote.fabPos';
-const DRAG_THRESHOLD = 4; // px of movement before a press becomes a drag, not a click
-
-interface Pos {
-  left: number;
-  top: number;
-}
-
-function defaultPos(): Pos {
-  return {
-    left: Math.max(EDGE, window.innerWidth - GUTTER - FAB_SIZE),
-    top: Math.max(EDGE, window.innerHeight - GUTTER - FAB_SIZE),
-  };
-}
-
-// Keeps the button fully on screen (also re-applied on resize, so a position
-// saved on a big monitor doesn't strand the button off a laptop viewport).
-function clampPos(p: Pos): Pos {
-  const maxLeft = Math.max(EDGE, window.innerWidth - FAB_SIZE - EDGE);
-  const maxTop = Math.max(EDGE, window.innerHeight - FAB_SIZE - EDGE);
-  return {
-    left: Math.min(Math.max(EDGE, p.left), maxLeft),
-    top: Math.min(Math.max(EDGE, p.top), maxTop),
-  };
-}
-
-function readPos(): Pos {
-  try {
-    const raw = window.localStorage.getItem(POS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed?.left === 'number' && typeof parsed?.top === 'number') {
-        return clampPos(parsed);
-      }
-    }
-  } catch {
-    // storage unavailable / corrupt — fall through to the default corner
-  }
-  return defaultPos();
-}
 
 /**
  * Panel box derived from where the launcher currently sits: flipped above the
  * button when it's in the lower half of the screen, below it otherwise, and
  * right-aligned to the button unless that would push it off screen.
  */
-function panelBox(pos: Pos, vw: number, vh: number): React.CSSProperties {
+function panelBox(pos: FabPos, vw: number, vh: number): React.CSSProperties {
   const width = Math.min(PANEL_WIDTH, Math.max(240, vw - 2 * GUTTER));
   const left = Math.min(Math.max(EDGE + 4, pos.left + FAB_SIZE - width), Math.max(EDGE + 4, vw - width - EDGE - 4));
   const above = pos.top + FAB_SIZE / 2 > vh / 2;
@@ -251,73 +212,8 @@ export const QuickNoteLauncher: React.FC = () => {
   const [completeCollapsed, setCompleteCollapsed] = useState(readCollapsed);
   const toggle = useCallback(() => setOpen((o) => !o), []);
 
-  // --- Draggable launcher -------------------------------------------------
-  const [pos, setPos] = useState<Pos>(readPos);
-  const [dragging, setDragging] = useState(false);
-  const [viewport, setViewport] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
-  // Pointer offset within the button + whether this press has become a drag.
-  // Held in a ref so pointerdown never triggers a re-render (a re-render on
-  // press can otherwise swallow the click entirely).
-  const dragRef = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
-  const suppressClick = useRef(false);
-
-  useEffect(() => {
-    const onResize = () => {
-      setViewport({ w: window.innerWidth, h: window.innerHeight });
-      setPos((p) => clampPos(p));
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  // Persist once the drag settles (not on every move).
-  useEffect(() => {
-    if (dragging) return;
-    try {
-      window.localStorage.setItem(POS_KEY, JSON.stringify(pos));
-    } catch {
-      // storage unavailable — position just won't persist
-    }
-  }, [pos, dragging]);
-
-  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (e.button !== 0) return;
-    dragRef.current = { dx: e.clientX - pos.left, dy: e.clientY - pos.top, moved: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const next = clampPos({ left: e.clientX - drag.dx, top: e.clientY - drag.dy });
-    if (!drag.moved) {
-      if (
-        Math.abs(next.left - pos.left) < DRAG_THRESHOLD &&
-        Math.abs(next.top - pos.top) < DRAG_THRESHOLD
-      ) {
-        return;
-      }
-      drag.moved = true;
-      suppressClick.current = true;
-      setDragging(true);
-    }
-    setPos(next);
-  };
-
-  const endDrag = () => {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    if (drag?.moved) setDragging(false);
-  };
-
-  const onLauncherClick = () => {
-    // The click that ends a drag shouldn't also open the panel.
-    if (suppressClick.current) {
-      suppressClick.current = false;
-      return;
-    }
-    toggle();
-  };
+  const fab = useDraggableFab(POS_KEY, { right: GUTTER, bottom: GUTTER });
+  const { pos, dragging, viewport } = fab;
 
   const toggleCompleteCollapsed = () => {
     setCompleteCollapsed((c) => {
@@ -379,11 +275,8 @@ export const QuickNoteLauncher: React.FC = () => {
     <>
       <button
         type="button"
-        onClick={onLauncherClick}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        onClick={fab.clickUnlessDragged(toggle)}
+        {...fab.handlers}
         className={`fixed flex h-12 w-12 items-center justify-center rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${
           dragging ? '' : 'transition-transform hover:scale-105'
         }`}

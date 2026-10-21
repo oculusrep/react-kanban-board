@@ -136,6 +136,7 @@ Both additions are optional props, so every existing call site behaves exactly a
 ## Code
 
 - `src/components/knowledgeCapture/KnowledgeCaptureLauncher.tsx` — FAB, panel, shortcut, proposal editor
+- `src/hooks/useDraggableFab.ts` — the drag-anywhere launcher, shared with Quick Notes. Intel's button defaults to just above Quick Notes' and persists its own spot in `localStorage` (`intel.fabPos`); the panel stays a right-edge slideout wherever the button sits.
 - `src/components/knowledgeCapture/useKnowledgeCapture.ts` — conversation state, editing, filing, recent list
 - `src/components/knowledgeCapture/ObjectPicker.tsx` — the "+ link" search
 - `supabase/functions/ovis-knowledge-capture/index.ts` — auth, gate, the two actions
