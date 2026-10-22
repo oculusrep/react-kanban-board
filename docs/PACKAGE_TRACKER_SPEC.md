@@ -396,3 +396,13 @@ Permission keys (§8) are JSONB on `role` / `user` and need no migration. They a
   - Capital City Bank Macon, Dublin and Publix at Riverbrook: no evidence.
   - Big Chicken: Gate 1 comes from the handoff log; Gate 2 is unknown.
 - **Jasper's court** was set to Them since 7-13 (written as Mike; board history "Ball → Them"). The park review clock was left as it was.
+
+### 2026-10-22: package task label fix applied
+
+Migration `20261019153511_package_task_category_label.sql` was applied and recorded.
+- `start_deal_package` now also sets the old text column `task.category = 'pipeline'`. The task lists display that column, and its default is 'personal'.
+- Big Chicken's 5 package tasks were relabelled.
+- Big Chicken's `ball_in_court_since` didn't move (still 2026-09-21 19:15 UTC).
+- Both test suites passed when rerun, rolled back.
+
+UI on the branch: the package section comes first in the DATA tab and is collapsible, and the header badge opens it.
