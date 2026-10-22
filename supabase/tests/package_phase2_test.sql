@@ -36,12 +36,12 @@ BEGIN
   -- An LOI deal on a Starbucks client, with a site and a board state row, and no package.
   SELECT d.id INTO v_deal
     FROM deal d
-    JOIN deal_stage s ON s.id = d.stage_id AND s.label = 'Negotiating LOI'
+    JOIN deal_stage s ON s.id = d.stage_id AND s.label IN ('Pre-Submittal', 'Submitted-Reviewing', 'Negotiating LOI')  -- every LOI deal has a package since the 2026-10-22 bulk start
     JOIN deal_activity_state das ON das.deal_id = d.id
    WHERE public.client_in_starbucks_family(d.client_id)
      AND d.site_submit_id IS NOT NULL
      AND NOT EXISTS (SELECT 1 FROM deal_package p WHERE p.deal_id = d.id OR p.site_submit_id = d.site_submit_id)
-   ORDER BY d.deal_name LIMIT 1;
+   ORDER BY (s.label = 'Negotiating LOI') DESC, d.deal_name LIMIT 1;
   IF v_deal IS NULL THEN RAISE EXCEPTION 'setup: no eligible deal'; END IF;
   SELECT ball_in_court_since INTO v_clock0 FROM deal_activity_state WHERE deal_id = v_deal;
 

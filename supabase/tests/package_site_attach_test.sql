@@ -147,11 +147,12 @@ BEGIN
 
   -- 7. Deployed UI path on an LOI deal without a package.
   SELECT d.id INTO v_deal
-    FROM deal d JOIN deal_stage ds ON ds.id = d.stage_id AND ds.label = 'Negotiating LOI'
+    FROM deal d JOIN deal_stage ds ON ds.id = d.stage_id AND ds.label IN ('Pre-Submittal', 'Submitted-Reviewing', 'Negotiating LOI')  -- LOI deals are all packaged since 2026-10-22
     JOIN deal_activity_state das ON das.deal_id = d.id
    WHERE public.client_in_starbucks_family(d.client_id) AND d.site_submit_id IS NOT NULL
      AND NOT EXISTS (SELECT 1 FROM deal_package p WHERE p.deal_id = d.id OR p.site_submit_id = d.site_submit_id)
-   ORDER BY d.deal_name LIMIT 1;
+   ORDER BY (ds.label = 'Negotiating LOI') DESC, d.deal_name LIMIT 1;
+  IF v_deal IS NULL THEN RAISE EXCEPTION 'setup 7: no unpackaged Starbucks deal with a site'; END IF;
   SELECT ball_in_court_since INTO v_clock0 FROM deal_activity_state WHERE deal_id = v_deal;
   v_pkg := public.start_deal_package(v_deal);
   SELECT ball_in_court_since INTO v_clock1 FROM deal_activity_state WHERE deal_id = v_deal;
