@@ -47,7 +47,15 @@ interface StoredEmail {
 }
 
 export type LookupBody =
-  | { result: 'found'; details: UnresolvedDetails; source: Omit<StoredEmail, 'body_text' | 'id'> & { email_id: string } }
+  | {
+      result: 'found';
+      details: UnresolvedDetails;
+      source: Omit<StoredEmail, 'body_text' | 'id'> & { email_id: string };
+      /** A different address the signature gives; shown on the form, not used. */
+      signature_email?: string;
+      /** The From address belongs to a mailing service, so it wasn't used. */
+      relay_from?: string;
+    }
   | { result: 'choose'; candidates: SenderCandidate[] }
   | { result: 'no_signature'; sender_email?: string }
   | { result: 'need_full_name' };
@@ -94,6 +102,45 @@ export function dropOurOwnDetails(details: UnresolvedDetails, ours: ContactPoint
   if (out.mobile_phone && isOurPhone(out.mobile_phone)) delete out.mobile_phone;
   if (out.company && OUR_COMPANY.test(out.company)) delete out.company;
   return out;
+}
+
+/**
+ * Mailing services send "from" an address that isn't the person's inbox:
+ * Constant Contact's paul.rutledge-certifiedcre.com@shared1.ccsend.com, a
+ * Mailchimp app address, a company's email./campaigns. marketing subdomain, or
+ * a no-reply. Seen in Mike's mailbox 2026-10-22: ~14% of signed mail.
+ */
+const RELAY_DOMAIN =
+  /(^|\.)(ccsend\.com|mcsv\.net|mcdlv\.net|rsgsv\.net|list-manage\.com|mailchimp\.com|mailchimpapp\.com|hubspotemail\.net|hs-email\.net|sendgrid\.net|amazonses\.com|mailgun\.org|brevosend\.com|sendinblue\.com|mktomail\.com|exacttarget\.com|mail\.salesforce\.com)$/i;
+const MARKETING_SUBDOMAIN = /^(e|em|email|emails|mail|mailer|news|newsletter|campaign|campaigns|marketing|info)\.[^.]+\.[a-z.]+$/i;
+const NO_REPLY_LOCAL = /^(no-?reply|do-?not-?reply|notifications?|mailer-daemon|bounces?)([+.\-_].*)?$/i;
+
+export function isBulkSender(address: string): boolean {
+  const [local = '', domain = ''] = address.toLowerCase().split('@');
+  return RELAY_DOMAIN.test(domain) || MARKETING_SUBDOMAIN.test(domain) || NO_REPLY_LOCAL.test(local);
+}
+
+/**
+ * The email field. The From address is the one we searched on, so it IS the
+ * sender's — it goes in the field even when the signature has no address (the
+ * case verifyDetails() can't see: the header isn't part of the verified text).
+ * A different address in the signature is kept aside for the form note. Never
+ * a mailing-service sender, and never one of ours.
+ */
+export function emailFromSender(
+  verified: UnresolvedDetails,
+  fromAddress: string,
+  ours: ContactPoint[],
+): { details: UnresolvedDetails; signature_email?: string; relay_from?: string } {
+  const from = fromAddress.trim().toLowerCase();
+  const own = dropOurOwnDetails(verified, ours);
+  const sigEmail = own.email;
+
+  if (isBulkSender(from)) return { details: own, relay_from: from };
+
+  const withFrom = dropOurOwnDetails({ ...own, email: from }, ours);
+  if (!withFrom.email) return { details: own }; // From was ours; the signature's (if any) stands
+  return sigEmail && sigEmail !== from ? { details: withFrom, signature_email: sigEmail } : { details: withFrom };
 }
 
 /** Two tokens minimum: a first name alone matches half the inbox. */
@@ -153,12 +200,15 @@ export async function lookupEmailSignature(
       // strip. Never prefill an Oculus email, company, or an internal user's phone.
       const ours = await deps.rpc('intel_internal_contact_points');
       if (ours.error) return rpcFailure(ours.error);
-      const details = dropOurOwnDetails(verified, (Array.isArray(ours.data) ? ours.data : []) as ContactPoint[]);
+      const points = (Array.isArray(ours.data) ? ours.data : []) as ContactPoint[];
+      const { details, signature_email, relay_from } = emailFromSender(verified, email.sender_email, points);
       return {
         status: 200,
         body: {
           result: 'found',
           details,
+          ...(signature_email ? { signature_email } : {}),
+          ...(relay_from ? { relay_from } : {}),
           source: {
             email_id: email.id,
             received_at: email.received_at,

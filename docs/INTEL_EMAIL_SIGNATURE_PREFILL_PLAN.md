@@ -103,5 +103,6 @@ Cuts at Gmail/Apple `On … wrote:` (incl. wrapped), forwarded/original-message 
 
 ### Behaviour notes
 - Name match = first AND last token after normalising ("Rutledge, Paul" flipped, ", CCIM" suffix dropped, middle initials ignored). A first name alone isn't searched. Excludes `@oculusrep.com` and the caller's own address.
-- Bulk-mail relays appear as candidates (e.g. a Constant Contact `…@shared1.ccsend.com` address for "Paul Rutledge"); you pick. The From address itself is never prefilled — only what the signature text says.
+- Bulk-mail relays appear as candidates (e.g. a Constant Contact `…@shared1.ccsend.com` address for "Paul Rutledge"); you pick.
+- **Email field = the From address** (fix 2026-10-22). It was blank whenever the signature had no address: `verifyDetails()` only checks the stripped body, and the From header isn't in it. Measured on Mike's mail: of 630 signed emails, the From address appeared in only 209 signatures; 119 had no address at all, 302 had a *different* one. Now the From address (the one we searched on) fills the field; a different signature address is named in the form note, not used. Exceptions: a mailing-service From (`isBulkSender()`: relay domains like ccsend/mailchimpapp/brevosend, `email.`/`campaigns.` marketing subdomains, no-reply local parts — ~14% of signed mail) is never used, falling back to the signature's own address; and an Oculus or internal user's address never is.
 - Up to 200 emails scanned per sender, one model call (Sonnet 5, low effort) on the first with a signature; ~1–2 s of SQL on Mike's mailbox.

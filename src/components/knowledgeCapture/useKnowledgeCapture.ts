@@ -68,11 +68,20 @@ export interface EmailSignatureSource {
 
 /**
  * ovis-knowledge-capture's lookup_email_signature answer. Details were verified
- * server-side against the sender's own text (quotes and forwards stripped) and
- * never include an Oculus email, company or internal phone.
+ * server-side against the sender's own text (quotes and forwards stripped),
+ * except the email, which is the From address we searched on (unless that's a
+ * mailing service). Never an Oculus email, company or internal phone.
  */
 export type EmailLookupResult =
-  | { result: 'found'; details: NonNullable<UnresolvedName['details']>; source: EmailSignatureSource }
+  | {
+      result: 'found';
+      details: NonNullable<UnresolvedName['details']>;
+      source: EmailSignatureSource;
+      /** A different address in the signature: shown on the form, not used. */
+      signature_email?: string;
+      /** The From address is a mailing service's, so it wasn't used. */
+      relay_from?: string;
+    }
   | { result: 'choose'; candidates: EmailSenderCandidate[] }
   | { result: 'no_signature'; sender_email?: string }
   | { result: 'need_full_name' };
