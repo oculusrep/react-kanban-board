@@ -265,6 +265,7 @@ Hardcoded IDs break when a third Starbucks entity appears — there are already 
 - The board selects clients through `client_in_starbucks_family()`, exposed to PostgREST as the computed field `client.in_starbucks_family` (migration `20261013090455`). A client qualifies when it **or any `parent_id` ancestor** has `starbucks_board_enabled`, so a new Starbucks child account joins with no flag and no list.
 - The Package Tracker trigger and views use the same function: one membership definition, in the database.
 - Checked before the switch with a SQL mirror of the board rules: 46 cards under the flag and 46 under the family function, identical IDs.
+- **Fast path (2026-10-22, migration `20261022092841`).** `in_starbucks_family(client)` checks the client's own flag first, and only walks the parent chain when `parent_id` is set (35 of 571 clients). It has no `SET search_path`, so the planner can inline it. Results are unchanged (0 mismatches across 571 clients). The board query over HTTP went from 1.81 / 1.65 / 1.81s to 1.17 / 1.09 / 1.28s, with the same 47 cards.
 
 ### 2.15 The daily number is the only game mechanic
 Count of tiles needing attention, target zero. No points, streaks, or badges — those reward touching things rather than closing them.
