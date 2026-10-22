@@ -526,6 +526,17 @@ export default function Navbar() {
                   {userRole === 'admin' && (
                     <button
                       onClick={() => {
+                        navigate('/admin/package-slides');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      🗂️ Package Slide Settings
+                    </button>
+                  )}
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => {
                         navigate('/admin/merchants');
                         setIsReportsMenuOpen(false);
                       }}
@@ -1153,6 +1164,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     👥 User Management
+                  </button>
+                )}
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => {
+                      navigate('/admin/package-slides');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    🗂️ Package Slide Settings
                   </button>
                 )}
                 {(userRole === 'admin' || hasPermission('can_access_municipal_import')) && (
