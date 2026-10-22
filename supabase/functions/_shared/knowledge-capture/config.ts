@@ -66,6 +66,8 @@ const REQUEST_TIMEOUT_MS = 120_000;
  * every turn and every user, so each request after the first reads it from cache.
  */
 export function buildBaseParams(systemPrompt: string): Record<string, unknown> {
+  // Also used, unchanged, for the one-shot signature extraction (emailLookup.ts):
+  // same model and effort, its own cached system prompt.
   return {
     model: CHAT_MODEL,
     max_tokens: CHAT_MAX_TOKENS,
