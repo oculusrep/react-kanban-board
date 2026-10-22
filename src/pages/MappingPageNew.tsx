@@ -42,8 +42,6 @@ import CachedDemographicsLayer from '../components/mapping/layers/CachedDemograp
 import CompDatabaseLayer from '../components/mapping/layers/CompDatabaseLayer';
 import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
 import CompContextMenu from '../components/mapping/CompContextMenu';
-import ListingStagingLayer from '../components/mapping/layers/ListingStagingLayer';
-import ListingStagingSlideout from '../components/mapping/slideouts/ListingStagingSlideout';
 import { CompProperty } from '../lib/compTypes';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
@@ -216,7 +214,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
   // Comp Database slideout — independent of the shared pin-details state.
   const [selectedComp, setSelectedComp] = useState<CompProperty | null>(null);
-  const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
+  // Comp Database: also draw comps the NNN listing intake created that await review.
+  const [showPendingComps, setShowPendingComps] = useState(false);
   const [compCreateAt, setCompCreateAt] = useState<{ lat: number; lng: number } | null>(null);
   const [verifyingCompId, setVerifyingCompId] = useState<string | null>(null);
   const [compContextMenu, setCompContextMenu] = useState<{
@@ -3236,39 +3235,19 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </span>
                       </div>
                       {layerState.comp_database?.isVisible && (
-                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500">
-                          Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* NNN Listings system layer — listing_staging (ovis-mcp intake) */}
-                    <div className="p-2 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => toggleLayer('listing_staging')}
-                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
-                              layerState.listing_staging?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
-                            }`}
-                          >
-                            <span
-                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                layerState.listing_staging?.isVisible ? 'translate-x-4' : 'translate-x-0'
-                              }`}
+                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500 space-y-1.5">
+                          <div>Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.</div>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showPendingComps}
+                              onChange={(e) => setShowPendingComps(e.target.checked)}
                             />
-                          </button>
-                          <span>🏷️</span>
-                          <span className="text-sm font-medium text-gray-900">NNN Listings</span>
-                        </div>
-                        <span className="text-xs text-gray-400">
-                          {layerState.listing_staging?.count ?? 0}
-                        </span>
-                      </div>
-                      {layerState.listing_staging?.isVisible && (
-                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500">
-                          Placed listings only — unplaced ones are on the{' '}
-                          <Link to="/listings/review" className="underline">review screen</Link>.
+                            Show pending NNN listings
+                            <span className="text-gray-400">(hollow pins ·{' '}
+                              <Link to="/listings/review" className="underline">review</Link>)
+                            </span>
+                          </label>
                         </div>
                       )}
                     </div>
@@ -3751,6 +3730,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             <CompDatabaseLayer
               map={mapInstance}
               isVisible={layerState.comp_database?.isVisible || false}
+              showPending={showPendingComps}
               selectedCompId={selectedComp?.id ?? null}
               verifyingCompId={verifyingCompId}
               onPinClick={(comp) => { setCompCreateAt(null); setSelectedComp(comp); }}
@@ -3774,14 +3754,6 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   setVerifyingCompId(null);
                 }
               }}
-            />
-
-            {/* NNN Listings — listing_staging intake pins */}
-            <ListingStagingLayer
-              map={mapInstance}
-              isVisible={layerState.listing_staging?.isVisible || false}
-              selectedListingId={selectedListingId}
-              onPinClick={(id) => setSelectedListingId(id)}
             />
 
             {/* Starbucks Licensed Stores — confidential, permission-gated */}
@@ -4369,21 +4341,6 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           topOffset={showPropertySearch ? 45 : 0}
           onClose={() => { setSelectedComp(null); setCompCreateAt(null); }}
           onSaved={() => refreshLayer('comp_database')}
-        />
-      )}
-
-      {/* NNN listing slideout — Promote opens the new comp in its own overlay */}
-      {selectedListingId && (
-        <ListingStagingSlideout
-          listingId={selectedListingId}
-          topOffset={showPropertySearch ? 45 : 0}
-          onClose={() => setSelectedListingId(null)}
-          onChanged={() => refreshLayer('listing_staging')}
-          onOpenComp={async (compId) => {
-            const { data } = await supabase.from('comp_property').select('*').eq('id', compId).maybeSingle();
-            if (data) { setCompCreateAt(null); setSelectedComp(data as CompProperty); }
-            refreshLayer('comp_database');
-          }}
         />
       )}
 

@@ -63,6 +63,19 @@ export interface CompProvenance {
   verified_at: string | null;
 }
 
+export type CompReviewStatus = 'pending_review' | 'reviewed' | 'rejected';
+export type GuarantorType = 'corporate' | 'franchisee' | 'personal' | 'other';
+export const GUARANTOR_TYPE_OPTIONS: { value: GuarantorType; label: string }[] = [
+  { value: 'corporate', label: 'Corporate' },
+  { value: 'franchisee', label: 'Franchisee' },
+  { value: 'personal', label: 'Personal' },
+  { value: 'other', label: 'Other' },
+];
+export type ListingStatus = 'active' | 'under_contract' | 'off_market' | 'sold';
+export const LISTING_STATUS_LABEL: Record<ListingStatus, string> = {
+  active: 'Active', under_contract: 'Under contract', off_market: 'Off market', sold: 'Sold',
+};
+
 export interface CompProperty extends CompProvenance {
   id: string;
   property_id: string | null;
@@ -84,6 +97,10 @@ export interface CompProperty extends CompProvenance {
   trade_area: string | null;
   parcel_id: string | null;
   is_available: boolean;  // manual "on market" flag — drives the amber pin
+  // NNN listing intake: pending_review comps are hidden from the layer by default;
+  // rejected ones are never drawn (kept so the sweep doesn't re-propose them).
+  review_status: CompReviewStatus;
+  address_norm: string | null; // generated dedupe key — never write it
   created_by_id: string | null;
   updated_by_id: string | null;
   created_at: string;
@@ -162,6 +179,8 @@ export interface LeaseComp extends CompProvenance {
   reported_tenant_sales: number | null;
   sales_psf: number | null;
   occupancy_status: OccupancyStatus | null;
+  guarantor_type: GuarantorType | null;
+  guarantor_name: string | null;
   notes: string | null;
   created_by_id: string | null;
   updated_by_id: string | null;
@@ -184,6 +203,7 @@ export interface SaleComp extends CompProvenance {
   financing: string | null;
   sale_condition: SaleCondition | null;
   occupancy_at_sale: number | null;
+  lease_comp_id: string | null; // lease in place at the sale
   notes: string | null;
   created_by_id: string | null;
   updated_by_id: string | null;
@@ -200,8 +220,14 @@ export interface OperatingMemorandum extends CompProvenance {
   brokerage: string | null;
   list_date: string | null;
   asking_price: number | null;
-  asking_cap_rate: number | null;
+  asking_cap_rate: number | null; // mirrors the latest ask in comp_listing_event
   guidance: string | null;
+  listing_status: ListingStatus;  // maintained from comp_listing_event — don't write
+  first_seen_at: string;
+  last_seen_at: string;
+  listed_term_remaining: string | null;
+  listed_lease_type: string | null;
+  lease_comp_id: string | null;   // lease in place for this offering
   notes: string | null;
   created_by_id: string | null;
   updated_by_id: string | null;

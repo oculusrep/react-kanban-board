@@ -1,6 +1,6 @@
 # NNN Listing Intake — Spec v2 (feed the existing Comp Database)
 
-**Status:** DRAFT, awaiting Mike's approval. Nothing in this document is built.
+**Status:** **APPROVED 2026-10-22** (decisions in §10). **Phase 1 BUILT** on `feature/nnn-listing-intake`. It is **not applied to prod**: that waits on Mike's approval of the duplicate-comp proposals in §12. Phase 2 is not started.
 **Date:** 2026-10-22
 **Supersedes:** the data model in [NNN_LISTING_INTAKE.md](NNN_LISTING_INTAKE.md) (v1). The v1 MCP endpoint, auth and
 OAuth consent design carry over unchanged.
@@ -627,3 +627,97 @@ These come from one SQL function, `listing_activity(p_since timestamptz, p_until
 7. **Committee-eligibility rule** (§7.4): verified-only by default, or verified + reported with a footnote?
 8. **Off-market threshold X** (§8): 21 days proposed. It must exceed 2× the sweep cadence. What cadence will the sweep run at?
 9. **Priority (1) scope:** ship all of §7 priority 1 together with v2, or v2 first (intake + history) and the committee gaps second?
+
+---
+
+## 10. Approved decisions (2026-10-22)
+
+1. **Option (b).** Listings write straight into the comp tables, gated by `comp_property.review_status`. Existing rows default to `reviewed`. Offerings live in `operating_memorandum`. `listing_staging` (0 rows) is dropped **after** the new path is live.
+2. **MSA:** add CBSA/MSA columns to the county rows of `boundary_municipality` (Mike owns Market Research; approved). Populate them from the OMB CBSA delineation file. This is phase 2.
+3. **Committee averages:** report a **verified** average and an **all** average (verified + reported/asking) side by side, each with its n. **Asking and closed figures are never blended in one average.** This is phase 2 (the views and saved queries).
+4. **Sweep cadence is daily.** The 21-day "possibly off market" flag is for VA review only. Nothing auto-closes.
+5. **Phasing:**
+   - **Phase 1 (built):**
+     - option (b) intake;
+     - `comp_listing_event` + `comp_listing_facts` + timeline;
+     - the `listing_activity` MCP tool;
+     - the sale/offering → lease-in-place link;
+     - guarantor type + name;
+     - Noree's checklist on the task;
+     - audit columns written with the auth id.
+   - **Phase 2 (after):**
+     - `expense_structure`, concept/drive-thru, interest conveyed;
+     - county/MSA derivation;
+     - verification method + per-figure confidence;
+     - the three fact views + three saved queries.
+- §9 decision 2 (the optional `task.comp_property_id`) was not decided, so phase 1 **does not add it**. The task links to the listing by URL in its description.
+
+## 11. Phase 1 — as built
+
+**Migrations** (neither one is applied yet):
+- `20261022105905_comp_listing_intake_phase1.sql`: all of phase 1.
+  - It was round-trip tested in a transaction with ROLLBACK against prod.
+  - The test covered every §5 / §8.3 case, impersonated Noree as `authenticated`, and checked anon access.
+- `20261022110419_drop_listing_staging.sql`: the v1 cleanup.
+  - Apply it **only after** `ovis-mcp` is redeployed.
+  - It refuses to run if `listing_staging` has gained rows.
+
+**Code:**
+- **Edge function** `ovis-mcp` v0.2.0: `upsert_listing` / `create_va_task` / `list_recent_listings` were rewritten, and `listing_activity` is new. Audit columns are written with the OAuth caller's **auth** id; the static token writes NULL.
+- **Review page** `/listings/review`: reads `comp_listing_facts`. Its tabs are Pending review, Active, Re-listed existing comps, Possibly off market, Under contract / off market / sold, Rejected and All.
+- **`ListingPanel`:**
+  - approve / reject;
+  - status events;
+  - record price change;
+  - record close (verified only);
+  - timeline;
+  - Open comp → `CompDetailSlideout`.
+- **`CompDetailSlideout`:**
+  - the header shows a Pending/Rejected badge with Approve/Reject;
+  - the Leases tab has Guarantor + Guarantor Entity;
+  - the Sales and OM tabs have a "Lease in Place" selector;
+  - the OM tab shows status, seen dates, the as-listed snapshots and a per-offering price history.
+- **Comp Database layer:** rejected comps are never drawn. Pending comps are drawn only with the new "Show pending NNN listings" checkbox, as **hollow pins with a terracotta outline**.
+- **Removed:** all v1 UI (the `ListingStaging*` layer and slideout, `ListingDetailPanel`, `lib/listingStaging.ts`) and the "NNN Listings" map-layer row.
+
+**Behaviors decided during the build** (the spec was silent or the tests forced them):
+
+| # | Behavior | Why |
+|---|---|---|
+| 1 | **A close is terminal.** Once a `closed` event exists, the status is `sold` regardless of event dates. | A close is usually recorded after the fact with an earlier date (PT-61 lag). Ordering by date let a later sweep sighting outrank it. Caught in testing. |
+| 2 | **"Under contract" is not flipped back by the sweep.** Only `off_market` → `back_on_market` is automatic. | Contracted listings usually stay posted, and the sweep can't tell the difference. A person records "back on market". |
+| 3 | **Closed within 90 days and still posted → no relist.** `upsert_listing` returns `skipped: "recently_closed"` and only bumps `last_seen`. | Listing sites lag a close by weeks. Without this, a stale post would open a new offering. |
+| 4 | **`possibly_off_market` applies only to offerings the sweep has recorded at least once** (`tracked_by_sweep`). | Otherwise the one existing manual OM (Temple) would be flagged the day this ships. |
+| 5 | **Editing the ask on the OM tab writes a history event** (`listed` / `price_change` / `cap_change`), via a trigger. | It keeps the existing OM form working without letting anything bypass the history. |
+| 6 | **The amber pin (`is_available`) follows offerings:** it is on while any offering on the comp is `active`, and it is recomputed on each event. | It is touched only on comps that have offerings, so manual leasing-availability flags elsewhere are left alone. **Visible change:** adding an OM with an asking price in the comp slideout now turns that pin amber. |
+| 7 | `comp_listing_event.created_at` uses `clock_timestamp()`, not `now()`. | Several events in one transaction must still order. With `now()` they tied, and the test showed wrong current asks. |
+| 8 | **Pending pins are hollow with a terracotta outline,** not dashed. | The dashed terracotta ring already means "has an OM" on this layer. |
+| 9 | **The backfill keeps every existing pin's `is_available` exactly as it was.** | The one existing OM got a `listed` event, but its pin colour doesn't change. |
+| 10 | **Lease-in-place backfill:** 2 of 11 sales linked. | Only sales whose comp has exactly one lease were linked. 9 sales are on comps with **no lease recorded at all**, so they can't be linked until a lease is entered. |
+
+**Deploy order** (after §12 is approved):
+1. Apply `…105905` with `--single-transaction`, then record it.
+2. Redeploy `ovis-mcp`.
+3. Smoke-test over HTTPS with the static token, deleting the test rows afterwards.
+4. Apply `…110419`, then record it.
+5. Merge to main, which pushes the UI.
+
+Before step 2, the deployed v1 function still writes to `listing_staging`, which is harmless. Between steps 1 and 5, prod runs the new schema with the old UI, which is compatible: existing screens ignore the new columns.
+
+## 12. Duplicate comps — proposals (AWAITING APPROVAL; nothing merged)
+
+Each proposal below rests on three checks: every row's child records were inspected, each pin was reverse-geocoded (Google, ROOFTOP precision), and pin-to-pin distances were measured. **None of the pairs is the same property recorded twice.** Each is two different tenants or uses that share an address string, or adjacent pads with no address. So the proposals are mostly **address corrections, not merges**.
+
+| # | Comps | Evidence | Proposal |
+|---|---|---|---|
+| 1 | **Hiram:** "RaceTrac" (`21e9e9eb`) and "Hilton / Candlewood Purchase" (`8b0e00f5`), both "2850 Jimmy Lee Smith Parkway" | RaceTrac has a sale ($7,079,700 @ 5.65%, NOI $400,003) and its pin reverse-geocodes to **2850**. Hilton/Candlewood has **no** leases, sales, OMs, files or chat. Its pin is ~100 m away and reverse-geocodes to **2856 Jimmy Lee Smith Pkwy**. A gas-station sale and a hotel purchase. | **No merge.** Change the Hilton/Candlewood address to **2856 Jimmy Lee Smith Pkwy**. *Alternative:* delete it if it was a placeholder; it holds no data. |
+| 2 | **Macon:** "7 Brew" (`0f3fb39a`) and "Sonny's BBQ - Macon" (`22919daa`), both "5811 Zebulon Road" | Sonny's is a verified 2021-03-02 land sale ($950,000; 1.43 ac; 5,200 SF; built 2022), and its pin reverse-geocodes to 5881 / **5811** Zebulon. 7 Brew is an `ai_agent` row whose chat says it is *"seeking a rezoning of this Resi lot"*. It also has a Dropbox folder. Its pin is ~90 m away and reverse-geocodes to **5890 Zebulon Rd**. A completed land sale vs a rezoning prospect on a residential lot. | **No merge.** Change 7 Brew's address to **5890 Zebulon Rd** (Mike to confirm against the P&Z docs). Keep its chat and files. |
+| 3 | **Douglasville:** "Chipotle - Douglasville" (`1d782056`) and "Valvoline - Douglasville" (`b182f082`), both with no address/city/state | Different tenants with separate leases (Chipotle `bts_nnn`, Valvoline `ground_lease`). The pins are ~45 m apart, and Valvoline's anchor tenant is "Chipotle", so they are adjacent pads in one development. **Both pins reverse-geocode to the same development address, 5975 Fairburn Rd**, so the pin can't tell the pads apart. | **No merge** (separate pads, separate leases). Set **city/state/ZIP now** (Douglasville, GA 30134). Fill each street address from its APN (a VA task) rather than giving both "5975 Fairburn Rd", which would create a new same-address pair. *Alternative:* merge into one comp "5975 Fairburn Rd" with two leases, if you treat the development as the comp. |
+| 4 | *Not in the original count:* "Chipotle 3 pad Site - Hoschton" (`6be046ec`) has no street address | The pin reverse-geocodes to **3699 Hwy 53, Hoschton** (ROOFTOP). | Fill the address: **3699 Hwy 53**. |
+| 5 | *Not in the original count:* "Dutch Bros" (`aa444493`), Macon, has no street address | The pin reverse-geocodes to **5781 Zebulon Rd** (ROOFTOP). | Fill the address: **5781 Zebulon Rd**. |
+| 6 | *Possible duplicate **sale** to check:* the Dutch Bros sale and the Sonny's BBQ sale | Both are **$950,000** on Zebulon Rd, Macon. Dutch Bros: no date, seller "Chris Patel", 1.03 ac, note "Dutch Bros Purchased this pad". Sonny's: 2021-03-02, 1.43 ac, note "Sonny's BBQ Land". The pins are ~170 m apart and the acreages differ. | **Not concluded.** It may be one transaction entered twice, or a coincidence. Mike to confirm; no change proposed until then. |
+
+**Effect on the intake:** address-less comps never match a listing. The two shared-address pairs only matter if a sweep listing lands on 2850 Jimmy Lee Smith Pkwy or 5811 Zebulon Rd. In that case it attaches to the best row and the review screen warns "another comp shares this address". The corrections above remove both pairs.
+
+**When approved,** the corrections ship as a small data migration applied with phase 1. That migration sets the addresses, and `address_norm` recomputes because it is a generated column. Nothing is deleted unless the row-1 alternative is chosen.
+

@@ -1,39 +1,44 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import {
-  ListingStaging,
-  ListingStatus,
-  LISTING_STATUSES,
-  LISTING_STATUS_LABEL,
-  fetchListings,
-  fmtPrice,
-  fmtCap,
-  fmtDateET,
-} from '../lib/listingStaging';
-import ListingStagingSlideout from '../components/mapping/slideouts/ListingStagingSlideout';
+import { ListingFacts, fetchListingFacts, fmtMoney, fmtPct, fmtDateET } from '../lib/compListings';
+import { CompProperty, LISTING_STATUS_LABEL } from '../lib/compTypes';
+import ListingSlideout from '../components/listings/ListingSlideout';
 import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
-import { CompProperty } from '../lib/compTypes';
 
-// Review queue for NNN listings captured via the ovis-mcp intake tools.
-// See docs/NNN_LISTING_INTAKE.md.
+// Review queue for NNN listings. Listings live in the comp database (comp_property +
+// operating_memorandum + comp_listing_event); this page reads comp_listing_facts.
+// Spec: docs/NNN_LISTING_INTAKE_SPEC_v2.md §6 / §8.
 
-type Filter = ListingStatus | 'all';
+type TabKey = 'pending' | 'active' | 'relisted' | 'possibly_off' | 'closed' | 'rejected' | 'all';
 
-const STATUS_PILL: Record<ListingStatus, string> = {
-  pending_review: 'border-[#A27B5C] text-[#A27B5C]',
-  reviewed: 'border-[#4A6B94] text-[#4A6B94]',
-  promoted: 'border-[#002147] bg-[#002147] text-white',
-  rejected: 'border-gray-300 text-gray-400',
-  sold: 'border-[#8FA9C8] text-[#8FA9C8]',
-};
+const DAY = 86_400_000;
+
+const TABS: { key: TabKey; label: string; test: (l: ListingFacts) => boolean }[] = [
+  { key: 'pending', label: 'Pending review', test: (l) => l.review_status === 'pending_review' },
+  { key: 'active', label: 'Active', test: (l) => l.listing_status === 'active' && l.review_status !== 'rejected' },
+  {
+    key: 'relisted', label: 'Re-listed existing comps',
+    // New offering in the last 30 days on a comp that existed before it.
+    test: (l) => l.review_status === 'reviewed'
+      && Date.now() - new Date(l.first_seen_at).getTime() < 30 * DAY
+      && new Date(l.property_created_at).getTime() < new Date(l.first_seen_at).getTime() - 60_000,
+  },
+  { key: 'possibly_off', label: 'Possibly off market', test: (l) => l.possibly_off_market && l.review_status !== 'rejected' },
+  {
+    key: 'closed', label: 'Under contract / off market / sold',
+    test: (l) => l.listing_status !== 'active' && l.review_status !== 'rejected',
+  },
+  { key: 'rejected', label: 'Rejected', test: (l) => l.review_status === 'rejected' },
+  { key: 'all', label: 'All', test: () => true },
+];
 
 export default function ListingReviewPage() {
   const [params, setParams] = useSearchParams();
-  const [listings, setListings] = useState<ListingStaging[]>([]);
+  const [rows, setRows] = useState<ListingFacts[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>('pending_review');
+  const [tab, setTab] = useState<TabKey>('pending');
   const [search, setSearch] = useState('');
   const [openComp, setOpenComp] = useState<CompProperty | null>(null);
 
@@ -47,7 +52,7 @@ export default function ListingReviewPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      setListings(await fetchListings());
+      setRows(await fetchListingFacts());
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load listings');
     } finally {
@@ -57,21 +62,19 @@ export default function ListingReviewPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: listings.length };
-    listings.forEach((l) => { c[l.status] = (c[l.status] ?? 0) + 1; });
-    return c;
-  }, [listings]);
+  const counts = useMemo(
+    () => Object.fromEntries(TABS.map((t) => [t.key, rows.filter(t.test).length])) as Record<TabKey, number>,
+    [rows],
+  );
 
   const visible = useMemo(() => {
+    const test = TABS.find((t) => t.key === tab)!.test;
     const q = search.trim().toLowerCase();
-    return listings.filter((l) =>
-      (filter === 'all' || l.status === filter) &&
-      (!q || [l.tenant, l.address, l.city, l.source].some((v) => v?.toLowerCase().includes(q))),
-    );
-  }, [listings, filter, search]);
+    return rows.filter((l) => test(l)
+      && (!q || [l.tenant, l.property_name, l.address, l.city].some((v) => v?.toLowerCase().includes(q))));
+  }, [rows, tab, search]);
 
-  const unplaced = listings.filter((l) => l.lat == null && l.status !== 'rejected').length;
+  const unplaced = rows.filter((l) => l.lat == null && l.review_status !== 'rejected').length;
 
   const openCompById = async (compId: string) => {
     const { data } = await supabase.from('comp_property').select('*').eq('id', compId).maybeSingle();
@@ -85,34 +88,30 @@ export default function ListingReviewPage() {
           <div>
             <h1 className="text-2xl font-semibold text-[#002147]">NNN Listings</h1>
             <p className="text-sm text-[#4A6B94]">
-              Captured by the OVIS MCP intake. Review, then promote to the Comp Database.
-              {unplaced > 0 && (
-                <span className="ml-2 text-[#A27B5C]">
-                  {unplaced} not on the map (address didn't geocode).
-                </span>
-              )}
+              Offerings in the Comp Database. Approve to show a new comp on the map; diligence happens on the comp.
+              {unplaced > 0 && <span className="ml-2 text-[#A27B5C]">{unplaced} not on the map (address didn't geocode).</span>}
             </p>
           </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tenant, address, city, source"
+            placeholder="Search tenant, address, city"
             className="border border-[#8FA9C8] rounded px-3 py-1.5 text-sm w-72 max-w-full bg-white"
           />
         </div>
 
         <div className="flex flex-wrap gap-1 mb-3">
-          {([{ value: 'all', label: 'All' }, ...LISTING_STATUSES] as { value: Filter; label: string }[]).map((s) => (
+          {TABS.map((t) => (
             <button
-              key={s.value}
-              onClick={() => setFilter(s.value)}
+              key={t.key}
+              onClick={() => setTab(t.key)}
               className={`px-3 py-1 rounded text-sm border ${
-                filter === s.value
+                tab === t.key
                   ? 'bg-[#002147] text-white border-[#002147]'
                   : 'bg-white text-[#8FA9C8] border-[#8FA9C8] hover:text-[#4A6B94]'
               }`}
             >
-              {s.label} ({counts[s.value] ?? 0})
+              {t.label} ({counts[t.key] ?? 0})
             </button>
           ))}
         </div>
@@ -125,46 +124,46 @@ export default function ListingReviewPage() {
               <tr>
                 <th className="px-3 py-2">Tenant</th>
                 <th className="px-3 py-2">Address</th>
-                <th className="px-3 py-2 text-right">Price</th>
+                <th className="px-3 py-2 text-right">Ask</th>
                 <th className="px-3 py-2 text-right">Cap</th>
-                <th className="px-3 py-2">Lease</th>
-                <th className="px-3 py-2">Term left</th>
-                <th className="px-3 py-2">Source</th>
-                <th className="px-3 py-2">First seen</th>
+                <th className="px-3 py-2 text-right">Reduction</th>
+                <th className="px-3 py-2 text-right">DOM</th>
                 <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">First seen</th>
+                <th className="px-3 py-2">Last seen</th>
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-500">Loading…</td></tr>
-              )}
+              {loading && <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-500">Loading…</td></tr>}
               {!loading && visible.length === 0 && (
                 <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-500">No listings.</td></tr>
               )}
               {visible.map((l) => (
                 <tr
-                  key={l.id}
-                  onClick={() => select(l.id)}
-                  className={`border-b border-gray-100 cursor-pointer hover:bg-[#8FA9C8]/10 ${
-                    selectedId === l.id ? 'bg-[#8FA9C8]/20' : ''
-                  }`}
+                  key={l.listing_id}
+                  onClick={() => select(l.listing_id)}
+                  className={`border-b border-gray-100 cursor-pointer hover:bg-[#8FA9C8]/10 ${selectedId === l.listing_id ? 'bg-[#8FA9C8]/20' : ''}`}
                 >
-                  <td className="px-3 py-2 font-medium text-[#002147]">{l.tenant ?? '—'}</td>
+                  <td className="px-3 py-2 font-medium text-[#002147]">
+                    {l.tenant ?? l.property_name ?? '—'}
+                    {l.review_status === 'pending_review' && (
+                      <span className="ml-2 text-[10px] px-1 py-0.5 rounded border border-[#A27B5C] text-[#A27B5C] uppercase">pending</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-[#002147]">
-                    {l.address}{l.city ? `, ${l.city}` : ''}
+                    {[l.address, l.city].filter(Boolean).join(', ') || '—'}
                     {l.lat == null && <span className="ml-1 text-[#A27B5C]" title="Not on the map">⚠</span>}
                   </td>
-                  <td className="px-3 py-2 text-right text-[#4A6B94]">{fmtPrice(l.price)}</td>
-                  <td className="px-3 py-2 text-right text-[#4A6B94]">{fmtCap(l.cap_rate)}</td>
-                  <td className="px-3 py-2">{l.lease_type ?? '—'}</td>
-                  <td className="px-3 py-2">{l.term_left ?? '—'}</td>
-                  <td className="px-3 py-2">{l.source ?? '—'}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtDateET(l.first_seen)}</td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded border text-xs whitespace-nowrap ${STATUS_PILL[l.status]}`}>
-                      {LISTING_STATUS_LABEL[l.status]}
-                    </span>
+                  <td className="px-3 py-2 text-right text-[#4A6B94]">{fmtMoney(l.current_ask)}</td>
+                  <td className="px-3 py-2 text-right text-[#4A6B94]">{fmtPct(l.current_cap)}</td>
+                  <td className="px-3 py-2 text-right">{l.total_reduction_pct ? `${l.total_reduction_pct}%` : '—'}</td>
+                  <td className="px-3 py-2 text-right">{l.days_on_market ?? '—'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {LISTING_STATUS_LABEL[l.listing_status]}
+                    {l.possibly_off_market && <span className="ml-1 text-[#A27B5C]" title="Not seen by the sweep for 21+ days">⏸</span>}
                   </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtDateET(l.first_seen_at)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtDateET(l.last_seen_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -173,15 +172,15 @@ export default function ListingReviewPage() {
       </div>
 
       {selectedId && (
-        <ListingStagingSlideout
+        <ListingSlideout
           listingId={selectedId}
           onClose={() => select(null)}
-          onChanged={(fresh) => setListings((prev) => prev.map((l) => (l.id === fresh.id ? fresh : l)))}
+          onChanged={load}
           onOpenComp={openCompById}
         />
       )}
       {openComp && (
-        <CompDetailSlideout comp={openComp} onClose={() => setOpenComp(null)} />
+        <CompDetailSlideout comp={openComp} onClose={() => setOpenComp(null)} onSaved={load} />
       )}
     </div>
   );

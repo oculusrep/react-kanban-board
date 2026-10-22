@@ -1,9 +1,13 @@
 # NNN Listing Intake (OVIS MCP)
 
-**Status (2026-10-22):** built on `feature/nnn-listing-intake`. The migration is **applied to prod**,
-and the `ovis-mcp` edge function is **deployed**. Both were tested end-to-end over HTTPS with the
-static token. The UI (review page, map layer, consent page) is **not on main yet**. claude.ai
-OAuth is **not enabled yet**: it needs the dashboard steps below.
+> **Superseded data model.** v1 below used a separate `listing_staging` table. **Spec v2**
+> ([NNN_LISTING_INTAKE_SPEC_v2.md](NNN_LISTING_INTAKE_SPEC_v2.md)) moves listings into the existing comp
+> database. Phase 1 is built on `feature/nnn-listing-intake` and awaits the duplicate-comp approval
+> before prod. **Still current here:** the endpoint, the auth design and the OAuth dashboard steps (§Auth).
+> The OAuth step waits until phase 1 is merged.
+
+**v1 status (2026-10-22):** the v1 migration and edge function were applied/deployed to prod. `listing_staging` is
+still live with 0 rows. It is dropped by `20261022110419_drop_listing_staging.sql` after the v2 function deploy.
 
 ## What it does
 

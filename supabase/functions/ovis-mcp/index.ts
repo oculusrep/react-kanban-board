@@ -4,10 +4,15 @@
  * MCP over HTTP (JSON-RPC 2.0, JSON responses). Built to be added as a claude.ai custom
  * connector. See docs/NNN_LISTING_INTAKE.md.
  *
- * Tools (narrow — no raw SQL; every write is a SECURITY DEFINER RPC granted to service_role):
- *   1. upsert_listing(tenant, address, city, price, cap_rate, lease_type, term_left, source, source_url, …)
- *   2. create_va_task(listing_id, assignee='Noree', due=today, title?, checklist?)
- *   3. list_recent_listings(days=30)
+ * Listings feed the EXISTING comp database (docs/NNN_LISTING_INTAKE_SPEC_v2.md, phase 1):
+ * comp_property (review_status) + lease_comp + operating_memorandum (the offering) +
+ * comp_listing_event (price/status history).
+ *
+ * Tools (narrow — no raw SQL; writes are SECURITY DEFINER RPCs granted to service_role):
+ *   1. upsert_listing(tenant, address, city, price, cap_rate, …) → upsert_comp_listing
+ *   2. create_va_task(listing_id, assignee='Noree', due=today, title?, checklist?) → create_comp_va_task
+ *   3. list_recent_listings(days=30) → comp_listing_facts
+ *   4. listing_activity(date? | since?) → listing_activity (daily summary feed)
  *
  * Auth — two accepted credentials, both as `Authorization: Bearer …`:
  *   a) OAuth 2.1 access token issued by Supabase Auth's OAuth server (what claude.ai uses; it
@@ -16,7 +21,8 @@
  *      public.is_internal_user(), checked AS that user.
  *      Docs: https://supabase.com/docs/guides/auth/oauth-server/mcp-authentication
  *   b) Static token = env OVIS_MCP_INTAKE_TOKEN, for Claude Code / scripts (claude.ai web
- *      connectors cannot send a static header). Acts as no OVIS user (created_by NULL).
+ *      connectors cannot send a static header). Acts as no user (audit columns NULL).
+ * Comp audit columns reference auth.users, so the OAuth caller's AUTH id is what's passed.
  * verify_jwt is off for this function (config.toml); the checks above are the gate.
  */
 
@@ -24,7 +30,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { censusGeocode } from '../_shared/site-research/geocode.ts';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.1.0' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.2.0' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -38,15 +44,16 @@ const CORS_HEADERS = {
   'Access-Control-Expose-Headers': 'WWW-Authenticate',
 };
 
+// Each line says where on the comp (CompDetailSlideout) the answer goes.
 const DEFAULT_VA_CHECKLIST = [
-  'Get OM',
-  'Confirm guarantor (corporate vs franchisee)',
-  'Base rent / NOI',
-  'Rent increases',
-  'Options',
-  'Lease start / expiry',
-  'APN',
-  'Attach OM PDF',
+  'Get OM → OM tab (broker, list date)',
+  'Confirm guarantor: corporate vs franchisee, and guarantor name → Leases tab',
+  'Base rent / NOI → Leases tab (annual base rent)',
+  'Rent increases (amount + frequency) → Leases tab',
+  'Options (count + length) → Leases tab',
+  'Lease start / expiry → Leases tab',
+  'APN → Overview › More Details (parcel ID)',
+  'Attach OM PDF → Files tab',
 ];
 
 type JsonRpcId = string | number | null;
@@ -66,7 +73,7 @@ const TOOLS = [
   {
     name: 'upsert_listing',
     description:
-      'Record an NNN investment listing (single-tenant net-lease property for sale) in OVIS listing staging. The address is normalized server-side (with city + state) and de-duplicated: a listing already seen just gets last_seen bumped and any newly supplied fields refreshed. New listings are geocoded and appear on the OVIS map. Returns {id, is_new}. Call create_va_task afterwards for new listings that need diligence.',
+      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). Call create_va_task for results with is_new = true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -74,11 +81,18 @@ const TOOLS = [
         address: { type: 'string', description: 'Street address, e.g. "1234 Peachtree Industrial Blvd".' },
         city: { type: 'string' },
         state: { type: 'string', default: 'GA', description: 'Two-letter state. Default GA.' },
+        zip: { type: ['string', 'null'] },
+        apn: { type: ['string', 'null'], description: 'Parcel number, only if the listing states it. Matched before address.' },
         price: { type: ['number', 'null'], description: 'Asking price in dollars.' },
-        cap_rate: { type: ['number', 'null'], description: 'Cap rate as a PERCENT, e.g. 6.25 for 6.25%.' },
+        cap_rate: { type: ['number', 'null'], description: 'Asking cap rate as a PERCENT, e.g. 6.25 for 6.25%.' },
+        noi: { type: ['number', 'null'], description: 'NOI only if the listing states it.' },
         lease_type: { type: ['string', 'null'], description: 'As listed, e.g. "Absolute NNN", "NN", "Ground lease".' },
-        term_left: { type: ['string', 'null'], description: 'Remaining lease term as listed, e.g. "14 years".' },
-        guarantor_type: { type: ['string', 'null'], description: 'Only if the listing states it: "corporate" or "franchisee".' },
+        term_left: { type: ['string', 'null'], description: 'Remaining lease term as listed, e.g. "14 years". Do not convert to a date.' },
+        guarantor_type: { type: ['string', 'null'], enum: ['corporate', 'franchisee', 'personal', 'other', null], description: 'Only if the listing states it.' },
+        guarantor_name: { type: ['string', 'null'], description: 'Guarantor entity, only if stated.' },
+        list_date: { type: ['string', 'null'], format: 'date', description: 'YYYY-MM-DD the listing went up, only if stated.' },
+        broker_name: { type: ['string', 'null'] },
+        brokerage: { type: ['string', 'null'] },
         source: { type: ['string', 'null'], description: 'Where it was found, e.g. "Crexi", "LoopNet", "broker email".' },
         source_url: { type: ['string', 'null'] },
       },
@@ -88,11 +102,11 @@ const TOOLS = [
   {
     name: 'create_va_task',
     description:
-      "Create a diligence task for a staged listing in a VA's OVIS task Inbox (default: Noree), with a checklist. The default checklist is: get OM, confirm guarantor (corp vs franchisee), base rent/NOI, increases, options, lease start/expiry, APN, attach OM PDF. Returns the task id.",
+      "Create a diligence task for a listing in a VA's OVIS task Inbox (default: Noree). The task links to the listing in OVIS and carries a checklist saying where each answer goes on the comp: OM, guarantor (corp vs franchisee + name), base rent/NOI, increases, options, lease start/expiry, APN, OM PDF. Returns the task id.",
     inputSchema: {
       type: 'object',
       properties: {
-        listing_id: { type: 'string', format: 'uuid', description: 'id returned by upsert_listing.' },
+        listing_id: { type: 'string', format: 'uuid', description: 'listing_id (or comp_property_id) returned by upsert_listing.' },
         assignee: { type: 'string', default: 'Noree', description: 'First name of an OVIS user.' },
         due: { type: 'string', format: 'date', description: 'YYYY-MM-DD. Default: today (Eastern).' },
         title: { type: 'string', description: 'Optional task title. Default "NNN listing — <tenant> — <address>".' },
@@ -104,11 +118,23 @@ const TOOLS = [
   {
     name: 'list_recent_listings',
     description:
-      'List staged NNN listings first seen in the last N days (default 30), newest first. Use it to avoid re-reporting listings already captured.',
+      'List listings (offerings) first seen in the last N days (default 30), newest first, with review and listing status. Includes rejected ones so you do not re-report them.',
     inputSchema: {
       type: 'object',
       properties: {
         days: { type: 'integer', minimum: 1, maximum: 365, default: 30 },
+      },
+    },
+  },
+  {
+    name: 'listing_activity',
+    description:
+      'Daily-summary feed. For one Eastern-time day (date, default today) or since a timestamp: new listings, price/cap changes (old → new), status changes (under contract, back on market, off market, closed), and listings possibly off market (active but unseen 21+ days — for VA review, never auto-closed). Report the groups separately.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', format: 'date', description: 'YYYY-MM-DD, an Eastern-time calendar day. Default today.' },
+        since: { type: 'string', format: 'date-time', description: 'Alternative to date: everything since this ISO timestamp.' },
       },
     },
   },
@@ -118,7 +144,8 @@ const TOOLS = [
 // Auth
 // ----------------------------------------------------------------------------
 
-type Caller = { kind: 'static' } | { kind: 'user'; ovisUserId: string | null };
+type Caller = { kind: 'static' } | { kind: 'user'; authUserId: string };
+const actingAuthId = (c: Caller) => (c.kind === 'user' ? c.authUserId : null);
 
 function safeEqual(a: string, b: string): boolean {
   if (!a || !b) return false;
@@ -150,8 +177,7 @@ async function authorize(req: Request): Promise<Caller | Response> {
 
   if (safeEqual(bearer, Deno.env.get('OVIS_MCP_INTAKE_TOKEN') ?? '')) return { kind: 'static' };
 
-  const service = getService();
-  const { data: authData, error: authErr } = await service.auth.getUser(bearer);
+  const { data: authData, error: authErr } = await getService().auth.getUser(bearer);
   if (authErr || !authData?.user) return unauthorized('invalid_token');
 
   // "Internal" is whatever the database says it is — checked as the user.
@@ -167,9 +193,7 @@ async function authorize(req: Request): Promise<Caller | Response> {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
-
-  const { data: u } = await service.from('user').select('id').eq('auth_user_id', authData.user.id).maybeSingle();
-  return { kind: 'user', ovisUserId: u?.id ?? null };
+  return { kind: 'user', authUserId: authData.user.id };
 }
 
 // ----------------------------------------------------------------------------
@@ -195,17 +219,33 @@ const num = (v: unknown, field: string): number | null => {
   if (!Number.isFinite(n) || n < 0) throw new ToolError(`${field} must be a non-negative number`);
   return n;
 };
+const isoDate = (v: unknown, field: string): string | null => {
+  const d = str(v);
+  if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new ToolError(`${field} must be YYYY-MM-DD`);
+  return d;
+};
 
 function etToday(): string {
   // en-CA formats as YYYY-MM-DD.
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
+/** UTC instant of midnight America/New_York on a YYYY-MM-DD date (DST-aware). */
+function etMidnight(date: string): Date {
+  const utcMidnight = new Date(`${date}T00:00:00Z`);
+  const tz = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'shortOffset' })
+    .formatToParts(new Date(utcMidnight.getTime() + 5 * 3_600_000)) // 00:00–01:00 local: before any 2am DST switch
+    .find((p) => p.type === 'timeZoneName')?.value ?? 'GMT-5';
+  const m = tz.match(/GMT([+-]\d+)(?::(\d+))?/);
+  const offsetMin = m ? Number(m[1]) * 60 + Math.sign(Number(m[1])) * Number(m[2] ?? 0) : -300;
+  return new Date(utcMidnight.getTime() - offsetMin * 60_000);
+}
+
 /**
  * Google Geocoding when a server-side key is configured (GOOGLE_GEOCODING_API_KEY — the
  * browser VITE_ key is referrer-restricted and can't be used here), otherwise the free US
- * Census geocoder. Only an unambiguous match is accepted; anything else is recorded as
- * geocode_status='failed' so the review screen says so instead of dropping a wrong pin.
+ * Census geocoder. Only an unambiguous match is accepted; anything else leaves the comp
+ * without coordinates, which the review screen reports as "not on map".
  * Google API: https://developers.google.com/maps/documentation/geocoding/requests-geocoding
  */
 async function geocode(oneLine: string): Promise<{ lat: number; lng: number; via: string } | { error: string }> {
@@ -238,61 +278,67 @@ async function toolUpsertListing(args: any, caller: Caller) {
   const state = (str(args?.state) ?? 'GA').toUpperCase();
 
   const supabase = getService();
-  const { data, error } = await supabase.rpc('upsert_listing_staging', {
+  const { data, error } = await supabase.rpc('upsert_comp_listing', {
     p_tenant: str(args?.tenant),
     p_address: address,
     p_city: city,
     p_state: state,
+    p_zip: str(args?.zip),
+    p_apn: str(args?.apn),
     p_price: num(args?.price, 'price'),
     p_cap_rate: capRate,
+    p_noi: num(args?.noi, 'noi'),
     p_lease_type: str(args?.lease_type),
     p_term_left: str(args?.term_left),
+    p_guarantor_type: str(args?.guarantor_type),
+    p_guarantor_name: str(args?.guarantor_name),
     p_source: str(args?.source),
     p_source_url: str(args?.source_url),
-    p_guarantor_type: str(args?.guarantor_type),
-    p_acting_user_id: caller.kind === 'user' ? caller.ovisUserId : null,
+    p_list_date: isoDate(args?.list_date, 'list_date'),
+    p_broker_name: str(args?.broker_name),
+    p_brokerage: str(args?.brokerage),
+    p_acting_auth_id: actingAuthId(caller),
   });
   if (error) throw new ToolError(`upsert_listing failed: ${error.message}`);
-  const row = Array.isArray(data) ? data[0] : data;
+  const result = data as Record<string, unknown>;
 
-  let geocoded: string | null = null;
-  if (row?.needs_geocode) {
+  // Geocode a comp with no coordinates (new, or an earlier attempt failed — retried each
+  // daily sighting). Raw latitude/longitude only; verified_* stay human-set.
+  if (result.needs_geocode && !result.skipped) {
     try {
       const g = await geocode(`${address}, ${city}, ${state}`);
-      const patch = 'error' in g
-        ? { geocode_status: 'failed' }
-        : { lat: g.lat, lng: g.lng, geocode_status: 'ok' };
-      await supabase.from('listing_staging').update(patch).eq('id', row.id);
-      geocoded = 'error' in g ? `not placed on map (${g.error})` : `placed on map via ${g.via}`;
+      if ('error' in g) {
+        result.geocode = `not placed on map (${g.error})`;
+      } else {
+        await supabase.from('comp_property').update({ latitude: g.lat, longitude: g.lng }).eq('id', result.comp_property_id);
+        result.geocode = `placed on map via ${g.via}`;
+      }
     } catch (e) {
-      // Leave geocode_status NULL so the next sighting retries.
-      geocoded = `geocoding error, will retry on next sighting: ${e instanceof Error ? e.message : e}`;
+      result.geocode = `geocoding error, will retry on next sighting: ${e instanceof Error ? e.message : e}`;
     }
   }
-
-  return { id: row.id, is_new: row.is_new, address_norm: row.address_norm, ...(geocoded ? { geocode: geocoded } : {}) };
+  delete result.needs_geocode;
+  return { id: result.listing_id, ...result }; // `id` kept for v1 callers
 }
 
 async function toolCreateVaTask(args: any, caller: Caller) {
   const listingId = str(args?.listing_id);
   if (!listingId) throw new ToolError('listing_id is required');
-  const due = str(args?.due) ?? etToday();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) throw new ToolError('due must be YYYY-MM-DD');
+  const due = isoDate(args?.due, 'due') ?? etToday();
   const checklist = Array.isArray(args?.checklist) && args.checklist.length
     ? args.checklist.filter((x: unknown) => typeof x === 'string')
     : DEFAULT_VA_CHECKLIST;
 
-  const { data, error } = await getService().rpc('create_listing_va_task', {
+  const { data, error } = await getService().rpc('create_comp_va_task', {
     p_listing_id: listingId,
     p_assignee_first_name: str(args?.assignee) ?? 'Noree',
     p_due: due,
     p_title: str(args?.title),
     p_checklist: checklist,
-    p_acting_user_id: caller.kind === 'user' ? caller.ovisUserId : null,
+    p_acting_auth_id: actingAuthId(caller),
   });
   if (error) throw new ToolError(`create_va_task failed: ${error.message}`);
-  const row = Array.isArray(data) ? data[0] : data;
-  return { task_id: row.task_id, assignee_id: row.assignee_id, due: row.due_date, checklist_items: row.checklist_count };
+  return data;
 }
 
 async function toolListRecentListings(args: any) {
@@ -304,10 +350,10 @@ async function toolListRecentListings(args: any) {
   const rows: unknown[] = [];
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await getService()
-      .from('listing_staging')
-      .select('id, address_norm, tenant, first_seen, last_seen, status')
-      .gte('first_seen', since)
-      .order('first_seen', { ascending: false })
+      .from('comp_listing_facts')
+      .select('listing_id, comp_property_id, address_norm, tenant, first_seen_at, last_seen_at, listing_status, review_status, current_ask, current_cap')
+      .gte('first_seen_at', since)
+      .order('first_seen_at', { ascending: false })
       .range(offset, offset + PAGE - 1);
     if (error) throw new ToolError(`list_recent_listings failed: ${error.message}`);
     rows.push(...(data ?? []));
@@ -316,10 +362,34 @@ async function toolListRecentListings(args: any) {
   return { days, count: rows.length, listings: rows };
 }
 
+async function toolListingActivity(args: any) {
+  let since: Date;
+  let until: Date;
+  const sinceArg = str(args?.since);
+  if (sinceArg) {
+    since = new Date(sinceArg);
+    if (Number.isNaN(since.getTime())) throw new ToolError('since must be an ISO timestamp');
+    until = new Date();
+  } else {
+    const date = isoDate(args?.date, 'date') ?? etToday();
+    since = etMidnight(date);
+    const next = new Date(`${date}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    until = etMidnight(next.toISOString().slice(0, 10));
+  }
+  const { data, error } = await getService().rpc('listing_activity', {
+    p_since: since.toISOString(),
+    p_until: until.toISOString(),
+  });
+  if (error) throw new ToolError(`listing_activity failed: ${error.message}`);
+  return data;
+}
+
 const TOOL_IMPLS: Record<string, (args: unknown, caller: Caller) => Promise<unknown>> = {
   upsert_listing: toolUpsertListing,
   create_va_task: toolCreateVaTask,
   list_recent_listings: toolListRecentListings,
+  listing_activity: toolListingActivity,
 };
 
 // ----------------------------------------------------------------------------
