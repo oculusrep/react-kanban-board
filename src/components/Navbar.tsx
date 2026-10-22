@@ -176,6 +176,8 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { user, signOut, userRole } = useAuth();
   const { hasPermission } = usePermissions();
+  // Same set as public.is_internal_user(); listing_staging RLS enforces it server-side.
+  const isInternalRole = ['admin', 'broker_full', 'broker_lite', 'va'].includes(userRole ?? '');
   const { getRecentItems } = useRecentlyViewed();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
@@ -543,6 +545,17 @@ export default function Navbar() {
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
                     >
                       🏗️ Municipal Project Import
+                    </button>
+                  )}
+                  {isInternalRole && (
+                    <button
+                      onClick={() => {
+                        navigate('/listings/review');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      🏷️ NNN Listings
                     </button>
                   )}
                   <button
@@ -1164,6 +1177,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     🏗️ Municipal Project Import
+                  </button>
+                )}
+                {isInternalRole && (
+                  <button
+                    onClick={() => {
+                      navigate('/listings/review');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    🏷️ NNN Listings
                   </button>
                 )}
                 {userRole === 'admin' && (

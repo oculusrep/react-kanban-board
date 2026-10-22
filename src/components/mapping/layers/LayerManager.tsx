@@ -21,7 +21,7 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database' | 'listing_staging';
 
 export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
@@ -255,6 +255,14 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     type: 'comp_database',
     icon: '📇',
     description: 'Comparable leases, sales and Operating Memorandums tied to locations',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },  {
+    id: 'listing_staging',
+    name: 'NNN Listings',
+    type: 'listing_staging',
+    icon: '🏷️',
+    description: 'NNN investment listings captured by the intake (pending review / promoted)',
     defaultVisible: false,
     isSystemLayer: true,
   },

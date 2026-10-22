@@ -99,6 +99,8 @@ import TypographyTestPage from "./pages/TypographyTestPage";
 import VelocityAnalyticsPage from "./pages/VelocityAnalyticsPage";
 import HistoricalVelocityPage from "./pages/HistoricalVelocityPage";
 import ProspectingScorecardPage from "./pages/ProspectingScorecardPage";
+import ListingReviewPage from "./pages/ListingReviewPage";
+import OAuthConsentPage from "./pages/OAuthConsentPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -165,6 +167,9 @@ function App() {
           <Route path="starbucks-board" element={<CoachRoute><StarbucksDealBoardPage /></CoachRoute>} />
           <Route path="tasks" element={<CoachRoute><TasksDashboardPage /></CoachRoute>} />
           <Route path="tasks/all" element={<CoachRoute><TasksPage /></CoachRoute>} />
+          <Route path="listings/review" element={<CoachRoute><ListingReviewPage /></CoachRoute>} />
+          {/* OAuth 2.1 consent (Supabase Auth OAuth server → OVIS MCP connector). Login form shows in place when signed out. */}
+          <Route path="oauth/consent" element={<CoachRoute><OAuthConsentPage /></CoachRoute>} />
           <Route path="settings/time-blocks" element={<CoachRoute><BlockTemplateSettingsPage /></CoachRoute>} />
           <Route path="settings/calendars" element={<CoachRoute><CalendarSettingsPage /></CoachRoute>} />
           <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />

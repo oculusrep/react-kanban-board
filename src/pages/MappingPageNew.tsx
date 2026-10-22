@@ -42,6 +42,8 @@ import CachedDemographicsLayer from '../components/mapping/layers/CachedDemograp
 import CompDatabaseLayer from '../components/mapping/layers/CompDatabaseLayer';
 import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
 import CompContextMenu from '../components/mapping/CompContextMenu';
+import ListingStagingLayer from '../components/mapping/layers/ListingStagingLayer';
+import ListingStagingSlideout from '../components/mapping/slideouts/ListingStagingSlideout';
 import { CompProperty } from '../lib/compTypes';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
@@ -71,7 +73,7 @@ import PropertySearchResultsTable from '../components/advanced-search/PropertySe
 import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
 import ContactFormModal from '../components/ContactFormModal';
 import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { supportsRightClick, isTouchDevice } from '../utils/deviceDetection';
 import { supabase } from '../lib/supabaseClient';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -214,6 +216,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
   // Comp Database slideout — independent of the shared pin-details state.
   const [selectedComp, setSelectedComp] = useState<CompProperty | null>(null);
+  const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [compCreateAt, setCompCreateAt] = useState<{ lat: number; lng: number } | null>(null);
   const [verifyingCompId, setVerifyingCompId] = useState<string | null>(null);
   const [compContextMenu, setCompContextMenu] = useState<{
@@ -3239,6 +3242,37 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       )}
                     </div>
 
+                    {/* NNN Listings system layer — listing_staging (ovis-mcp intake) */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('listing_staging')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.listing_staging?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.listing_staging?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>🏷️</span>
+                          <span className="text-sm font-medium text-gray-900">NNN Listings</span>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.listing_staging?.count ?? 0}
+                        </span>
+                      </div>
+                      {layerState.listing_staging?.isVisible && (
+                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500">
+                          Placed listings only — unplaced ones are on the{' '}
+                          <Link to="/listings/review" className="underline">review screen</Link>.
+                        </div>
+                      )}
+                    </div>
+
                     {/* Cached Demographics system layer — pins for prior ESRI enrichment
                         lookups. Click a pin to re-open the slideout without a new ESRI call. */}
                     <div className="p-2 border-b border-gray-200">
@@ -3740,6 +3774,14 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   setVerifyingCompId(null);
                 }
               }}
+            />
+
+            {/* NNN Listings — listing_staging intake pins */}
+            <ListingStagingLayer
+              map={mapInstance}
+              isVisible={layerState.listing_staging?.isVisible || false}
+              selectedListingId={selectedListingId}
+              onPinClick={(id) => setSelectedListingId(id)}
             />
 
             {/* Starbucks Licensed Stores — confidential, permission-gated */}
@@ -4327,6 +4369,21 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           topOffset={showPropertySearch ? 45 : 0}
           onClose={() => { setSelectedComp(null); setCompCreateAt(null); }}
           onSaved={() => refreshLayer('comp_database')}
+        />
+      )}
+
+      {/* NNN listing slideout — Promote opens the new comp in its own overlay */}
+      {selectedListingId && (
+        <ListingStagingSlideout
+          listingId={selectedListingId}
+          topOffset={showPropertySearch ? 45 : 0}
+          onClose={() => setSelectedListingId(null)}
+          onChanged={() => refreshLayer('listing_staging')}
+          onOpenComp={async (compId) => {
+            const { data } = await supabase.from('comp_property').select('*').eq('id', compId).maybeSingle();
+            if (data) { setCompCreateAt(null); setSelectedComp(data as CompProperty); }
+            refreshLayer('comp_database');
+          }}
         />
       )}
 
