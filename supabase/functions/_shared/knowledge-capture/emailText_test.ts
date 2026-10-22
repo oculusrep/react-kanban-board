@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import { hasSignature, ownText, signatureSource } from './emailText.ts'
 import { verifyDetails } from './proposal.ts'
-import { dropOurOwnDetails, lookupEmailSignature, type LookupDeps, type RpcResult } from './emailLookup.ts'
+import { dropOurOwnDetails, emailFromSender, isBulkSender, lookupEmailSignature, type LookupDeps, type RpcResult } from './emailLookup.ts'
 import { SIGNATURE_OUTPUT_FORMAT } from './signaturePrompt.ts'
 
 // ---------------------------------------------------------------------------
@@ -311,7 +311,9 @@ Deno.test('scan skips the phone one-liner and the reply, and extracts from the f
   assertEquals(res.status, 200)
   const body = res.body as { result: string; details: Record<string, string>; source: Record<string, string> }
   assertEquals(body.result, 'found')
-  assertEquals(body.details, { phone: '404.555.0848' })
+  // Phone from the signature; email is the From address we searched on (the
+  // model's plyons@ guess came from the forwarded part and was dropped).
+  assertEquals(body.details, { phone: '404.555.0848', email: 'sam@example-group.com' })
   assertEquals(body.source.email_id, '3')
   assertEquals(body.source.received_at, '2026-10-15T12:00:00Z')
   assertEquals(body.source.sender_email, 'sam@example-group.com')
@@ -331,4 +333,91 @@ Deno.test('no email with a signature in the window → no_signature', async () =
 Deno.test('the signature schema covers exactly the fields verifyDetails knows', () => {
   const props = ((SIGNATURE_OUTPUT_FORMAT.schema as Record<string, unknown>).properties as Record<string, { properties: Record<string, unknown> }>).details.properties
   assertEquals(Object.keys(props).sort(), ['address', 'city', 'company', 'email', 'mobile_phone', 'phone', 'state', 'title', 'zip'])
+})
+
+// ---------------------------------------------------------------------------
+// The email field comes from the From address (2026-10-22 bug: it was blank
+// whenever the signature had no address, because verifyDetails() only sees the
+// stripped body and the From header isn't in it)
+// ---------------------------------------------------------------------------
+/** Real shape (redacted): a signature with a name, title, firm and phones — no address. */
+const SIGNATURE_WITHOUT_EMAIL = [
+  'Sounds good, I will send the LOI over this afternoon.',
+  '',
+  'Thanks,',
+  'Paul Rutledge',
+  'Vice President | Retail',
+  'Certified Commercial Realty',
+  'O: 770-555-0110',
+  'M: 404-555-0187',
+  '',
+  'On Mon, Oct 19, 2026 at 11:02\u202fAM Mike Minihan <mike@oculusrep.com> wrote:',
+  '> Paul, can you send the LOI?',
+  '> M: 404-326-4010',
+].join('\r\n')
+
+Deno.test('signature with no email: the From address fills the email field', async () => {
+  const d = deps(
+    {
+      intel_email_lookup_allowed: () => ({ data: true, error: null }),
+      intel_mailbox_emails_from: () => ({
+        data: [{ id: 'e1', received_at: '2026-10-19T16:00:00Z', sender_email: 'Paul.Rutledge@CertifiedCRE.com', sender_name: 'Paul Rutledge', subject: 'Re: LOI', body_text: SIGNATURE_WITHOUT_EMAIL }],
+        error: null,
+      }),
+      intel_internal_contact_points: () => ({ data: OURS, error: null }),
+    },
+    // What the model returns: it copies the header address too; verifyDetails drops that one.
+    { email: 'paul.rutledge@certifiedcre.com', title: 'Vice President | Retail', company: 'Certified Commercial Realty', phone: '770-555-0110', mobile_phone: '404-555-0187' },
+  )
+  const res = await lookupEmailSignature(d, { name: 'Paul Rutledge', sender_email: 'paul.rutledge@certifiedcre.com' })
+  const body = res.body as { result: string; details: Record<string, string>; signature_email?: string }
+  assertEquals(body.result, 'found')
+  assertEquals(body.details, {
+    email: 'paul.rutledge@certifiedcre.com',
+    title: 'Vice President | Retail',
+    company: 'Certified Commercial Realty',
+    phone: '770-555-0110',
+    mobile_phone: '404-555-0187',
+  })
+  assertEquals(body.signature_email, undefined)
+  // And the quoted thread still can't leak Mike's mobile into it.
+  assert(!Object.values(body.details).some((v) => v.replace(/\D/g, '') === '4043264010'))
+})
+
+Deno.test('signature lists a different address: From stays in the field, the other is reported', () => {
+  const r = emailFromSender({ email: 'paul@personal-example.com', phone: '770-555-0110' }, 'Paul.Rutledge@certifiedcre.com', OURS)
+  assertEquals(r.details, { email: 'paul.rutledge@certifiedcre.com', phone: '770-555-0110' })
+  assertEquals(r.signature_email, 'paul@personal-example.com')
+})
+
+Deno.test('same address in signature and From: no note', () => {
+  const r = emailFromSender({ email: 'paul.rutledge@certifiedcre.com' }, 'paul.rutledge@certifiedcre.com', OURS)
+  assertEquals(r, { details: { email: 'paul.rutledge@certifiedcre.com' } })
+})
+
+Deno.test('mailing-service From (real Constant Contact shape) is never the email; the signature\'s address is', () => {
+  const relay = 'paul.rutledge-certifiedcre.com@shared1.ccsend.com'
+  assertEquals(emailFromSender({ email: 'paul.rutledge@certifiedcre.com' }, relay, OURS), {
+    details: { email: 'paul.rutledge@certifiedcre.com' },
+    relay_from: relay,
+  })
+  assertEquals(emailFromSender({ phone: '770-555-0110' }, relay, OURS), { details: { phone: '770-555-0110' }, relay_from: relay })
+})
+
+Deno.test('an @oculusrep.com From is never prefilled, however it arrives', () => {
+  assertEquals(emailFromSender({}, 'Someone@OculusRep.com', OURS), { details: {} })
+  assertEquals(emailFromSender({ email: 'asantos@oculusrep.com' }, 'paul@certifiedcre.com', OURS), {
+    details: { email: 'paul@certifiedcre.com' },
+  })
+})
+
+Deno.test('bulk-sender detection: relays, marketing subdomains, no-replies — not ordinary people', () => {
+  for (const a of [
+    'paul.rutledge-certifiedcre.com@shared1.ccsend.com', 'x@naicolumbia.ccsend.com', 'news@10333139.mailchimpapp.com',
+    'leasing@email.riverwoodproperties.com', 'alerts@campaigns.crexi.com', 'x@mail.salesforce.com', 'x@10998460.brevosend.com',
+    'noreply@placer.ai', 'notifications@example.com', 'no-reply+abc@example.com',
+  ]) assert(isBulkSender(a), a)
+  for (const a of ['paul.rutledge@certifiedcre.com', 'jdoe@gmail.com', 'walt@dellwoodretail.com', 'emma@example.com', 'info@smallfirm.com']) {
+    assert(!isBulkSender(a), a)
+  }
 })

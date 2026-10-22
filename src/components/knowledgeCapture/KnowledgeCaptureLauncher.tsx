@@ -73,7 +73,12 @@ export function splitPersonName(name: string): { first_name: string; last_name: 
  * email they came from, or nothing and the reason.
  */
 export type EmailPrefill =
-  | { details: NonNullable<UnresolvedName['details']>; source: EmailSignatureSource }
+  | {
+      details: NonNullable<UnresolvedName['details']>;
+      source: EmailSignatureSource;
+      signatureEmail?: string;
+      relayFrom?: string;
+    }
   | { details: Record<string, never>; source: null };
 
 export const NO_SIGNATURE_MESSAGE = 'No signature found in the last 12 months.';
@@ -92,9 +97,14 @@ function formatEasternDate(iso: string): string {
 function emailPrefillNotice(prefill: EmailPrefill): string {
   if (!prefill.source) return NO_SIGNATURE_MESSAGE;
   const from = `${prefill.source.sender_email}'s email of ${formatEasternDate(prefill.source.received_at)}`;
-  return Object.keys(pickContactFields(prefill.details)).length > 0
-    ? `Prefilled from the signature in ${from}. Check it's still current.`
-    : `Found ${from}, but nothing in its signature could be verified.`;
+  const lines = [
+    Object.keys(pickContactFields(prefill.details)).length > 0
+      ? `Prefilled from ${from}. Check it's still current.`
+      : `Found ${from}, but nothing in its signature could be verified.`,
+  ];
+  if (prefill.signatureEmail) lines.push(`The signature also lists ${prefill.signatureEmail}.`);
+  if (prefill.relayFrom) lines.push(`It was sent through a mailing service, so ${prefill.relayFrom} wasn't used as the email.`);
+  return lines.join(' ');
 }
 
 /** Only the fields the contact form takes, and only non-empty ones. */
@@ -320,7 +330,12 @@ const UnresolvedRow: React.FC<{
         setLookup({ kind: 'message', text: 'Needs a first and last name to search your email.' });
       } else {
         setLookup({ kind: 'idle' });
-        onCreate(item, res.result === 'found' ? { details: res.details, source: res.source } : { details: {}, source: null });
+        onCreate(
+          item,
+          res.result === 'found'
+            ? { details: res.details, source: res.source, signatureEmail: res.signature_email, relayFrom: res.relay_from }
+            : { details: {}, source: null },
+        );
       }
     } catch (e) {
       setLookup({ kind: 'message', text: e instanceof Error ? e.message : 'Email lookup failed' });
