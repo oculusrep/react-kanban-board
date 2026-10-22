@@ -1,6 +1,6 @@
 # Intel: prefill "Create contact" from the person's email signature — PLAN
 
-**Status (2026-10-22):** BUILT on branch `feature/intel-email-signature`, **not merged**, awaiting Mike's browser test. Shared prod DB: migration `20261022090213_intel_email_lookup` applied + recorded. Edge function `ovis-knowledge-capture` v12 deployed **from this branch** (adds `lookup_email_signature`; existing actions unchanged). If `main` redeploys that function before this merges, the lookup action disappears until it does. See [Build notes](#build-notes-2026-10-22) at the end.
+**Status (2026-10-22):** LIVE in production for Mike's account only. Merged to main (`62439125`) after Mike's browser test; edge function `ovis-knowledge-capture` v13 deployed from main. Migration `20261022090213_intel_email_lookup` applied + recorded. To enable another user, add their `user.id` to `app_settings.intel_email_lookup_user_ids`. See [Build notes](#build-notes-2026-10-22).
 
 When Intel can't find a person and offers **Create contact**, look the person up in the logged-in user's own stored Gmail and prefill the contact form from the signature in their most recent email — so the signature doesn't have to be pasted. Builds on the paste flow described in [KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md#detail-extraction--only-what-the-note-says).
 
