@@ -8,8 +8,15 @@
 -- deal_activity_state. The name deal_package is kept.
 --
 -- 1. deal_package: + site_submit_id (unique, nullable); deal_id now nullable;
---    at least one set. Either parent deleted → package deleted (both CASCADE).
---    Backfill: existing packages get their deal's site_submit_id (Big Chicken).
+--    at least one set. Backfill: existing packages get their deal's
+--    site_submit_id (Big Chicken).
+--    Deletes (decision 2026-10-22, Mike):
+--      site deleted  → package deleted (site_submit_id FK CASCADE)
+--      deal deleted  → package stays on its site: deal_id SET NULL (FK), and
+--                      its tasks lose deal_id too (task.deal_id is already
+--                      ON DELETE SET NULL)
+--      deal deleted, package has no site → package deleted, by a BEFORE DELETE
+--                      trigger on deal (SET NULL would break the one-key check)
 -- 2. Starbucks-family check covers every client present (deal's and site's):
 --    package_subject_in_family(deal, site). deal_package_starbucks_only() now
 --    reads both keys generically (it is shared with deal_gate_date, which has
@@ -57,7 +64,31 @@ DROP VIEW public.v_deal_package_slide;
 ALTER TABLE public.deal_package
   ADD COLUMN site_submit_id uuid UNIQUE REFERENCES public.site_submit(id) ON DELETE CASCADE,
   ALTER COLUMN deal_id DROP NOT NULL,
-  ADD CONSTRAINT deal_package_has_subject CHECK (num_nonnulls(deal_id, site_submit_id) >= 1);
+  ADD CONSTRAINT deal_package_has_subject CHECK (num_nonnulls(deal_id, site_submit_id) >= 1),
+  DROP CONSTRAINT deal_package_deal_id_fkey,
+  ADD CONSTRAINT deal_package_deal_id_fkey
+    FOREIGN KEY (deal_id) REFERENCES public.deal(id) ON DELETE SET NULL;
+
+-- A package with no site can't fall back to the site when its deal goes:
+-- delete it first (BEFORE trigger runs ahead of the FK's SET NULL action).
+CREATE FUNCTION public.delete_siteless_package_on_deal_delete()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  DELETE FROM deal_package WHERE deal_id = OLD.id AND site_submit_id IS NULL;
+  RETURN OLD;
+END;
+$$;
+
+-- Trigger-only (definer: authenticated has no DELETE on deal_package).
+REVOKE ALL ON FUNCTION public.delete_siteless_package_on_deal_delete() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER trg_delete_siteless_package_on_deal_delete
+  BEFORE DELETE ON public.deal
+  FOR EACH ROW EXECUTE FUNCTION public.delete_siteless_package_on_deal_delete();
 
 COMMENT ON COLUMN public.deal_package.site_submit_id IS
   'Board card the package belongs to (decisions §2.27). deal_id is filled in by trg_attach_package_to_deal when a deal is created/linked.';

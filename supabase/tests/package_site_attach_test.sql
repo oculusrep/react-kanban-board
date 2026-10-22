@@ -15,6 +15,10 @@
 --      and doesn't move the board clock
 --   8. existing packages were backfilled with their deal's site_submit_id
 --   9. anon can't execute start_package or package_subject_in_family
+--  10. deleting a deal keeps its site's package: deal_id → NULL on the package
+--      and its tasks; slides and tasks intact
+--  11. deleting a deal whose package has no site deletes the package (and its
+--      slides / tasks)
 --
 -- No BEGIN/ROLLBACK of its own — run wrapped (see package_task_clock_test.sql header).
 
@@ -44,6 +48,11 @@ DECLARE
   v_miss    text[];
   v_clock0  timestamptz;
   v_clock1  timestamptz;
+  v_attach_deal uuid;
+  v_attach_pkg  uuid;
+  v_slides0 int;
+  v_tasks0  int;
+  v_pkg3    uuid;
 BEGIN
   -- Two site-only Pre-Submittal Starbucks cards with no package.
   SELECT s.id, s.client_id INTO v_site, v_client
@@ -99,6 +108,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL 3: deal not attached to package / tasks';
   END IF;
   RAISE NOTICE 'PASS 3: new deal attached to the site package and its % tasks', v_t;
+  v_attach_deal := v_deal;
+  v_attach_pkg  := v_pkg;
 
   -- 4.
   BEGIN
@@ -157,6 +168,32 @@ BEGIN
    WHERE d.site_submit_id IS NOT NULL AND p.site_submit_id IS DISTINCT FROM d.site_submit_id;
   IF v_n > 0 THEN RAISE EXCEPTION 'FAIL 8: % packages missing their deal''s site_submit_id', v_n; END IF;
   RAISE NOTICE 'PASS 8: every deal package carries its deal''s site_submit_id';
+
+  -- 10. Delete the deal from check 3: the package stays on its site.
+  SELECT count(*) INTO v_slides0 FROM deal_package_slide WHERE package_id = v_attach_pkg;
+  SELECT count(*) INTO v_tasks0 FROM task t JOIN deal_package_slide s ON s.id = t.package_slide_id WHERE s.package_id = v_attach_pkg;
+  DELETE FROM deal WHERE id = v_attach_deal;
+  IF EXISTS (SELECT 1 FROM deal WHERE id = v_attach_deal) THEN RAISE EXCEPTION 'setup 10: deal delete did not happen (RLS?)'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM deal_package WHERE id = v_attach_pkg AND deal_id IS NULL AND site_submit_id = v_site)
+     OR (SELECT count(*) FROM deal_package_slide WHERE package_id = v_attach_pkg) <> v_slides0
+     OR (SELECT count(*) FROM task t JOIN deal_package_slide s ON s.id = t.package_slide_id
+          WHERE s.package_id = v_attach_pkg AND t.deal_id IS NULL AND t.site_submit_id = v_site) <> v_tasks0 THEN
+    RAISE EXCEPTION 'FAIL 10: package / slides / tasks did not stay on the site after deal delete';
+  END IF;
+  RAISE NOTICE 'PASS 10: deal deleted — package stays on the site (deal_id NULL), % slides and % tasks intact, tasks'' deal_id cleared', v_slides0, v_tasks0;
+
+  -- 11. A deal-only package (no site) goes with its deal.
+  INSERT INTO deal (deal_name, client_id, stage_id) VALUES ('TEST siteless deal', v_client, v_stage) RETURNING id INTO v_deal;
+  v_pkg3 := public.start_package(NULL, v_deal);
+  IF (SELECT site_submit_id FROM deal_package WHERE id = v_pkg3) IS NOT NULL THEN RAISE EXCEPTION 'setup 11: package has a site'; END IF;
+  DELETE FROM deal WHERE id = v_deal;
+  IF EXISTS (SELECT 1 FROM deal WHERE id = v_deal) THEN RAISE EXCEPTION 'setup 11: deal delete did not happen (RLS?)'; END IF;
+  IF EXISTS (SELECT 1 FROM deal_package WHERE id = v_pkg3)
+     OR EXISTS (SELECT 1 FROM deal_package_slide WHERE package_id = v_pkg3)
+     OR EXISTS (SELECT 1 FROM task t WHERE t.subject LIKE '% — TEST siteless deal') THEN
+    RAISE EXCEPTION 'FAIL 11: siteless package survived its deal';
+  END IF;
+  RAISE NOTICE 'PASS 11: deal deleted — its siteless package, slides and tasks are gone';
 END
 $test$;
 
