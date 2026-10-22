@@ -162,7 +162,7 @@ These are flagged only, not fixed. They matter for dedupe in §5.
 | `last_seen` | — | **GAP** |
 | `lat` / `lng` | `comp_property.latitude` / `longitude` | `verified_*` stay human-set |
 | review status | — | **GAP** |
-| listing lifecycle (active / sold / withdrawn) | partially: `comp_property.is_available` | `is_available` is per property, not per offering. **GAP** on the offering |
+| listing lifecycle (active / under contract / off market / sold) | partially: `comp_property.is_available` | `is_available` is per property, not per offering. **GAP** on the offering |
 | normalized address | — | **GAP** (needed for dedupe) |
 
 ### Noree's checklist
@@ -183,7 +183,7 @@ These are flagged only, not fixed. They matter for dedupe in §5.
 
 1. `guarantor_type`, on the lease
 2. Review status, on the property
-3. Listing lifecycle (active / sold / withdrawn), on the offering
+3. Listing lifecycle (active / under contract / off market / sold), on the offering
 4. `last_seen`, on the offering
 5. `first_seen`, on the offering (soft: `source_captured_at` is close)
 6. As-listed term remaining (snapshot)
@@ -325,7 +325,7 @@ Fuzzy matching (a geocode distance under ~30 m with a different house number) is
   - **Pending review** (`review_status='pending_review'`)
   - **Active listings** (offering `active`, any review status)
   - **Re-listed existing comps** (new offering in the last 30 days on a `reviewed` comp)
-  - **Sold / withdrawn**
+  - **Under contract / off market / sold**
   - **Rejected**
 - **Row actions:**
   - **Approve** → `reviewed`; the pin appears in the Comp Database layer.
