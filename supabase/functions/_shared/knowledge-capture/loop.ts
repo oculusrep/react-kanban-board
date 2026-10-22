@@ -100,7 +100,8 @@ export async function runToolLoop(opts: {
     const params: Record<string, unknown> = {
       ...opts.baseParams,
       messages: convo,
-      tools: opts.tools,
+      // A one-shot call (signature extraction) passes no tools; send no key at all.
+      ...(opts.tools.length ? { tools: opts.tools } : {}),
     };
     if (opts.outputFormat && !formatDropped) {
       // Merge, don't replace: baseParams already carries output_config.effort.

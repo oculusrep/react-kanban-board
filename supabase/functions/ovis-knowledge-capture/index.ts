@@ -16,6 +16,13 @@
  *      differs from the model's first proposal) in one transaction, as the user,
  *      and stores the embedding.
  *
+ *   3. { action: 'lookup_email_signature', name, email?, sender_email? }
+ *      -> found | choose | no_signature | need_full_name
+ *      "Look up in my email": prefill Create contact from the person's signature
+ *      in the caller's OWN mailbox. Narrower than the internal gate above: only
+ *      users listed in app_settings.intel_email_lookup_user_ids (403 otherwise).
+ *      See _shared/knowledge-capture/emailLookup.ts.
+ *
  * Unlike ovis-site-research this runs synchronously. That function had to move to
  * a background queue because Opus with web search blew past Supabase's 150 s idle
  * timeout; a turn here is Sonnet plus a few name lookups against Postgres, so the
@@ -29,6 +36,15 @@ import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-
 import { runTurn } from '../_shared/knowledge-capture/converse.ts';
 import { normalizeMessages } from '../_shared/knowledge-capture/messages.ts';
 import { fileEntry } from '../_shared/knowledge-capture/file.ts';
+import { lookupEmailSignature } from '../_shared/knowledge-capture/emailLookup.ts';
+import { runToolLoop } from '../_shared/knowledge-capture/loop.ts';
+import { parseModelJson } from '../_shared/knowledge-capture/proposal.ts';
+import { anthropicCreate, buildBaseParams, CHAT_PRICING } from '../_shared/knowledge-capture/config.ts';
+import {
+  SIGNATURE_OUTPUT_FORMAT,
+  SIGNATURE_SYSTEM_PROMPT,
+  signatureUserMessage,
+} from '../_shared/knowledge-capture/signaturePrompt.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -87,6 +103,7 @@ serve(async (req: Request) => {
     const action = body.action;
     if (action === 'converse') return await converse(service, body);
     if (action === 'file') return await file(service, userClient, body);
+    if (action === 'lookup_email_signature') return await lookupSignature(userClient, body);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -143,4 +160,36 @@ async function file(
     },
   });
   return jsonResponse(result, 201);
+}
+
+// ---------------------------------------------------------------------------
+// Action: lookup_email_signature
+// ---------------------------------------------------------------------------
+async function lookupSignature(userClient: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) return jsonResponse({ error: 'anthropic_key_missing' }, 500);
+
+  const result = await lookupEmailSignature(
+    {
+      // userClient, never service: the mailbox functions scope by auth.uid().
+      rpc: async (fn, args) => {
+        const { data, error } = await userClient.rpc(fn, args ?? {});
+        return { data, error: error ? { message: error.message, code: error.code } : null };
+      },
+      extract: async (text, sender) => {
+        const out = await runToolLoop({
+          create: anthropicCreate(apiKey),
+          execute: () => Promise.reject(new Error('no tools')),
+          baseParams: buildBaseParams(SIGNATURE_SYSTEM_PROMPT),
+          messages: [{ role: 'user', content: signatureUserMessage(text, sender) }],
+          tools: [],
+          pricing: CHAT_PRICING,
+          outputFormat: SIGNATURE_OUTPUT_FORMAT,
+        });
+        return parseModelJson(out.text).details;
+      },
+    },
+    body,
+  );
+  return jsonResponse(result.body, result.status);
 }

@@ -1,6 +1,6 @@
 # Intel: prefill "Create contact" from the person's email signature — PLAN
 
-**Status (2026-10-22):** plan only, nothing built. Branch `feature/intel-email-signature`. Awaiting Mike's go-ahead and two decisions (end of doc).
+**Status (2026-10-22):** BUILT on branch `feature/intel-email-signature`, **not merged**, awaiting Mike's browser test. Shared prod DB: migration `20261022090213_intel_email_lookup` applied + recorded. Edge function `ovis-knowledge-capture` v12 deployed **from this branch** (adds `lookup_email_signature`; existing actions unchanged). If `main` redeploys that function before this merges, the lookup action disappears until it does. See [Build notes](#build-notes-2026-10-22) at the end.
 
 When Intel can't find a person and offers **Create contact**, look the person up in the logged-in user's own stored Gmail and prefill the contact form from the signature in their most recent email — so the signature doesn't have to be pasted. Builds on the paste flow described in [KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md#detail-extraction--only-what-the-note-says).
 
@@ -77,3 +77,31 @@ Model cost is one Sonnet call per lookup, well under a cent.
 
 - **A. When the most recent email has no signature:** (a) strict — prefill only the name and say so; or (b) fall back to the most recent email from that sender *whose own text contains a signature*. Same verification either way. Recommendation: **(b)**, because (a) will often produce nothing. Your instruction was (a), though, so it's your call.
 - **B. Automatic or on request:** run the lookup automatically when Create contact opens, or only when the user clicks "Look up in my email"? Recommendation: **on click** — it costs nothing until used, and the user sees exactly when their inbox is being read.
+
+---
+
+## Build notes (2026-10-22)
+
+Decisions as approved: (A) fall back to the most recent email whose **own** text has a signature, within 12 months, else name only + "No signature found in the last 12 months."; (B) on click only. Then narrowed: **Mike's account only.**
+
+### Access — two gates, both server-side
+- **Allowlist:** `app_settings.intel_email_lookup_user_ids` — a JSON array of `"user".id`. Starts as Mike's only. To enable someone: append their `user.id` (no code change, no deploy). Must also pass `is_internal_user()`.
+- `intel_email_lookup_allowed()` (definer) answers it; the UI uses it only to show the button. The edge action returns **403** when it's false, and every mailbox function re-checks and raises `42501` (also mapped to 403).
+- **Mailbox scope:** `intel_mailbox_senders` / `intel_mailbox_emails_from` (invoker) join `email_visibility → "user"` on `auth_user_id = auth.uid()`. Required because the `emails_select` RLS policy lets internal users read CRM-linked emails from *another* mailbox (the test shows this loophole is live).
+
+### Rolled-back test — `scripts/intel_email_lookup_mailbox_test.sql`
+22 checks, all PASS against prod (2026-10-22), ending in ROLLBACK:
+- Mike can plainly `SELECT` an Arty-only CRM-linked email (loophole real), but the lookup functions return 0 rows for it and its sender; positive control returns Mike's own mail, all of it in his inbox.
+- Arty and the VA are internal, but the gate is false and all three functions refuse with 42501 (→ 403).
+- Arty switched on inside the transaction still can't reach a Mike-only CRM-linked email, but does get his own.
+- **Not done:** a live HTTP 403 as Arty/the VA (needs their sessions). The 403 mapping is unit-tested in `emailText_test.ts`.
+
+### Stripping — `_shared/knowledge-capture/emailText.ts`
+Cuts at Gmail/Apple `On … wrote:` (incl. wrapped), forwarded/original-message markers, Outlook `From:/Sent:` blocks (with or without an address), and `>` lines — matched mid-line too, because ~25% of long inbound bodies are flattened HTML on one line. Keeps a `-- ` signature Gmail puts *below* a `>` quote. Unit tests use three real stored emails (third parties redacted): a reply with Mike's signature quoted, a phone one-liner (Apple quote, no `>`), a flattened forward.
+
+**Measured on 1,500 of Mike's inbound emails:** 126 contain his mobile; after stripping 11 still do — all automated mail (QuickBooks ×8, Mailchimp, a hotel booking, a helpdesk thread) that prints *our* details as the customer's with nothing to strip. Hence the last guard: `intel_internal_contact_points()` + `dropOurOwnDetails()` drop any Oculus email/company or internal user's phone from every result. 630/1,500 emails (42%) had a signature in their own text.
+
+### Behaviour notes
+- Name match = first AND last token after normalising ("Rutledge, Paul" flipped, ", CCIM" suffix dropped, middle initials ignored). A first name alone isn't searched. Excludes `@oculusrep.com` and the caller's own address.
+- Bulk-mail relays appear as candidates (e.g. a Constant Contact `…@shared1.ccsend.com` address for "Paul Rutledge"); you pick. The From address itself is never prefilled — only what the signature text says.
+- Up to 200 emails scanned per sender, one model call (Sonnet 5, low effort) on the first with a signature; ~1–2 s of SQL on Mike's mailbox.
