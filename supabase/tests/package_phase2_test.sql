@@ -31,16 +31,17 @@ DECLARE
   v_g1     text;
   v_g2     text;
   v_g1at   date;
+  v_exp    int;
 BEGIN
   -- An LOI deal on a Starbucks client, with a site and a board state row, and no package.
   SELECT d.id INTO v_deal
     FROM deal d
-    JOIN deal_stage s ON s.id = d.stage_id AND s.label = 'Negotiating LOI'
+    JOIN deal_stage s ON s.id = d.stage_id AND s.label IN ('Pre-Submittal', 'Submitted-Reviewing', 'Negotiating LOI')  -- every LOI deal has a package since the 2026-10-22 bulk start
     JOIN deal_activity_state das ON das.deal_id = d.id
    WHERE public.client_in_starbucks_family(d.client_id)
      AND d.site_submit_id IS NOT NULL
-     AND NOT EXISTS (SELECT 1 FROM deal_package p WHERE p.deal_id = d.id)
-   ORDER BY d.deal_name LIMIT 1;
+     AND NOT EXISTS (SELECT 1 FROM deal_package p WHERE p.deal_id = d.id OR p.site_submit_id = d.site_submit_id)
+   ORDER BY (s.label = 'Negotiating LOI') DESC, d.deal_name LIMIT 1;
   IF v_deal IS NULL THEN RAISE EXCEPTION 'setup: no eligible deal'; END IF;
   SELECT ball_in_court_since INTO v_clock0 FROM deal_activity_state WHERE deal_id = v_deal;
 
@@ -49,13 +50,16 @@ BEGIN
   SELECT count(*) INTO v_n FROM deal_package_slide WHERE package_id = v_pkg;
   SELECT count(*) INTO v_t FROM task t JOIN deal_package_slide s ON s.id = t.package_slide_id
    WHERE s.package_id = v_pkg AND t.owner_id = 'cced4458-1ef9-4fac-982e-bb204463b1c5';
-  IF v_n <> 11 OR v_t <> 5 THEN
-    RAISE EXCEPTION 'FAIL 1: expected 11 slides / 5 Noree tasks, got % / %', v_n, v_t;
+  -- Hold rule (20261022110117): Noree tasks only for slides whose inputs are in.
+  SELECT count(*) INTO v_exp FROM v_deal_package_slide s
+   WHERE s.package_id = v_pkg AND s.owner_user_id = 'cced4458-1ef9-4fac-982e-bb204463b1c5' AND s.inputs_ready;
+  IF v_n <> 11 OR v_t <> v_exp OR v_exp < 2 THEN
+    RAISE EXCEPTION 'FAIL 1: expected 11 slides / % Noree tasks (>= 2), got % / %', v_exp, v_n, v_t;
   END IF;
   SELECT count(*) INTO v_t FROM task t JOIN deal_package_slide s ON s.id = t.package_slide_id
    WHERE s.package_id = v_pkg AND t.owner_id = 'fe6e516f-11e1-4a3b-b914-910d59d9e8df';
   IF v_t <> 0 THEN RAISE EXCEPTION 'FAIL 1: Mike got % package tasks', v_t; END IF;
-  RAISE NOTICE 'PASS 1: started package — 11 slides, 5 Noree tasks, 0 Mike tasks';
+  RAISE NOTICE 'PASS 1: started package — 11 slides, % Noree tasks (inputs-ready only), 0 Mike tasks', v_exp;
 
   -- 2.
   SELECT ball_in_court_since INTO v_clock1 FROM deal_activity_state WHERE deal_id = v_deal;
@@ -83,7 +87,9 @@ BEGIN
 
   -- 5.
   INSERT INTO deal_gate_date (deal_id, first_draft_sent_on, first_response_on)
-  VALUES (v_deal, '2026-09-01', NULL);
+  VALUES (v_deal, '2026-09-01', NULL)
+  ON CONFLICT (deal_id) DO UPDATE
+    SET first_draft_sent_on = EXCLUDED.first_draft_sent_on, first_response_on = EXCLUDED.first_response_on, confirmed_at = now();
   SELECT gate1_state, gate1_at::date, gate2_state INTO v_g1, v_g1at, v_g2
     FROM v_deal_package_progress WHERE package_id = v_pkg;
   IF v_g1 <> 'reached' OR v_g1at <> '2026-09-01' OR v_g2 <> 'not_reached' THEN

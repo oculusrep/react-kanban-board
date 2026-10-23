@@ -89,6 +89,12 @@ export interface ProgressRow {
   gates_unknown: boolean;
   gates_confirmed_at: string | null;
   behind_since: string | null;
+  // 20261022110117: board stage (deal's, else the site's), Tour-ready, missing inputs
+  site_submit_id: string | null;
+  stage: string | null;
+  tour_ready_done: number;
+  tour_ready: boolean;
+  missing_inputs: InputKey[];
 }
 
 export interface GateDateRow {
@@ -238,10 +244,46 @@ export async function fetchDealPackage(dealId: string): Promise<DealPackageInfo>
 // ─── Writes ─────────────────────────────────────────────────────────────────
 
 export async function startPackage(dealId: string): Promise<string> {
-  const { data, error } = await supabase.rpc('start_deal_package', { p_deal_id: dealId });
+  const { data, error } = await supabase.rpc('start_package', { p_site_submit_id: null, p_deal_id: dealId });
   if (error) throw error;
   notifyPackageChanged(dealId);
   return data as string;
+}
+
+// Start on a board card: site_submit and/or deal (20261022110117). The RPC fills
+// in the other key; tasks only for slides whose inputs are already in.
+export async function startPackageForCard(siteSubmitId: string | null, dealId: string | null): Promise<string> {
+  const { data, error } = await supabase.rpc('start_package', { p_site_submit_id: siteSubmitId, p_deal_id: dealId });
+  if (error) throw error;
+  if (dealId) notifyPackageChanged(dealId);
+  return data as string;
+}
+
+// Every package's progress row (one per package; the view is Starbucks-family only).
+export async function fetchAllPackageProgress(): Promise<ProgressRow[]> {
+  const { data, error } = await supabase.from('v_deal_package_progress').select('*');
+  if (error) throw error;
+  return (data as ProgressRow[]) ?? [];
+}
+
+// Which sites already have the two research inputs (for cards with no package yet).
+export async function fetchResearchInputs(siteIds: string[]): Promise<{ marketResearch: Set<string>; siteStory: Set<string> }> {
+  const marketResearch = new Set<string>();
+  const siteStory = new Set<string>();
+  if (!siteIds.length) return { marketResearch, siteStory };
+  const [mr, ss] = await Promise.all([
+    supabase.from('research_run').select('site_submit_id').eq('state', 'approved').in('site_submit_id', siteIds),
+    supabase.from('research_thread')
+      .select('site_submit_id, runs:research_thread_run!research_thread_run_thread_id_fkey!inner ( kind, state )')
+      .in('site_submit_id', siteIds)
+      .eq('runs.kind', 'deep_pass')
+      .eq('runs.state', 'complete'),
+  ]);
+  if (mr.error) throw mr.error;
+  if (ss.error) throw ss.error;
+  for (const r of (mr.data as { site_submit_id: string }[]) ?? []) marketResearch.add(r.site_submit_id);
+  for (const r of (ss.data as { site_submit_id: string }[]) ?? []) siteStory.add(r.site_submit_id);
+  return { marketResearch, siteStory };
 }
 
 // Person-set transitions. Owner check-off on a handoff slide goes to

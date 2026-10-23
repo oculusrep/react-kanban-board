@@ -47,6 +47,7 @@ BEGIN
     JOIN client c ON c.id = d.client_id AND c.starbucks_board_enabled
     JOIN deal_activity_state s ON s.deal_id = d.id
    WHERE d.site_submit_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM deal_package p WHERE p.deal_id = d.id)  -- real packages exist now
    ORDER BY d.deal_name
    LIMIT 1;
   IF v_deal IS NULL THEN RAISE EXCEPTION 'setup: no Starbucks deal with site_submit + state row'; END IF;
@@ -58,6 +59,7 @@ BEGIN
 
   -- Package + one Noree slide (as the migration owner: RLS not in play here).
   INSERT INTO deal_package (deal_id, started_by) VALUES (v_deal, v_mike) RETURNING id INTO v_pkg;
+  PERFORM set_config('pkgtest.clock_pkg', v_pkg::text, true);  -- check 8 reads this package, not "the first one"
   INSERT INTO deal_package_slide
     (package_id, template_key, label, position, owner_user_id, handoff, inputs, allows_na, done_by_gate)
   SELECT v_pkg, key, label, position, owner_user_id, handoff, inputs, allows_na, done_by_gate
@@ -149,7 +151,8 @@ DECLARE
   v_n int; v_app int; v_g1 text;
 BEGIN
   SELECT count(*) INTO v_n FROM v_deal_package_slide;
-  SELECT applicable, gate1_state INTO v_app, v_g1 FROM v_deal_package_progress LIMIT 1;
+  SELECT applicable, gate1_state INTO v_app, v_g1 FROM v_deal_package_progress
+   WHERE package_id = current_setting('pkgtest.clock_pkg')::uuid;
   IF v_n < 1 OR v_app IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION 'FAIL 8: views as authenticated — slides %, applicable %', v_n, v_app;
   END IF;

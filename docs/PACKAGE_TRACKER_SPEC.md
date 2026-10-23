@@ -406,3 +406,35 @@ Migration `20261019153511_package_task_category_label.sql` was applied and recor
 - Both test suites passed when rerun, rolled back.
 
 UI on the branch: the package section comes first in the DATA tab and is collapsible, and the header badge opens it.
+
+---
+
+## 13. Packages attach to the site_submit; dashboard (2026-10-22)
+
+**Decisions (Mike):**
+- Packages attach to the site_submit, and `deal_id` is filled in later. The name `deal_package` is kept.
+- The Starbucks-family check covers every client present (the deal's and the site's).
+- Deleting a deal keeps the package on its site. Deleting the site removes the package. A package with no site goes with its deal.
+- Start Package creates tasks only for slides whose inputs are in (Drive Time and Placer always). Phase 3 releases the rest.
+- Dashboard scope is Pre-Submittal, Submitted-Reviewing and Negotiating LOI. Start Package isn't offered on To classify cards (enforced in the UI).
+- Tour-ready means Market Aerial, Demo Map and Site Plan are all done. It's a badge only; gates and pace are unchanged.
+
+**Migration `20261022110117_package_attach_to_site_submit.sql`** (applied and recorded 2026-10-22):
+- `deal_package.site_submit_id` (unique); `deal_id` is now optional; `deal_id` FK changed to SET NULL, plus a BEFORE DELETE trigger that removes a package with no site.
+- `package_subject_in_family()`; a generic family-check trigger function.
+- `trg_attach_package_to_deal`: a new or linked deal adopts the site's package, and the package's tasks follow. If both already have different packages, the link is refused.
+- `start_package(site, deal)`; `start_deal_package` now hands off to it.
+- Both views rebuilt. The progress view gains `stage`, `tour_ready`, `tour_ready_done` and `missing_inputs`.
+- Tests: `supabase/tests/package_site_attach_test.sql` (11 checks), with the Phase 2 and clock suites updated for the hold rule and for real packages existing.
+
+**Bulk start (2026-10-22):** the 11 LOI deals without a package got one, creating 41 Noree tasks with 14 held, and no board clocks moved. 13 packages exist: those 11, Big Chicken, and Warner Robins (started in the app at 11:44 before the To-classify rule existed; still To classify).
+
+**Dashboard:**
+- `/reports/starbucks-packages` (`PackagesDashboardPage`, `usePackagesDashboard`), linked from both navbar menus.
+- Card membership comes from `useStarbucksBoard`.
+- For cards with no package, missing inputs come from `research_run` and `research_thread`. The research_thread embed needs the `!research_thread_run_thread_id_fkey` hint, because there are two FKs (PGRST201).
+
+**Migration `20261022115504_package_progress_site_stage_lookup.sql`** (not yet applied):
+- The site-stage join in the progress view seq-scanned `site_submit` under RLS for every package (2.3s for 13 packages).
+- It's replaced by `package_site_stage()`, a definer PK lookup that returns NULL unless the caller is internal. Time drops to 0.15s with identical rows.
+- Note: `site_submit` RLS makes any per-row lookup of it slow for signed-in users. That's a wider cost, flagged and not fixed here.

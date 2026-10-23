@@ -319,6 +319,11 @@ Not oversights. Do not build, do not ask about, do not add "small versions of" o
 - **The repo has ~1010 pre-existing TypeScript errors** and Vite skips `tsc`. Verify your own files typecheck; don't try to fix the rest.
 - **27 of 46 deals have no history at all.** The board's first render is mostly empty states. That's accurate, not broken.
 - **Migrations here apply to the production database.** There is no separate dev/sandbox DB yet; the app `.env` and the MCP Supabase project are both `rqbvcvwbziilnycqtmnc` (production). Even in auto mode, schema changes should be surfaced before they're applied.
+- **Known follow-up (2026-10-22): `site_submit` row-level security makes the board query slow.** For a signed-in user, `site_submit`'s RLS policies call per-row functions (`portal_user_client_ids()`, `get_user_role()`, `can_manage_operations()`, a hashed subplan), and they aren't wrapped for InitPlan. So the planner seq-scans the whole table (~1,240 rows) and evaluates them on every row, even for a primary-key lookup.
+  - The board's membership query costs ~0.5s in the database and 0.9–1.2s over HTTP (measured 2026-10-22). That's most of a 1.6–1.9s Packages dashboard load.
+  - The Package Tracker side-stepped it in `v_deal_package_progress` with a definer PK helper (`package_site_stage`, migration `20261022115504`: 2.3s → 0.15s), but the board itself still pays it.
+  - Likely fix: wrap every `site_submit` SELECT policy's function calls in `(SELECT …)` so they run once per query. All of them, because OR-ed policies only short-circuit when true; see the InitPlan note in memory. Then EXPLAIN as an internal user and as a portal user.
+  - Not done: it touches every reader of `site_submit` (portal included), so it needs its own change and per-persona testing.
 - **Stage change (2.17) writes shared pipeline data.** `deal.stage_id` propagates to `site_submit.submit_stage_id` via `trigger_sync_deal_stage_to_site_submit` (`20260714120000`) — the first board write outside `deal_activity_state`. It has pipeline-wide effects; test it doesn't loop. Moving a deal off the four board stages removes it from the board → require a confirm.
 
 ---
