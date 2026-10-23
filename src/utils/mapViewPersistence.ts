@@ -136,6 +136,8 @@ export interface SavedMapClient {
   phone: string | null;
   deal_count: number;
   site_submit_count: number;
+  /** Present when an "All accounts" family entry was selected. */
+  family_clients?: { id: string; client_name: string }[];
 }
 
 export function loadSelectedClient(): SavedMapClient | null {
@@ -144,6 +146,8 @@ export function loadSelectedClient(): SavedMapClient | null {
     if (!raw) return null;
     const v = JSON.parse(raw);
     if (v && typeof v.id === 'string' && typeof v.client_name === 'string') {
+      // A family entry's id isn't a client id — unusable without its members.
+      if (v.id.startsWith('family:') && !Array.isArray(v.family_clients)) return null;
       return {
         id: v.id,
         client_name: v.client_name,
@@ -151,6 +155,10 @@ export function loadSelectedClient(): SavedMapClient | null {
         phone: typeof v.phone === 'string' ? v.phone : null,
         deal_count: typeof v.deal_count === 'number' ? v.deal_count : 0,
         site_submit_count: typeof v.site_submit_count === 'number' ? v.site_submit_count : 0,
+        ...(Array.isArray(v.family_clients) &&
+        v.family_clients.every((c: any) => typeof c?.id === 'string' && typeof c?.client_name === 'string')
+          ? { family_clients: v.family_clients }
+          : {}),
       };
     }
     return null;

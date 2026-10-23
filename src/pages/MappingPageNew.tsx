@@ -47,7 +47,7 @@ import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
 import ClientSelector from '../components/mapping/ClientSelector';
-import { ClientSearchResult } from '../hooks/useClientSearch';
+import { ClientSearchResult, getClientIds } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import DrawingToolbar from '../components/mapping/DrawingToolbarV2';
@@ -2493,7 +2493,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // This prevents showing random site submits when clearing the client filter
   const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
     mode: 'client-filtered',
-    clientId: selectedClient?.id || null,
+    clientIds: selectedClient ? getClientIds(selectedClient) : null,
     visibleStages: visibleStages,
     clusterConfig: clusterConfig,
     markerStyle: markerStyle
@@ -2711,6 +2711,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       onClientSelect={handleClientSelection}
                       placeholder="Search active clients..."
                       className="text-sm"
+                      showFamilyOptions
                     />
                   </div>
                   {selectedClient && onSwitchToPipeline && (

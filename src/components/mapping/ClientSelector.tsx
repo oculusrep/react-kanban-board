@@ -1,18 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useClientSearch, ClientSearchResult } from '../../hooks/useClientSearch';
+import { useClientSearch, ClientSearchResult, withFamilyEntries } from '../../hooks/useClientSearch';
 
 interface ClientSelectorProps {
   selectedClient: ClientSearchResult | null;
   onClientSelect: (client: ClientSearchResult | null) => void;
   placeholder?: string;
   className?: string;
+  /**
+   * Offer a "<Parent> (All accounts)" option for parent/child account
+   * families. Only for callers that filter via getClientIds() — the entry's
+   * id is not a real client id.
+   */
+  showFamilyOptions?: boolean;
 }
 
 const ClientSelector: React.FC<ClientSelectorProps> = ({
   selectedClient,
   onClientSelect,
   placeholder = "Search clients...",
-  className = ""
+  className = "",
+  showFamilyOptions = false
 }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ClientSearchResult[]>([]);
@@ -21,6 +28,8 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
 
   const { searchActiveClients, getAllActiveClients, loading } = useClientSearch();
   const searchRef = useRef<HTMLDivElement>(null);
+  const expand = (p: Promise<ClientSearchResult[]>) =>
+    showFamilyOptions ? p.then(withFamilyEntries) : p;
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Sync query with selectedClient when it changes from outside
@@ -38,7 +47,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
     if (!query.trim()) {
       if (showDropdown) {
         // Show all clients when no query but dropdown is open
-        getAllActiveClients().then(setResults);
+        expand(getAllActiveClients()).then(setResults);
       } else {
         setResults([]);
       }
@@ -46,7 +55,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
     }
 
     const timeoutId = setTimeout(() => {
-      searchActiveClients(query).then(setResults);
+      expand(searchActiveClients(query)).then(setResults);
     }, 300);
 
     return () => clearTimeout(timeoutId);
@@ -116,7 +125,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
     }
     setShowDropdown(true);
     if (!query.trim()) {
-      getAllActiveClients().then(setResults);
+      expand(getAllActiveClients()).then(setResults);
     } else if (results.length > 0) {
       // Show dropdown if we have suggestions
       setShowDropdown(true);
@@ -185,7 +194,9 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
                   index === selectedIndex ? 'bg-gray-100' : ''
                 }`}
               >
-                <div className="font-medium">{client.client_name}</div>
+                <div className="font-medium" style={client.family_clients ? { color: '#002147' } : undefined}>
+                  {client.client_name}
+                </div>
                 {client.type && (
                   <div className="text-xs text-gray-500">
                     {client.type}
