@@ -494,6 +494,15 @@ export default function Navbar() {
                   </button>
                   <button
                     onClick={() => {
+                      navigate('/tasks/queue');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    ☑️ Task Queue
+                  </button>
+                  <button
+                    onClick={() => {
                       navigate('/reports');
                       setIsReportsMenuOpen(false);
                     }}
@@ -848,6 +857,15 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   🗂️ Starbucks Packages
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/tasks/queue');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  ☑️ Task Queue
                 </button>
               </div>
             </div>
