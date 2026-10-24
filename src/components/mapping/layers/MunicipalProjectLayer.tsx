@@ -102,6 +102,10 @@ const DEFAULT_STAGE_COLOR = '#8FA9C8'; // brand slate
 // Agent-generated projects (source_research_run_id set) render in brand midnight
 // so reviewers can spot new agent-created pins at a glance regardless of stage.
 const AGENT_PIN_COLOR = '#002147';
+// Pin colors in 'polygon' color mode. Terracotta (brand warning) = still needs
+// a polygon drawn; steel blue = polygon exists.
+export const PIN_NEEDS_POLYGON_COLOR = '#A27B5C';
+export const PIN_HAS_POLYGON_COLOR = '#4A6B94';
 
 // Rounded-square "badge" pin with a small house glyph + a triangular stem at the
 // bottom that anchors the visual point on the map. Intentionally different from
@@ -273,6 +277,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
     municipalProjectsLabelLineColor,
@@ -409,7 +414,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       // Polygon color: always use the stage color chain so agent polygons blend in
       // with manually-entered ones (the navy signal on the pin is enough).
       const stageColor = row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
-      const pinColor = row.source_research_run_id ? AGENT_PIN_COLOR : stageColor;
+      const pinColor =
+        municipalProjectsPinColorMode === 'polygon'
+          ? (polygonPathsFromGeoJson(row.geometry_geojson) ? PIN_HAS_POLYGON_COLOR : PIN_NEEDS_POLYGON_COLOR)
+          : row.source_research_run_id ? AGENT_PIN_COLOR : stageColor;
       const polyColor = stageColor;
       // Stroke color precedence: global override (user pref) > per-stage line_color > fill color.
       const polyStrokeColor =
@@ -622,6 +630,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
     municipalProjectsLabelLineColor,
