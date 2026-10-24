@@ -1438,6 +1438,7 @@ export default function SiteSubmitSidebar({
                 {siteSubmit.property.address}
                 {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
                 {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
+                {siteSubmit.property.zip && ` ${siteSubmit.property.zip}`}
               </p>
               {/* View Property button */}
               {onViewProperty && siteSubmit.property.id && (
