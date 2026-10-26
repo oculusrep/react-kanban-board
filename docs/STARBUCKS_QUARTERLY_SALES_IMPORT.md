@@ -98,6 +98,15 @@ If an Atlas value isn't in a normalization table (e.g. a new store type), the sc
 - Milestone dates: `Prospect Dt`, `Potential Dt`, `CO \ SSP Submitted Dt`, `CO \ SSP Approve Dt`, `CO \ Lease Approved Dt`, `CO \ Possession Dt`, `CO \ LOI Dt`, `Est. Open Dt`
 - Always blank for company-operated stores: every `LS \ …` column, `Licensee Name`, `Segment`, `Temporary Closure Reason`, `Actual Close Dt`, `Actual Retired Dt`, `Market Planning Manager`, `R52 Sales`, `CO SC \ Strat Position`, `CO SC \ RE Quality`
 
+### Why derived RTM Cash Flow isn't exact (checked 2026-10-26)
+
+On Q1/Q2 legacy data, `TC %` equals `RTM Contributn ÷ RTM Sales` exactly, so the sales base is the same. `Cash TC %` is **higher** than `RTM Cash Flow ÷ RTM Sales` on 460 of 461 store-quarters, so the gap is in the numerator. Starbucks' Cash TC figure leaves out some costs that legacy RTM Cash Flow subtracted:
+
+- **A flat ~$750–775 per store.** On its own, allowing for 4-decimal rounding, it accounts for the whole gap on about half the stores (Q2: 125 of 234).
+- **A store-specific amount on the rest**, usually $1–5K. It isn't explained by store type, deal type, age, rent or LHI, and it only partly repeats quarter to quarter (correlation 0.24).
+
+Neither can be rebuilt from Atlas columns. The derived figure therefore runs slightly **high**: median ~$850, ~0.2–0.3%. Exact figures need Starbucks to put `RTM Cash Flow` back in the Atlas export.
+
 ### Date off-by-one (fixed 2026-10-16)
 
 Before this fix, the script read Excel date cells with local-time getters, so every date stored from a real date cell landed **one day early** (lease expiration `2031-05-31` stored as `2031-05-30`). Legacy `Open Date` was a text column and wasn't affected; `Lease Exp Date` was. Q1/Q2 were corrected on 2026-10-16 by re-running both legacy files and then the Q3 file, in date order so the newest file's store details win.
