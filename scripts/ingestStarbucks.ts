@@ -149,6 +149,15 @@ function optionType(v: unknown): string | null {
   return s === null ? null : s.replace(/\s+Option$/i, '');
 }
 
+// Atlas has no RTM Cash Flow column. Cash TC % is cash flow / RTM sales; on the Q1/Q2
+// legacy files (which had both) sales × Cash TC % matched RTM Cash Flow to a median
+// 0.2–0.3%. It diverges only for stores carrying a one-time write-off in contribution.
+function cashFlow(row: ExcelJS.Row): number | null {
+  const sales = toFloat(col('RTM Sales', row));
+  const cashTc = toFloat(col('Cash TC (%)', row));
+  return sales === null || cashTc === null ? null : Math.round(sales * cashTc);
+}
+
 // Rebuild the legacy "Cafe: 15%  OTW: 48%  MOP: 24%  Del: 14%" string from the four Atlas columns
 function channelMix(row: ExcelJS.Row): string | null {
   const parts: [string, string][] = [
@@ -247,7 +256,7 @@ ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
     rent_pct_of_sales:  toFloat(col('CO \\ Rent as % of Sales', row)),
     rtm_sales:          toFloat(col('RTM Sales', row)),
     rtm_contribution:   toFloat(col('RTM Contribution', row)),
-    rtm_cash_flow:      null, // not in Atlas export
+    rtm_cash_flow:      cashFlow(row), // derived: not in Atlas export
     tc_pct:             toFloat(col('TC %', row)),
     cash_tc_pct:        toFloat(col('Cash TC (%)', row)),
     aws_last_12_wks:    null, // not in Atlas export

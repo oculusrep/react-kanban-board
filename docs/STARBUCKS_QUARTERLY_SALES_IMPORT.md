@@ -83,7 +83,7 @@ The script detects the layout from the header row:
 | r52_sales_otw | `R52 Sales OTW` | |
 | lhi_depreciation | `LHI` | |
 | sales_channel_mix | the four `CO \ % of Total Sales: …` columns | Rebuilt into the legacy `Cafe: 15%  OTW: 48%  MOP: 24%  Del: 14%` string |
-| rtm_cash_flow | — | **Not in Atlas.** Null from Q3 2026 on; slideout shows "—". |
+| rtm_cash_flow | — | **Not in Atlas — derived** as `RTM Sales × Cash TC (%)`, rounded to the dollar. Checked against the Q1/Q2 legacy files, which had both columns: median error 0.2–0.3% (~$1K), 95% of stores within 2%. The exception is a store carrying a one-time write-off in RTM Contribution (e.g. #71759 in Q1/Q2, contribution −$1.1M): legacy cash flow included the write-off, Cash TC % does not. No store in the Q3 file has one. To backfill a quarter imported before this change, re-run its file. |
 | aws_last_12_wks | — | **Not in Atlas.** Null from Q3 2026 on. Nearest new figure is `ADT` (avg daily transactions), a different metric. |
 
 If an Atlas value isn't in a normalization table (e.g. a new store type), the script prints `WARNING: unmapped values` and stores it as-is.
