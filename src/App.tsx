@@ -97,6 +97,7 @@ import UnpaidReferralFeesReportPage from "./pages/UnpaidReferralFeesReportPage";
 import StarbucksTargetAreasReportPage from "./pages/StarbucksTargetAreasReportPage";
 import StarbucksPipelineReportPage from "./pages/StarbucksPipelineReportPage";
 import PackagesDashboardPage from "./pages/PackagesDashboardPage";
+import TaskQueuePage from "./pages/TaskQueuePage";
 import TypographyTestPage from "./pages/TypographyTestPage";
 import VelocityAnalyticsPage from "./pages/VelocityAnalyticsPage";
 import HistoricalVelocityPage from "./pages/HistoricalVelocityPage";
@@ -128,6 +129,11 @@ function RoleBasedRedirect() {
   // Coach users go to coach dashboard
   if (userRole === 'coach') {
     return <Navigate to="/coach-dashboard" replace />;
+  }
+
+  // The VA (Noree) lands on her task queue (decision 2026-10-12, item 7)
+  if (userRole === 'va') {
+    return <Navigate to="/tasks/queue" replace />;
   }
 
   // All other users land on the map
@@ -167,6 +173,7 @@ function App() {
           <Route path="starbucks-board" element={<CoachRoute><StarbucksDealBoardPage /></CoachRoute>} />
           <Route path="tasks" element={<CoachRoute><TasksDashboardPage /></CoachRoute>} />
           <Route path="tasks/all" element={<CoachRoute><TasksPage /></CoachRoute>} />
+          <Route path="tasks/queue" element={<CoachRoute><TaskQueuePage /></CoachRoute>} />
           <Route path="settings/time-blocks" element={<CoachRoute><BlockTemplateSettingsPage /></CoachRoute>} />
           <Route path="settings/calendars" element={<CoachRoute><CalendarSettingsPage /></CoachRoute>} />
           <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />

@@ -62,6 +62,11 @@ export async function postTaskCompletionToTimelines(
   options: PostOptions
 ): Promise<void> {
   if (task.private_completion) return;
+  // Package Tracker tasks (task.package_slide_id) never post: the activity row and
+  // the internal site_submit_comment below both reset the deal board clock, and
+  // package progress must never change card heat (decisions §2.29). The slide
+  // itself records the completion (trg_sync_slide_from_task).
+  if ((task as Task & { package_slide_id?: string | null }).package_slide_id) return;
 
   const completedAtIso = task.completed_at ?? new Date().toISOString();
   const actor = await fetchActor(options.actorUserId);

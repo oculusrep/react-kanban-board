@@ -438,3 +438,30 @@ UI on the branch: the package section comes first in the DATA tab and is collaps
 - The site-stage join in the progress view seq-scanned `site_submit` under RLS for every package (2.3s for 13 packages).
 - It's replaced by `package_site_stage()`, a definer PK lookup that returns NULL unless the caller is internal. Time drops to 0.15s with identical rows.
 - Note: `site_submit` RLS makes any per-row lookup of it slow for signed-in users. That's a wider cost, flagged and not fixed here.
+
+---
+
+## 14. Phase 3: Noree's Tasks queue (2026-10-23, preview, migration awaiting OK)
+
+**Migration `20261023135247_package_task_release_and_sync.sql`** (round-trip tested, not applied):
+- **Release:** `release_package_tasks(package)` creates the owner task for any slide that isn't the starter's, isn't done or N/A, has no task yet, and has all its inputs in. It's idempotent.
+  - Fired by Market Research being approved, a Site Story deep pass completing, and site plan / DOT study / final LOI being marked in.
+  - A failed release raises a WARNING; it never blocks the write that fired it.
+  - A sweep at apply time releases anything already due; that's 0 today.
+- **Task ↔ slide sync** (definer triggers, with `pg_trigger_depth` guards so the two sides don't re-fire each other):
+  - task completed → slide waiting_on_mike (approve / finish) or done (none)
+  - task started → slide in progress
+  - task reopened → slide in progress
+  - slide handed to Mike / done / N/A → task completed
+  - slide reopened → task reopened
+- **Queue order:** `set_task_queue_order(task_ids[])` sets `queue_rank` to position × 1000. One owner per call; the caller must be that owner or an admin.
+- **Test:** `supabase/tests/package_phase3_test.sql` (10 checks): release on Market Research / Site Story / a manual input, every sync direction, ordering permissions, and all 117 board clocks unchanged.
+
+**UI:**
+- `/tasks/queue` (`TaskQueuePage`, `lib/taskQueue.ts`), linked as "☑️ Task Queue" in both navbar menus.
+- VA users land on it (`RoleBasedRedirect`). Admins open on the VA's queue, with a picker to switch.
+- Drag to reorder (the owner or an admin), check off, Start (→ in progress), and row click opens the sidebar.
+- "Held until inputs arrive" lists the package slides with no task yet, grouped by missing input.
+- Reads never touch `site_submit` (its RLS cost); names come from task subjects.
+
+**Fix shipped with Phase 3 (found during the build):** completing a task through the existing Tasks screens called `postTaskCompletionToTimelines`. That inserts an `activity` row (deal) and an internal `site_submit_comment` (site), and both reset the board clock. It now returns early for package tasks (`task.package_slide_id`). As of 2026-10-23, no package task had been completed, so no card was cooled this way.
