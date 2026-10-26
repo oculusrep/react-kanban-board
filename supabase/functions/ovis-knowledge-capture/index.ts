@@ -23,6 +23,11 @@
  *      users listed in app_settings.intel_email_lookup_user_ids (403 otherwise).
  *      See _shared/knowledge-capture/emailLookup.ts.
  *
+ *   4. { action: 'parse_signature', text } -> parsed | multiple | nothing_found
+ *      "Paste signature" in ContactFormModal: verified contact fields from a
+ *      pasted block. Writes nothing. Any internal user (the gate above).
+ *      See _shared/knowledge-capture/pasteSignature.ts.
+ *
  * Unlike ovis-site-research this runs synchronously. That function had to move to
  * a background queue because Opus with web search blew past Supabase's 150 s idle
  * timeout; a turn here is Sonnet plus a few name lookups against Postgres, so the
@@ -37,10 +42,14 @@ import { runTurn } from '../_shared/knowledge-capture/converse.ts';
 import { normalizeMessages } from '../_shared/knowledge-capture/messages.ts';
 import { fileEntry } from '../_shared/knowledge-capture/file.ts';
 import { lookupEmailSignature } from '../_shared/knowledge-capture/emailLookup.ts';
+import { parsePastedSignature } from '../_shared/knowledge-capture/pasteSignature.ts';
 import { runToolLoop } from '../_shared/knowledge-capture/loop.ts';
 import { parseModelJson } from '../_shared/knowledge-capture/proposal.ts';
 import { anthropicCreate, buildBaseParams, CHAT_PRICING } from '../_shared/knowledge-capture/config.ts';
 import {
+  PASTE_SIGNATURE_OUTPUT_FORMAT,
+  PASTE_SIGNATURE_SYSTEM_PROMPT,
+  pasteSignatureUserMessage,
   SIGNATURE_OUTPUT_FORMAT,
   SIGNATURE_SYSTEM_PROMPT,
   signatureUserMessage,
@@ -104,6 +113,7 @@ serve(async (req: Request) => {
     if (action === 'converse') return await converse(service, body);
     if (action === 'file') return await file(service, userClient, body);
     if (action === 'lookup_email_signature') return await lookupSignature(userClient, body);
+    if (action === 'parse_signature') return await parseSignature(userClient, body);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -187,6 +197,37 @@ async function lookupSignature(userClient: SupabaseClient, body: Record<string, 
           outputFormat: SIGNATURE_OUTPUT_FORMAT,
         });
         return parseModelJson(out.text).details;
+      },
+    },
+    body,
+  );
+  return jsonResponse(result.body, result.status);
+}
+
+// ---------------------------------------------------------------------------
+// Action: parse_signature
+// ---------------------------------------------------------------------------
+async function parseSignature(userClient: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) return jsonResponse({ error: 'anthropic_key_missing' }, 500);
+
+  const result = await parsePastedSignature(
+    {
+      rpc: async (fn, args) => {
+        const { data, error } = await userClient.rpc(fn, args ?? {});
+        return { data, error: error ? { message: error.message, code: error.code } : null };
+      },
+      extract: async (text) => {
+        const out = await runToolLoop({
+          create: anthropicCreate(apiKey),
+          execute: () => Promise.reject(new Error('no tools')),
+          baseParams: buildBaseParams(PASTE_SIGNATURE_SYSTEM_PROMPT),
+          messages: [{ role: 'user', content: pasteSignatureUserMessage(text) }],
+          tools: [],
+          pricing: CHAT_PRICING,
+          outputFormat: PASTE_SIGNATURE_OUTPUT_FORMAT,
+        });
+        return parseModelJson(out.text);
       },
     },
     body,

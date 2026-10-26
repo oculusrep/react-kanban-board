@@ -939,8 +939,24 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
     setShowContactFormModal(true);
   };
 
-  const handleContactCreated = async () => {
-    // Refresh contacts after creating a new one
+  const handleContactCreated = async (newContact?: { id: string }) => {
+    // ContactFormModal only creates the contact; attaching it to this deal is
+    // ours to do (it used to be skipped, so new contacts never showed up here).
+    // Same row shape as adding an existing contact (AddContactsModalForDeals).
+    if (newContact?.id) {
+      const { error } = await supabase
+        .from('deal_contact')
+        .insert(prepareInsert([{
+          deal_id: dealId,
+          contact_id: newContact.id,
+          primary_contact: false,
+          role_id: null,
+        }]));
+      if (error) {
+        console.error('Failed to attach new contact to deal:', error);
+        alert('The contact was created but could not be added to this deal. Add it from the contact list.');
+      }
+    }
     await handleContactsAdded();
     setShowContactFormModal(false);
   };

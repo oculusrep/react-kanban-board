@@ -142,6 +142,20 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+/**
+ * ovis-knowledge-capture's parse_signature answer ("Paste signature" in the
+ * contact form). Fields were verified server-side against the pasted text and
+ * never include an Oculus email, company or internal phone. Nothing is written.
+ */
+export type PastedSignatureResult =
+  | { result: 'parsed'; name?: string; details: NonNullable<UnresolvedName['details']> }
+  | { result: 'multiple' }
+  | { result: 'nothing_found' };
+
+export function parsePastedSignature(text: string): Promise<PastedSignatureResult> {
+  return invoke<PastedSignatureResult>({ action: 'parse_signature', text });
+}
+
 export function useKnowledgeCapture(authUserId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [rawText, setRawText] = useState('');
