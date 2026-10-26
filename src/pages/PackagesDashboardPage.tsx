@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import usePackagesDashboard, { PackageRowView } from '../hooks/usePackagesDashboard';
 import {
-  BRAND, GateState, INPUT_LABEL, PACE_LABEL, ProgressRow, paceStyle, shortDate, startPackageForCard,
+  BRAND, GateState, INPUT_LABEL, PACE_LABEL, ProgressRow, STATUS_LABEL, SlideRow, paceStyle, shortDate, startPackageForCard,
 } from '../lib/packageTracker';
 
 // Starbucks Packages dashboard (decisions 2026-10-22). Read-only except Start
@@ -34,7 +34,11 @@ const STAGE_SHORT: Record<string, string> = {
 
 export default function PackagesDashboardPage() {
   const navigate = useNavigate();
-  const { rows, loading, error, refresh } = usePackagesDashboard();
+  const { rows, slides, names, toggleDone, loading, error, refresh } = usePackagesDashboard();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpand = (id: string) => setExpanded((cur) => {
+    const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n;
+  });
   const [sidebar, setSidebar] = useState<{ siteSubmitId: string | null; dealId: string | null } | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
@@ -101,14 +105,24 @@ export default function PackagesDashboardPage() {
                 <tr><td colSpan={10} className={td} style={{ color: BRAND.steel }}>Loading…</td></tr>
               )}
               {rows.map((r) => (
-                <Row
-                  key={r.card.id}
-                  r={r}
-                  td={td}
-                  starting={starting === r.card.id}
-                  onOpen={() => setSidebar({ siteSubmitId: r.card.siteSubmitId, dealId: r.card.dealId })}
-                  onStart={() => start(r)}
-                />
+                <Fragment key={r.card.id}>
+                  <Row
+                    r={r}
+                    td={td}
+                    starting={starting === r.card.id}
+                    expanded={expanded.has(r.card.id)}
+                    onToggle={r.progress ? () => toggleExpand(r.card.id) : undefined}
+                    onOpen={() => setSidebar({ siteSubmitId: r.card.siteSubmitId, dealId: r.card.dealId })}
+                    onStart={() => start(r)}
+                  />
+                  {r.progress && expanded.has(r.card.id) && (
+                    <SlidesRow
+                      slides={slides.get(r.progress.package_id) ?? []}
+                      names={names}
+                      onDone={(slideId, done) => toggleDone(r.progress!.package_id, slideId, done)}
+                    />
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -132,8 +146,44 @@ export default function PackagesDashboardPage() {
   );
 }
 
-function Row({ r, td, starting, onOpen, onStart }: {
-  r: PackageRowView; td: string; starting: boolean; onOpen: () => void; onStart: () => void;
+// Expanded package: every slide with the quick-complete Done checkbox (any owner,
+// skips approval and missing inputs; uncheck → Not started). Counts update at once.
+function SlidesRow({ slides, names, onDone }: {
+  slides: SlideRow[]; names: Record<string, string>; onDone: (slideId: string, done: boolean) => void;
+}) {
+  return (
+    <tr style={{ backgroundColor: BRAND.page }}>
+      <td />
+      <td colSpan={9} className="px-3 py-2">
+        <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs" style={{ color: BRAND.navy }}>
+          {slides.map((s) => (
+            <li key={s.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={s.status === 'done'}
+                onChange={(e) => onDone(s.id, e.target.checked)}
+                aria-label={`Mark ${s.label} done`}
+                title={s.status === 'done' ? 'Uncheck to set back to Not started' : 'Mark done (any owner; skips approval and missing inputs)'}
+              />
+              <span className="w-4 text-right" style={{ color: BRAND.slate }}>{s.position}</span>
+              <span className={s.status === 'done' ? 'line-through' : ''} style={{ color: s.status === 'done' ? BRAND.steel : BRAND.navy }}>{s.label}</span>
+              <span style={{ color: BRAND.slate }}>{names[s.owner_user_id] ?? ''}</span>
+              <span className="ml-auto" style={{ color: s.effective_status === 'waiting_on_mike' ? BRAND.navy : BRAND.slate }}>
+                {s.status === 'done'
+                  ? `Done${s.done_by && names[s.done_by] ? ` · ${names[s.done_by]}` : ''}${s.done_at ? ` · ${shortDate(s.done_at)}` : ''}`
+                  : STATUS_LABEL[s.effective_status]}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </td>
+    </tr>
+  );
+}
+
+function Row({ r, td, starting, expanded, onToggle, onOpen, onStart }: {
+  r: PackageRowView; td: string; starting: boolean; expanded: boolean;
+  onToggle?: () => void; onOpen: () => void; onStart: () => void;
 }) {
   const p = r.progress;
   const pct = p && p.applicable > 0 ? Math.round((p.done / p.applicable) * 100) : 0;
@@ -144,7 +194,19 @@ function Row({ r, td, starting, onOpen, onStart }: {
     <tr onClick={onOpen} className="cursor-pointer hover:bg-slate-50" style={{ borderBottom: `1px solid ${BRAND.page}` }}>
       <td className="w-6" />
       <td className={td}>
-        <div className="font-medium">{r.card.name}</div>
+        <div className="font-medium flex items-center gap-1">
+          {onToggle && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggle(); }}
+              className="w-4 text-xs"
+              style={{ color: BRAND.steel }}
+              aria-expanded={expanded}
+              title={expanded ? 'Hide slides' : 'Show slides'}
+            >{expanded ? '▾' : '▸'}</button>
+          )}
+          {r.card.name}
+        </div>
         <div className="flex items-center gap-2 text-xs" style={{ color: BRAND.slate }}>
           {r.card.city && <span>{r.card.city}</span>}
           <span>{r.card.accountToken}</span>

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import useStarbucksBoard from './useStarbucksBoard';
 import { ACCOUNT_ALL, BoardDeal, isParked, isToClassify } from '../lib/starbucksBoard';
 import {
-  InputKey, Pace, ProgressRow, fetchAllPackageProgress, fetchResearchInputs, paceOf,
+  InputKey, Pace, ProgressRow, SlideRow, fetchAllPackageProgress, fetchAllSlides, fetchResearchInputs,
+  localEffective, paceOf, setSlideDone,
 } from '../lib/packageTracker';
+import { supabase } from '../lib/supabaseClient';
 
 // Packages dashboard (decisions 2026-10-22): every board card in Pre-Submittal,
 // Submitted-Reviewing and Negotiating LOI, packaged or not. Card membership is
@@ -27,8 +29,20 @@ export default function usePackagesDashboard() {
   const board = useStarbucksBoard(ACCOUNT_ALL);
   const [progress, setProgress] = useState<ProgressRow[]>([]);
   const [research, setResearch] = useState<{ marketResearch: Set<string>; siteStory: Set<string> } | null>(null);
+  const [slides, setSlides] = useState<Map<string, SlideRow[]>>(new Map());
+  const [names, setNames] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+
+  // First names for slide owners / done-by (internal users only — a small table).
+  useEffect(() => {
+    supabase.from('user').select('id, first_name, name').in('ovis_role', ['admin', 'broker_full', 'broker_lite', 'va'])
+      .then(({ data }) => {
+        const m: Record<string, string> = {};
+        for (const u of (data as { id: string; first_name: string | null; name: string | null }[]) ?? []) m[u.id] = u.first_name || u.name || '';
+        setNames(m);
+      });
+  }, []);
 
   const cards = useMemo(() => {
     const byId = new Map<string, BoardDeal>();
@@ -44,13 +58,15 @@ export default function usePackagesDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const [prog, res] = await Promise.all([
+        const [prog, res, sl] = await Promise.all([
           fetchAllPackageProgress(),
           fetchResearchInputs(siteKey ? siteKey.split(',') : []),
+          fetchAllSlides(),
         ]);
         if (cancelled) return;
         setProgress(prog);
         setResearch(res);
+        setSlides(sl);
         setError(null);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load packages');
@@ -95,5 +111,34 @@ export default function usePackagesDashboard() {
 
   const refresh = useCallback(() => { board.refresh(); setNonce((n) => n + 1); }, [board]);
 
-  return { rows, loading: board.loading || research === null, error: error ?? board.error, refresh };
+  // Quick-complete from an expanded row: update the slide and the row's counts
+  // locally at once, write through the RPC, then re-read the package's truth.
+  const toggleDone = useCallback(async (packageId: string, slideId: string, done: boolean) => {
+    const before = { slides, progress };
+    const nextSlides = (slides.get(packageId) ?? []).map((s) => {
+      if (s.id !== slideId) return s;
+      const status = done ? 'done' : 'not_started';
+      const ns: SlideRow = { ...s, status, done_at: done ? new Date().toISOString() : null, owner_done_at: done ? s.owner_done_at : null };
+      return { ...ns, effective_status: localEffective(ns) };
+    });
+    const m = new Map(slides); m.set(packageId, nextSlides); setSlides(m);
+    setProgress((ps) => ps.map((p) => p.package_id !== packageId ? p : {
+      ...p,
+      applicable: nextSlides.filter((s) => s.effective_status !== 'na').length,
+      done: nextSlides.filter((s) => s.effective_status === 'done').length,
+      waiting_on_mike: nextSlides.filter((s) => s.effective_status === 'waiting_on_mike').length,
+      tour_ready_done: nextSlides.filter((s) => ['market_aerial', 'demo_map', 'site_plan'].includes(s.template_key) && s.effective_status === 'done').length,
+      any_started: p.any_started || done,
+    }));
+    try {
+      await setSlideDone(progress.find((p) => p.package_id === packageId)?.deal_id ?? null, slideId, done);
+      setNonce((n) => n + 1); // server truth: gates, pace, tour-ready, done_by
+    } catch (e: any) {
+      setSlides(before.slides);
+      setProgress(before.progress);
+      setError(e?.message ?? 'Could not update the slide');
+    }
+  }, [slides, progress]);
+
+  return { rows, slides, names, toggleDone, loading: board.loading || research === null, error: error ?? board.error, refresh };
 }
