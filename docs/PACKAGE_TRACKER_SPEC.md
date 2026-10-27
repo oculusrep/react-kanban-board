@@ -465,3 +465,30 @@ UI on the branch: the package section comes first in the DATA tab and is collaps
 - Reads never touch `site_submit` (its RLS cost); names come from task subjects.
 
 **Fix shipped with Phase 3 (found during the build):** completing a task through the existing Tasks screens called `postTaskCompletionToTimelines`. That inserts an `activity` row (deal) and an internal `site_submit_comment` (site), and both reset the board clock. It now returns early for package tasks (`task.package_slide_id`). As of 2026-10-23, no package task had been completed, so no card was cooled this way.
+
+---
+
+## 15. Quick-complete override (2026-10-26, preview; migration awaiting OK)
+
+**Decision (Mike):** every slide gets a Done checkbox in the sidebar package section and in expandable rows on `/reports/starbucks-packages`.
+- Checking it marks the slide Done regardless of owner, handoff or missing inputs, and closes any open linked task.
+- Unchecking sets it back to Not started and reopens the task.
+- It records who and when. The normal Start / hand-off / approve controls stay.
+
+**Migration `20261026120345_package_slide_quick_done.sql`:**
+- `deal_package_slide.done_by`, stamped by `trg_stamp_slide_done_by` on every path to Done (quick-complete, sidebar Approve / Finish, a no-handoff task completed by its owner) and cleared when the slide leaves Done.
+- `set_package_slide_done(slide, done)`: a definer function with an explicit internal-user check. The linked task follows through the existing `trg_sync_task_from_slide`, a pure SQL path with no timeline post, so no board clock moves. Unchecking re-runs `release_package_tasks` for the package.
+- `v_deal_package_slide` gains `done_by` (appended; grants kept).
+
+**Test:** `supabase/tests/package_quick_done_test.sql` (7 checks):
+- owner-agnostic Done on a Noree approve slide that's missing an input, with its task closed
+- Mike's own slide (no task)
+- uncheck clears the done fields and reopens the task
+- the normal approve path stamps `done_by`
+- every board clock unchanged, and no activity / chat rows written
+- a portal user is refused, and anon is denied
+
+**Verified 2026-10-26 (Phase 3, live):**
+- Mike checked off Grovetown Exchange Drive Time on the production queue. The task completed and the slide moved to Waiting on Mike.
+- Grovetown's `ball_in_court_since` and `court_since` were unchanged, and no timeline posts were made.
+- One drag saved the order of Noree's 50 open tasks (ranks 1000–50000).

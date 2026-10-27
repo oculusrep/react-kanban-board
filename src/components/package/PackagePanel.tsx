@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import useDealPackage from '../../hooks/useDealPackage';
 import {
   BRAND, GateState, INPUT_LABEL, InputKey, ManualInput, PACE_LABEL, ProgressRow, STATUS_LABEL,
-  SlideRow, SlideStatus, nextAction, paceOf, paceStyle, setPackageInput, setSlideStatus, shortDate, startPackage,
+  SlideRow, SlideStatus, nextAction, paceOf, paceStyle, setPackageInput, setSlideDone, setSlideStatus, shortDate, startPackage,
 } from '../../lib/packageTracker';
 import GateDatesForm from './GateDatesForm';
 
@@ -189,7 +189,9 @@ export default function PackagePanel({ dealId, collapsible = false }: PackagePan
                 slide={s}
                 owner={owners[s.owner_user_id] ?? ''}
                 busy={busy === s.id}
+                doneByName={s.done_by ? owners[s.done_by] ?? '' : ''}
                 onSet={(to) => run(s.id, () => setSlideStatus(dealId, s, to))}
+                onDone={(done) => run(s.id, () => setSlideDone(dealId, s.id, done))}
               />
             ))}
           </ul>
@@ -228,13 +230,24 @@ function ProgressSummary({ progress }: { progress: ProgressRow | null }) {
   );
 }
 
-function SlideItem({ slide, owner, busy, onSet }: {
-  slide: SlideRow; owner: string; busy: boolean; onSet: (to: SlideStatus) => void;
+export function SlideItem({ slide, owner, doneByName, busy, onSet, onDone }: {
+  slide: SlideRow; owner: string; doneByName: string; busy: boolean;
+  onSet: (to: SlideStatus) => void; onDone: (done: boolean) => void;
 }) {
   const action = nextAction(slide);
   const eff = slide.effective_status;
   return (
     <li className="py-1.5 flex items-start gap-2">
+      {/* Quick-complete: Done regardless of owner / approval / inputs; uncheck → Not started. */}
+      <input
+        type="checkbox"
+        className="mt-0.5"
+        checked={slide.status === 'done'}
+        disabled={busy}
+        onChange={(e) => onDone(e.target.checked)}
+        title={slide.status === 'done' ? 'Uncheck to set back to Not started' : 'Mark done (any owner; skips approval and missing inputs)'}
+        aria-label={`Mark ${slide.label} done`}
+      />
       <span className="w-4 text-right" style={{ color: BRAND.slate }}>{slide.position}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -243,6 +256,9 @@ function SlideItem({ slide, owner, busy, onSet }: {
         </div>
         {slide.missing_inputs.length > 0 && eff !== 'done' && eff !== 'na' && (
           <div style={{ color: BRAND.terracotta }}>Needs {slide.missing_inputs.map((k) => INPUT_LABEL[k]).join(' + ')}</div>
+        )}
+        {slide.status === 'done' && slide.done_at && (
+          <div style={{ color: BRAND.slate }}>Done{doneByName ? ` · ${doneByName}` : ''} · {shortDate(slide.done_at)}</div>
         )}
       </div>
       <span className="px-1.5 py-0.5 rounded whitespace-nowrap" style={CHIP[eff]}>{STATUS_LABEL[eff]}</span>

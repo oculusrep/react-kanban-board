@@ -71,6 +71,7 @@ export interface SlideRow {
   inputs_ready: boolean;
   effective_status: SlideStatus;
   waiting_reason: 'input' | 'review' | null;
+  done_by: string | null; // 20261026120345: who marked it done
 }
 
 export interface ProgressRow {
@@ -231,7 +232,7 @@ export async function fetchDealPackage(dealId: string): Promise<DealPackageInfo>
   base.slides = (slideRes.data as SlideRow[]) ?? [];
   base.progress = (progRes.data as ProgressRow) ?? null;
 
-  const ownerIds = [...new Set(base.slides.map((s) => s.owner_user_id))];
+  const ownerIds = [...new Set(base.slides.flatMap((s) => [s.owner_user_id, s.done_by]).filter((x): x is string => !!x))];
   if (ownerIds.length) {
     const { data: users } = await supabase.from('user').select('id, first_name, name').in('id', ownerIds);
     for (const u of (users as { id: string; first_name: string | null; name: string | null }[]) ?? []) {
@@ -301,6 +302,30 @@ export async function setSlideStatus(dealId: string, slide: SlideRow, status: Sl
   const { error } = await supabase.from('deal_package_slide').update(patch).eq('id', slide.id);
   if (error) throw error;
   notifyPackageChanged(dealId);
+}
+
+// Quick-complete override (20261026120345): Done regardless of owner, handoff or
+// missing inputs; the linked task closes (or reopens) by trigger, with no timeline
+// post, so the board clock never moves. Unchecking returns the slide to Not started.
+export async function setSlideDone(dealId: string | null, slideId: string, done: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_package_slide_done', { p_slide_id: slideId, p_done: done });
+  if (error) throw error;
+  if (dealId) notifyPackageChanged(dealId);
+}
+
+// Every package's slides (dashboard expandable rows); grouped by package id.
+export async function fetchAllSlides(): Promise<Map<string, SlideRow[]>> {
+  const { data, error } = await supabase.from('v_deal_package_slide').select('*').order('position');
+  if (error) throw error;
+  const m = new Map<string, SlideRow[]>();
+  for (const s of (data as SlideRow[]) ?? []) m.set(s.package_id, [...(m.get(s.package_id) ?? []), s]);
+  return m;
+}
+
+// Client-side effective status after a local Done toggle (mirrors v_deal_package_slide).
+export function localEffective(s: SlideRow): SlideStatus {
+  if (s.status === 'done' || s.status === 'na') return s.status;
+  return s.missing_inputs.length > 0 ? 'waiting_on_mike' : s.status;
 }
 
 // Next step for the primary action on a slide row.
