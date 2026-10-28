@@ -244,6 +244,18 @@ Google requests (this phase):
 | Clear / skip | 1 Directions for that chunk (0 if that shape is still cached) + traffic for the changed leg |
 | Optimize (n free stops, k with approaches) | k Directions (approach tails, cached) + ⌈(n+1)/r⌉·⌈(n+e)/25⌉ Matrix tiles (r = rows per tile) |
 
+Migration `20261028180635_tour_approach_waypoints` applied to prod + recorded 2026-10-28.
+
+## Cleanup list
+
+- **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding
+  `approach_waypoints`). RLS returns no rows — an anonymous PostgREST request
+  `site_submit?select=id,approach_waypoints` returned `[]` / HTTP 200 — but the grant itself
+  should be revoked per the CLAUDE.md grants rules. Left as-is by decision for now; needs its
+  own migration + per-persona check (portal reads site_submit through `authenticated`).
+- No editor for the tour-level `tour_date` (only per-day dates are editable).
+- `DirectionsService` deprecated (Feb 2026) → Routes API migration (planned phase).
+
 Next phases: Routes API migration (`computeRoutes` / `computeRouteMatrix` — also gives per-leg
 traffic with waypoints), tour layer on the main map (register in **both** layer menus), PDF
 export, portal tour view, live follow-along.
