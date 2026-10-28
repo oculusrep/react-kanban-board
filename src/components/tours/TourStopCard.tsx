@@ -68,17 +68,20 @@ interface TourStopCardProps {
   badgeProps?: HTMLAttributes<HTMLDivElement>;
   badgeTitle?: string;
   dragging?: boolean;
+  /** Focused on the map (in/out legs highlighted). */
+  highlight?: boolean;
 }
 
-export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging }: TourStopCardProps) {
+export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging, highlight }: TourStopCardProps) {
   return (
     <div
       style={{
         display: 'flex',
         gap: 10,
         alignItems: 'flex-start',
-        background: dragging ? '#F0F4FA' : '#FFFFFF',
-        border: `1px solid ${cardBorder}`,
+        background: dragging || highlight ? '#F0F4FA' : '#FFFFFF',
+        border: highlight ? `2px solid ${midnight}` : `1px solid ${cardBorder}`,
+        margin: highlight ? -1 : 0, // keep layout steady with the thicker border
         borderRadius: 10,
         padding: '10px 12px',
         boxShadow: dragging ? '0 4px 16px rgba(0,33,71,0.15)' : '0 1px 2px rgba(0,33,71,0.04)',
@@ -225,7 +228,8 @@ const linkBtn: CSSProperties = { border: 'none', background: 'transparent', colo
 export function ApproachTag({ source, onClearTour, onClearSite, onSkipOnTour }: ApproachTagProps) {
   if (!source) return null;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    // Clicks on these actions shouldn't also toggle the card's map focus.
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={(e) => e.stopPropagation()}>
       <span
         title={source === 'tour' ? 'Custom approach — this tour only' : 'Custom approach — saved for this site'}
         style={{ fontSize: 11, color: midnight, border: `1px dashed ${slate}`, borderRadius: 999, padding: '0 7px', fontWeight: 600, whiteSpace: 'nowrap' }}

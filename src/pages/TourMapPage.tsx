@@ -63,6 +63,25 @@ const MIDNIGHT = '#002147';
 const STEEL = '#4A6B94';
 const SLATE = '#8FA9C8';
 const TERRACOTTA = '#A27B5C';
+const INBOUND = '#2E7D32'; // focused stop: arriving
+const OUTBOUND = '#E07B00'; // focused stop: leaving
+const ROUTE_OPACITY = 0.85;
+const FADED_OPACITY = 0.25;
+
+// Repeating chevrons along a route line, pointing in the direction of travel.
+const arrowIcons = (color: string, opacity: number): google.maps.IconSequence[] => [
+  {
+    icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 2, strokeColor: color, strokeOpacity: opacity, strokeWeight: 2 },
+    offset: '40px',
+    repeat: '80px',
+  },
+];
+
+interface RendererEntry {
+  renderer: google.maps.DirectionsRenderer;
+  chunk: DayChunk;
+  color: string;
+}
 
 interface NumberedStop extends TourStopGeo {
   number: number; // 1-based position within the day, counting stops without coordinates
@@ -100,7 +119,14 @@ export function TourMapPage() {
   const { tourId } = useParams<{ tourId: string }>();
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const overlaysRef = useRef<{ markers: any[]; renderers: google.maps.DirectionsRenderer[] }>({ markers: [], renderers: [] });
+  const overlaysRef = useRef<{ markers: any[]; renderers: RendererEntry[]; focusLines: google.maps.Polyline[] }>({
+    markers: [],
+    renderers: [],
+    focusLines: [],
+  });
+  const focusRef = useRef<string | null>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const markerClickAtRef = useRef(0); // a pin click must not also count as a map click
   const programmaticRef = useRef(new WeakSet<google.maps.DirectionsResult>());
   const dirServiceRef = useRef<google.maps.DirectionsService | null>(null);
   const matrixServiceRef = useRef<google.maps.DistanceMatrixService | null>(null);
@@ -120,6 +146,8 @@ export function TourMapPage() {
   const [stopSchedule, setStopSchedule] = useState<StopSchedule>({});
   const [pending, setPending] = useState<PendingApproach | null>(null);
   const [savingApproach, setSavingApproach] = useState(false);
+  const [focusStopId, setFocusStopId] = useState<string | null>(null);
+  const toggleFocus = (stopId: string) => setFocusStopId((cur) => (cur === stopId ? null : stopId));
   const redraw = () => setRefreshKey((k) => k + 1);
 
   // Load the reorder slideout lazily (keeps map bundle lean).
@@ -165,12 +193,77 @@ export function TourMapPage() {
 
   const clearOverlays = () => {
     overlaysRef.current.markers.forEach((m) => (m.map = null));
-    overlaysRef.current.renderers.forEach((r) => {
-      google.maps.event.clearInstanceListeners(r);
-      r.setMap(null);
+    overlaysRef.current.renderers.forEach(({ renderer }) => {
+      google.maps.event.clearInstanceListeners(renderer);
+      renderer.setMap(null);
     });
-    overlaysRef.current = { markers: [], renderers: [] };
+    overlaysRef.current.focusLines.forEach((l) => l.setMap(null));
+    overlaysRef.current = { markers: [], renderers: [], focusLines: [] };
   };
+
+  // Stop focus: inbound leg (prev stopover → stop, incl. its approach) green, outbound leg
+  // (stop → next stopover) orange, every other route line faded. Display only — re-renders
+  // each chunk from the renderer's CURRENT directions (so an unsaved drag stays visible) and
+  // overlays non-clickable polylines (drags still reach the renderer underneath).
+  const applyFocus = (stopId: string | null) => {
+    const map = mapRef.current;
+    if (!map) return;
+    overlaysRef.current.focusLines.forEach((l) => l.setMap(null));
+    overlaysRef.current.focusLines = [];
+    const opacity = stopId ? FADED_OPACITY : ROUTE_OPACITY;
+    for (const { renderer, chunk, color } of overlaysRef.current.renderers) {
+      const result = renderer.getDirections() ?? chunk.result;
+      if (!result) continue;
+      renderer.setOptions({
+        polylineOptions: { strokeColor: color, strokeOpacity: opacity, strokeWeight: 5, zIndex: 10, icons: arrowIcons(color, opacity) },
+      });
+      programmaticRef.current.add(result);
+      renderer.setDirections(result);
+      if (!stopId) continue;
+      const stopovers = chunk.points.filter((p) => !p.via);
+      result.routes[0]?.legs.forEach((leg, i) => {
+        const from = stopovers[i];
+        const to = stopovers[i + 1];
+        const dir = to?.id === stopId ? 'in' : from?.id === stopId ? 'out' : null;
+        if (!dir) return;
+        const path = leg.steps.flatMap((st) => st.path ?? []);
+        const lineColor = dir === 'in' ? INBOUND : OUTBOUND;
+        overlaysRef.current.focusLines.push(
+          new google.maps.Polyline({
+            map,
+            path,
+            clickable: false,
+            strokeColor: lineColor,
+            strokeOpacity: 0.95,
+            strokeWeight: 8,
+            zIndex: 12,
+            icons: arrowIcons('#FFFFFF', 1),
+          })
+        );
+      });
+    }
+  };
+
+  useEffect(() => {
+    focusRef.current = focusStopId;
+    applyFocus(focusStopId);
+    if (focusStopId) cardRefs.current[focusStopId]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusStopId]);
+
+  // Esc clears focus; so does a click on the map itself.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFocusStopId(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const l = mapRef.current.addListener('click', () => {
+      if (Date.now() - markerClickAtRef.current > 300) setFocusStopId(null);
+    });
+    return () => l.remove();
+  }, [mapReady]);
 
   const makeMarker = (map: google.maps.Map, pos: google.maps.LatLngLiteral, label: string, color: string, title: string) => {
     const { AdvancedMarkerElement } = google.maps.marker;
@@ -223,6 +316,10 @@ export function TourMapPage() {
     }
     setNotice(null);
     setPending({ stop, points: newVias, chunkPoints: chunk.points, result: res });
+    // Show in vs out for the stop whose approach was just dragged. (The renderer reports a
+    // drag only on drop, so focus switches when you let go.)
+    if (focusRef.current === stop.id) applyFocus(stop.id);
+    else setFocusStopId(stop.id);
   };
 
   // ---- load + compute (Google only on cache miss) + draw ----
@@ -358,19 +455,22 @@ export function TourMapPage() {
               draggable: true,
               suppressMarkers: true,
               preserveViewport: true,
-              polylineOptions: { strokeColor: dr.color, strokeOpacity: 0.85, strokeWeight: 5, zIndex: 10 },
+              polylineOptions: { strokeColor: dr.color, strokeOpacity: ROUTE_OPACITY, strokeWeight: 5, zIndex: 10, icons: arrowIcons(dr.color, ROUTE_OPACITY) },
             });
             programmaticRef.current.add(chunk.result);
             renderer.setDirections(chunk.result);
             renderer.addListener('directions_changed', () => onChunkDragged(dr, chunk, renderer));
-            overlaysRef.current.renderers.push(renderer);
+            overlaysRef.current.renderers.push({ renderer, chunk, color: dr.color });
           }
         }
         dr.ordered.forEach((s) => {
           const pos = { lat: s.lat!, lng: s.lng! };
-          overlaysRef.current.markers.push(
-            makeMarker(map, pos, String(s.number), dr.color, `Day ${dr.day.day_number} · ${s.number}. ${s.display_name}`)
-          );
+          const marker = makeMarker(map, pos, String(s.number), dr.color, `Day ${dr.day.day_number} · ${s.number}. ${s.display_name}`);
+          marker.addListener('click', () => {
+            markerClickAtRef.current = Date.now();
+            toggleFocus(s.id);
+          });
+          overlaysRef.current.markers.push(marker);
           extend(pos);
         });
         dr.points
@@ -398,6 +498,8 @@ export function TourMapPage() {
           overlaysRef.current.markers.push(makeMarker(map, pos, '•', SLATE, `Unscheduled · ${s.display_name}`));
           extend(pos);
         });
+
+      applyFocus(focusRef.current);
 
       setTour(t);
       setUnscheduledCount(byDay(null).length);
@@ -591,6 +693,35 @@ export function TourMapPage() {
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
+          {focusStopId && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 12,
+                bottom: 24,
+                background: '#FFFFFF',
+                border: `1px solid ${SLATE}`,
+                borderRadius: 8,
+                boxShadow: '0 2px 8px rgba(0,33,71,0.15)',
+                padding: '6px 10px',
+                fontSize: 12,
+                color: MIDNIGHT,
+                zIndex: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 3,
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 18, height: 4, borderRadius: 2, background: INBOUND }} /> arriving
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 18, height: 4, borderRadius: 2, background: OUTBOUND }} /> leaving
+              </span>
+              <span style={{ fontSize: 10, color: SLATE }}>Esc or click the map to clear</span>
+            </div>
+          )}
+
           {(pending || notice) && (
             <div
               style={{
@@ -711,8 +842,16 @@ export function TourMapPage() {
                     const mapped = s.lat != null && s.lng != null;
                     const timing = mapped ? stopSchedule[s.id] : undefined;
                     return (
-                      <div key={s.id}>
+                      <div
+                        key={s.id}
+                        ref={(el) => {
+                          cardRefs.current[s.id] = el;
+                        }}
+                        onClick={() => mapped && toggleFocus(s.id)}
+                        style={{ cursor: mapped ? 'pointer' : 'default' }}
+                      >
                         <TourStopCard
+                          highlight={focusStopId === s.id}
                           number={s.number}
                           color={mapped ? dr.color : TERRACOTTA}
                           title={s.display_name}
