@@ -111,6 +111,57 @@ type StopSchedule = Record<string, StopTiming>;
 
 type DirResult = google.maps.DirectionsResult;
 
+// ---- per-user map preferences (localStorage; every access guarded) ----
+type MapTypeChoice = 'roadmap' | 'hybrid' | 'terrain';
+interface MapPrefs {
+  mapType: MapTypeChoice;
+  places: boolean;
+}
+const PREFS_KEY = 'ovis.tourMap.prefs.v1';
+const DEFAULT_PREFS: MapPrefs = { mapType: 'roadmap', places: true };
+function loadPrefs(): MapPrefs {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
+    return {
+      mapType: ['roadmap', 'hybrid', 'terrain'].includes(raw?.mapType) ? raw.mapType : DEFAULT_PREFS.mapType,
+      places: typeof raw?.places === 'boolean' ? raw.places : DEFAULT_PREFS.places,
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+function savePrefs(p: MapPrefs) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    /* private mode / blocked storage: preference just isn't remembered */
+  }
+}
+
+// Places (Google POI icons) on/off = which cloud-styled Map ID the map uses. A Map ID can't
+// change on a live map, so toggling recreates it (same approach as GoogleMapContainer; see
+// docs/MAP_ID_POI_TOGGLE.md). Verified 2026-10-28: with VITE_GOOGLE_MAP_ID, POI icons show
+// at site zoom in roadmap, hybrid and terrain.
+const MAP_ID_PLACES = import.meta.env.VITE_GOOGLE_MAP_ID as string | undefined;
+const MAP_ID_NO_PLACES = import.meta.env.VITE_GOOGLE_MAP_ID_NO_POI as string | undefined;
+
+function tourMapOptions(prefs: MapPrefs, view?: { center: google.maps.LatLng | google.maps.LatLngLiteral; zoom: number }): google.maps.MapOptions {
+  const opts: google.maps.MapOptions = {
+    center: view?.center ?? { lat: 33.749, lng: -84.388 }, // Atlanta default
+    zoom: view?.zoom ?? 10,
+    mapTypeId: prefs.mapType,
+    mapTypeControl: false, // our own Map / Satellite / Terrain control, top-left
+    streetViewControl: true, // pegman — drop into Street View at any stop
+    streetViewControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+    fullscreenControl: false,
+    clickableIcons: true, // POI icons open Google's place card
+    gestureHandling: 'greedy',
+  };
+  const mapId = prefs.places ? MAP_ID_PLACES : MAP_ID_NO_PLACES ?? MAP_ID_PLACES;
+  if (mapId) opts.mapId = mapId;
+  return opts;
+}
+
 function TourMapPageInner() {
   const { tourId } = useParams<{ tourId: string }>();
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -159,6 +210,9 @@ function TourMapPageInner() {
   const [pending, setPending] = useState<PendingApproach | null>(null);
   const [savingApproach, setSavingApproach] = useState(false);
   const [focusStopId, setFocusStopId] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<MapPrefs>(loadPrefs);
+  const prefsRef = useRef(prefs);
+  const [mapVersion, setMapVersion] = useState(0); // bumps when the map is recreated
   const toggleFocus = (stopId: string) => setFocusStopId((cur) => (cur === stopId ? null : stopId));
   const redraw = () => setRefreshKey((k) => k + 1);
 
@@ -171,7 +225,6 @@ function TourMapPageInner() {
   useEffect(() => {
     let cancelled = false;
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
-    const mapId = import.meta.env.VITE_GOOGLE_MAP_ID as string | undefined;
     // The Loader is a process-wide singleton — its options MUST match every other
     // caller (GoogleMapContainer uses these exact libraries) or it throws
     // "Loader must not be called again with different options". Pull marker/routes
@@ -183,16 +236,7 @@ function TourMapPageInner() {
         await google.maps.importLibrary('marker');
         await google.maps.importLibrary('routes');
         if (cancelled || !mapDivRef.current) return;
-        const opts: google.maps.MapOptions = {
-          center: { lat: 33.749, lng: -84.388 }, // Atlanta default
-          zoom: 10,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          gestureHandling: 'greedy',
-        };
-        if (mapId) opts.mapId = mapId;
-        mapRef.current = new google.maps.Map(mapDivRef.current, opts);
+        mapRef.current = new google.maps.Map(mapDivRef.current, tourMapOptions(prefsRef.current));
         dirServiceRef.current = new google.maps.DirectionsService();
         matrixServiceRef.current = new google.maps.DistanceMatrixService();
         setMapReady(true);
@@ -232,7 +276,33 @@ function TourMapPageInner() {
       if (Date.now() - markerClickAtRef.current > 300) setFocusStopId(null);
     });
     return () => l.remove();
-  }, [mapReady]);
+  }, [mapReady, mapVersion]);
+
+  // Map type: applied live, remembered per user.
+  const setMapType = (mapType: MapTypeChoice) => {
+    const next = { ...prefsRef.current, mapType };
+    prefsRef.current = next;
+    setPrefs(next);
+    savePrefs(next);
+    mapRef.current?.setMapTypeId(mapType);
+  };
+
+  // Places: recreate the map with the other Map ID, keeping the view; redraw from cache
+  // (0 Google routing calls).
+  const setPlaces = (places: boolean) => {
+    const next = { ...prefsRef.current, places };
+    prefsRef.current = next;
+    setPrefs(next);
+    savePrefs(next);
+    const old = mapRef.current;
+    if (!old || !mapDivRef.current) return;
+    const view = { center: old.getCenter() ?? { lat: 33.749, lng: -84.388 }, zoom: old.getZoom() ?? 10 };
+    clearOverlays();
+    google.maps.event.clearInstanceListeners(old);
+    mapRef.current = new google.maps.Map(mapDivRef.current, tourMapOptions(next, view));
+    setMapVersion((v) => v + 1);
+    redraw();
+  };
 
   const makeMarker = (map: google.maps.Map, pos: google.maps.LatLngLiteral, label: string, color: string, title: string) => {
     const { AdvancedMarkerElement } = google.maps.marker;
@@ -387,6 +457,7 @@ function TourMapPageInner() {
                 : null
               : Math.round((legSeconds[idx] ?? 0) / 60),
             nextIsEnd: isLast && !!endCoord,
+            minsFromStart: idx === 0 && startCoord && routeOk ? Math.round(leadSeconds / 60) : null,
           };
         });
 
@@ -642,6 +713,13 @@ function TourMapPageInner() {
         {/* Map */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
+          <MapTypeControl
+            mapType={prefs.mapType}
+            onMapType={setMapType}
+            places={prefs.places}
+            onPlaces={setPlaces}
+            placesToggleAvailable={!!MAP_ID_NO_PLACES && !!MAP_ID_PLACES}
+          />
 
           {focusStopId && (
             <div
@@ -792,6 +870,10 @@ function TourMapPageInner() {
                     const mapped = s.lat != null && s.lng != null;
                     const timing = mapped ? stopSchedule[s.id] : undefined;
                     return (
+                      <div key={`wrap-${s.id}`}>
+                      {timing?.minsFromStart != null && (
+                        <DriveConnector minutes={timing.minsFromStart} label="from start" color={dr.color} />
+                      )}
                       <div
                         key={s.id}
                         ref={(el) => {
@@ -821,7 +903,8 @@ function TourMapPageInner() {
                           }
                           subtext={s.display_subtext}
                         />
-                        <DriveConnector minutes={timing?.minsToNext} toEnd={timing?.nextIsEnd} color={dr.color} />
+                        <DriveConnector minutes={timing?.minsToNext} label={timing?.nextIsEnd ? 'to end' : undefined} color={dr.color} />
+                      </div>
                       </div>
                     );
                   })}
@@ -856,6 +939,59 @@ function TourMapPageInner() {
           daySummaries={daySummaries}
         />
       )}
+    </div>
+  );
+}
+
+// Map / Satellite / Terrain + Places, styled like GoogleMapContainer's custom control
+// (white group, #1a73e8 active, Roboto 16px / 40px buttons, separate checkbox box).
+function MapTypeControl(props: {
+  mapType: MapTypeChoice;
+  onMapType: (t: MapTypeChoice) => void;
+  places: boolean;
+  onPlaces: (on: boolean) => void;
+  placesToggleAvailable: boolean;
+}) {
+  const box = { backgroundColor: '#fff', borderRadius: 3, boxShadow: '0 2px 6px rgba(0,0,0,.3)' } as const;
+  const btn = (active: boolean) =>
+    ({
+      backgroundColor: active ? '#1a73e8' : '#fff',
+      color: active ? '#fff' : 'rgb(25,25,25)',
+      border: 'none',
+      cursor: 'pointer',
+      fontFamily: 'Roboto,Arial,sans-serif',
+      fontSize: 16,
+      lineHeight: '38px',
+      padding: '0 12px',
+      height: 40,
+    }) as const;
+  const types: [MapTypeChoice, string][] = [
+    ['roadmap', 'Map'],
+    ['hybrid', 'Satellite'],
+    ['terrain', 'Terrain'],
+  ];
+  return (
+    <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 3, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+      <div style={{ ...box, display: 'flex', overflow: 'hidden' }}>
+        {types.map(([t, label]) => (
+          <button key={t} type="button" onClick={() => props.onMapType(t)} style={btn(props.mapType === t)} aria-pressed={props.mapType === t}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <label
+        title={props.placesToggleAvailable ? 'Show Google Places icons (restaurants, retail…)' : 'Places toggle needs VITE_GOOGLE_MAP_ID_NO_POI'}
+        style={{ ...box, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontFamily: 'Roboto,Arial,sans-serif', cursor: props.placesToggleAvailable ? 'pointer' : 'not-allowed', opacity: props.placesToggleAvailable ? 1 : 0.6 }}
+      >
+        <input
+          type="checkbox"
+          checked={props.places}
+          disabled={!props.placesToggleAvailable}
+          onChange={(e) => props.onPlaces(e.target.checked)}
+          style={{ cursor: 'inherit' }}
+        />
+        <span style={{ userSelect: 'none' }}>Places</span>
+      </label>
     </div>
   );
 }

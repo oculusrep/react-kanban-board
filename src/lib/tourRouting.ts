@@ -68,6 +68,8 @@ export interface StopTiming {
   arrivalMin: number | null;
   minsToNext: number | null;
   nextIsEnd: boolean;
+  /** First routed stop of a day with a start address: drive from the start. */
+  minsFromStart?: number | null;
 }
 
 // 66 -> "1h 06m", 12 -> "12 min"

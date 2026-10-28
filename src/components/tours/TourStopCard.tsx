@@ -147,7 +147,7 @@ export function NoLocationTag() {
 // Badge centre = card padding (12) + half badge (13) => line at x=25.
 const CONNECTOR_X = 25;
 
-export function DriveConnector({ minutes, toEnd, color }: { minutes: number | null | undefined; toEnd?: boolean; color: string }) {
+export function DriveConnector({ minutes, label, color }: { minutes: number | null | undefined; label?: string; color: string }) {
   if (minutes == null) return <div style={{ height: 8 }} />;
   return (
     <div style={{ position: 'relative', height: 30 }}>
@@ -173,7 +173,7 @@ export function DriveConnector({ minutes, toEnd, color }: { minutes: number | nu
       >
         <Car size={12} color={color} />
         {formatDriveMinutes(minutes)}
-        {toEnd && <span style={{ fontWeight: 400, color: slate }}>to end</span>}
+        {label && <span style={{ fontWeight: 400, color: slate }}>{label}</span>}
       </div>
     </div>
   );
