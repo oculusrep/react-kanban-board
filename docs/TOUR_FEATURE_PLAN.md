@@ -246,6 +246,20 @@ Google requests (this phase):
 
 Migration `20261028180635_tour_approach_waypoints` applied to prod + recorded 2026-10-28.
 
+### Fix 2026-10-28 — blank page after dragging a focused leg
+
+`DirectionsRenderer` fires `directions_changed` **synchronously inside `setDirections()`**
+and `getDirections()` returns a **copy**, not the object passed in (verified in Chromium).
+The focus restyle's "was this my own setDirections?" check used object identity, so after a
+drag every restyle looked like a new drag → infinite recursion → stack overflow; clearing
+focus (Esc) then hit it inside a React effect and unmounted the app. Renderer styling, stop
+focus and drag detection now live in `src/lib/tourRouteFocus.ts` (`RouteFocusController`):
+a re-entrancy counter around every programmatic `setDirections`, drags delivered outside
+Google's event, in/out legs redrawn on the dragged path. The map is wrapped in an error
+boundary ("Reload map"). Regression test: `npm run test:tours`
+(`tests/tours/tourRouteFocus.test.ts`, fake renderer with the same two behaviours; fails
+with the original RangeError if the guard is removed).
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding

@@ -1,5 +1,5 @@
 /// <reference types="google.maps" />
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Loader } from '@googlemaps/js-api-loader';
 import {
@@ -45,6 +45,13 @@ import {
   seedRouteChunk,
   type DayChunk,
 } from '../lib/tourRouteService';
+import {
+  INBOUND_COLOR as INBOUND,
+  OUTBOUND_COLOR as OUTBOUND,
+  RouteFocusController,
+  type DragEvent,
+  type FocusEntry,
+} from '../lib/tourRouteFocus';
 
 // ---------------------------------------------------------------------------
 // TourMapPage (/tours/:id/map) — self-contained tour route view.
@@ -63,10 +70,6 @@ const MIDNIGHT = '#002147';
 const STEEL = '#4A6B94';
 const SLATE = '#8FA9C8';
 const TERRACOTTA = '#A27B5C';
-const INBOUND = '#2E7D32'; // focused stop: arriving
-const OUTBOUND = '#E07B00'; // focused stop: leaving
-const ROUTE_OPACITY = 0.85;
-const FADED_OPACITY = 0.25;
 
 // Repeating chevrons along a route line, pointing in the direction of travel.
 const arrowIcons = (color: string, opacity: number): google.maps.IconSequence[] => [
@@ -76,12 +79,6 @@ const arrowIcons = (color: string, opacity: number): google.maps.IconSequence[] 
     repeat: '80px',
   },
 ];
-
-interface RendererEntry {
-  renderer: google.maps.DirectionsRenderer;
-  chunk: DayChunk;
-  color: string;
-}
 
 interface NumberedStop extends TourStopGeo {
   number: number; // 1-based position within the day, counting stops without coordinates
@@ -112,22 +109,37 @@ interface PendingApproach {
 
 type StopSchedule = Record<string, StopTiming>;
 
-const sameApproach = (a: ApproachPoint[], b: ApproachPoint[]) =>
-  a.length === b.length && a.every((p, i) => p.lat.toFixed(5) === b[i].lat.toFixed(5) && p.lng.toFixed(5) === b[i].lng.toFixed(5));
+type DirResult = google.maps.DirectionsResult;
 
-export function TourMapPage() {
+function TourMapPageInner() {
   const { tourId } = useParams<{ tourId: string }>();
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const overlaysRef = useRef<{ markers: any[]; renderers: RendererEntry[]; focusLines: google.maps.Polyline[] }>({
-    markers: [],
-    renderers: [],
-    focusLines: [],
-  });
+  const overlaysRef = useRef<{ markers: any[]; renderers: google.maps.DirectionsRenderer[] }>({ markers: [], renderers: [] });
+  const dayByEntryRef = useRef(new Map<FocusEntry<DirResult>, DayRender>());
+  const onDragRef = useRef<(e: DragEvent<DirResult>) => void>(() => {});
+  // Renderer styling + stop focus + drag detection (see tourRouteFocus for why).
+  const [focusCtl] = useState(
+    () =>
+      new RouteFocusController<DirResult>({
+      makeLine: ({ path, color, arrowsColor }) =>
+        new google.maps.Polyline({
+          map: mapRef.current,
+          path: path as google.maps.LatLng[],
+          clickable: false, // drags must reach the renderer underneath
+          strokeColor: color,
+          strokeOpacity: 0.95,
+          strokeWeight: 8,
+          zIndex: 12,
+          icons: arrowIcons(arrowsColor, 1),
+        }),
+      rendererStyle: (color, opacity) => ({ strokeColor: color, strokeOpacity: opacity, strokeWeight: 5, zIndex: 10, icons: arrowIcons(color, opacity) }),
+      onDrag: (e) => onDragRef.current(e),
+    })
+  );
   const focusRef = useRef<string | null>(null);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const markerClickAtRef = useRef(0); // a pin click must not also count as a map click
-  const programmaticRef = useRef(new WeakSet<google.maps.DirectionsResult>());
   const dirServiceRef = useRef<google.maps.DirectionsService | null>(null);
   const matrixServiceRef = useRef<google.maps.DistanceMatrixService | null>(null);
   const drawSeqRef = useRef(0);
@@ -193,63 +205,20 @@ export function TourMapPage() {
 
   const clearOverlays = () => {
     overlaysRef.current.markers.forEach((m) => (m.map = null));
-    overlaysRef.current.renderers.forEach(({ renderer }) => {
+    overlaysRef.current.renderers.forEach((renderer) => {
       google.maps.event.clearInstanceListeners(renderer);
       renderer.setMap(null);
     });
-    overlaysRef.current.focusLines.forEach((l) => l.setMap(null));
-    overlaysRef.current = { markers: [], renderers: [], focusLines: [] };
-  };
-
-  // Stop focus: inbound leg (prev stopover → stop, incl. its approach) green, outbound leg
-  // (stop → next stopover) orange, every other route line faded. Display only — re-renders
-  // each chunk from the renderer's CURRENT directions (so an unsaved drag stays visible) and
-  // overlays non-clickable polylines (drags still reach the renderer underneath).
-  const applyFocus = (stopId: string | null) => {
-    const map = mapRef.current;
-    if (!map) return;
-    overlaysRef.current.focusLines.forEach((l) => l.setMap(null));
-    overlaysRef.current.focusLines = [];
-    const opacity = stopId ? FADED_OPACITY : ROUTE_OPACITY;
-    for (const { renderer, chunk, color } of overlaysRef.current.renderers) {
-      const result = renderer.getDirections() ?? chunk.result;
-      if (!result) continue;
-      renderer.setOptions({
-        polylineOptions: { strokeColor: color, strokeOpacity: opacity, strokeWeight: 5, zIndex: 10, icons: arrowIcons(color, opacity) },
-      });
-      programmaticRef.current.add(result);
-      renderer.setDirections(result);
-      if (!stopId) continue;
-      const stopovers = chunk.points.filter((p) => !p.via);
-      result.routes[0]?.legs.forEach((leg, i) => {
-        const from = stopovers[i];
-        const to = stopovers[i + 1];
-        const dir = to?.id === stopId ? 'in' : from?.id === stopId ? 'out' : null;
-        if (!dir) return;
-        const path = leg.steps.flatMap((st) => st.path ?? []);
-        const lineColor = dir === 'in' ? INBOUND : OUTBOUND;
-        overlaysRef.current.focusLines.push(
-          new google.maps.Polyline({
-            map,
-            path,
-            clickable: false,
-            strokeColor: lineColor,
-            strokeOpacity: 0.95,
-            strokeWeight: 8,
-            zIndex: 12,
-            icons: arrowIcons('#FFFFFF', 1),
-          })
-        );
-      });
-    }
+    overlaysRef.current = { markers: [], renderers: [] };
+    focusCtl.reset();
+    dayByEntryRef.current.clear();
   };
 
   useEffect(() => {
     focusRef.current = focusStopId;
-    applyFocus(focusStopId);
+    if (mapRef.current) focusCtl.setFocus(focusStopId);
     if (focusStopId) cardRefs.current[focusStopId]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusStopId]);
+  }, [focusStopId, focusCtl]);
 
   // Esc clears focus; so does a click on the map itself.
   useEffect(() => {
@@ -284,42 +253,31 @@ export function TourMapPage() {
     return new AdvancedMarkerElement({ map, position: pos, content: dot, title, zIndex: 15 });
   };
 
-  // ---- a dragged route chunk: capture the changed leg's via points as that stop's approach ----
-  const onChunkDragged = (dr: DayRender, chunk: DayChunk, renderer: google.maps.DirectionsRenderer) => {
-    const res = renderer.getDirections();
-    if (!res || programmaticRef.current.has(res)) return;
-    const legs = res.routes[0]?.legs ?? [];
-    const stopoverIdx = chunk.points.map((p, i) => (p.via ? -1 : i)).filter((i) => i >= 0);
-    let changedLeg = -1;
-    let newVias: ApproachPoint[] = [];
-    for (let i = 0; i < legs.length && i < stopoverIdx.length - 1; i++) {
-      const expected = chunk.points.slice(stopoverIdx[i] + 1, stopoverIdx[i + 1]).map(({ lat, lng }) => ({ lat, lng }));
-      const actual = (legs[i].via_waypoints ?? []).map((p) => ({ lat: p.lat(), lng: p.lng() }));
-      if (!sameApproach(expected, actual)) {
-        changedLeg = i;
-        newVias = actual;
-        break;
+  // ---- a dragged leg (delivered by focusCtl, outside Google's event): propose an approach ----
+  onDragRef.current = (ev) => {
+    try {
+      const dr = dayByEntryRef.current.get(ev.entry);
+      if (!dr) return;
+      const stop = ev.target.role === 'stop' ? dr.stops.find((s) => s.id === ev.target.stopId) : undefined;
+      if (!stop) {
+        setNotice('Approaches apply to stops — drag a leg that ends at a stop (not the day’s end address).');
+        redraw();
+        return;
       }
-    }
-    if (changedLeg === -1) return;
-    const target = chunk.points[stopoverIdx[changedLeg + 1]];
-    const stop = target.role === 'stop' ? dr.stops.find((s) => s.id === target.stopId) : undefined;
-    if (!stop) {
-      setNotice('Approaches apply to stops — drag a leg that ends at a stop (not the day’s end address).');
+      if (ev.vias.length > MAX_APPROACH_POINTS) {
+        setNotice(`An approach can have at most ${MAX_APPROACH_POINTS} points (this drag made ${ev.vias.length}). Try a simpler path.`);
+        redraw();
+        return;
+      }
+      setNotice(null);
+      setPending({ stop, points: ev.vias, chunkPoints: ev.entry.points, result: ev.result });
+      // Show in vs out for the stop whose approach was just dragged. (The renderer reports
+      // a drag only on drop, so focus switches when you let go.)
+      setFocusStopId(stop.id);
+    } catch (e: any) {
+      setError(`Couldn’t read the dragged route: ${e?.message ?? e}`);
       redraw();
-      return;
     }
-    if (newVias.length > MAX_APPROACH_POINTS) {
-      setNotice(`An approach can have at most ${MAX_APPROACH_POINTS} points (this drag made ${newVias.length}). Try a simpler path.`);
-      redraw();
-      return;
-    }
-    setNotice(null);
-    setPending({ stop, points: newVias, chunkPoints: chunk.points, result: res });
-    // Show in vs out for the stop whose approach was just dragged. (The renderer reports a
-    // drag only on drop, so focus switches when you let go.)
-    if (focusRef.current === stop.id) applyFocus(stop.id);
-    else setFocusStopId(stop.id);
   };
 
   // ---- load + compute (Google only on cache miss) + draw ----
@@ -450,17 +408,11 @@ export function TourMapPage() {
         if (dr.routeOk) {
           for (const chunk of dr.chunks) {
             if (!chunk.result) continue;
-            const renderer = new google.maps.DirectionsRenderer({
-              map,
-              draggable: true,
-              suppressMarkers: true,
-              preserveViewport: true,
-              polylineOptions: { strokeColor: dr.color, strokeOpacity: ROUTE_OPACITY, strokeWeight: 5, zIndex: 10, icons: arrowIcons(dr.color, ROUTE_OPACITY) },
-            });
-            programmaticRef.current.add(chunk.result);
-            renderer.setDirections(chunk.result);
-            renderer.addListener('directions_changed', () => onChunkDragged(dr, chunk, renderer));
-            overlaysRef.current.renderers.push({ renderer, chunk, color: dr.color });
+            const renderer = new google.maps.DirectionsRenderer({ map, draggable: true, suppressMarkers: true, preserveViewport: true });
+            const entry = focusCtl.add(renderer, chunk.points, dr.color, chunk.result);
+            dayByEntryRef.current.set(entry, dr);
+            renderer.addListener('directions_changed', () => focusCtl.handleDirectionsChanged(entry));
+            overlaysRef.current.renderers.push(renderer);
           }
         }
         dr.ordered.forEach((s) => {
@@ -499,7 +451,7 @@ export function TourMapPage() {
           extend(pos);
         });
 
-      applyFocus(focusRef.current);
+      focusCtl.setFocus(focusRef.current);
 
       setTour(t);
       setUnscheduledCount(byDay(null).length);
@@ -516,9 +468,7 @@ export function TourMapPage() {
     } finally {
       if (seq === drawSeqRef.current) setBusy(false);
     }
-    // onChunkDragged only uses state setters + its arguments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tourId]);
+  }, [tourId, focusCtl]);
 
   // Debounced redraw on data changes. Cheap: Supabase reads always, Google only on
   // a chunk-key change (see tourRouteService cache).
@@ -907,6 +857,45 @@ export function TourMapPage() {
         />
       )}
     </div>
+  );
+}
+
+// A failure inside the map (Google callbacks, effects) shows a message + Reload instead of
+// unmounting the whole app to a white page.
+class TourMapErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null; attempt: number }> {
+  state = { error: null as Error | null, attempt: 0 };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Tour map crashed', error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 32, maxWidth: 560, margin: '40px auto', border: `1px solid ${TERRACOTTA}`, borderRadius: 8, background: '#FFFFFF' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: MIDNIGHT, marginBottom: 8 }}>The tour map hit an error</div>
+          <div style={{ fontSize: 13, color: STEEL, marginBottom: 6 }}>Nothing was saved by the step that failed. Reload the map to continue.</div>
+          <div style={{ fontSize: 12, color: TERRACOTTA, fontFamily: 'monospace', marginBottom: 16, wordBreak: 'break-word' }}>{this.state.error.message}</div>
+          <button
+            type="button"
+            onClick={() => this.setState((s) => ({ error: null, attempt: s.attempt + 1 }))}
+            style={{ border: `1px solid ${MIDNIGHT}`, background: MIDNIGHT, color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
+          >
+            Reload map
+          </button>
+        </div>
+      );
+    }
+    return <div key={this.state.attempt} style={{ display: 'contents' }}>{this.props.children}</div>;
+  }
+}
+
+export function TourMapPage() {
+  return (
+    <TourMapErrorBoundary>
+      <TourMapPageInner />
+    </TourMapErrorBoundary>
   );
 }
 
