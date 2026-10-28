@@ -209,3 +209,44 @@ export function DayTotalsFooter({ totals }: { totals: DayTotals }) {
     </div>
   );
 }
+
+// ---- custom approach tag ----
+
+interface ApproachTagProps {
+  source: 'tour' | 'site' | null;
+  /** Map only: clear actions. Panel shows the tag alone. */
+  onClearTour?: () => void;
+  onClearSite?: () => void;
+  onSkipOnTour?: () => void;
+}
+
+const linkBtn: CSSProperties = { border: 'none', background: 'transparent', color: steel, fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' };
+
+export function ApproachTag({ source, onClearTour, onClearSite, onSkipOnTour }: ApproachTagProps) {
+  if (!source) return null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span
+        title={source === 'tour' ? 'Custom approach — this tour only' : 'Custom approach — saved for this site'}
+        style={{ fontSize: 11, color: midnight, border: `1px dashed ${slate}`, borderRadius: 999, padding: '0 7px', fontWeight: 600, whiteSpace: 'nowrap' }}
+      >
+        custom approach{source === 'tour' ? ' · tour' : ''}
+      </span>
+      {source === 'tour' && onClearTour && (
+        <button type="button" onClick={onClearTour} style={linkBtn} title="Remove this tour's approach (falls back to the site's saved approach, if any)">
+          clear
+        </button>
+      )}
+      {source === 'site' && onSkipOnTour && (
+        <button type="button" onClick={onSkipOnTour} style={linkBtn} title="Don't use the site's approach on this tour">
+          skip on tour
+        </button>
+      )}
+      {source === 'site' && onClearSite && (
+        <button type="button" onClick={onClearSite} style={linkBtn} title="Delete the site's saved approach (affects every tour)">
+          clear for site
+        </button>
+      )}
+    </span>
+  );
+}

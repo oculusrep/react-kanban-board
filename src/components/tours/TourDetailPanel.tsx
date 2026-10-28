@@ -16,8 +16,9 @@ import {
   deleteTour,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
-import { dayColor, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
+import { dayColor, effectiveApproach, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
 import {
+  ApproachTag,
   ArriveText,
   DayTotalsFooter,
   DriveConnector,
@@ -411,6 +412,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                     ))}
                   </select>
                   {!mapped && <NoLocationTag />}
+                  <ApproachTag source={effectiveApproach(stop.approach_waypoints_override, stop.site_submit?.approach_waypoints).source} />
                 </>
               }
               subtext={subtext ? ssLink(subtext, '#9CA3AF') : null}

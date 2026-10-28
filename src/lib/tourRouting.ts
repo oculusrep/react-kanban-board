@@ -251,8 +251,91 @@ export function departureFor(
 // Route cache key — anything that changes the Google request, nothing else.
 // ---------------------------------------------------------------------------
 
-export function routeKey(points: { id: string; lat: number; lng: number }[]): string {
-  return points.map((p) => `${p.id}@${p.lat.toFixed(6)},${p.lng.toFixed(6)}`).join('|');
+// Via (pass-through) points are marked "~" so the same coords as a stopover key differently.
+export function routeKey(points: { id: string; lat: number; lng: number; via?: boolean }[]): string {
+  return points.map((p) => `${p.id}${p.via ? '~' : '@'}${p.lat.toFixed(6)},${p.lng.toFixed(6)}`).join('|');
+}
+
+// ---------------------------------------------------------------------------
+// Site approach routes
+// ---------------------------------------------------------------------------
+// An approach is an ordered list of pass-through points routed (stopover:false) just
+// before a stop. Effective approach = tour_stop override (NOT NULL; [] = none on this
+// tour) → site_submit default → none.
+
+export const MAX_APPROACH_POINTS = 10;
+
+export interface ApproachPoint {
+  lat: number;
+  lng: number;
+}
+
+export function parseApproach(raw: unknown): ApproachPoint[] | null {
+  if (!Array.isArray(raw)) return null;
+  const pts: ApproachPoint[] = [];
+  for (const p of raw) {
+    if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number') return null;
+    pts.push({ lat: p.lat, lng: p.lng });
+  }
+  return pts;
+}
+
+export type ApproachSource = 'tour' | 'site' | null;
+
+export function effectiveApproach(
+  override: unknown,
+  siteDefault: unknown
+): { points: ApproachPoint[]; source: ApproachSource } {
+  const o = parseApproach(override);
+  if (o) return { points: o, source: o.length ? 'tour' : null };
+  const d = parseApproach(siteDefault);
+  if (d && d.length) return { points: d, source: 'site' };
+  return { points: [], source: null };
+}
+
+// One point in a day's routed sequence.
+export interface RoutePoint {
+  id: string; // stop id, 'start', 'end', or `${stopId}#a${i}` for approach points
+  lat: number;
+  lng: number;
+  via: boolean; // pass-through (approach) point
+  role: 'start' | 'stop' | 'via' | 'end';
+  stopId?: string; // for role 'stop' and 'via' (the stop the approach leads into)
+}
+
+export function buildDayRoutePoints(
+  start: LatLng | null,
+  stops: { id: string; lat: number; lng: number; approach: ApproachPoint[] }[],
+  end: LatLng | null
+): RoutePoint[] {
+  const pts: RoutePoint[] = [];
+  if (start) pts.push({ id: 'start', ...start, via: false, role: 'start' });
+  for (const s of stops) {
+    s.approach.forEach((a, i) => pts.push({ id: `${s.id}#a${i}`, lat: a.lat, lng: a.lng, via: true, role: 'via', stopId: s.id }));
+    pts.push({ id: s.id, lat: s.lat, lng: s.lng, via: false, role: 'stop', stopId: s.id });
+  }
+  if (end) pts.push({ id: 'end', ...end, via: false, role: 'end' });
+  return pts;
+}
+
+// Split a point sequence into Directions requests: each chunk is [a..b] inclusive where
+// points[a] and points[b] are stopovers and there are at most maxWaypoints points between
+// them. Consecutive chunks share the boundary stop (chunk k+1 starts at chunk k's last stop).
+// Throws if a single stop's approach can't fit (guarded by MAX_APPROACH_POINTS).
+export function chunkRoutePoints(points: { via: boolean }[], maxWaypoints = 25): [number, number][] {
+  const chunks: [number, number][] = [];
+  if (points.length < 2) return chunks;
+  let a = 0;
+  while (a < points.length - 1) {
+    let b = -1;
+    for (let j = a + 1; j < points.length && j - a - 1 <= maxWaypoints; j++) {
+      if (!points[j].via) b = j;
+    }
+    if (b === -1) throw new Error('Approach too long to route (too many pass-through points before one stop)');
+    chunks.push([a, b]);
+    a = b;
+  }
+  return chunks;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,20 +348,23 @@ export function routeKey(points: { id: string; lat: number; lng: number }[]): st
 
 const EXACT_LIMIT = 13;
 
-export function openPathCost(order: number[], fromOrigin: number[], m: number[][]): number {
+// toEnd[i] (optional): seconds from free stop i to a fixed end address, added after the
+// last stop. Approach tails are folded into fromOrigin/m columns by the caller.
+export function openPathCost(order: number[], fromOrigin: number[], m: number[][], toEnd?: number[]): number {
   if (order.length === 0) return 0;
   let c = fromOrigin[order[0]];
   for (let k = 1; k < order.length; k++) c += m[order[k - 1]][order[k]];
+  if (toEnd) c += toEnd[order[order.length - 1]];
   return c;
 }
 
-export function solveOpenPath(fromOrigin: number[], m: number[][]): number[] {
+export function solveOpenPath(fromOrigin: number[], m: number[][], toEnd?: number[]): number[] {
   const n = fromOrigin.length;
   if (n <= 1) return n === 1 ? [0] : [];
-  return n <= EXACT_LIMIT ? heldKarpOpen(fromOrigin, m) : heuristicOpen(fromOrigin, m);
+  return n <= EXACT_LIMIT ? heldKarpOpen(fromOrigin, m, toEnd) : heuristicOpen(fromOrigin, m, toEnd);
 }
 
-function heldKarpOpen(fromOrigin: number[], m: number[][]): number[] {
+function heldKarpOpen(fromOrigin: number[], m: number[][], toEnd?: number[]): number[] {
   const n = fromOrigin.length;
   const full = 1 << n;
   const dp = new Float64Array(full * n).fill(Infinity);
@@ -301,8 +387,9 @@ function heldKarpOpen(fromOrigin: number[], m: number[][]): number[] {
     }
   }
   const all = full - 1;
+  const finalCost = (j: number) => dp[all * n + j] + (toEnd ? toEnd[j] : 0);
   let best = 0;
-  for (let j = 1; j < n; j++) if (dp[all * n + j] < dp[all * n + best]) best = j;
+  for (let j = 1; j < n; j++) if (finalCost(j) < finalCost(best)) best = j;
   const order: number[] = [];
   let mask = all;
   let cur = best;
@@ -315,7 +402,7 @@ function heldKarpOpen(fromOrigin: number[], m: number[][]): number[] {
   return order.reverse();
 }
 
-function heuristicOpen(fromOrigin: number[], m: number[][]): number[] {
+function heuristicOpen(fromOrigin: number[], m: number[][], toEnd?: number[]): number[] {
   const n = fromOrigin.length;
   // Nearest neighbour from the origin.
   const used = new Array(n).fill(false);
@@ -338,14 +425,14 @@ function heuristicOpen(fromOrigin: number[], m: number[][]): number[] {
   }
   // Improve with 2-opt (segment reversal) and or-opt (move one stop) until stable.
   let bestOrder = order;
-  let bestCost = openPathCost(order, fromOrigin, m);
+  let bestCost = openPathCost(order, fromOrigin, m, toEnd);
   let improved = true;
   while (improved) {
     improved = false;
     for (let i = 0; i < n - 1 && !improved; i++) {
       for (let j = i + 1; j < n && !improved; j++) {
         const cand = [...bestOrder.slice(0, i), ...bestOrder.slice(i, j + 1).reverse(), ...bestOrder.slice(j + 1)];
-        const c = openPathCost(cand, fromOrigin, m);
+        const c = openPathCost(cand, fromOrigin, m, toEnd);
         if (c < bestCost - 1e-9) {
           bestOrder = cand;
           bestCost = c;
@@ -359,7 +446,7 @@ function heuristicOpen(fromOrigin: number[], m: number[][]): number[] {
         const cand = [...bestOrder];
         const [x] = cand.splice(i, 1);
         cand.splice(j, 0, x);
-        const c = openPathCost(cand, fromOrigin, m);
+        const c = openPathCost(cand, fromOrigin, m, toEnd);
         if (c < bestCost - 1e-9) {
           bestOrder = cand;
           bestCost = c;

@@ -200,6 +200,50 @@ Google requests per action, one tour with D routed days:
 | Optimize, end address | 1 Directions + D | 1 Directions + 1 Directions for that day (+ traffic) |
 | Page load | D Directions | D Directions (+ one traffic request per leg, sequential, for future-dated days — e.g. 11 for a 12-stop day) |
 
+## Phase 4.6 — Site approach routes (branch `feature/tour-routing`)
+
+Goal: control how a tour arrives at a site (main corridor past retail, the right entrance),
+even when it isn't the fastest way in.
+
+- **Data** (migration `20261028180635_tour_approach_waypoints`): `site_submit.approach_waypoints`
+  (the site's default) and `tour_stop.approach_waypoints_override` (per tour). Ordered
+  `[{lat,lng}]`, max 10 points, CHECK-constrained. Effective approach = override (NOT NULL;
+  `[]` = explicitly none on this tour) → site default → none. Writing the site default fires
+  the site_submit audit trigger (bumps `updated_at` / `updated_by_id`); nothing else.
+- **Routing.** Day sequence = `[start?] + per stop: [approach points (stopover:false), stop] +
+  [end?]`. Approach points add no stop time. An approach on stop 1 with no start address is
+  ignored (nothing to route from).
+- **No 25-stop cap.** Days are split greedily at stopovers into Directions requests of ≤25
+  waypoints, each starting at the previous chunk's last stop; legs, polylines and drive times
+  are stitched. Cached per chunk (`routeKey` includes the via flag, so approach points are in
+  the key). One `DirectionsRenderer` per chunk.
+- **Capture by dragging.** Routes are draggable. After a drag, the changed leg's
+  `via_waypoints` become the proposed approach for the stop that leg ends at (legs ending at
+  the end address are rejected). Banner: **Save approach for this site** (writes the site
+  default; also clears this tour's override so the new default shows) / **Use for this tour
+  only** (writes the override) / **Discard**. Saving seeds the route cache with the result
+  Google rendered for the drag, so no extra Directions call. Approach points show as small
+  hollow markers. Stop cards show a "custom approach" tag (map + Reorder panel); on the map:
+  **clear** (tour override) or **skip on tour** / **clear for site** (site default, confirm).
+- **Traffic.** Distance Matrix can't route through waypoints, so a leg with an approach is
+  fetched as its segments (prev stop → a1 → … → stop), chained departures, summed. Same 15-min
+  reuse tolerance per segment.
+- **Optimize** is now always Distance Matrix + `solveOpenPath` (Directions `optimizeWaypoints`
+  requires all waypoints to be stopovers, so it can't coexist with approaches). Each stop's
+  approach is a fixed tail: matrix destination = the approach's first point, plus the fixed
+  first-point → stop time (one cached Directions call per approached stop). End address = an
+  extra matrix column (`toEnd`). Matrix tiled to ≤25×25 and ≤100 elements per request.
+
+Google requests (this phase):
+
+| Action | Requests |
+|---|---|
+| Drag a leg | 1 Directions (made by Google's renderer on drop) |
+| Save approach (site or tour) | 0 Directions (cache seeded from the drag); traffic: one 1×1 Matrix per new segment of that leg if the day is future-dated, + downstream segments only if their departure moved 15+ min |
+| Discard | 0 |
+| Clear / skip | 1 Directions for that chunk (0 if that shape is still cached) + traffic for the changed leg |
+| Optimize (n free stops, k with approaches) | k Directions (approach tails, cached) + ⌈(n+1)/r⌉·⌈(n+e)/25⌉ Matrix tiles (r = rows per tile) |
+
 Next phases: Routes API migration (`computeRoutes` / `computeRouteMatrix` — also gives per-leg
 traffic with waypoints), tour layer on the main map (register in **both** layer menus), PDF
 export, portal tour view, live follow-along.

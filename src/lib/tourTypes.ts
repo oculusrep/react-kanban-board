@@ -1,6 +1,9 @@
+import type { ApproachPoint, ApproachSource } from './tourRouting';
+
 // Tour feature types. Hand-written; keep in sync with the tour migrations
 // (20260725170000_tour_schema, 20260726120000_tour_scheduling,
-// 20260726160000_tour_day_endpoints, 20261028165400_tour_hardening).
+// 20260726160000_tour_day_endpoints, 20261028165400_tour_hardening,
+// 20261028180635_tour_approach_waypoints).
 
 export interface TourStopCategory {
   id: string;
@@ -49,6 +52,7 @@ export interface TourStop {
   category_id: string | null;
   stop_duration_minutes: number | null; // null = use category default
   display_label: string | null; // null = auto name (see stopDisplayName)
+  approach_waypoints_override: ApproachPoint[] | null; // null = site default; [] = none on this tour
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -61,6 +65,7 @@ export interface TourStopWithSiteSubmit extends TourStop {
     site_submit_name: string | null;
     submit_stage_id: string | null;
     property_id: string | null;
+    approach_waypoints: ApproachPoint[] | null; // site default approach
     property: StopProperty | null;
   }) | null;
   category: TourStopCategory | null;
@@ -102,4 +107,8 @@ export interface TourStopGeo {
   effective_duration_minutes: number;
   lat: number | null;
   lng: number | null;
+  approach: ApproachPoint[]; // effective approach (override → site default → none)
+  approach_source: ApproachSource;
+  approach_override: ApproachPoint[] | null; // raw tour_stop override
+  site_has_approach: boolean; // site_submit default is set
 }
