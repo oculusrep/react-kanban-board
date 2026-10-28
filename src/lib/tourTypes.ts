@@ -1,6 +1,6 @@
-// Tour feature types (Phase 1)
-// Hand-written until `npm run schema` regenerates database-schema.ts against the
-// applied tour migration (20260725170000_tour_schema.sql). Keep in sync with that migration.
+// Tour feature types. Hand-written; keep in sync with the tour migrations
+// (20260725170000_tour_schema, 20260726120000_tour_scheduling,
+// 20260726160000_tour_day_endpoints, 20261028165400_tour_hardening).
 
 export interface TourStopCategory {
   id: string;
@@ -48,6 +48,7 @@ export interface TourStop {
   position: number; // order within its day (or the unscheduled bucket)
   category_id: string | null;
   stop_duration_minutes: number | null; // null = use category default
+  display_label: string | null; // null = auto name (see stopDisplayName)
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -55,13 +56,31 @@ export interface TourStop {
 
 // A tour_stop joined to the site submit it points at (for list/map rendering).
 export interface TourStopWithSiteSubmit extends TourStop {
-  site_submit: {
+  site_submit: (StopCoordFields & {
     id: string;
     site_submit_name: string | null;
     submit_stage_id: string | null;
     property_id: string | null;
-  } | null;
+    property: StopProperty | null;
+  }) | null;
   category: TourStopCategory | null;
+}
+
+export interface StopProperty {
+  property_name: string | null;
+  address: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  verified_latitude: number | null;
+  verified_longitude: number | null;
+}
+
+interface StopCoordFields {
+  verified_latitude: number | null;
+  verified_longitude: number | null;
+  sf_property_latitude: number | null;
+  sf_property_longitude: number | null;
 }
 
 // A tour with its ordered stop count (for the list page).
@@ -76,6 +95,8 @@ export interface TourStopGeo {
   position: number;
   site_submit_id: string;
   site_submit_name: string | null;
+  display_name: string; // display_label → city · street → property name
+  display_subtext: string | null; // full site submit name
   category_id: string | null;
   category_name: string | null;
   effective_duration_minutes: number;

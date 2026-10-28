@@ -135,19 +135,6 @@ export async function removeTourStop(stopId: string): Promise<{ ok: boolean; err
   return err ? { ok: false, error: err.message } : { ok: true };
 }
 
-// Persist a full reordering: pass stop ids in their new order.
-export async function reorderTourStops(orderedStopIds: string[]): Promise<{ ok: boolean; error?: string }> {
-  // Update each stop's position to its index. Kept simple (Phase 1); batch if needed later.
-  for (let i = 0; i < orderedStopIds.length; i++) {
-    const { error: err } = await supabase
-      .from('tour_stop')
-      .update({ position: i })
-      .eq('id', orderedStopIds[i]);
-    if (err) return { ok: false, error: err.message };
-  }
-  return { ok: true };
-}
-
 export async function updateTour(
   tourId: string,
   fields: Partial<Pick<Tour, 'tour_name' | 'description' | 'tour_date' | 'is_archived'>>
@@ -164,25 +151,25 @@ export async function deleteTour(tourId: string): Promise<{ ok: boolean; error?:
 
 export async function updateTourStop(
   stopId: string,
-  fields: Partial<Pick<TourStop, 'category_id' | 'notes' | 'stop_duration_minutes' | 'tour_day_id' | 'position'>>
+  fields: Partial<Pick<TourStop, 'category_id' | 'notes' | 'stop_duration_minutes' | 'display_label'>>
 ): Promise<{ ok: boolean; error?: string }> {
   const { error: err } = await supabase.from('tour_stop').update(fields).eq('id', stopId);
   return err ? { ok: false, error: err.message } : { ok: true };
 }
 
-// Persist a full day/position layout after a drag. Each entry sets a stop's day
-// (null = unscheduled) and its position within that day.
+// Persist a full day/position layout (drag, Optimize) in ONE atomic write via the
+// set_tour_stop_placements RPC. Each entry sets a stop's day (null = unscheduled) and
+// its position within that day. All-or-nothing: a stale/foreign id rejects the batch.
 export async function persistStopPlacements(
+  tourId: string,
   placements: { id: string; tour_day_id: string | null; position: number }[]
 ): Promise<{ ok: boolean; error?: string }> {
-  for (const p of placements) {
-    const { error: err } = await supabase
-      .from('tour_stop')
-      .update({ tour_day_id: p.tour_day_id, position: p.position })
-      .eq('id', p.id);
-    if (err) return { ok: false, error: err.message };
-  }
-  return { ok: true };
+  if (placements.length === 0) return { ok: true };
+  const { error: err } = await supabase.rpc('set_tour_stop_placements', {
+    p_tour_id: tourId,
+    p_placements: placements,
+  });
+  return err ? { ok: false, error: err.message } : { ok: true };
 }
 
 // ---- Tour days ----
@@ -255,8 +242,12 @@ export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSu
     .from('tour_stop')
     .select(
       `*,
-       site_submit:site_submit_id ( id, site_submit_name, submit_stage_id, property_id ),
-       category:category_id ( id, name, sort_order, is_active )`
+       site_submit:site_submit_id (
+         id, site_submit_name, submit_stage_id, property_id,
+         verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
+         property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
+       ),
+       category:category_id ( id, name, sort_order, is_active, default_stop_duration_minutes )`
     )
     .eq('tour_id', tourId)
     .order('position', { ascending: true });
@@ -267,16 +258,16 @@ export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSu
 
 // Stops with resolved lat/lng + effective duration, for the map/route view.
 export async function fetchTourStopsForMap(tourId: string): Promise<import('../lib/tourTypes').TourStopGeo[]> {
-  const { resolveStopCoord } = await import('../lib/tourRouting');
+  const { resolveStopCoord, stopDisplayName } = await import('../lib/tourRouting');
   const { data, error: err } = await supabase
     .from('tour_stop')
     .select(
-      `id, tour_day_id, position, site_submit_id, category_id, stop_duration_minutes,
+      `id, tour_day_id, position, site_submit_id, category_id, stop_duration_minutes, display_label,
        category:category_id ( name, default_stop_duration_minutes ),
        site_submit:site_submit_id (
-         id, site_submit_name,
+         id, site_submit_name, submit_stage_id, property_id,
          verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
-         property:property_id ( latitude, longitude, verified_latitude, verified_longitude )
+         property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
        )`
     )
     .eq('tour_id', tourId)
@@ -290,12 +281,19 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
       row.stop_duration_minutes != null
         ? row.stop_duration_minutes
         : row.category?.default_stop_duration_minutes ?? 5;
+    const label = stopDisplayName({
+      display_label: row.display_label,
+      site_submit_name: row.site_submit?.site_submit_name,
+      property: row.site_submit?.property,
+    });
     return {
       id: row.id,
       tour_day_id: row.tour_day_id,
       position: row.position,
       site_submit_id: row.site_submit_id,
       site_submit_name: row.site_submit?.site_submit_name ?? null,
+      display_name: label.name,
+      display_subtext: label.subtext,
       category_id: row.category_id,
       category_name: row.category?.name ?? null,
       effective_duration_minutes: effective,

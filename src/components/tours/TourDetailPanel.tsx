@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Link } from 'react-router-dom';
 import {
@@ -16,7 +16,7 @@ import {
   deleteTour,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
-import { minutesToHHMM } from '../../lib/tourRouting';
+import { formatClock12, formatTime12, resolveStopCoord, stopDisplayName } from '../../lib/tourRouting';
 import { geocodingService } from '../../services/geocodingService';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,8 @@ import { geocodingService } from '../../services/geocodingService';
 // Day sections (each with start/end time) + an Unscheduled bucket; drag stops
 // between days and reorder within a day. Per-stop duration defaults to the
 // category default (Flyby = 0), overridable per stop. Per-day total service time
-// is shown; live drive-time comes with the Phase 3 map route.
+// is shown; arrival + drive-to-next appear when hosted by the tour map (stopSchedule).
+// Stops are numbered 1..n within each day — the same numbers as the map pins.
 // ---------------------------------------------------------------------------
 
 const MIDNIGHT = '#002147';
@@ -47,6 +48,31 @@ const dayDroppableId = (dayId: string) => `day:${dayId}`;
 const parseDayDroppableId = (id: string): string | null => (id === UNSCHEDULED ? null : id.slice(4));
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '');
 
+// 15-minute options for the day start/end pickers, labeled 12-hour ("9:30 AM").
+// Stored value stays "HH:MM"; an off-grid stored value is kept as an extra option.
+const TIME_OPTIONS = Array.from({ length: 96 }, (_, i) => {
+  const min = i * 15;
+  return { value: `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`, label: formatClock12(min) };
+});
+
+function TimeSelect({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+  const v = hhmm(value);
+  const offGrid = v && !TIME_OPTIONS.some((o) => o.value === v);
+  return (
+    <select
+      value={v}
+      onChange={(e) => onChange(e.target.value || null)}
+      style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12, color: MIDNIGHT }}
+    >
+      <option value="">—</option>
+      {offGrid && <option value={v}>{formatTime12(v)}</option>}
+      {TIME_OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+}
+
 export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: TourDetailPanelProps) {
   const [tour, setTour] = useState<Tour | null>(null);
   const [days, setDays] = useState<TourDay[]>([]);
@@ -56,6 +82,9 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
   const [error, setError] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
   const [geocoding, setGeocoding] = useState<string | null>(null); // `${dayId}:start|end`
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState('');
+  const cancelLabelRef = useRef(false); // Escape: blur without saving
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -222,7 +251,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
       });
     });
     setStops(rebuilt); // optimistic
-    const res = await persistStopPlacements(placements);
+    const res = await persistStopPlacements(tourId, placements);
     if (!res.ok) {
       setError(res.error ?? 'Failed to save new order');
       load();
@@ -243,6 +272,29 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
     const res = await updateTourStop(stopId, { stop_duration_minutes: value });
     if (!res.ok) setError(res.error ?? 'Failed to update duration');
     else onChanged?.();
+  };
+
+  const startLabelEdit = (stop: TourStopWithSiteSubmit) => {
+    setEditingLabelId(stop.id);
+    setLabelDraft(stop.display_label ?? '');
+  };
+
+  // Empty label => back to the auto name (city · street / property name).
+  const commitLabel = async (stopId: string) => {
+    setEditingLabelId(null);
+    if (cancelLabelRef.current) {
+      cancelLabelRef.current = false;
+      return;
+    }
+    const value = labelDraft.trim() || null;
+    const prev = stops.find((s) => s.id === stopId)?.display_label ?? null;
+    if (value === prev) return;
+    setStops((all) => all.map((s) => (s.id === stopId ? { ...s, display_label: value } : s)));
+    const res = await updateTourStop(stopId, { display_label: value });
+    if (!res.ok) {
+      setStops((all) => all.map((s) => (s.id === stopId ? { ...s, display_label: prev } : s)));
+      setError(res.error ?? 'Failed to save label');
+    } else onChanged?.();
   };
 
   const handleNotesBlur = async (stopId: string, notes: string) => {
@@ -289,20 +341,72 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
               {index + 1}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, color: MIDNIGHT, fontSize: 14 }}>
-                {stop.site_submit?.id ? (
-                  <Link to={`/site-submit/${stop.site_submit.id}`} style={{ color: MIDNIGHT, textDecoration: 'none' }}>
-                    {stop.site_submit?.site_submit_name || '(unnamed site submit)'}
-                  </Link>
-                ) : (
-                  stop.site_submit?.site_submit_name || '(unnamed site submit)'
-                )}
-              </div>
+              {(() => {
+                const { name, subtext } = stopDisplayName({
+                  display_label: stop.display_label,
+                  site_submit_name: stop.site_submit?.site_submit_name,
+                  property: stop.site_submit?.property,
+                });
+                const mapped = !!resolveStopCoord(stop.site_submit);
+                return (
+                  <>
+                    {editingLabelId === stop.id ? (
+                      <input
+                        autoFocus
+                        value={labelDraft}
+                        placeholder={stopDisplayName({ site_submit_name: stop.site_submit?.site_submit_name, property: stop.site_submit?.property }).name}
+                        onChange={(e) => setLabelDraft(e.target.value)}
+                        onBlur={() => commitLabel(stop.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') {
+                            cancelLabelRef.current = true;
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        style={{ width: '100%', fontWeight: 500, color: MIDNIGHT, fontSize: 14, border: `1px solid ${SLATE}`, borderRadius: 4, padding: '1px 4px' }}
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+                        <span style={{ fontWeight: 500, color: MIDNIGHT, fontSize: 14 }}>
+                          {!subtext && stop.site_submit?.id ? (
+                            <Link to={`/site-submit/${stop.site_submit.id}`} style={{ color: MIDNIGHT, textDecoration: 'none' }}>{name}</Link>
+                          ) : (
+                            name
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => startLabelEdit(stop)}
+                          title="Rename this stop (blank = automatic name)"
+                          style={{ border: 'none', background: 'transparent', color: SLATE, fontSize: 12, cursor: 'pointer', padding: 0 }}
+                        >
+                          ✎
+                        </button>
+                        {!mapped && (
+                          <span title="No coordinates on this site submit or its property — not on the map or route" style={{ fontSize: 11, color: TERRACOTTA, border: `1px solid ${TERRACOTTA}`, borderRadius: 4, padding: '0 4px' }}>
+                            no location
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {subtext && (
+                      <div style={{ fontSize: 11, color: '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {stop.site_submit?.id ? (
+                          <Link to={`/site-submit/${stop.site_submit.id}`} style={{ color: '#9CA3AF', textDecoration: 'none' }}>{subtext}</Link>
+                        ) : (
+                          subtext
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               {(() => {
                 const sched = stopSchedule?.[stop.id];
                 if (!sched) return null;
                 const parts: string[] = [];
-                if (sched.arrivalMin != null) parts.push(`Arrive ${minutesToHHMM(sched.arrivalMin)}`);
+                if (sched.arrivalMin != null) parts.push(`Arrive ${formatClock12(sched.arrivalMin)}`);
                 parts.push(sched.minsToNext != null ? `${sched.minsToNext} min to next` : 'last stop');
                 return (
                   <div style={{ fontSize: 12, color: STEEL, marginTop: 2, fontWeight: 500 }}>
@@ -436,11 +540,11 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
                   <input type="date" value={day.day_date ?? ''} onChange={(e) => patchDay(day.id, { day_date: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
                   <label style={{ fontSize: 12, color: STEEL, display: 'flex', alignItems: 'center', gap: 4 }}>
                     Start
-                    <input type="time" value={hhmm(day.start_time)} onChange={(e) => patchDay(day.id, { start_time: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
+                    <TimeSelect value={day.start_time} onChange={(v) => patchDay(day.id, { start_time: v })} />
                   </label>
                   <label style={{ fontSize: 12, color: STEEL, display: 'flex', alignItems: 'center', gap: 4 }}>
                     End
-                    <input type="time" value={hhmm(day.end_time)} onChange={(e) => patchDay(day.id, { end_time: e.target.value || null })} style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '2px 5px', fontSize: 12 }} />
+                    <TimeSelect value={day.end_time} onChange={(v) => patchDay(day.id, { end_time: v })} />
                   </label>
                   <button type="button" onClick={() => handleDeleteDay(day)} title="Delete day" style={{ border: 'none', background: 'transparent', color: TERRACOTTA, fontSize: 11, cursor: 'pointer' }}>
                     delete day
@@ -480,8 +584,8 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
       </DragDropContext>
 
       <div style={{ fontSize: 11, color: SLATE, marginTop: 4 }}>
-        Stop time is per-category default (Flyby 0 min), editable per stop. Driving time between
-        stops is added when the route renders on the map (Phase 3).
+        Stop time is per-category default (Flyby 0 min), editable per stop. Arrival and drive
+        times show when this panel is opened from the tour’s Map view.
       </div>
     </div>
   );
