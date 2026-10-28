@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLayerManager, CreateMode } from './layers/LayerManager';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -394,6 +395,9 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
     toggleCustomLayer,
     refreshCustomLayers,
   } = useLayerManager();
+  const { userRole } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageLayers = userRole === 'admin' || hasPermission('can_manage_map_layers');
 
   const [mergingLayerId, setMergingLayerId] = React.useState<string | null>(null);
   const [shapeCounts, setShapeCounts] = React.useState<Record<string, number>>({});
@@ -487,12 +491,14 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
     <div className="mt-6 pt-4 border-t border-gray-200">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium text-gray-700">Custom Layers</h3>
-        <Link
-          to="/admin/layers"
-          className="text-xs text-blue-600 hover:text-blue-800"
-        >
-          Manage
-        </Link>
+        {canManageLayers && (
+          <Link
+            to="/admin/layers"
+            className="text-xs text-blue-600 hover:text-blue-800"
+          >
+            Manage
+          </Link>
+        )}
       </div>
 
       {/* Build Territory Button */}
@@ -510,10 +516,15 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
 
       {customLayers.length === 0 ? (
         <div className="text-xs text-gray-500 p-3 bg-gray-50 rounded border-2 border-dashed border-gray-200">
-          No custom layers created yet.{' '}
-          <Link to="/admin/layers" className="text-blue-600 hover:underline">
-            Create one
-          </Link>
+          No custom layers created yet.
+          {canManageLayers && (
+            <>
+              {' '}
+              <Link to="/admin/layers" className="text-blue-600 hover:underline">
+                Create one
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
