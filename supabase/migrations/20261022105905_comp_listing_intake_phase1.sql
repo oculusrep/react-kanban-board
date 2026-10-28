@@ -533,7 +533,8 @@ BEGIN
       CASE WHEN v_om.asking_price IS NOT NULL THEN 'Asking: $' || to_char(v_om.asking_price, 'FM999,999,999') END,
       CASE WHEN v_om.asking_cap_rate IS NOT NULL THEN 'Cap: ' || v_om.asking_cap_rate || '%' END,
       CASE WHEN v_om.source_url IS NOT NULL THEN 'Source: ' || v_om.source_url END,
-      'Open in OVIS: https://ovis.oculusrep.com/listings/review?listing=' || v_om.id,
+      'Listing: https://ovis.oculusrep.com/listings/review?listing=' || v_om.id,
+      'Comp record: https://ovis.oculusrep.com/listings/review?comp=' || v_prop.id,
       CASE WHEN v_items IS NOT NULL THEN E'\nChecklist (enter results on the comp):\n'
         || array_to_string(ARRAY(SELECT '[ ] ' || i FROM unnest(v_items) i), E'\n') END
     ),

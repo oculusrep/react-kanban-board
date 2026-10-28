@@ -43,11 +43,13 @@ export default function ListingReviewPage() {
   const [openComp, setOpenComp] = useState<CompProperty | null>(null);
 
   const selectedId = params.get('listing');
-  const select = (id: string | null) => {
+  const compParam = params.get('comp'); // direct link to a comp record (VA tasks)
+  const setParam = (key: string, id: string | null) => {
     const next = new URLSearchParams(params);
-    if (id) next.set('listing', id); else next.delete('listing');
+    if (id) next.set(key, id); else next.delete(key);
     setParams(next, { replace: true });
   };
+  const select = (id: string | null) => setParam('listing', id);
 
   const load = useCallback(async () => {
     setError(null);
@@ -76,10 +78,20 @@ export default function ListingReviewPage() {
 
   const unplaced = rows.filter((l) => l.lat == null && l.review_status !== 'rejected').length;
 
-  const openCompById = async (compId: string) => {
-    const { data } = await supabase.from('comp_property').select('*').eq('id', compId).maybeSingle();
-    if (data) setOpenComp(data as CompProperty);
-  };
+  const openCompById = (compId: string) => setParam('comp', compId);
+
+  // ?comp=<id> opens the comp slideout over the queue — the link VA tasks carry.
+  useEffect(() => {
+    if (!compParam) { setOpenComp(null); return; }
+    let cancelled = false;
+    supabase.from('comp_property').select('*').eq('id', compParam).maybeSingle()
+      .then(({ data, error: err }) => {
+        if (cancelled) return;
+        if (err || !data) setError(err?.message ?? 'That comp no longer exists.');
+        else setOpenComp(data as CompProperty);
+      });
+    return () => { cancelled = true; };
+  }, [compParam]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] p-4 sm:p-6">
@@ -180,7 +192,7 @@ export default function ListingReviewPage() {
         />
       )}
       {openComp && (
-        <CompDetailSlideout comp={openComp} onClose={() => setOpenComp(null)} onSaved={load} />
+        <CompDetailSlideout comp={openComp} onClose={() => setParam('comp', null)} onSaved={load} />
       )}
     </div>
   );
