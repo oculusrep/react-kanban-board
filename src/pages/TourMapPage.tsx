@@ -7,10 +7,7 @@ import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import {
   computeDaySchedule,
   dayColor,
-  driveToNextLabel,
   departureFor,
-  formatClock12,
-  formatMinutesDuration,
   formatTime12,
   parseTimeToMinutes,
   routeKey,
@@ -18,6 +15,15 @@ import {
   type DaySchedule,
   type StopTiming,
 } from '../lib/tourRouting';
+import {
+  ArriveText,
+  CategoryPill,
+  DayTotalsFooter,
+  DriveConnector,
+  NoLocationTag,
+  TourStopCard,
+  type DayTotals,
+} from '../components/tours/TourStopCard';
 import { MAX_ROUTE_STOPS, clearDayRoute, getChainedTrafficLegs, getDayRoute, getDriveMatrix } from '../lib/tourRouteService';
 
 // ---------------------------------------------------------------------------
@@ -382,8 +388,23 @@ export function TourMapPage() {
 
   const overEnd = (day: TourDay, sched: DaySchedule | null) => {
     const end = parseTimeToMinutes(day.end_time);
-    return sched?.hasStart && end != null && sched.finishMin > end;
+    return !!(sched?.hasStart && end != null && sched.finishMin > end);
   };
+
+  const dayTotalsFor = (dr: DayRender): DayTotals => ({
+    driveMin: dr.schedule ? dr.schedule.totalDriveMin : null,
+    stopMin: dr.schedule ? dr.schedule.totalStopMin : dr.stops.reduce((sum, s) => sum + s.effective_duration_minutes, 0),
+    finishMin: dr.schedule?.hasStart ? dr.schedule.finishMin : null,
+    overEnd: overEnd(dr.day, dr.schedule),
+    note: !dr.schedule
+      ? null
+      : dr.traffic === 'live'
+      ? `Traffic-aware — each leg timed from its own departure (day starts ${formatTime12(dr.day.start_time)} ${dr.day.day_date})`
+      : dr.traffic === 'unavailable'
+      ? 'Traffic data unavailable — typical drive times'
+      : 'Typical drive times (set a future day date + start for traffic)',
+  });
+  const daySummaries: Record<string, DayTotals> = Object.fromEntries(dayRenders.map((dr) => [dr.day.id, dayTotalsFor(dr)]));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)' }}>
@@ -476,54 +497,34 @@ export function TourMapPage() {
               {dr.stops.length === 0 ? (
                 <div style={{ fontSize: 12, color: SLATE, paddingLeft: 20 }}>No stops.</div>
               ) : (
-                <div style={{ paddingLeft: 4 }}>
+                <div>
                   {dr.stops.map((s) => {
                     const mapped = s.lat != null && s.lng != null;
-                    const arr = stopSchedule[s.id]?.arrivalMin;
-                    const toNext = mapped ? driveToNextLabel(stopSchedule[s.id]) : null;
+                    const timing = mapped ? stopSchedule[s.id] : undefined;
                     return (
-                      <div key={s.id} style={{ display: 'flex', gap: 6, fontSize: 13, color: MIDNIGHT, padding: '3px 0' }}>
-                        <span style={{ width: 16, textAlign: 'right', fontWeight: 700, color: mapped ? dr.color : TERRACOTTA, flexShrink: 0 }}>{s.number}.</span>
-                        <div style={{ minWidth: 0 }}>
-                          <span style={{ fontWeight: 500 }}>{s.display_name}</span>
-                          <span style={{ color: STEEL, fontSize: 12 }}>
-                            {mapped && arr != null ? ` · arr ${formatClock12(arr)}` : ''}
-                            {` · ${s.effective_duration_minutes}m`}
-                            {s.category_name ? ` · ${s.category_name}` : ''}
-                          </span>
-                          {!mapped && <span style={{ color: TERRACOTTA, fontSize: 11 }}> · no location</span>}
-                          {toNext && <div style={{ color: STEEL, fontSize: 11, fontWeight: 600 }}>{toNext}</div>}
-                          {s.display_subtext && (
-                            <div style={{ color: '#9CA3AF', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.display_subtext}</div>
-                          )}
-                        </div>
+                      <div key={s.id}>
+                        <TourStopCard
+                          number={s.number}
+                          color={mapped ? dr.color : TERRACOTTA}
+                          title={s.display_name}
+                          meta={
+                            <>
+                              <ArriveText arrivalMin={timing?.arrivalMin} />
+                              <span>{s.effective_duration_minutes} min</span>
+                              <CategoryPill name={s.category_name} />
+                              {!mapped && <NoLocationTag />}
+                            </>
+                          }
+                          subtext={s.display_subtext}
+                        />
+                        <DriveConnector minutes={timing?.minsToNext} toEnd={timing?.nextIsEnd} color={dr.color} />
                       </div>
                     );
                   })}
                 </div>
               )}
 
-              {dr.schedule && (
-                <div style={{ fontSize: 12, color: STEEL, paddingLeft: 20, marginTop: 4 }}>
-                  Drive {formatMinutesDuration(dr.schedule.totalDriveMin)} · Stops {formatMinutesDuration(dr.schedule.totalStopMin)}
-                  {dr.schedule.hasStart && (
-                    <>
-                      {' '}· Finish{' '}
-                      <span style={{ color: overEnd(dr.day, dr.schedule) ? TERRACOTTA : STEEL, fontWeight: overEnd(dr.day, dr.schedule) ? 700 : 400 }}>
-                        {formatClock12(dr.schedule.finishMin)}
-                      </span>
-                      {overEnd(dr.day, dr.schedule) ? ' (past end time)' : ''}
-                    </>
-                  )}
-                  <div style={{ fontSize: 11, color: SLATE }}>
-                    {dr.traffic === 'live'
-                      ? `Traffic-aware — each leg timed from its own departure (day starts ${formatTime12(dr.day.start_time)} ${dr.day.day_date})`
-                      : dr.traffic === 'unavailable'
-                      ? 'Traffic data unavailable — typical drive times'
-                      : 'Typical drive times (set a future day date + start for traffic)'}
-                  </div>
-                </div>
-              )}
+              {dr.stops.length > 0 && <DayTotalsFooter totals={dayTotalsFor(dr)} />}
             </div>
           ))}
 
@@ -548,6 +549,7 @@ export function TourMapPage() {
           onClose={() => setReorderOpen(false)}
           onChanged={() => setRefreshKey((k) => k + 1)}
           stopSchedule={stopSchedule}
+          daySummaries={daySummaries}
         />
       )}
     </div>

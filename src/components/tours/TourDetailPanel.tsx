@@ -16,7 +16,17 @@ import {
   deleteTour,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
-import { driveToNextLabel, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
+import { dayColor, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
+import {
+  ArriveText,
+  DayTotalsFooter,
+  DriveConnector,
+  NoLocationTag,
+  TOUR_COLORS,
+  TourStopCard,
+  categoryPillStyle,
+  type DayTotals,
+} from './TourStopCard';
 import { geocodingService } from '../../services/geocodingService';
 
 // ---------------------------------------------------------------------------
@@ -42,6 +52,8 @@ interface TourDetailPanelProps {
   /** Per-stop arrival (clock minutes) + drive minutes to next stop, computed by the
    *  map host. Absent in non-map contexts (list/detail page) — fields hide then. */
   stopSchedule?: Record<string, StopTiming>;
+  /** Per-day Drive/Stops/Finish from the map host; without it the footer shows Stops only. */
+  daySummaries?: Record<string, DayTotals>;
 }
 
 const dayDroppableId = (dayId: string) => `day:${dayId}`;
@@ -73,7 +85,7 @@ function TimeSelect({ value, onChange }: { value: string | null; onChange: (v: s
   );
 }
 
-export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: TourDetailPanelProps) {
+export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, daySummaries }: TourDetailPanelProps) {
   const [tour, setTour] = useState<Tour | null>(null);
   const [days, setDays] = useState<TourDay[]>([]);
   const [stops, setStops] = useState<TourStopWithSiteSubmit[]>([]);
@@ -316,160 +328,127 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
   if (loading) return <div style={{ padding: 24, color: SLATE }}>Loading tour…</div>;
   if (!tour) return <div style={{ padding: 24, color: TERRACOTTA }}>{error ?? 'Tour not found.'}</div>;
 
-  const renderStop = (stop: TourStopWithSiteSubmit, index: number) => (
-    <Draggable key={stop.id} draggableId={stop.id} index={index}>
-      {(dp, snap) => (
-        <div
-          ref={dp.innerRef}
-          {...dp.draggableProps}
-          style={{
-            border: `1px solid ${SLATE}`,
-            borderRadius: 8,
-            padding: 10,
-            marginBottom: 6,
-            background: snap.isDragging ? '#F0F4FA' : '#FFFFFF',
-            boxShadow: snap.isDragging ? '0 4px 16px rgba(0,33,71,0.15)' : 'none',
-            ...dp.draggableProps.style,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <div
-              {...dp.dragHandleProps}
-              title="Drag to reorder / move between days"
-              style={{ cursor: 'grab', color: '#FFFFFF', background: MIDNIGHT, borderRadius: 6, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}
-            >
-              {index + 1}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {(() => {
-                const { name, subtext } = stopDisplayName({
-                  display_label: stop.display_label,
-                  site_submit_name: stop.site_submit?.site_submit_name,
-                  property: stop.site_submit?.property,
-                });
-                const mapped = !!resolveStopCoord(stop.site_submit);
-                return (
-                  <>
-                    {editingLabelId === stop.id ? (
-                      <input
-                        autoFocus
-                        value={labelDraft}
-                        placeholder={stopDisplayName({ site_submit_name: stop.site_submit?.site_submit_name, property: stop.site_submit?.property }).name}
-                        onChange={(e) => setLabelDraft(e.target.value)}
-                        onBlur={() => commitLabel(stop.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                          if (e.key === 'Escape') {
-                            cancelLabelRef.current = true;
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                        style={{ width: '100%', fontWeight: 500, color: MIDNIGHT, fontSize: 14, border: `1px solid ${SLATE}`, borderRadius: 4, padding: '1px 4px' }}
-                      />
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-                        <span style={{ fontWeight: 500, color: MIDNIGHT, fontSize: 14 }}>
-                          {!subtext && stop.site_submit?.id ? (
-                            <Link to={`/site-submit/${stop.site_submit.id}`} style={{ color: MIDNIGHT, textDecoration: 'none' }}>{name}</Link>
-                          ) : (
-                            name
-                          )}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => startLabelEdit(stop)}
-                          title="Rename this stop (blank = automatic name)"
-                          style={{ border: 'none', background: 'transparent', color: SLATE, fontSize: 12, cursor: 'pointer', padding: 0 }}
-                        >
-                          ✎
-                        </button>
-                        {!mapped && (
-                          <span title="No coordinates on this site submit or its property — not on the map or route" style={{ fontSize: 11, color: TERRACOTTA, border: `1px solid ${TERRACOTTA}`, borderRadius: 4, padding: '0 4px' }}>
-                            no location
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {subtext && (
-                      <div style={{ fontSize: 11, color: '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {stop.site_submit?.id ? (
-                          <Link to={`/site-submit/${stop.site_submit.id}`} style={{ color: '#9CA3AF', textDecoration: 'none' }}>{subtext}</Link>
-                        ) : (
-                          subtext
-                        )}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-              {(() => {
-                const sched = stopSchedule?.[stop.id];
-                if (!sched) return null;
-                const parts: string[] = [];
-                if (sched.arrivalMin != null) parts.push(`Arrive ${formatClock12(sched.arrivalMin)}`);
-                const toNext = driveToNextLabel(sched);
-                if (toNext) parts.push(toNext);
-                if (parts.length === 0) return null;
-                return (
-                  <div style={{ fontSize: 12, color: STEEL, marginTop: 2, fontWeight: 500 }}>
-                    {parts.join(' · ')}
-                  </div>
-                );
-              })()}
-              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select
-                  value={stop.category_id ?? ''}
-                  onChange={(e) => handleCategoryChange(stop.id, e.target.value)}
-                  style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12, color: STEEL }}
-                >
-                  <option value="">— category —</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-                <label style={{ fontSize: 12, color: STEEL, display: 'flex', alignItems: 'center', gap: 4 }}>
+  const renderStop = (stop: TourStopWithSiteSubmit, index: number, color: string) => {
+    const { name, subtext } = stopDisplayName({
+      display_label: stop.display_label,
+      site_submit_name: stop.site_submit?.site_submit_name,
+      property: stop.site_submit?.property,
+    });
+    const mapped = !!resolveStopCoord(stop.site_submit);
+    const sched = mapped ? stopSchedule?.[stop.id] : undefined;
+    const categoryName = stop.category_id ? categoryById[stop.category_id]?.name : null;
+    const ssLink = (text: string, linkColor: string) =>
+      stop.site_submit?.id ? (
+        <Link to={`/site-submit/${stop.site_submit.id}`} style={{ color: linkColor, textDecoration: 'none' }}>{text}</Link>
+      ) : (
+        text
+      );
+
+    return (
+      <Draggable key={stop.id} draggableId={stop.id} index={index}>
+        {(dp, snap) => (
+          <div ref={dp.innerRef} {...dp.draggableProps} style={dp.draggableProps.style}>
+            <TourStopCard
+              number={index + 1}
+              color={mapped ? color : TERRACOTTA}
+              badgeProps={dp.dragHandleProps ?? undefined}
+              badgeTitle="Drag to reorder / move between days"
+              dragging={snap.isDragging}
+              title={
+                editingLabelId === stop.id ? (
                   <input
-                    type="number"
-                    min={0}
-                    value={effectiveDuration(stop)}
-                    onChange={(e) => handleDurationChange(stop.id, e.target.value)}
-                    style={{ width: 52, border: `1px solid ${SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                    autoFocus
+                    value={labelDraft}
+                    placeholder={stopDisplayName({ site_submit_name: stop.site_submit?.site_submit_name, property: stop.site_submit?.property }).name}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                    onBlur={() => commitLabel(stop.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') {
+                        cancelLabelRef.current = true;
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                    style={{ width: '100%', fontWeight: 700, color: MIDNIGHT, fontSize: 15, border: `1px solid ${SLATE}`, borderRadius: 4, padding: '1px 4px' }}
                   />
-                  min
-                </label>
+                ) : (
+                  <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                    <span>{subtext ? name : ssLink(name, MIDNIGHT)}</span>
+                    <button
+                      type="button"
+                      onClick={() => startLabelEdit(stop)}
+                      title="Rename this stop (blank = automatic name)"
+                      style={{ border: 'none', background: 'transparent', color: SLATE, fontSize: 12, cursor: 'pointer', padding: 0, fontWeight: 400 }}
+                    >
+                      ✎
+                    </button>
+                  </span>
+                )
+              }
+              meta={
+                <>
+                  <ArriveText arrivalMin={sched?.arrivalMin} />
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <input
+                      type="number"
+                      min={0}
+                      value={effectiveDuration(stop)}
+                      onChange={(e) => handleDurationChange(stop.id, e.target.value)}
+                      title="Minutes at this stop"
+                      style={{ width: 44, border: `1px solid ${SLATE}`, borderRadius: 4, padding: '1px 4px', fontSize: 12, color: MIDNIGHT }}
+                    />
+                    min
+                  </label>
+                  <select
+                    value={stop.category_id ?? ''}
+                    onChange={(e) => handleCategoryChange(stop.id, e.target.value)}
+                    title="Category"
+                    style={{ ...categoryPillStyle(categoryName), border: 'none', cursor: 'pointer', appearance: 'none', paddingRight: 10 }}
+                  >
+                    <option value="">— category —</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  {!mapped && <NoLocationTag />}
+                </>
+              }
+              subtext={subtext ? ssLink(subtext, '#9CA3AF') : null}
+              footer={
                 <input
                   defaultValue={stop.notes ?? ''}
                   placeholder="Notes…"
                   onBlur={(e) => handleNotesBlur(stop.id, e.target.value)}
-                  style={{ flex: 1, minWidth: 100, border: `1px solid ${SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                  style={{ width: '100%', marginTop: 6, border: `1px solid ${TOUR_COLORS.cardBorder}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
                 />
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleRemove(stop.id)}
-              title="Remove from tour"
-              style={{ border: 'none', background: 'transparent', color: TERRACOTTA, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
-            >
-              remove
-            </button>
+              }
+              aside={
+                <button
+                  type="button"
+                  onClick={() => handleRemove(stop.id)}
+                  title="Remove from tour"
+                  style={{ border: 'none', background: 'transparent', color: TERRACOTTA, fontSize: 12, cursor: 'pointer' }}
+                >
+                  remove
+                </button>
+              }
+            />
+            {snap.isDragging ? null : <DriveConnector minutes={sched?.minsToNext} toEnd={sched?.nextIsEnd} color={color} />}
           </div>
-        </div>
-      )}
-    </Draggable>
-  );
+        )}
+      </Draggable>
+    );
+  };
 
-  const renderSection = (opts: { id: string; title: React.ReactNode; subtitle?: React.ReactNode; totalMin?: number }) => {
+  const renderSection = (opts: { id: string; title: React.ReactNode; subtitle?: React.ReactNode; color: string; totals?: DayTotals }) => {
     const list = sections[opts.id] ?? [];
     return (
       <div style={{ border: `1px solid ${SLATE}`, borderRadius: 8, marginBottom: 12, background: '#F8FAFC' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', flexWrap: 'wrap' }}>
           {opts.title}
-          {opts.totalMin != null && (
-            <span style={{ fontSize: 12, color: STEEL }}>
-              {list.length} stop{list.length === 1 ? '' : 's'} · {opts.totalMin} min stop time
-            </span>
-          )}
+          <span style={{ fontSize: 12, color: STEEL }}>
+            {list.length} stop{list.length === 1 ? '' : 's'}
+          </span>
         </div>
         {opts.subtitle}
         <Droppable droppableId={opts.id}>
@@ -482,11 +461,16 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
               {list.length === 0 && (
                 <div style={{ color: SLATE, fontSize: 12, padding: '8px 0' }}>Drag stops here…</div>
               )}
-              {list.map((stop, idx) => renderStop(stop, idx))}
+              {list.map((stop, idx) => renderStop(stop, idx, opts.color))}
               {dp.placeholder}
             </div>
           )}
         </Droppable>
+        {opts.totals && list.length > 0 && (
+          <div style={{ padding: '0 10px 10px' }}>
+            <DayTotalsFooter totals={opts.totals} />
+          </div>
+        )}
       </div>
     );
   };
@@ -531,10 +515,11 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
       </div>
 
       <DragDropContext onDragEnd={handleDragEnd}>
-        {days.map((day) =>
+        {days.map((day, di) =>
           renderSection({
             id: dayDroppableId(day.id),
-            totalMin: dayTotal(day.id),
+            color: dayColor(di),
+            totals: daySummaries?.[day.id] ?? { driveMin: null, stopMin: dayTotal(day.id), finishMin: null, overEnd: false },
             title: (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -580,7 +565,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
 
         {renderSection({
           id: UNSCHEDULED,
-          totalMin: (sections[UNSCHEDULED] ?? []).reduce((sum, s) => sum + effectiveDuration(s), 0),
+          color: SLATE,
           title: <span style={{ fontWeight: 700, color: STEEL, fontSize: 14 }}>Unscheduled</span>,
         })}
       </DragDropContext>
