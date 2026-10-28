@@ -137,7 +137,7 @@ export default function PackagesDashboardPage() {
         siteSubmitId={sidebar?.siteSubmitId ?? null}
         dealId={sidebar?.dealId ?? null}
         isOpen={sidebar !== null}
-        onClose={() => setSidebar(null)}
+        onClose={() => { setSidebar(null); refresh(); }}
         context="deal"
         onStatusChange={() => refresh()}
         onDataUpdate={() => refresh()}
