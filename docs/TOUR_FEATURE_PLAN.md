@@ -156,9 +156,13 @@ Stays on browser-side Directions + Distance Matrix (Routes API migration is a la
   waypoints** ([docs](https://developers.google.com/maps/documentation/javascript/directions)),
   so `drivingOptions` on the multi-stop call would do nothing (and bill Directions Advanced).
   Instead, when `day_date` + `start_time` is in the future, each leg gets one 1×1 Distance
-  Matrix request with `departureTime` = day start (Advanced SKU), cached by route key +
-  departure. Approximation: every leg uses the day-start departure, not its own clock time.
-  Past or missing date/time → typical drive times, labeled as such.
+  Matrix request (Advanced SKU) with a **chained departure**: the first point is reached at day
+  start; each leg departs at (arrival at its origin + that stop's minutes), so legs are fetched
+  sequentially. Cache is per leg (origin→destination coords): a cached departure within 15 min
+  of the new one is reused, so an upstream minutes/order change only re-requests downstream
+  legs once it shifts their departure by 15+ min. Requests go out at departures snapped to
+  15-minute buckets (never in the past). If any leg lacks traffic data the day falls back to
+  typical times, labeled. Past or missing date/time → "typical drive times".
 - **Optimize.** End address set → Directions `optimizeWaypoints` (fixed origin + fixed end is
   correct there). No end address → one-way open path: Distance Matrix drive times (chunked to
   ≤25 destinations / ≤100 elements per request), solved in the browser by `solveOpenPath`
@@ -188,12 +192,13 @@ Google requests per action, one tour with D routed days:
 
 | Action | Before | After |
 |---|---|---|
-| Edit minutes / category / notes / label | D Directions (per keystroke, debounced) | 0 |
-| Edit day start/end time | D Directions | 0 (+ legs-1 Matrix for that day if the departure is future and changed) |
-| Drag / reorder within a day | D Directions | 1 Directions for the changed day (+ legs-1 traffic Matrix if future) |
+| Edit category / notes / label | D Directions (per keystroke, debounced) | 0 |
+| Edit minutes on stop k (future-dated day) | D Directions | 0 Directions; traffic: 0 if downstream departures move <15 min, else one request per downstream leg whose departure moved 15+ min |
+| Edit day start time (future-dated day) | D Directions | 0 Directions; traffic: 0 if shift <15 min, else up to legs requests for that day |
+| Drag / reorder within a day | D Directions | 1 Directions for the changed day (+ traffic for new/shifted legs) |
 | Optimize, no end address (n mapped stops) | 1 Directions (round trip) + D | ⌈(n+1)/⌊100/n⌋⌉ Matrix + 1 Directions for that day (+ traffic) |
 | Optimize, end address | 1 Directions + D | 1 Directions + 1 Directions for that day (+ traffic) |
-| Page load | D Directions | D Directions (+ traffic legs for future days) |
+| Page load | D Directions | D Directions (+ one traffic request per leg, sequential, for future-dated days — e.g. 11 for a 12-stop day) |
 
 Next phases: Routes API migration (`computeRoutes` / `computeRouteMatrix` — also gives per-leg
 traffic with waypoints), tour layer on the main map (register in **both** layer menus), PDF

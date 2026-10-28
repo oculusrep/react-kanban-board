@@ -16,7 +16,6 @@
 export const MAX_ROUTE_STOPS = 25;
 const MATRIX_MAX_ELEMENTS = 100;
 const MATRIX_MAX_DIMENSION = 25;
-const TRAFFIC_CONCURRENCY = 4;
 
 export type DayRouteResult =
   | { ok: true; path: google.maps.LatLng[]; legSeconds: number[] }
@@ -25,8 +24,6 @@ export type DayRouteResult =
 // Keyed by routeKey(points). Failures are cached too, so an edit that doesn't change the
 // route never re-hits Google; use clearDayRoute() for an explicit retry.
 const routeCache = new Map<string, Promise<DayRouteResult>>();
-// Keyed by routeKey + departure ISO.
-const trafficCache = new Map<string, Promise<number[] | null>>();
 
 let requestCount = 0;
 /** Total Google requests issued by this module in the session (dev/debug aid). */
@@ -63,46 +60,99 @@ export function getDayRoute(
 
 export function clearDayRoute(key: string) {
   routeCache.delete(key);
-  for (const k of trafficCache.keys()) if (k.startsWith(`${key}#`)) trafficCache.delete(k);
 }
 
-// Traffic-aware seconds for each consecutive leg, one 1×1 Distance Matrix element per leg
-// (cheapest in billed elements). Returns null if any leg lacks traffic data.
-export function getTrafficLegs(
+// ---------------------------------------------------------------------------
+// Traffic-aware legs with CHAINED departures.
+// Leg k departs at (arrival at its origin point + that point's service minutes); the first
+// point is "arrived at" at day start. Each leg is one 1×1 Distance Matrix element (cheapest
+// in billed elements), requested sequentially because each departure depends on the
+// previous leg's traffic time.
+//
+// Cache: per leg (origin→destination coords), a list of fetched departures. A leg is reused
+// when a cached departure is within DEPARTURE_TOLERANCE of the new one, so an upstream edit
+// only re-requests downstream legs once it shifts their departure by 15+ minutes. Requests
+// go out at departures snapped to 15-minute buckets to keep the hit rate up.
+// ---------------------------------------------------------------------------
+
+const BUCKET_MS = 15 * 60 * 1000;
+const DEPARTURE_TOLERANCE_MS = 15 * 60 * 1000;
+
+interface LegEntry {
+  forMs: number; // the leg's actual (unsnapped) departure when fetched — tolerance anchor
+  p: Promise<number | null>;
+}
+const legCache = new Map<string, LegEntry[]>();
+
+const coordKey = (p: google.maps.LatLngLiteral) => `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+
+// Snap to the nearest 15-min bucket, but never into the past (Google rejects past times).
+function bucketDeparture(ms: number, nowMs: number): number {
+  let b = Math.round(ms / BUCKET_MS) * BUCKET_MS;
+  if (b <= nowMs) b = Math.ceil((nowMs + 1) / BUCKET_MS) * BUCKET_MS;
+  return b;
+}
+
+function getLegTraffic(
   svc: google.maps.DistanceMatrixService,
-  key: string,
-  points: google.maps.LatLngLiteral[],
-  departure: Date
-): Promise<number[] | null> {
-  const cacheKey = `${key}#${departure.toISOString()}`;
-  const cached = trafficCache.get(cacheKey);
-  if (cached) return cached;
+  from: google.maps.LatLngLiteral,
+  to: google.maps.LatLngLiteral,
+  departureMs: number
+): Promise<number | null> {
+  const key = `${coordKey(from)}>${coordKey(to)}`;
+  const entries = legCache.get(key) ?? [];
+  let best: LegEntry | null = null;
+  for (const e of entries) {
+    const d = Math.abs(e.forMs - departureMs);
+    if (d < DEPARTURE_TOLERANCE_MS && (!best || d < Math.abs(best.forMs - departureMs))) best = e;
+  }
+  if (best) return best.p;
+
+  const depMs = bucketDeparture(departureMs, Date.now());
   const p = (async () => {
-    const legs = points.slice(0, -1).map((o, i) => [o, points[i + 1]] as const);
-    const out: (number | null)[] = new Array(legs.length).fill(null);
-    for (let i = 0; i < legs.length; i += TRAFFIC_CONCURRENCY) {
-      await Promise.all(
-        legs.slice(i, i + TRAFFIC_CONCURRENCY).map(async ([o, d], k) => {
-          requestCount++;
-          try {
-            const res = await svc.getDistanceMatrix({
-              origins: [o],
-              destinations: [d],
-              travelMode: google.maps.TravelMode.DRIVING,
-              drivingOptions: { departureTime: departure, trafficModel: google.maps.TrafficModel.BEST_GUESS },
-            });
-            const el = res.rows[0]?.elements[0];
-            out[i + k] = el?.status === 'OK' ? (el.duration_in_traffic ?? el.duration).value : null;
-          } catch {
-            out[i + k] = null;
-          }
-        })
-      );
+    requestCount++;
+    try {
+      const res = await svc.getDistanceMatrix({
+        origins: [from],
+        destinations: [to],
+        travelMode: google.maps.TravelMode.DRIVING,
+        drivingOptions: { departureTime: new Date(depMs), trafficModel: google.maps.TrafficModel.BEST_GUESS },
+      });
+      const el = res.rows[0]?.elements[0];
+      return el?.status === 'OK' ? (el.duration_in_traffic ?? el.duration).value : null;
+    } catch {
+      return null;
     }
-    return out.every((v) => v != null) ? (out as number[]) : null;
   })();
-  trafficCache.set(cacheKey, p);
+  entries.push({ forMs: departureMs, p });
+  legCache.set(key, entries);
   return p;
+}
+
+// points: the routed points in order (start address?, stops, end address?).
+// serviceMinutes: minutes spent at each point (0 for start/end addresses).
+// typicalLegSeconds: the Directions leg times, used to keep the chain going if a leg has
+// no traffic data. Returns null when any leg lacked traffic data (caller labels the day
+// "typical"), else per-leg traffic seconds.
+export async function getChainedTrafficLegs(
+  svc: google.maps.DistanceMatrixService,
+  points: google.maps.LatLngLiteral[],
+  serviceMinutes: number[],
+  dayStart: Date,
+  typicalLegSeconds: number[]
+): Promise<number[] | null> {
+  const legs: number[] = [];
+  let allLive = true;
+  let clock = dayStart.getTime(); // arrival at points[0]
+  for (let k = 0; k < points.length - 1; k++) {
+    const departMs = clock + (serviceMinutes[k] ?? 0) * 60_000;
+    const live = await getLegTraffic(svc, points[k], points[k + 1], departMs);
+    const secs = live ?? typicalLegSeconds[k] ?? 0;
+    if (live == null) allLive = false;
+    legs.push(secs);
+    clock = departMs + secs * 1000;
+  }
+  return allLive ? legs : null;
 }
 
 // Full drive-time matrix (seconds), origins × destinations, chunked by origin rows to stay

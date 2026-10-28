@@ -16,13 +16,14 @@ import {
   solveOpenPath,
   type DaySchedule,
 } from '../lib/tourRouting';
-import { MAX_ROUTE_STOPS, clearDayRoute, getDayRoute, getDriveMatrix, getTrafficLegs } from '../lib/tourRouteService';
+import { MAX_ROUTE_STOPS, clearDayRoute, getChainedTrafficLegs, getDayRoute, getDriveMatrix } from '../lib/tourRouteService';
 
 // ---------------------------------------------------------------------------
 // TourMapPage (/tours/:id/map) — self-contained tour route view.
 // Each day: numbered markers (same numbers as the panel), a driving polyline and
 // per-leg drive times from ONE cached Directions request, an optional traffic-aware
-// pass (Distance Matrix, future departures only), and a schedule computed locally.
+// pass (Distance Matrix, future departures only, chained leg-by-leg departures), and a
+// schedule computed locally.
 // Supabase data reloads on every edit; Google is only re-asked when a day's route
 // key (ordered stop ids + coords + start/end) changes. Problems are shown per day
 // instead of degrading silently. Deliberately standalone (not the LayerManager map).
@@ -202,9 +203,14 @@ export function TourMapPage() {
           if (res.ok) {
             routeOk = true;
             let allLegs = res.legSeconds;
-            const departure = departureFor(day.day_date, day.start_time);
-            if (departure) {
-              const live = await getTrafficLegs(matrixServiceRef.current, key, latLngs, departure);
+            const dayStart = departureFor(day.day_date, day.start_time);
+            if (dayStart) {
+              const serviceMinutes = [
+                ...(startCoord ? [0] : []),
+                ...ordered.map((s) => s.effective_duration_minutes),
+                ...(endCoord ? [0] : []),
+              ];
+              const live = await getChainedTrafficLegs(matrixServiceRef.current, latLngs, serviceMinutes, dayStart, res.legSeconds);
               if (live) {
                 allLegs = live;
                 traffic = 'live';
@@ -506,7 +512,7 @@ export function TourMapPage() {
                   )}
                   <div style={{ fontSize: 11, color: SLATE }}>
                     {dr.traffic === 'live'
-                      ? `Traffic-aware, departing ${formatTime12(dr.day.start_time)} ${dr.day.day_date}`
+                      ? `Traffic-aware — each leg timed from its own departure (day starts ${formatTime12(dr.day.start_time)} ${dr.day.day_date})`
                       : dr.traffic === 'unavailable'
                       ? 'Traffic data unavailable — typical drive times'
                       : 'Typical drive times (set a future day date + start for traffic)'}
