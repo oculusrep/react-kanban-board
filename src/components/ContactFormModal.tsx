@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import { useAuth } from '../contexts/AuthContext';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
+import { applySignature, PasteSignatureBox, type SignatureValues } from './contact/PasteSignatureBox';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -31,6 +32,11 @@ interface ContactFormModalProps {
    * caller in that band must pass its own value.
    */
   zIndex?: number;
+  /**
+   * Optional line under the header saying where a prefill came from (Intel's
+   * "Look up in my email" shows the source email's sender and date here).
+   */
+  notice?: React.ReactNode;
 }
 
 interface FormData {
@@ -69,6 +75,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   showBackdrop = true,
   initialValues,
   zIndex = 60,
+  notice,
 }) => {
   const { user } = useAuth();
   const [formData, setFormData] = useState<FormData>({
@@ -222,6 +229,19 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     }
   }, [isOpen]);
 
+  // "Paste signature": create overwrites the fields it found; edit fills only
+  // empty ones (existing data is never overwritten). Returns what it did for the note.
+  const fillFromSignature = (values: SignatureValues) => {
+    const { next, filled, skipped } = applySignature(formData, values, contactId ? 'edit' : 'create');
+    setFormData(next);
+    setErrors((prev) => {
+      const cleared = { ...prev };
+      for (const key of Object.keys(values)) delete cleared[key];
+      return cleared;
+    });
+    return { filled, skipped };
+  };
+
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -346,6 +366,15 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
           </button>
         </div>
 
+        {notice && (
+          <div
+            className="px-3 py-2 text-xs"
+            style={{ color: '#002147', backgroundColor: '#F8FAFC', borderBottom: '1px solid #8FA9C8' }}
+          >
+            {notice}
+          </div>
+        )}
+
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {loading ? (
@@ -354,6 +383,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
             </div>
           ) : (
             <>
+              <PasteSignatureBox onFill={fillFromSignature} />
+
               {/* Basic Information Section */}
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">

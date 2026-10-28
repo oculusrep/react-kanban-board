@@ -5,7 +5,12 @@ import ContactFormModal from '../ContactFormModal';
 import InlinePropertyCreationModal from '../mapping/InlinePropertyCreationModal';
 import { geocodingService } from '../../services/geocodingService';
 import { FAB_SIZE, useDraggableFab } from '../../hooks/useDraggableFab';
+import { splitPersonName } from '../../utils/personName';
+import { isInternalRole } from '../../utils/internalRoles';
 import {
+  type EmailLookupResult,
+  type EmailSenderCandidate,
+  type EmailSignatureSource,
   type FiledEntry,
   type KnowledgeLink,
   type ObjectType,
@@ -58,15 +63,55 @@ const Z_CREATE_MODAL = Z_PANEL + 1;
 /** Only these two have a create flow reachable from here. See UnresolvedRow. */
 const CREATABLE: ObjectType[] = ['contact', 'property'];
 
-/** "Nick Lukens" -> first/last for the contact form, which requires both. */
-export function splitPersonName(name: string): { first_name: string; last_name: string } {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return { first_name: parts[0], last_name: '' };
-  return { first_name: parts.slice(0, -1).join(' '), last_name: parts[parts.length - 1] };
+/**
+ * What "Look up in my email" hands the create form: verified details plus the
+ * email they came from, or nothing and the reason.
+ */
+export type EmailPrefill =
+  | {
+      details: NonNullable<UnresolvedName['details']>;
+      source: EmailSignatureSource;
+      signatureEmail?: string;
+      relayFrom?: string;
+    }
+  | { details: Record<string, never>; source: null };
+
+export const NO_SIGNATURE_MESSAGE = 'No signature found in the last 12 months.';
+
+/** Dates shown in Eastern Time, per the OVIS convention. */
+function formatEasternDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
-/** ovis_role values that is_internal_user() accepts. Coach and portal users are excluded. */
-const INTERNAL_ROLES = ['admin', 'broker_full', 'broker_lite', 'va'];
+/** The source line on the contact form: which email, from whom, and when. */
+function emailPrefillNotice(prefill: EmailPrefill): string {
+  if (!prefill.source) return NO_SIGNATURE_MESSAGE;
+  const from = `${prefill.source.sender_email}'s email of ${formatEasternDate(prefill.source.received_at)}`;
+  const lines = [
+    Object.keys(pickContactFields(prefill.details)).length > 0
+      ? `Prefilled from ${from}. Check it's still current.`
+      : `Found ${from}, but nothing in its signature could be verified.`,
+  ];
+  if (prefill.signatureEmail) lines.push(`The signature also lists ${prefill.signatureEmail}.`);
+  if (prefill.relayFrom) lines.push(`It was sent through a mailing service, so ${prefill.relayFrom} wasn't used as the email.`);
+  return lines.join(' ');
+}
+
+/** Only the fields the contact form takes, and only non-empty ones. */
+function pickContactFields(details?: UnresolvedName['details']) {
+  if (!details) return {};
+  const out: Partial<Record<'email' | 'phone' | 'mobile_phone' | 'title' | 'company', string>> = {};
+  for (const key of ['email', 'phone', 'mobile_phone', 'title', 'company'] as const) {
+    if (details[key]) out[key] = details[key];
+  }
+  return out;
+}
+
 
 const TYPE_LABEL: Record<ObjectType, string> = {
   account: 'Account',
@@ -126,10 +171,12 @@ const ProposalEditor: React.FC<{
   onEditCleanText: (t: string) => void;
   onAddLink: (l: KnowledgeLink) => void;
   onRemoveLink: (t: ObjectType, id: string) => void;
-  onCreateUnresolved: (item: UnresolvedName) => void;
+  onCreateUnresolved: (item: UnresolvedName, emailPrefill?: EmailPrefill) => void;
   onDismissUnresolved: (name: string) => void;
   onAddTag: (t: string) => void;
   onRemoveTag: (t: string) => void;
+  /** Present only for users allowed to search their own email. */
+  onLookupEmail?: (item: UnresolvedName, senderEmail?: string) => Promise<EmailLookupResult>;
 }> = ({
   proposal,
   rawText,
@@ -141,6 +188,7 @@ const ProposalEditor: React.FC<{
   onDismissUnresolved,
   onAddTag,
   onRemoveTag,
+  onLookupEmail,
 }) => {
   const [picking, setPicking] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
@@ -206,6 +254,7 @@ const ProposalEditor: React.FC<{
               item={item}
               onCreate={onCreateUnresolved}
               onDismiss={onDismissUnresolved}
+              onLookupEmail={item.object_type === 'contact' ? onLookupEmail : undefined}
             />
           ))}
         </ul>
@@ -246,42 +295,125 @@ const ProposalEditor: React.FC<{
  * (both need more than a name — see docs/KNOWLEDGE_CAPTURE.md), so they're shown
  * so the user knows nothing was linked.
  */
+type LookupState =
+  | { kind: 'idle' }
+  | { kind: 'looking' }
+  | { kind: 'choose'; candidates: EmailSenderCandidate[] }
+  | { kind: 'message'; text: string };
+
 const UnresolvedRow: React.FC<{
   item: UnresolvedName;
-  onCreate: (item: UnresolvedName) => void;
+  onCreate: (item: UnresolvedName, emailPrefill?: EmailPrefill) => void;
   onDismiss: (name: string) => void;
-}> = ({ item, onCreate, onDismiss }) => (
-  <li
-    className="flex flex-wrap items-center gap-1.5 rounded px-2 py-1.5 text-[11px]"
-    style={{ backgroundColor: COLORS.white, border: `1px dashed ${COLORS.terracotta}` }}
-  >
-    <span style={{ color: COLORS.midnight }}>
-      Not in OVIS: <strong>{item.name}</strong>
-    </span>
-    {CREATABLE.includes(item.object_type) ? (
-      <button
-        type="button"
-        onClick={() => onCreate(item)}
-        className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-        style={{ backgroundColor: COLORS.steel, color: COLORS.white }}
-      >
-        Create {item.object_type}: {item.name}
-      </button>
-    ) : (
-      <span style={{ color: COLORS.steel }}>
-        (create the {item.object_type} in OVIS first, then add the link)
-      </span>
-    )}
-    <button
-      type="button"
-      onClick={() => onDismiss(item.name)}
-      className="ml-auto underline"
-      style={{ color: COLORS.slate }}
+  /** Contacts only, and only for users allowed to search their own email. */
+  onLookupEmail?: (item: UnresolvedName, senderEmail?: string) => Promise<EmailLookupResult>;
+}> = ({ item, onCreate, onDismiss, onLookupEmail }) => {
+  const [lookup, setLookup] = useState<LookupState>({ kind: 'idle' });
+
+  // Runs only on click — never automatically — so the user always knows when
+  // their inbox is being read.
+  const runLookup = async (senderEmail?: string) => {
+    if (!onLookupEmail) return;
+    setLookup({ kind: 'looking' });
+    try {
+      const res = await onLookupEmail(item, senderEmail);
+      if (res.result === 'choose') {
+        setLookup({ kind: 'choose', candidates: res.candidates });
+      } else if (res.result === 'need_full_name') {
+        setLookup({ kind: 'message', text: 'Needs a first and last name to search your email.' });
+      } else {
+        setLookup({ kind: 'idle' });
+        onCreate(
+          item,
+          res.result === 'found'
+            ? { details: res.details, source: res.source, signatureEmail: res.signature_email, relayFrom: res.relay_from }
+            : { details: {}, source: null },
+        );
+      }
+    } catch (e) {
+      setLookup({ kind: 'message', text: e instanceof Error ? e.message : 'Email lookup failed' });
+    }
+  };
+
+  return (
+    <li
+      className="rounded px-2 py-1.5 text-[11px]"
+      style={{ backgroundColor: COLORS.white, border: `1px dashed ${COLORS.terracotta}` }}
     >
-      ignore
-    </button>
-  </li>
-);
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span style={{ color: COLORS.midnight }}>
+          Not in OVIS: <strong>{item.name}</strong>
+        </span>
+        {CREATABLE.includes(item.object_type) ? (
+          <button
+            type="button"
+            onClick={() => onCreate(item)}
+            className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+            style={{ backgroundColor: COLORS.steel, color: COLORS.white }}
+          >
+            Create {item.object_type}: {item.name}
+          </button>
+        ) : (
+          <span style={{ color: COLORS.steel }}>
+            (create the {item.object_type} in OVIS first, then add the link)
+          </span>
+        )}
+        {onLookupEmail && (
+          <button
+            type="button"
+            onClick={() => runLookup()}
+            disabled={lookup.kind === 'looking'}
+            className="rounded-full px-2 py-0.5 text-[11px] font-medium disabled:opacity-60"
+            style={{ border: `1px solid ${COLORS.steel}`, color: COLORS.steel, backgroundColor: COLORS.white }}
+            title="Find this person's signature in your own Gmail and prefill the contact"
+          >
+            {lookup.kind === 'looking' ? 'Searching your email…' : 'Look up in my email'}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onDismiss(item.name)}
+          className="ml-auto underline"
+          style={{ color: COLORS.slate }}
+        >
+          ignore
+        </button>
+      </div>
+
+      {lookup.kind === 'choose' && (
+        <div className="mt-1.5 space-y-1">
+          <p style={{ color: COLORS.steel }}>More than one address matches — which one is {item.name}?</p>
+          {lookup.candidates.map((c) => (
+            <button
+              key={c.sender_email}
+              type="button"
+              onClick={() => runLookup(c.sender_email)}
+              className="block w-full rounded px-2 py-1 text-left hover:bg-slate-50"
+              style={{ border: `1px solid ${COLORS.slate}`, color: COLORS.midnight }}
+            >
+              <span className="font-medium">{c.sender_name || c.sender_email}</span>
+              <span style={{ color: COLORS.steel }}>
+                {' '}· {c.sender_email} · last email {formatEasternDate(c.last_received_at)}
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setLookup({ kind: 'idle' })}
+            className="underline"
+            style={{ color: COLORS.slate }}
+          >
+            None of these
+          </button>
+        </div>
+      )}
+
+      {lookup.kind === 'message' && (
+        <p className="mt-1" style={{ color: COLORS.terracotta }}>{lookup.text}</p>
+      )}
+    </li>
+  );
+};
 
 const RecentList: React.FC<{ entries: FiledEntry[] }> = ({ entries }) => {
   if (entries.length === 0) return null;
@@ -337,6 +469,9 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
   // the panel carries a transform, which would become the containing block for
   // their position:fixed and misplace them entirely.
   const [creating, setCreating] = useState<UnresolvedName | null>(null);
+  // Set when the contact form was opened from "Look up in my email": what it
+  // found (or that it found nothing), shown on the form with its source.
+  const [emailPrefill, setEmailPrefill] = useState<EmailPrefill | null>(null);
   // Coordinates for a property whose address the note stated, geocoded on the way
   // into the modal. Null when there was no address to geocode or it failed.
   const [geocoded, setGeocoded] = useState<{ lat: number; lng: number; precision: string | null } | null>(null);
@@ -348,8 +483,9 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
    * visible precision. A bare property name is NEVER geocoded — "Hoschton
    * Crossing" alone would resolve to the middle of a town and look authoritative.
    */
-  const startCreate = useCallback(async (item: UnresolvedName) => {
+  const startCreate = useCallback(async (item: UnresolvedName, fromEmail?: EmailPrefill) => {
     setGeocoded(null);
+    setEmailPrefill(fromEmail ?? null);
     if (item.object_type !== 'property' || !item.details?.address) {
       setCreating(item);
       return;
@@ -403,7 +539,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
 
   // Internal users only — the same gate the edge function enforces. Portal and
   // coach users share this layout, so without it they'd see a button that 403s.
-  const isInternal = !isPortalUser && !!userRole && INTERNAL_ROLES.includes(userRole);
+  const isInternal = isInternalRole(userRole, isPortalUser);
   if (!isInternal) return null;
 
   const submit = (e: React.FormEvent) => {
@@ -570,6 +706,12 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
                 onAddLink={capture.addLink}
                 onRemoveLink={capture.removeLink}
                 onCreateUnresolved={startCreate}
+                onLookupEmail={
+                  capture.emailLookupAllowed
+                    ? (item, senderEmail) =>
+                        capture.lookupEmailSignature(item.name, { email: item.details?.email, senderEmail })
+                    : undefined
+                }
                 onDismissUnresolved={capture.dismissUnresolved}
                 onAddTag={capture.addTag}
                 onRemoveTag={capture.removeTag}
@@ -610,13 +752,17 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           // literally contained it (verified server-side).
           initialValues={{
             ...splitPersonName(creating.name),
+            // From the user's own email (verified server-side). What the note
+            // itself said comes after, so it wins where both have a value.
+            ...pickContactFields(emailPrefill?.details),
             ...(creating.details?.email ? { email: creating.details.email } : {}),
             ...(creating.details?.phone ? { phone: creating.details.phone } : {}),
             ...(creating.details?.mobile_phone ? { mobile_phone: creating.details.mobile_phone } : {}),
             ...(creating.details?.title ? { title: creating.details.title } : {}),
             ...(creating.details?.company ? { company: creating.details.company } : {}),
           }}
-          onClose={() => setCreating(null)}
+          notice={emailPrefill ? emailPrefillNotice(emailPrefill) : undefined}
+          onClose={() => { setCreating(null); setEmailPrefill(null); }}
           onSave={(contact) => {
             const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim();
             capture.resolveWith(creating.name, {
@@ -625,6 +771,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
               object_name: name || creating.name,
             });
             setCreating(null);
+            setEmailPrefill(null);
           }}
         />
       )}

@@ -185,6 +185,40 @@ Pre-Submittal site_submits with no deal were invisible because membership was de
 
 Recon at decision time: 6 site_submit-only cards come on (4 Pre-Submittal: Warner Robins, Cumming/Canton Hwy, Senoia, Baxley; 2 Submitted-Reviewing: Eastman, Waynesboro), all with no history and no court. Board goes 38 → 44 tiles; the 4 Pre-Submittal ones land in the To classify band (6 → 10).
 
+### 2.29 Package Tracker (scoped 2026-10-11, not built; spec `docs/PACKAGE_TRACKER_SPEC.md`)
+Locked with Mike at scoping:
+
+- **The package lives on the deal, not the site_submit.** No deal means no package. Site_submit-only cards show no bar.
+- **Manual start.** A "Start Package" button on the deal sidebar creates the package and Noree's first tasks. Nothing auto-starts.
+- **11 slides with editable defaults.** Owner, setup/finish split, approval and inputs are settings Mike changes as he trains Noree. Never hard-coded.
+- **Statuses:** not started → in progress → waiting on Mike → done, plus N/A. **% = done ÷ applicable**; N/A is excluded; waiting on Mike is not done.
+- **An input Mike hasn't produced counts as waiting on Mike.** This covers Market Research not run, Site Story not run, site plan not in and DOT study not in.
+- **Noree's check-off goes to waiting on Mike** on both the approve and the setup/finish slides.
+- **Gates come from ball-in-court history in Negotiating LOI:**
+  - Gate 1 is the first flip to their court.
+  - Gate 2 is the first flip back to ours.
+  - Gate 3 is ready for Adam to sign; detection is still open.
+  - **Nothing is added to `deal`.** Recon found that no structured flip history exists, so this needs a court-event log (spec §9 Q1). That is new schema, not a deal field.
+- **Package state never changes card heat, sort or the daily number** (§1.2, §1.4). The card shows a bar plus "N waiting on Mike" only.
+- **Noree gets her own queue screen**, holding package slides plus the other tasks Mike assigns her, in an order Mike sets by drag and drop. Dependent slides appear only when their inputs are ready. This doesn't reopen §3's "no separate task view": that rule is about Mike's surface.
+
+**Decided 2026-10-12 (Mike):**
+- **Court history:** build `deal_court_event` (trigger on `deal_activity_state`, dated by `court_since`), backfilled from `document_handoff` LOI turns. Deals with no recoverable dates show **"gate date unknown"** (absence, §1.7). Mike enters first-draft / first-response dates once, on the package.
+- **Gate 3** is the timestamped "Final LOI in" checkbox on the package (option A).
+- **Bar colours:** slate when on pace, terracotta outline when behind, solid terracotta when late. **No green** (§2.7 holds).
+- **Package tasks are excluded from the clock-reset triggers**, proven by `supabase/tests/package_task_clock_test.sql`.
+- **The bar fits the current compact tile height** (§1.1).
+- **Pipeline report** shows computed progress. `package_status` stays until Mike confirms, then gets dropped.
+- **Noree:** no access restriction, no route guard and no new permission keys. Her Tasks queue becomes her default landing page.
+- **Deals without a site_submit** get Start Package and the slide list in `DealHeaderBar` too.
+- **Starbucks family only, enforced in the database (2026-10-13).** `client_in_starbucks_family(client_id)` is true when the client **or any `parent_id` ancestor** has `starbucks_board_enabled`. A new Starbucks child account qualifies with no flag and no list.
+  - Trigger `trg_deal_package_starbucks_only` refuses a package for any other deal, including one with no client. It fires on insert and on re-pointing `deal_id`, and applies to every writer.
+  - Both progress views filter on the same function.
+  - The board now uses the same function (§2.14, amended 2026-10-13).
+- **Phased build:** 1 schema; 2 sidebar + settings; 3 Noree queue; 4 board card + report. Stop for review after each phase. Each migration is shown to Mike and needs his OK before it's applied.
+
+**Landmine:** `task` inserts with `deal_id` / `site_submit_id` reset the board clock. Package tasks must be excluded from the reset triggers, or Start Package cools the card.
+
 ### 2.12 Pre-Submittal blockers, the ready-to-submit band, and the triage counter
 `blocked_on` is a set of parallel blockers, not a sequence. **`blocked_on = awaiting_ll | site_control`** — just two (migrations `20260831130000`, `20260831140000`). The board is **five columns**: Awaiting landlord · Awaiting site control · Submitted-Reviewing · Negotiating LOI · At Lease/PSA. The first two carry a small "Pre-Submittal" super-label. This retires the "one column with subheads" design, the two-column-grid stopgap (§5), *and* the Unset/Ready columns.
 
@@ -227,6 +261,12 @@ Hardcoded IDs break when a third Starbucks entity appears — there are already 
 
 **Amended 2026-10-08:** the flag is now **`client.starbucks_board_enabled`**, true on exactly the two clients `Starbucks` and `Starbucks - JW (Coastal GA)` (migration `20261008090044`). It replaces `starbucks_layer_enabled` for board membership, because that flag also gates the Starbucks map layer/portal — enabling it for a third client for map reasons would silently have put that client on the board. **No other client's site_submits or deals touch the board**, and the filter is enforced server-side in the membership query, not in the UI.
 
+**Amended 2026-10-13 (Mike): membership follows the parent relationship.**
+- The board selects clients through `client_in_starbucks_family()`, exposed to PostgREST as the computed field `client.in_starbucks_family` (migration `20261013090455`). A client qualifies when it **or any `parent_id` ancestor** has `starbucks_board_enabled`, so a new Starbucks child account joins with no flag and no list.
+- The Package Tracker trigger and views use the same function: one membership definition, in the database.
+- Checked before the switch with a SQL mirror of the board rules: 46 cards under the flag and 46 under the family function, identical IDs.
+- **Fast path (2026-10-22, migration `20261022092841`).** `in_starbucks_family(client)` checks the client's own flag first, and only walks the parent chain when `parent_id` is set (35 of 571 clients). It has no `SET search_path`, so the planner can inline it. Results are unchanged (0 mismatches across 571 clients). The board query over HTTP went from 1.81 / 1.65 / 1.81s to 1.17 / 1.09 / 1.28s, with the same 47 cards.
+
 ### 2.15 The daily number is the only game mechanic
 Count of tiles needing attention, target zero. No points, streaks, or badges — those reward touching things rather than closing them.
 
@@ -258,7 +298,7 @@ Not oversights. Do not build, do not ask about, do not add "small versions of" o
 |---|---|
 | A separate "today" or task view | Never. The board **is** the list. A second place to look means neither gets looked at. This is permanent, not phase-ordering. |
 | Kanban drag-and-drop between stages | DnD stays deferred (imprecise on a wall TV). A **non-drag** stage change via a slide-over dropdown **is** in scope — see 2.17. |
-| Deck completion progress bar | Phase 2, separate spec. Dependency chain already defined. |
+| ~~Deck completion progress bar~~ | **Now scoped** as the Package Tracker — `docs/PACKAGE_TRACKER_SPEC.md`, decisions §2.29. Not built. |
 | Rolling AI deal summary | Phase 2. Reserve space in the slide-over; wire nothing. |
 | Weighted pipeline value / delta scoreboard | Phase 3. |
 | Commission cash flow forecast | Phase 3. |
@@ -279,6 +319,11 @@ Not oversights. Do not build, do not ask about, do not add "small versions of" o
 - **The repo has ~1010 pre-existing TypeScript errors** and Vite skips `tsc`. Verify your own files typecheck; don't try to fix the rest.
 - **27 of 46 deals have no history at all.** The board's first render is mostly empty states. That's accurate, not broken.
 - **Migrations here apply to the production database.** There is no separate dev/sandbox DB yet; the app `.env` and the MCP Supabase project are both `rqbvcvwbziilnycqtmnc` (production). Even in auto mode, schema changes should be surfaced before they're applied.
+- **Known follow-up (2026-10-22): `site_submit` row-level security makes the board query slow.** For a signed-in user, `site_submit`'s RLS policies call per-row functions (`portal_user_client_ids()`, `get_user_role()`, `can_manage_operations()`, a hashed subplan), and they aren't wrapped for InitPlan. So the planner seq-scans the whole table (~1,240 rows) and evaluates them on every row, even for a primary-key lookup.
+  - The board's membership query costs ~0.5s in the database and 0.9–1.2s over HTTP (measured 2026-10-22). That's most of a 1.6–1.9s Packages dashboard load.
+  - The Package Tracker side-stepped it in `v_deal_package_progress` with a definer PK helper (`package_site_stage`, migration `20261022115504`: 2.3s → 0.15s), but the board itself still pays it.
+  - Likely fix: wrap every `site_submit` SELECT policy's function calls in `(SELECT …)` so they run once per query. All of them, because OR-ed policies only short-circuit when true; see the InitPlan note in memory. Then EXPLAIN as an internal user and as a portal user.
+  - Not done: it touches every reader of `site_submit` (portal included), so it needs its own change and per-persona testing.
 - **Stage change (2.17) writes shared pipeline data.** `deal.stage_id` propagates to `site_submit.submit_stage_id` via `trigger_sync_deal_stage_to_site_submit` (`20260714120000`) — the first board write outside `deal_activity_state`. It has pipeline-wide effects; test it doesn't loop. Moving a deal off the four board stages removes it from the board → require a confirm.
 
 ---

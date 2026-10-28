@@ -56,6 +56,7 @@ import CalendarSettingsPage from "./pages/CalendarSettingsPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserManagementPage from "./pages/UserManagementPage";
+import PackageSlideSettingsPage from "./pages/PackageSlideSettingsPage";
 import KPIDashboardPage from "./pages/KPIDashboardPage";
 import RobReportPage from "./pages/RobReportPage";
 import RobReport2025Page from "./pages/RobReport2025Page";
@@ -95,6 +96,8 @@ import MikeIsOwedReportPage from "./pages/MikeIsOwedReportPage";
 import UnpaidReferralFeesReportPage from "./pages/UnpaidReferralFeesReportPage";
 import StarbucksTargetAreasReportPage from "./pages/StarbucksTargetAreasReportPage";
 import StarbucksPipelineReportPage from "./pages/StarbucksPipelineReportPage";
+import PackagesDashboardPage from "./pages/PackagesDashboardPage";
+import TaskQueuePage from "./pages/TaskQueuePage";
 import TypographyTestPage from "./pages/TypographyTestPage";
 import VelocityAnalyticsPage from "./pages/VelocityAnalyticsPage";
 import HistoricalVelocityPage from "./pages/HistoricalVelocityPage";
@@ -128,6 +131,11 @@ function RoleBasedRedirect() {
   // Coach users go to coach dashboard
   if (userRole === 'coach') {
     return <Navigate to="/coach-dashboard" replace />;
+  }
+
+  // The VA (Noree) lands on her task queue (decision 2026-10-12, item 7)
+  if (userRole === 'va') {
+    return <Navigate to="/tasks/queue" replace />;
   }
 
   // All other users land on the map
@@ -167,6 +175,7 @@ function App() {
           <Route path="starbucks-board" element={<CoachRoute><StarbucksDealBoardPage /></CoachRoute>} />
           <Route path="tasks" element={<CoachRoute><TasksDashboardPage /></CoachRoute>} />
           <Route path="tasks/all" element={<CoachRoute><TasksPage /></CoachRoute>} />
+          <Route path="tasks/queue" element={<CoachRoute><TaskQueuePage /></CoachRoute>} />
           <Route path="listings/review" element={<CoachRoute><ListingReviewPage /></CoachRoute>} />
           {/* OAuth 2.1 consent (Supabase Auth OAuth server → OVIS MCP connector). Login form shows in place when signed out. */}
           <Route path="oauth/consent" element={<CoachRoute><OAuthConsentPage /></CoachRoute>} />
@@ -211,12 +220,14 @@ function App() {
           <Route path="reports/unpaid-referral-fees" element={<CoachRoute><UnpaidReferralFeesReportPage /></CoachRoute>} />
           <Route path="reports/starbucks-target-areas" element={<CoachRoute><StarbucksTargetAreasReportPage /></CoachRoute>} />
           <Route path="reports/starbucks-pipeline" element={<CoachRoute><StarbucksPipelineReportPage /></CoachRoute>} />
+          <Route path="reports/starbucks-packages" element={<CoachRoute><PackagesDashboardPage /></CoachRoute>} />
           <Route path="reports/velocity-analytics" element={<CoachRoute><VelocityAnalyticsPage /></CoachRoute>} />
           <Route path="reports/historical-velocity" element={<CoachRoute><HistoricalVelocityPage /></CoachRoute>} />
           <Route path="reports/prospecting-scorecard" element={<CoachRoute><ProspectingScorecardPage /></CoachRoute>} />
           <Route path="prospecting" element={<Navigate to="/hunter" replace />} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+          <Route path="admin/package-slides" element={<AdminRoute><PackageSlideSettingsPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/quickbooks/customers" element={<AdminRoute><QuickBooksCustomerMappingPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />

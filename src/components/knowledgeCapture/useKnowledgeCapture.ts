@@ -49,6 +49,43 @@ export interface UnresolvedName {
   };
 }
 
+/** One sender address in the user's own mailbox that matches a name. */
+export interface EmailSenderCandidate {
+  sender_email: string;
+  sender_name: string | null;
+  last_received_at: string;
+  email_count: number;
+}
+
+/** The email a "Look up in my email" prefill came from, shown on the form. */
+export interface EmailSignatureSource {
+  email_id: string;
+  received_at: string;
+  sender_email: string;
+  sender_name: string | null;
+  subject: string | null;
+}
+
+/**
+ * ovis-knowledge-capture's lookup_email_signature answer. Details were verified
+ * server-side against the sender's own text (quotes and forwards stripped),
+ * except the email, which is the From address we searched on (unless that's a
+ * mailing service). Never an Oculus email, company or internal phone.
+ */
+export type EmailLookupResult =
+  | {
+      result: 'found';
+      details: NonNullable<UnresolvedName['details']>;
+      source: EmailSignatureSource;
+      /** A different address in the signature: shown on the form, not used. */
+      signature_email?: string;
+      /** The From address is a mailing service's, so it wasn't used. */
+      relay_from?: string;
+    }
+  | { result: 'choose'; candidates: EmailSenderCandidate[] }
+  | { result: 'no_signature'; sender_email?: string }
+  | { result: 'need_full_name' };
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -105,6 +142,20 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+/**
+ * ovis-knowledge-capture's parse_signature answer ("Paste signature" in the
+ * contact form). Fields were verified server-side against the pasted text and
+ * never include an Oculus email, company or internal phone. Nothing is written.
+ */
+export type PastedSignatureResult =
+  | { result: 'parsed'; name?: string; details: NonNullable<UnresolvedName['details']> }
+  | { result: 'multiple' }
+  | { result: 'nothing_found' };
+
+export function parsePastedSignature(text: string): Promise<PastedSignatureResult> {
+  return invoke<PastedSignatureResult>({ action: 'parse_signature', text });
+}
+
 export function useKnowledgeCapture(authUserId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [rawText, setRawText] = useState('');
@@ -115,6 +166,9 @@ export function useKnowledgeCapture(authUserId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<FiledEntry[]>([]);
   const [unresolved, setUnresolved] = useState<UnresolvedName[]>([]);
+  // "Look up in my email" is per-user (app_settings.intel_email_lookup_user_ids).
+  // This only decides whether to SHOW the button; the edge function re-checks.
+  const [emailLookupAllowed, setEmailLookupAllowed] = useState(false);
 
   // The model's FIRST proposal for this note, and the model that produced it.
   // The correction row is the difference between this and what's actually filed,
@@ -122,6 +176,29 @@ export function useKnowledgeCapture(authUserId: string | null) {
   // just chip edits. Never overwritten mid-conversation.
   const baselineRef = useRef<Proposal | null>(null);
   const proposalModelRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!authUserId) return;
+    let cancelled = false;
+    supabase.rpc('intel_email_lookup_allowed').then(({ data, error: err }) => {
+      if (!cancelled) setEmailLookupAllowed(!err && data === true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authUserId]);
+
+  /** Signature lookup in the user's own mailbox. `senderEmail` is a picked candidate. */
+  const lookupEmailSignature = useCallback(
+    (name: string, opts: { email?: string; senderEmail?: string } = {}) =>
+      invoke<EmailLookupResult>({
+        action: 'lookup_email_signature',
+        name,
+        ...(opts.email ? { email: opts.email } : {}),
+        ...(opts.senderEmail ? { sender_email: opts.senderEmail } : {}),
+      }),
+    [],
+  );
 
   const loadRecent = useCallback(async () => {
     if (!authUserId) return;
@@ -323,6 +400,8 @@ export function useKnowledgeCapture(authUserId: string | null) {
     fileIt,
     reset,
     loadRecent,
+    emailLookupAllowed,
+    lookupEmailSignature,
     clearError: () => setError(null),
   };
 }

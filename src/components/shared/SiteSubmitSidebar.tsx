@@ -21,6 +21,8 @@ import PortalFilesTab from '../portal/PortalFilesTab';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
 import { CopyMapLinkButton } from './CopyMapLinkButton';
 import AddToTourButton from '../tours/AddToTourButton';
+import PackageBadge from '../package/PackageBadge';
+import PackagePanel from '../package/PackagePanel';
 import { useSiteSubmitEmail } from '../../hooks/useSiteSubmitEmail';
 import EmailComposerModal from '../EmailComposerModal';
 import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
@@ -1299,6 +1301,23 @@ export default function SiteSubmitSidebar({
           </div>
         )}
 
+        {/* Starbucks slide package (Package Tracker) — any deal, incl. deal-direct mode; renders nothing off-family */}
+        {(context === 'map' || context === 'deal') && siteSubmit?.deal_id && (
+          <div className="mt-2">
+            <PackageBadge
+              dealId={siteSubmit.deal_id}
+              tone="dark"
+              onOpen={() => {
+                const id = siteSubmit.deal_id;
+                setActiveTab('data');
+                requestAnimationFrame(() =>
+                  document.getElementById(`package-panel-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                );
+              }}
+            />
+          </div>
+        )}
+
         {/* Address and unit info */}
         <div className="mt-2">
           {(() => {
@@ -1419,6 +1438,7 @@ export default function SiteSubmitSidebar({
                 {siteSubmit.property.address}
                 {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
                 {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
+                {siteSubmit.property.zip && ` ${siteSubmit.property.zip}`}
               </p>
               {/* View Property button */}
               {onViewProperty && siteSubmit.property.id && (
@@ -1623,12 +1643,16 @@ export default function SiteSubmitSidebar({
             {activeTab === 'data' && (
               <div className="flex-1 min-h-0 overflow-y-auto">
                 {siteSubmit.deal_id ? (
-                  <DealDataTab
-                    siteSubmit={siteSubmit}
-                    dealId={siteSubmit.deal_id}
-                    isEditable={isEditable}
-                    onUpdate={handleUpdate}
-                  />
+                  <>
+                    {/* Slide package first on Starbucks deals (collapsible); renders nothing off-family */}
+                    {(context === 'map' || context === 'deal') && <PackagePanel dealId={siteSubmit.deal_id} collapsible />}
+                    <DealDataTab
+                      siteSubmit={siteSubmit}
+                      dealId={siteSubmit.deal_id}
+                      isEditable={isEditable}
+                      onUpdate={handleUpdate}
+                    />
+                  </>
                 ) : (
                   <SiteSubmitDataTab
                     siteSubmit={siteSubmit}

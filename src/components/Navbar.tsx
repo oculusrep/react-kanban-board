@@ -487,6 +487,24 @@ export default function Navbar() {
                   </button>
                   <button
                     onClick={() => {
+                      navigate('/reports/starbucks-packages');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    🗂️ Starbucks Packages
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate('/tasks/queue');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    ☑️ Task Queue
+                  </button>
+                  <button
+                    onClick={() => {
                       navigate('/reports');
                       setIsReportsMenuOpen(false);
                     }}
@@ -523,6 +541,17 @@ export default function Navbar() {
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
                     >
                       👥 User Management
+                    </button>
+                  )}
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => {
+                        navigate('/admin/package-slides');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      🗂️ Package Slide Settings
                     </button>
                   )}
                   {userRole === 'admin' && (
@@ -832,6 +861,24 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   📋 Starbucks Pipeline Report
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/reports/starbucks-packages');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  🗂️ Starbucks Packages
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/tasks/queue');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  ☑️ Task Queue
                 </button>
               </div>
             </div>
@@ -1166,6 +1213,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     👥 User Management
+                  </button>
+                )}
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => {
+                      navigate('/admin/package-slides');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    🗂️ Package Slide Settings
                   </button>
                 )}
                 {(userRole === 'admin' || hasPermission('can_access_municipal_import')) && (

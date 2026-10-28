@@ -84,7 +84,7 @@ interface StateRow {
 }
 
 type One<T> = T | T[] | null;
-interface ClientRow { id: string | null; client_name: string | null; starbucks_board_enabled: boolean | null }
+interface ClientRow { id: string | null; client_name: string | null; in_starbucks_family: boolean | null }
 
 interface RawDeal {
   id: string;
@@ -133,10 +133,11 @@ function cardStage(c: CardInput): { label: string; sortOrder: number } | null {
 }
 
 function toBoardDeal(c: CardInput): BoardDeal | null {
-  // Scope (§2.14): only board-enabled clients — on the site_submit AND, when
-  // there is one, on the deal. The server filter covers the first; this
-  // covers the second.
-  if (c.deal && !embed(c.deal.client)?.starbucks_board_enabled) return null;
+  // Scope (§2.14, amended 2026-10-13): only Starbucks-family clients — the
+  // client or a parent_id ancestor has the board flag — on the site_submit
+  // AND, when there is one, on the deal. The server filter covers the first;
+  // this covers the second.
+  if (c.deal && !embed(c.deal.client)?.in_starbucks_family) return null;
   const stage = cardStage(c);
   if (!stage) return null;
   const stageLabel = stage.label;
@@ -262,18 +263,19 @@ const STATE_COLS = `
   blocked_on, needs_pricing, needs_site_plan, on_agenda, seeded_fallback, parked_until, parked_reason, urgent_until
 `;
 
-// Membership (decisions §2.14, §2.27): every site_submit of a board-enabled
-// client, deal joined in. Embeds name their FK explicitly — deal_activity_state
+// Membership (decisions §2.14, §2.27): every site_submit of a Starbucks-family
+// client (computed field client.in_starbucks_family → client_in_starbucks_family()),
+// deal joined in. Embeds name their FK explicitly — deal_activity_state
 // references both deal and site_submit, so unhinted embeds are ambiguous.
 const SITE_SUBMIT_SELECT = `
   id,
   site_submit_name,
-  client:client!site_submit_client_id_fkey!inner ( id, client_name, starbucks_board_enabled ),
+  client:client!site_submit_client_id_fkey!inner ( id, client_name, in_starbucks_family ),
   submit_stage:submit_stage!site_submit_submit_stage_id_fkey ( name ),
   property:property!site_submit_property_id_fkey ( property_name, city ),
   deal:deal!deal_site_submit_fk (
     id, deal_name,
-    client:client_id ( id, client_name, starbucks_board_enabled ),
+    client:client_id ( id, client_name, in_starbucks_family ),
     stage:stage_id ( label, sort_order ),
     state:deal_activity_state!deal_activity_state_deal_id_fkey ( ${STATE_COLS} )
   ),
@@ -282,7 +284,7 @@ const SITE_SUBMIT_SELECT = `
 
 const ORPHAN_DEAL_SELECT = `
   id, deal_name,
-  client:client_id!inner ( id, client_name, starbucks_board_enabled ),
+  client:client_id!inner ( id, client_name, in_starbucks_family ),
   stage:stage_id ( label, sort_order ),
   property:property_id ( property_name, city ),
   state:deal_activity_state!deal_activity_state_deal_id_fkey ( ${STATE_COLS} )
@@ -348,7 +350,7 @@ export default function useStarbucksBoard(accountFilter: string = ACCOUNT_ALL): 
           const { data, error: qErr } = await supabase
             .from('site_submit')
             .select(SITE_SUBMIT_SELECT)
-            .eq('client.starbucks_board_enabled', true)
+            .eq('client.in_starbucks_family', true)
             .order('id')
             .range(offset, offset + PAGE_SIZE - 1);
           if (qErr) throw qErr;
@@ -359,7 +361,7 @@ export default function useStarbucksBoard(accountFilter: string = ACCOUNT_ALL): 
           .from('deal')
           .select(ORPHAN_DEAL_SELECT)
           .is('site_submit_id', null)
-          .eq('client.starbucks_board_enabled', true);
+          .eq('client.in_starbucks_family', true);
         if (oErr) throw oErr;
         if (cancelled) return;
 

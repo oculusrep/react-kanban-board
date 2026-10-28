@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import MappingPageNew from './MappingPageNew';
 import ClientPipelineBoard from '../components/client-pipeline/ClientPipelineBoard';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
-import { ClientSearchResult } from '../hooks/useClientSearch';
+import { ClientSearchResult, getClientIds } from '../hooks/useClientSearch';
 import { supabase } from '../lib/supabaseClient';
 import { loadSelectedClient, saveSelectedClient } from '../utils/mapViewPersistence';
 
@@ -85,13 +85,15 @@ export default function MappingWorkspace() {
       {selectedClient && (
         <div style={{ display: view === 'pipeline' ? 'block' : 'none' }}>
           <ClientPipelineBoard
-            clientIds={[selectedClient.id]}
+            clientIds={getClientIds(selectedClient)}
             isEditable
             showOtherStagesDropdown
             sidebarContext="map"
-            accessibleClients={[
-              { id: selectedClient.id, client_name: selectedClient.client_name },
-            ]}
+            accessibleClients={
+              selectedClient.family_clients ?? [
+                { id: selectedClient.id, client_name: selectedClient.client_name },
+              ]
+            }
             headerActions={
               <BackToMapButton
                 clientName={selectedClient.client_name}
