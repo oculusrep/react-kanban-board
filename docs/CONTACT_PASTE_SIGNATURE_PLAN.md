@@ -1,6 +1,6 @@
 # "Paste signature" in the contact form — PLAN
 
-**Status (2026-10-26):** BUILT on `feature/contact-paste-signature`, **not merged**. Decisions: (A) edit mode fills empty fields only and reports filled/skipped; (B) contacts screen is a follow-on; (C) deal- and client-sidebar attach bugs fixed here; create mode overwrites only the fields found. Shared prod DB: migration `20261026092943_intel_internal_contact_points_all_internal` applied + recorded (rolled-back persona test `scripts/intel_contact_points_persona_test.sql`: 22/22). **Edge function `parse_signature` NOT yet deployed** — the deploy needs Mike's go.
+**Status (2026-10-28):** LIVE — merged to main; edge function `ovis-knowledge-capture` redeployed from main. Decisions: (A) edit mode fills empty fields only and reports filled/skipped; (B) contacts screen (`ContactOverviewTab`) is the follow-on — not done; (C) deal- and client-sidebar attach bugs fixed; create mode overwrites only the fields found. Migration `20261026092943_intel_internal_contact_points_all_internal` applied + recorded (persona test `scripts/intel_contact_points_persona_test.sql`: 22/22).
 
 A box inside `ContactFormModal`: paste a signature block and the form fills in. Same extraction as Intel and the same `verifyDetails()` rules, so only details literally in the pasted text are used. Nothing is filed; the user reviews and saves as normal.
 
