@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUsers } from '../../hooks/useUsers';
 import {
@@ -13,6 +12,7 @@ import { TaskWithRelations } from '../../types/task';
 import { localDateString } from '../../types/taskBlock';
 import CategoryDropdown from './CategoryDropdown';
 import TaskLinksEditor from './TaskLinksEditor';
+import DescriptionLinks from './DescriptionLinks';
 
 // Composable task detail slideout per docs/OVIS_OVERLAY_UX.md.
 // Opens from anywhere — TasksPage row click, OpenTasksPanel "Open" link,
@@ -86,44 +86,6 @@ const isoToDatetimeLocal = (iso: string | null): string => {
 const datetimeLocalToIso = (s: string): string | null => {
   if (!s) return null;
   return new Date(s).toISOString();
-};
-
-// The description is a plain textarea, so URLs in it (e.g. the listing / comp-record
-// links the NNN intake writes on VA tasks) are listed below it as clickable links.
-// OVIS URLs open in-app; anything else opens in a new tab. The label is the text that
-// precedes the URL on its line ("Comp record:" → "Comp record").
-const URL_RE = /https?:\/\/[^\s)]+/g;
-const OVIS_HOSTS = new Set(['ovis.oculusrep.com']);
-
-const DescriptionLinks: React.FC<{ text: string }> = ({ text }) => {
-  const links = useMemo(() => {
-    const out: { url: string; label: string }[] = [];
-    for (const line of text.split('\n')) {
-      for (const m of line.matchAll(URL_RE)) {
-        const label = line.slice(0, m.index).replace(/^[\s\-•*\[\]x]*/i, '').replace(/[:\s]+$/, '').trim();
-        out.push({ url: m[0], label: label || m[0] });
-      }
-    }
-    return out;
-  }, [text]);
-  if (!links.length) return null;
-  return (
-    <div className="mt-1 flex flex-col gap-0.5">
-      {links.map(({ url, label }, i) => {
-        let internal: string | null = null;
-        try {
-          const u = new URL(url);
-          if (OVIS_HOSTS.has(u.host) || u.host === window.location.host) internal = u.pathname + u.search + u.hash;
-        } catch { /* not a URL */ }
-        const cls = 'text-xs underline truncate';
-        return internal ? (
-          <Link key={i} to={internal} className={cls} style={{ color: COLORS.steel }}>{label} ↗</Link>
-        ) : (
-          <a key={i} href={url} target="_blank" rel="noreferrer" className={cls} style={{ color: COLORS.steel }}>{label} ↗</a>
-        );
-      })}
-    </div>
-  );
 };
 
 export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({

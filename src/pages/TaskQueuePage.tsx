@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
 import { useAuth } from '../contexts/AuthContext';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
+import DescriptionLinks from '../components/tasks/DescriptionLinks';
 import { BRAND, INPUT_LABEL, InputKey, shortDate } from '../lib/packageTracker';
 import {
   HeldSlide, QueueOwner, QueueTask, fetchHeldSlides, fetchPackageNames, fetchQueue, fetchQueueOwners,
@@ -173,6 +174,8 @@ export default function TaskQueuePage() {
                                 {t.due_at && <span>Due {shortDate(t.due_at)}</span>}
                                 {t.status === 'in_progress' && <span style={{ color: BRAND.navy }}>In progress</span>}
                               </div>
+                              {/* Links written into the task (e.g. NNN listing / comp record) */}
+                              <DescriptionLinks text={t.description} className="mt-0.5 flex flex-wrap gap-x-3" />
                             </div>
                             {t.status === 'open' && (
                               <button
