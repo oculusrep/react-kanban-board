@@ -11,6 +11,7 @@ import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
 import GmailRoute from "./components/GmailRoute";
 import MunicipalRoute from "./components/MunicipalRoute";
+import MapLayersRoute from "./components/MapLayersRoute";
 import PortalRoute from "./components/PortalRoute";
 import CoachNavbar from "./components/CoachNavbar";
 import PortalLayout from "./components/portal/PortalLayout";
@@ -242,7 +243,7 @@ function App() {
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/portal-email-settings" element={<AdminRoute><PortalEmailSettingsPage /></AdminRoute>} />
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />
-          <Route path="admin/layers" element={<AdminRoute><LayerManagementPage /></AdminRoute>} />
+          <Route path="admin/layers" element={<MapLayersRoute><LayerManagementPage /></MapLayersRoute>} />
           <Route path="admin/merchants" element={<AdminRoute><MerchantAdminPage /></AdminRoute>} />
           <Route path="admin/municipal-import" element={<MunicipalRoute><MunicipalImportPage /></MunicipalRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />

@@ -104,6 +104,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 }) => {
   const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
+  const canManageLayers = userRole === 'admin' || hasPermission('can_manage_map_layers');
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
   const starbucksOpsAreaFilter = useStarbucksOpsAreaFilter();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
@@ -3348,22 +3349,29 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
-                        <a
-                          href="/admin/layers"
-                          className="text-xs text-blue-600 hover:underline"
-                          onClick={() => setShowCustomLayersMenu(false)}
-                        >
-                          Manage
-                        </a>
+                        {canManageLayers && (
+                          <a
+                            href="/admin/layers"
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={() => setShowCustomLayersMenu(false)}
+                          >
+                            Manage
+                          </a>
+                        )}
                       </div>
                     </div>
                     <div className="max-h-64 overflow-y-auto">
                       {customLayers.length === 0 ? (
                         <div className="p-4 text-center text-sm text-gray-500">
-                          No custom layers yet.{' '}
-                          <a href="/admin/layers" className="text-blue-600 hover:underline">
-                            Create one
-                          </a>
+                          No custom layers yet.
+                          {canManageLayers && (
+                            <>
+                              {' '}
+                              <a href="/admin/layers" className="text-blue-600 hover:underline">
+                                Create one
+                              </a>
+                            </>
+                          )}
                         </div>
                       ) : (
                         customLayers.map(layer => (
