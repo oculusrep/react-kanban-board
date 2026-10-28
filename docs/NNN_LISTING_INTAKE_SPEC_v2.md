@@ -1,6 +1,12 @@
 # NNN Listing Intake — Spec v2 (feed the existing Comp Database)
 
-**Status:** **APPROVED 2026-10-22** (decisions in §10). **Phase 1 BUILT** on `feature/nnn-listing-intake`. It is **not applied to prod**: that waits on Mike's approval of the duplicate-comp proposals in §12. Phase 2 is not started.
+**Status:** **APPROVED 2026-10-22** (decisions in §10). **Phase 1 LIVE 2026-10-28:**
+- the migrations are applied;
+- `ovis-mcp` v0.2.0 is deployed;
+- `listing_staging` is dropped;
+- the work is merged to main.
+
+The duplicate decisions are in §12; the rollout log is in §13. The OAuth connector step is Mike's. Phase 2 is not started.
 **Date:** 2026-10-22
 **Supersedes:** the data model in [NNN_LISTING_INTAKE.md](NNN_LISTING_INTAKE.md) (v1). The v1 MCP endpoint, auth and
 OAuth consent design carry over unchanged.
@@ -704,7 +710,31 @@ These come from one SQL function, `listing_activity(p_since timestamptz, p_until
 
 Before step 2, the deployed v1 function still writes to `listing_staging`, which is harmless. Between steps 1 and 5, prod runs the new schema with the old UI, which is compatible: existing screens ignore the new columns.
 
-## 12. Duplicate comps — proposals (AWAITING APPROVAL; nothing merged)
+## 12. Duplicate comps — proposals (DECIDED 2026-10-28; applied by `20261028082618`)
+
+**Mike's decisions:**
+1. Delete Hilton / Candlewood.
+2. 7 Brew → 5890 Zebulon Rd.
+3. Douglasville: keep the two comps separate. Set city/state/ZIP. Store **no shared APN**.
+4. Hoschton → 3699 Hwy 53.
+5. Dutch Bros → 5781 Zebulon Rd.
+6. The $950K pair stays as-is; Mike will confirm separately.
+
+**Douglasville parcel finding:** both pins fall inside **one undivided parcel**.
+- **Parcel:** Douglas County PIN **0051015C005**, 5955 Hwy 92 – Fairburn Rd.
+- **Details:** vacant, 1.60 ac (GIS 2.16 ac), zoned CG, owned by Sahni's Holdings LLC.
+- **No split is recorded.** The latest deed is Aug 2017 ($270,000).
+- **How it was found:** a point-in-polygon identify on the county's Zoning and Future Land Use polygon layers. The county's Parcels polygon layer refuses queries.
+- **Source:** maps.douglascountyga.gov, PIW_PropertyLayers, layers 35/36/60/61.
+- **Outcome:** both comps have city/state/ZIP only. APN and street address stay blank until the county splits the parcel, so neither can be matched to the other pad's listing.
+
+Both comps have `year_built` 2028, which fits pads still to be built on vacant land.
+
+**Data-quality flags left as-is** (not part of the decisions):
+- Dutch Bros' stored ZIP is 31220, but 5781 Zebulon Rd is in 31210.
+- Hoschton has no ZIP (the pin's ZIP is 30548).
+
+### Original proposals
 
 Each proposal below rests on three checks: every row's child records were inspected, each pin was reverse-geocoded (Google, ROOFTOP precision), and pin-to-pin distances were measured. **None of the pairs is the same property recorded twice.** Each is two different tenants or uses that share an address string, or adjacent pads with no address. So the proposals are mostly **address corrections, not merges**.
 
@@ -720,4 +750,35 @@ Each proposal below rests on three checks: every row's child records were inspec
 **Effect on the intake:** address-less comps never match a listing. The two shared-address pairs only matter if a sweep listing lands on 2850 Jimmy Lee Smith Pkwy or 5811 Zebulon Rd. In that case it attaches to the best row and the review screen warns "another comp shares this address". The corrections above remove both pairs.
 
 **When approved,** the corrections ship as a small data migration applied with phase 1. That migration sets the addresses, and `address_norm` recomputes because it is a generated column. Nothing is deleted unless the row-1 alternative is chosen.
+
+## 13. Rollout log (2026-10-28)
+
+**Code changes before shipping:**
+- **VA tasks carry two links:** "Listing" (`/listings/review?listing=<id>`) and "Comp record" (`/listings/review?comp=<id>`). The second opens the comp slideout over the review queue.
+- **Task descriptions are a plain textarea**, so `TaskDetailSlideout` now lists every URL in the description as a clickable link under the field. OVIS links open in-app. This also makes the backfill task's nine links clickable.
+- **Noree's backfill task** was created by the data migration: "Backfill leases for 9 sales with no lease recorded".
+  - It lists each comp with its sale and a comp-record link.
+  - It tells her to note "no lease — land sale" where a lease never existed. Wellstar land, Sonny's land and the Dutch Bros pad are likely cases.
+
+**Steps run:**
+1. **Applied to prod and recorded:** `20261022105905` (phase 1) and `20261028082618` (duplicate fixes + backfill task).
+   - Both were round-trip tested together first.
+   - After applying: 28 comps, all `reviewed`; 1 backfilled event; 2 sales linked to a lease; 0 shared-address pairs.
+   - Anonymous HTTP returns 401 / `42501` on `comp_listing_event`, `comp_listing_facts`, `listing_activity` and `record_listing_close`.
+2. **`ovis-mcp` v0.2.0 deployed.**
+3. **Smoke test — PARTIAL:**
+   - **Over HTTPS against the deployed function:**
+     - no token gives 401 with `WWW-Authenticate` pointing at the metadata;
+     - a bad token gives 401;
+     - the protected-resource metadata is served.
+   - **The RPC behind each of the four tools, called over HTTPS (PostgREST) with the service key:**
+     - **upsert:** new, then a re-sighting with a variant spelling (`changed:false`), then a price drop (`price_change`, old/new returned);
+     - **create_va_task:** to Mike, with both links;
+     - **list_recent_listings query:** original/current ask and reduction;
+     - **listing_activity:** 1 new listing and 1 price change, in separate groups.
+
+     The test rows were deleted.
+   - **Not run:** MCP `tools/call` through the function with a real credential. The static token file was lost when the temp folder was cleared. Rotating `OVIS_MCP_INTAKE_TOKEN` was blocked by the session's permission policy (secret-store write). Mike needs to set a new token, or connect via OAuth, to run that check.
+4. **`listing_staging` and the v1 RPCs dropped**, and `20261022110419` recorded. `normalize_listing_address` stays, because `address_norm` is generated from it.
+5. Merged to main; the production build passed.
 
