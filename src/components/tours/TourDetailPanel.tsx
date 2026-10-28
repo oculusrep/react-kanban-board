@@ -16,8 +16,9 @@ import {
   deleteTour,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
-import { dayColor, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
+import { dayColor, effectiveApproach, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
 import {
+  ApproachTag,
   ArriveText,
   DayTotalsFooter,
   DriveConnector,
@@ -348,6 +349,9 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
       <Draggable key={stop.id} draggableId={stop.id} index={index}>
         {(dp, snap) => (
           <div ref={dp.innerRef} {...dp.draggableProps} style={dp.draggableProps.style}>
+            {!snap.isDragging && sched?.minsFromStart != null && (
+              <DriveConnector minutes={sched.minsFromStart} label="from start" color={color} />
+            )}
             <TourStopCard
               number={index + 1}
               color={mapped ? color : TERRACOTTA}
@@ -411,6 +415,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                     ))}
                   </select>
                   {!mapped && <NoLocationTag />}
+                  <ApproachTag source={effectiveApproach(stop.approach_waypoints_override, stop.site_submit?.approach_waypoints).source} />
                 </>
               }
               subtext={subtext ? ssLink(subtext, '#9CA3AF') : null}
@@ -433,7 +438,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                 </button>
               }
             />
-            {snap.isDragging ? null : <DriveConnector minutes={sched?.minsToNext} toEnd={sched?.nextIsEnd} color={color} />}
+            {snap.isDragging ? null : <DriveConnector minutes={sched?.minsToNext} label={sched?.nextIsEnd ? 'to end' : undefined} color={color} />}
           </div>
         )}
       </Draggable>

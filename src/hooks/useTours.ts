@@ -172,6 +172,31 @@ export async function persistStopPlacements(
   return err ? { ok: false, error: err.message } : { ok: true };
 }
 
+// ---- Site approach routes ----
+
+// Site default approach (site_submit.approach_waypoints). null clears it. Note: bumps the
+// site submit's updated_at/updated_by (audit trigger).
+export async function setSiteApproach(
+  siteSubmitId: string,
+  points: { lat: number; lng: number }[] | null
+): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase
+    .from('site_submit')
+    .update({ approach_waypoints: points && points.length ? points : null })
+    .eq('id', siteSubmitId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
+// Per-tour override (tour_stop.approach_waypoints_override). null = fall back to the site
+// default; [] = explicitly no approach on this tour.
+export async function setStopApproachOverride(
+  stopId: string,
+  points: { lat: number; lng: number }[] | null
+): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase.from('tour_stop').update({ approach_waypoints_override: points }).eq('id', stopId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
 // ---- Tour days ----
 
 export async function fetchTourDays(tourId: string): Promise<TourDay[]> {
@@ -243,7 +268,7 @@ export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSu
     .select(
       `*,
        site_submit:site_submit_id (
-         id, site_submit_name, submit_stage_id, property_id,
+         id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
          verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
          property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
        ),
@@ -258,14 +283,15 @@ export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSu
 
 // Stops with resolved lat/lng + effective duration, for the map/route view.
 export async function fetchTourStopsForMap(tourId: string): Promise<import('../lib/tourTypes').TourStopGeo[]> {
-  const { resolveStopCoord, stopDisplayName } = await import('../lib/tourRouting');
+  const { resolveStopCoord, stopDisplayName, effectiveApproach, parseApproach } = await import('../lib/tourRouting');
   const { data, error: err } = await supabase
     .from('tour_stop')
     .select(
       `id, tour_day_id, position, site_submit_id, category_id, stop_duration_minutes, display_label,
+       approach_waypoints_override,
        category:category_id ( name, default_stop_duration_minutes ),
        site_submit:site_submit_id (
-         id, site_submit_name, submit_stage_id, property_id,
+         id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
          verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
          property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
        )`
@@ -281,6 +307,7 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
       row.stop_duration_minutes != null
         ? row.stop_duration_minutes
         : row.category?.default_stop_duration_minutes ?? 5;
+    const approach = effectiveApproach(row.approach_waypoints_override, row.site_submit?.approach_waypoints);
     const label = stopDisplayName({
       display_label: row.display_label,
       site_submit_name: row.site_submit?.site_submit_name,
@@ -299,6 +326,10 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
       effective_duration_minutes: effective,
       lat: coord?.lat ?? null,
       lng: coord?.lng ?? null,
+      approach: approach.points,
+      approach_source: approach.source,
+      approach_override: parseApproach(row.approach_waypoints_override),
+      site_has_approach: (parseApproach(row.site_submit?.approach_waypoints)?.length ?? 0) > 0,
     };
   });
 }

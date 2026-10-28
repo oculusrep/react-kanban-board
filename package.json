@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:tours": "node scripts/run-tour-tests.mjs",
     "preview": "vite preview",
     "schema": "npx supabase gen types typescript --project-id rqbvcvwbziilnycqtmnc > database-schema.ts",
     "dropbox:auth": "node scripts/getDropboxRefreshToken.js",

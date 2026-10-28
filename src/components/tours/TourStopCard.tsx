@@ -68,17 +68,20 @@ interface TourStopCardProps {
   badgeProps?: HTMLAttributes<HTMLDivElement>;
   badgeTitle?: string;
   dragging?: boolean;
+  /** Focused on the map (in/out legs highlighted). */
+  highlight?: boolean;
 }
 
-export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging }: TourStopCardProps) {
+export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging, highlight }: TourStopCardProps) {
   return (
     <div
       style={{
         display: 'flex',
         gap: 10,
         alignItems: 'flex-start',
-        background: dragging ? '#F0F4FA' : '#FFFFFF',
-        border: `1px solid ${cardBorder}`,
+        background: dragging || highlight ? '#F0F4FA' : '#FFFFFF',
+        border: highlight ? `2px solid ${midnight}` : `1px solid ${cardBorder}`,
+        margin: highlight ? -1 : 0, // keep layout steady with the thicker border
         borderRadius: 10,
         padding: '10px 12px',
         boxShadow: dragging ? '0 4px 16px rgba(0,33,71,0.15)' : '0 1px 2px rgba(0,33,71,0.04)',
@@ -144,7 +147,7 @@ export function NoLocationTag() {
 // Badge centre = card padding (12) + half badge (13) => line at x=25.
 const CONNECTOR_X = 25;
 
-export function DriveConnector({ minutes, toEnd, color }: { minutes: number | null | undefined; toEnd?: boolean; color: string }) {
+export function DriveConnector({ minutes, label, color }: { minutes: number | null | undefined; label?: string; color: string }) {
   if (minutes == null) return <div style={{ height: 8 }} />;
   return (
     <div style={{ position: 'relative', height: 30 }}>
@@ -170,7 +173,7 @@ export function DriveConnector({ minutes, toEnd, color }: { minutes: number | nu
       >
         <Car size={12} color={color} />
         {formatDriveMinutes(minutes)}
-        {toEnd && <span style={{ fontWeight: 400, color: slate }}>to end</span>}
+        {label && <span style={{ fontWeight: 400, color: slate }}>{label}</span>}
       </div>
     </div>
   );
@@ -207,5 +210,47 @@ export function DayTotalsFooter({ totals }: { totals: DayTotals }) {
       </div>
       {totals.note && <div style={{ fontSize: 11, color: steel, marginTop: 4 }}>{totals.note}</div>}
     </div>
+  );
+}
+
+// ---- custom approach tag ----
+
+interface ApproachTagProps {
+  source: 'tour' | 'site' | null;
+  /** Map only: clear actions. Panel shows the tag alone. */
+  onClearTour?: () => void;
+  onClearSite?: () => void;
+  onSkipOnTour?: () => void;
+}
+
+const linkBtn: CSSProperties = { border: 'none', background: 'transparent', color: steel, fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' };
+
+export function ApproachTag({ source, onClearTour, onClearSite, onSkipOnTour }: ApproachTagProps) {
+  if (!source) return null;
+  return (
+    // Clicks on these actions shouldn't also toggle the card's map focus.
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+      <span
+        title={source === 'tour' ? 'Custom approach — this tour only' : 'Custom approach — saved for this site'}
+        style={{ fontSize: 11, color: midnight, border: `1px dashed ${slate}`, borderRadius: 999, padding: '0 7px', fontWeight: 600, whiteSpace: 'nowrap' }}
+      >
+        custom approach{source === 'tour' ? ' · tour' : ''}
+      </span>
+      {source === 'tour' && onClearTour && (
+        <button type="button" onClick={onClearTour} style={linkBtn} title="Remove this tour's approach (falls back to the site's saved approach, if any)">
+          clear
+        </button>
+      )}
+      {source === 'site' && onSkipOnTour && (
+        <button type="button" onClick={onSkipOnTour} style={linkBtn} title="Don't use the site's approach on this tour">
+          skip on tour
+        </button>
+      )}
+      {source === 'site' && onClearSite && (
+        <button type="button" onClick={onClearSite} style={linkBtn} title="Delete the site's saved approach (affects every tour)">
+          clear for site
+        </button>
+      )}
+    </span>
   );
 }
