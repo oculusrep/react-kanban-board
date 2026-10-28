@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import { useAuth } from '../contexts/AuthContext';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
+import { applySignature, PasteSignatureBox, type SignatureValues } from './contact/PasteSignatureBox';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -228,6 +229,19 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     }
   }, [isOpen]);
 
+  // "Paste signature": create overwrites the fields it found; edit fills only
+  // empty ones (existing data is never overwritten). Returns what it did for the note.
+  const fillFromSignature = (values: SignatureValues) => {
+    const { next, filled, skipped } = applySignature(formData, values, contactId ? 'edit' : 'create');
+    setFormData(next);
+    setErrors((prev) => {
+      const cleared = { ...prev };
+      for (const key of Object.keys(values)) delete cleared[key];
+      return cleared;
+    });
+    return { filled, skipped };
+  };
+
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -369,6 +383,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
             </div>
           ) : (
             <>
+              <PasteSignatureBox onFill={fillFromSignature} />
+
               {/* Basic Information Section */}
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">

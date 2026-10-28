@@ -5,6 +5,8 @@ import ContactFormModal from '../ContactFormModal';
 import InlinePropertyCreationModal from '../mapping/InlinePropertyCreationModal';
 import { geocodingService } from '../../services/geocodingService';
 import { FAB_SIZE, useDraggableFab } from '../../hooks/useDraggableFab';
+import { splitPersonName } from '../../utils/personName';
+import { isInternalRole } from '../../utils/internalRoles';
 import {
   type EmailLookupResult,
   type EmailSenderCandidate,
@@ -61,13 +63,6 @@ const Z_CREATE_MODAL = Z_PANEL + 1;
 /** Only these two have a create flow reachable from here. See UnresolvedRow. */
 const CREATABLE: ObjectType[] = ['contact', 'property'];
 
-/** "Nick Lukens" -> first/last for the contact form, which requires both. */
-export function splitPersonName(name: string): { first_name: string; last_name: string } {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return { first_name: parts[0], last_name: '' };
-  return { first_name: parts.slice(0, -1).join(' '), last_name: parts[parts.length - 1] };
-}
-
 /**
  * What "Look up in my email" hands the create form: verified details plus the
  * email they came from, or nothing and the reason.
@@ -117,8 +112,6 @@ function pickContactFields(details?: UnresolvedName['details']) {
   return out;
 }
 
-/** ovis_role values that is_internal_user() accepts. Coach and portal users are excluded. */
-const INTERNAL_ROLES = ['admin', 'broker_full', 'broker_lite', 'va'];
 
 const TYPE_LABEL: Record<ObjectType, string> = {
   account: 'Account',
@@ -546,7 +539,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
 
   // Internal users only — the same gate the edge function enforces. Portal and
   // coach users share this layout, so without it they'd see a button that 403s.
-  const isInternal = !isPortalUser && !!userRole && INTERNAL_ROLES.includes(userRole);
+  const isInternal = isInternalRole(userRole, isPortalUser);
   if (!isInternal) return null;
 
   const submit = (e: React.FormEvent) => {
