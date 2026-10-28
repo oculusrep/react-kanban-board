@@ -62,6 +62,27 @@ export function formatMinutesDuration(min: number): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+// Per-stop timing computed by the tour map and shown on the map schedule + panel.
+// minsToNext: drive to the next mapped stop, or to the end address when nextIsEnd.
+export interface StopTiming {
+  arrivalMin: number | null;
+  minsToNext: number | null;
+  nextIsEnd: boolean;
+}
+
+// 66 -> "1h 06m", 12 -> "12 min"
+export function formatDriveMinutes(min: number): string {
+  const total = Math.round(min);
+  if (total < 60) return `${total} min`;
+  return `${Math.floor(total / 60)}h ${String(total % 60).padStart(2, '0')}m`;
+}
+
+// "→ 1h 06m to next" / "→ 12 min to end" / null (last stop, no end address)
+export function driveToNextLabel(t: StopTiming | null | undefined): string | null {
+  if (!t || t.minsToNext == null) return null;
+  return `→ ${formatDriveMinutes(t.minsToNext)} to ${t.nextIsEnd ? 'end' : 'next'}`;
+}
+
 export interface ScheduledStop {
   arrivalMin: number; // clock minutes since midnight (if startMin known), else elapsed
   departMin: number;
@@ -175,9 +196,10 @@ const STREET_ABBREVIATIONS: [RegExp, string][] = [
 ];
 
 // "1516 Bass Road, Macon, GA 31210" -> "1516 Bass Rd"
+// "4545 US 23;GA 42" -> "4545 US 23" (concurrent route designations: keep the first)
 export function shortStreet(address: string | null | undefined): string | null {
   if (!address) return null;
-  let s = address.split(',')[0].trim();
+  let s = address.split(/[,;]/)[0].trim();
   for (const [re, abbr] of STREET_ABBREVIATIONS) s = s.replace(re, abbr);
   s = s.replace(/\s+/g, ' ').trim();
   return s || null;

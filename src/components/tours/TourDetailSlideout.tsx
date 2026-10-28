@@ -1,5 +1,6 @@
 import SlideOutPanel from '../SlideOutPanel';
 import TourDetailPanel from './TourDetailPanel';
+import type { StopTiming } from '../../lib/tourRouting';
 
 // Slideout host for the tour detail panel — overlay-first usage of the same drop-in.
 interface TourDetailSlideoutProps {
@@ -8,7 +9,7 @@ interface TourDetailSlideoutProps {
   onClose: () => void;
   onChanged?: () => void;
   /** Computed per-stop arrival + drive-to-next, when hosted alongside the map. */
-  stopSchedule?: Record<string, { arrivalMin: number | null; minsToNext: number | null }>;
+  stopSchedule?: Record<string, StopTiming>;
 }
 
 export function TourDetailSlideout({ tourId, isOpen, onClose, onChanged, stopSchedule }: TourDetailSlideoutProps) {

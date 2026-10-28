@@ -16,7 +16,7 @@ import {
   deleteTour,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
-import { formatClock12, formatTime12, resolveStopCoord, stopDisplayName } from '../../lib/tourRouting';
+import { driveToNextLabel, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
 import { geocodingService } from '../../services/geocodingService';
 
 // ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ interface TourDetailPanelProps {
   onDeleted?: () => void;
   /** Per-stop arrival (clock minutes) + drive minutes to next stop, computed by the
    *  map host. Absent in non-map contexts (list/detail page) — fields hide then. */
-  stopSchedule?: Record<string, { arrivalMin: number | null; minsToNext: number | null }>;
+  stopSchedule?: Record<string, StopTiming>;
 }
 
 const dayDroppableId = (dayId: string) => `day:${dayId}`;
@@ -407,7 +407,9 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule }: 
                 if (!sched) return null;
                 const parts: string[] = [];
                 if (sched.arrivalMin != null) parts.push(`Arrive ${formatClock12(sched.arrivalMin)}`);
-                parts.push(sched.minsToNext != null ? `${sched.minsToNext} min to next` : 'last stop');
+                const toNext = driveToNextLabel(sched);
+                if (toNext) parts.push(toNext);
+                if (parts.length === 0) return null;
                 return (
                   <div style={{ fontSize: 12, color: STEEL, marginTop: 2, fontWeight: 500 }}>
                     {parts.join(' · ')}

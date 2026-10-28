@@ -7,6 +7,7 @@ import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import {
   computeDaySchedule,
   dayColor,
+  driveToNextLabel,
   departureFor,
   formatClock12,
   formatMinutesDuration,
@@ -15,6 +16,7 @@ import {
   routeKey,
   solveOpenPath,
   type DaySchedule,
+  type StopTiming,
 } from '../lib/tourRouting';
 import { MAX_ROUTE_STOPS, clearDayRoute, getChainedTrafficLegs, getDayRoute, getDriveMatrix } from '../lib/tourRouteService';
 
@@ -52,7 +54,7 @@ interface DayRender {
   endCoord: google.maps.LatLngLiteral | null;
 }
 
-type StopSchedule = Record<string, { arrivalMin: number | null; minsToNext: number | null }>;
+type StopSchedule = Record<string, StopTiming>;
 
 export function TourMapPage() {
   const { tourId } = useParams<{ tourId: string }>();
@@ -247,6 +249,7 @@ export function TourMapPage() {
                 ? Math.round(tailSeconds / 60)
                 : null
               : Math.round((legSeconds[idx] ?? 0) / 60),
+            nextIsEnd: isLast && !!endCoord,
           };
         });
 
@@ -477,6 +480,7 @@ export function TourMapPage() {
                   {dr.stops.map((s) => {
                     const mapped = s.lat != null && s.lng != null;
                     const arr = stopSchedule[s.id]?.arrivalMin;
+                    const toNext = mapped ? driveToNextLabel(stopSchedule[s.id]) : null;
                     return (
                       <div key={s.id} style={{ display: 'flex', gap: 6, fontSize: 13, color: MIDNIGHT, padding: '3px 0' }}>
                         <span style={{ width: 16, textAlign: 'right', fontWeight: 700, color: mapped ? dr.color : TERRACOTTA, flexShrink: 0 }}>{s.number}.</span>
@@ -488,6 +492,7 @@ export function TourMapPage() {
                             {s.category_name ? ` · ${s.category_name}` : ''}
                           </span>
                           {!mapped && <span style={{ color: TERRACOTTA, fontSize: 11 }}> · no location</span>}
+                          {toNext && <div style={{ color: STEEL, fontSize: 11, fontWeight: 600 }}>{toNext}</div>}
                           {s.display_subtext && (
                             <div style={{ color: '#9CA3AF', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.display_subtext}</div>
                           )}
