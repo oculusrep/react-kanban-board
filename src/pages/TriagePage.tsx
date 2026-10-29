@@ -370,7 +370,7 @@ export function TriagePage() {
           <button
             onClick={() => {
               // A full pass costs real money and takes real time, so it asks.
-              if (window.confirm('This takes ~35 min and costs about $1. Run it?')) {
+              if (window.confirm('This takes ~8 min and costs about $1. Run it?')) {
                 void runExtraction('full');
               }
             }}
