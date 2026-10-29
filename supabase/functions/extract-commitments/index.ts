@@ -273,6 +273,7 @@ serve(async (req) => {
     gated_rows_retired: 0,
     relay_humans_resolved: 0,
     rows_missed_once: 0,
+    suppressed_by_rejection: 0,
     owner_owes_without_me_row: 0,
     upsert_errors: 0,
     convos_zero: 0,
@@ -690,6 +691,11 @@ serve(async (req) => {
       // existing OPEN rows across every thread_id in this conversation
       const prior = c.threadIds.flatMap((t) => existingByTid.get(t) ?? []);
       const openPrior = prior.filter((p) => p.status === 'open');
+      // A REJECTION IS PERMANENT. The owner said this conversation holds no
+      // such obligation; re-extracting it and inserting a fresh open row would
+      // hand back the exact thing they dismissed. Matched by direction, since
+      // that is what they were shown.
+      const rejectedBalls = new Set(prior.filter((p) => p.status === 'rejected').map((p) => p.ball));
       const validIds = new Set(openPrior.map((p) => p.id));
       const existingBlock = openPrior.length
         ? `\n\nEXISTING OPEN COMMITMENTS for this conversation:\n` +
@@ -741,6 +747,7 @@ serve(async (req) => {
 
         for (const x of found) {
           const ball = (['them', 'me', 'neither'] as const).includes(x.ball as any) ? x.ball : 'neither';
+          if (rejectedBalls.has(ball)) { stats.suppressed_by_rejection++; continue; }
           const core = String(x.reason).trim().replace(/[.\s]+$/, '');
           if (TIME_WORDS_REPORTED.test(core)) stats.time_words_remaining++;
 

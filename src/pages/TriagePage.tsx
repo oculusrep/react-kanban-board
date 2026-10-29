@@ -30,6 +30,18 @@ import {
 
 const OWNER_EMAIL = 'mike@oculusrep.com';
 
+/**
+ * CHANGE THIS ONE NUMBER to retune the waiting list.
+ *
+ * A thing someone owes you is not worth looking at while the conversation is
+ * still moving. A row in "Waiting on others" stays hidden until the
+ * conversation has been silent this many days — counted from the LAST MESSAGE
+ * OF ANY KIND, so their reply resets the clock just as your own chase does.
+ * Hidden rows are still tracked and still counted in the header, so you can
+ * see that they exist without reading them.
+ */
+const WAITING_QUIET_DAYS = 5;
+
 const NAVY = '#002147';
 const STEEL = '#4A6B94';
 const SLATE = '#8FA9C8';
@@ -158,7 +170,20 @@ export function TriagePage() {
 
   const byAge = (a: Row, b: Row) => String(a.lastAt ?? '').localeCompare(String(b.lastAt ?? ''));
   const youOwe = useMemo(() => (rows ?? []).filter((r) => r.ball === 'me').sort(byAge), [rows]);
-  const waiting = useMemo(() => (rows ?? []).filter((r) => r.ball === 'them').sort(byAge), [rows]);
+
+  // Every ball='them' row is tracked. Only the ones that have gone quiet are
+  // shown; the rest are counted, not listed.
+  const waitingAll = useMemo(() => (rows ?? []).filter((r) => r.ball === 'them').sort(byAge), [rows]);
+  const quietCutoff = Date.now() - WAITING_QUIET_DAYS * 86_400_000;
+  const waitingQuiet = useMemo(
+    () => waitingAll.filter((r) => {
+      // No last message at all means nothing to measure silence from: treat it
+      // as still moving rather than inventing a quiet period.
+      if (!r.lastAt) return false;
+      return Date.parse(r.lastAt) <= quietCutoff;
+    }),
+    [waitingAll, quietCutoff],
+  );
 
   const renderRow = (row: Row) => {
     const b = busy[row.id];
@@ -275,13 +300,21 @@ export function TriagePage() {
                 style={{ color: NAVY }}
               >
                 {waitingOpen ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
-                Waiting on others <span style={{ color: STEEL }}>({waiting.length})</span>
+                Waiting on others{' '}
+                <span style={{ color: STEEL }}>
+                  ({waitingAll.length} waiting, {waitingQuiet.length} gone quiet)
+                </span>
               </button>
               {waitingOpen && (
                 <div className="mt-3 space-y-3">
-                  {waiting.length === 0
-                    ? <p className="text-sm" style={{ color: STEEL }}>Nothing outstanding.</p>
-                    : waiting.map(renderRow)}
+                  <p className="text-xs" style={{ color: STEEL }}>
+                    Showing the {waitingQuiet.length} that {waitingQuiet.length === 1 ? 'has' : 'have'} been
+                    silent {WAITING_QUIET_DAYS}+ days. The other {waitingAll.length - waitingQuiet.length}{' '}
+                    {waitingAll.length - waitingQuiet.length === 1 ? 'is' : 'are'} still moving and tracked.
+                  </p>
+                  {waitingQuiet.length === 0
+                    ? <p className="text-sm" style={{ color: STEEL }}>Nothing has gone quiet.</p>
+                    : waitingQuiet.map(renderRow)}
                 </div>
               )}
             </section>
