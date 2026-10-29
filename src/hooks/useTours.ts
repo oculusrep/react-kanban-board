@@ -172,6 +172,24 @@ export async function persistStopPlacements(
   return err ? { ok: false, error: err.message } : { ok: true };
 }
 
+// ---- Live day departures ----
+
+// Stamp (ISO) or clear (null) when the tour left a stop.
+export async function setStopDeparture(stopId: string, at: string | null): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase.from('tour_stop').update({ actual_departure_at: at }).eq('id', stopId);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
+// "Reset to plan": clear every stamp on a day in one statement.
+export async function resetDayDepartures(dayId: string): Promise<{ ok: boolean; error?: string }> {
+  const { error: err } = await supabase
+    .from('tour_stop')
+    .update({ actual_departure_at: null })
+    .eq('tour_day_id', dayId)
+    .not('actual_departure_at', 'is', null);
+  return err ? { ok: false, error: err.message } : { ok: true };
+}
+
 // ---- Site approach routes ----
 
 // Site default approach (site_submit.approach_waypoints). null clears it. Note: bumps the
@@ -288,7 +306,7 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
     .from('tour_stop')
     .select(
       `id, tour_day_id, position, site_submit_id, category_id, stop_duration_minutes, display_label,
-       approach_waypoints_override,
+       approach_waypoints_override, actual_departure_at,
        category:category_id ( name, default_stop_duration_minutes ),
        site_submit:site_submit_id (
          id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
@@ -330,6 +348,7 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
       approach_source: approach.source,
       approach_override: parseApproach(row.approach_waypoints_override),
       site_has_approach: (parseApproach(row.site_submit?.approach_waypoints)?.length ?? 0) > 0,
+      actual_departure_at: row.actual_departure_at ?? null,
     };
   });
 }
