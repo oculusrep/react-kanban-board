@@ -656,6 +656,53 @@ class MapLayerService {
     return shapes;
   }
 
+  /**
+   * Bulk-create point shapes (paste-a-list import). One layer lookup for the
+   * defaults, then batched inserts — createShape() per row is one round trip
+   * per point plus a layer fetch each, too slow for a few hundred rows.
+   */
+  async createPoints(
+    layerId: string,
+    points: { name: string | null; lat: number; lng: number; attributes?: Record<string, string> }[]
+  ): Promise<number> {
+    if (points.length === 0) return 0;
+    const { data: session } = await supabase.auth.getSession();
+    const userId = session?.session?.user?.id;
+    const layer = await this.getLayer(layerId);
+    const color = layer?.default_color || '#3b82f6';
+
+    const rows = points.map(pt => ({
+      layer_id: layerId,
+      name: pt.name || null,
+      shape_type: 'point' as const,
+      geometry: { type: 'point', coordinates: [pt.lat, pt.lng] },
+      color,
+      stroke_color: layer?.default_stroke_color || color,
+      fill_opacity: layer?.default_opacity ?? 0.35,
+      stroke_width: layer?.default_stroke_width ?? 2,
+      sort_order: 0,
+      attributes: pt.attributes && Object.keys(pt.attributes).length > 0 ? pt.attributes : null,
+      created_by_id: userId,
+      updated_by_id: userId,
+    }));
+
+    const BATCH = 500;
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const { error } = await supabase.from('map_layer_shape').insert(rows.slice(i, i + BATCH));
+      if (error) {
+        console.error('Error bulk-creating points:', error);
+        throw new Error(
+          inserted > 0
+            ? `Saved ${inserted} of ${rows.length} points, then failed: ${error.message}`
+            : error.message
+        );
+      }
+      inserted += Math.min(BATCH, rows.length - i);
+    }
+    return inserted;
+  }
+
   async importKML(layerId: string, fileContent: string): Promise<MapLayerShape[]> {
     const parser = new DOMParser();
     const doc = parser.parseFromString(fileContent, 'text/xml');

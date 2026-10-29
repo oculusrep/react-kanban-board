@@ -47,6 +47,22 @@ of the previous call and emails on failure; JWT audit doc.
 
 ---
 
+## Permissions (2026-10-21)
+
+Site Story has its own two keys in the User Management permissions matrix (category "Site Story"),
+split from `can_run_market_research`:
+
+- `can_view_site_story` — shows the Site Story section in the site submit sidebar (Starbucks-family
+  sites only) and lets the user read stored stories, briefs and records. UI gate only: the
+  `research_thread*` tables stay readable to every internal user via RLS, because the Package
+  Tracker resolves Site Story status from them.
+- `can_run_site_story` — every control that calls `ovis-site-research` (start, deep pass, brief,
+  retry, ask, follow-up). Implies view. Enforced server-side: the edge function calls
+  `user_has_site_story_run_access()` (admin always passes; user override beats role).
+
+Migration `20261021163201_site_story_permissions.sql` granted both to the admin role (the only
+prior holder of `can_run_market_research`); every other role is off until granted.
+
 ## Standing decisions
 
 **Scope boundary** (in CLAUDE.md). Site Story **reads** municipality and project data and never

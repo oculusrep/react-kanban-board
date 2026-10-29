@@ -20,6 +20,7 @@ interface PortalContextType {
   // User info
   isInternalUser: boolean;
   contactId: string | null;
+  canUploadDealFiles: boolean; // contact.portal_can_upload_deal_files
 
   // View mode (for brokers to preview client view)
   viewMode: PortalViewMode;
@@ -63,6 +64,7 @@ export function PortalProvider({ children }: PortalProviderProps) {
     return null;
   });
   const [contactId, setContactId] = useState<string | null>(null);
+  const [canUploadDealFiles, setCanUploadDealFiles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<PortalViewMode>('broker');
@@ -125,7 +127,7 @@ export function PortalProvider({ children }: PortalProviderProps) {
         // Portal users - find their contact and get accessible clients
         const { data: contactData, error: contactError } = await supabase
           .from('contact')
-          .select('id')
+          .select('id, portal_can_upload_deal_files')
           .ilike('email', user.email || '')
           .eq('portal_access_enabled', true)
           .single();
@@ -138,6 +140,7 @@ export function PortalProvider({ children }: PortalProviderProps) {
         }
 
         setContactId(contactData.id);
+        setCanUploadDealFiles(!!contactData.portal_can_upload_deal_files);
 
         // Get clients this contact has access to
         const { data: accessData, error: accessError } = await supabase
@@ -210,6 +213,7 @@ export function PortalProvider({ children }: PortalProviderProps) {
     setSelectedClientId,
     isInternalUser,
     contactId,
+    canUploadDealFiles,
     viewMode,
     setViewMode,
     loading,

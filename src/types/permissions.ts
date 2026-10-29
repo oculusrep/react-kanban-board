@@ -91,6 +91,7 @@ export interface RolePermissions {
 
   // Map Features
   can_verify_restaurant_locations?: boolean;
+  can_manage_map_layers?: boolean;
 
   // Client Portal
   can_access_client_portal?: boolean;
@@ -106,6 +107,7 @@ export interface RolePermissions {
   can_access_cfo_dashboard?: boolean;
   can_access_finance_hub?: boolean;
   can_access_municipal_import?: boolean;
+  can_view_market_research?: boolean;
   can_run_market_research?: boolean;
   can_approve_market_research?: boolean;
 
@@ -118,6 +120,10 @@ export interface RolePermissions {
   can_view_starbucks_layer?: boolean;
   can_view_site_analysis?: boolean;
   can_edit_starbucks_target_area?: boolean;
+
+  // Site Story (site research thread on Starbucks site submits)
+  can_view_site_story?: boolean;
+  can_run_site_story?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -143,7 +149,8 @@ export type PermissionCategory =
   | 'integrations'
   | 'map_features'
   | 'traffic_data'
-  | 'starbucks_layer';
+  | 'starbucks_layer'
+  | 'site_story';
 
 /**
  * Standard permission definitions with descriptions
@@ -554,6 +561,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'map_features',
     defaultValue: false,
   },
+  {
+    key: 'can_manage_map_layers',
+    label: 'Manage Custom Layers',
+    description: 'Open the Manage Layers page (/admin/layers) to create, edit, delete and share custom map layers',
+    category: 'map_features',
+    defaultValue: false,
+  },
 
   // Client Portal
   {
@@ -636,9 +650,16 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     defaultValue: false,
   },
   {
+    key: 'can_view_market_research',
+    label: 'View Market Research',
+    description: 'See the Market research runs section on Starbucks site submits and open staged findings (read-only)',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
     key: 'can_run_market_research',
     label: 'Run Market Research',
-    description: 'Trigger market research runs on Starbucks site_submits (spends OpenClaw tokens) and cancel hung runs',
+    description: 'Trigger market research runs on Starbucks site_submits (spends OpenClaw tokens) and cancel hung runs. Implies View Market Research',
     category: 'system_admin',
     defaultValue: false,
   },
@@ -693,6 +714,22 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     label: 'Add / Edit Starbucks Target Areas',
     description: 'Add OREP-drawn target-area polygons and edit OREP fields (OREP Notes, Model Yr1 Sales override) on the Starbucks GA Target Areas layer',
     category: 'starbucks_layer',
+    defaultValue: false,
+  },
+
+  // Site Story
+  {
+    key: 'can_view_site_story',
+    label: 'View Site Story',
+    description: 'See the Site Story section on Starbucks site submits and read existing stories, briefs and records',
+    category: 'site_story',
+    defaultValue: false,
+  },
+  {
+    key: 'can_run_site_story',
+    label: 'Run Site Story',
+    description: 'Start site stories, run the deep pass, write briefs and ask follow-ups (spends AI tokens). Implies View Site Story',
+    category: 'site_story',
     defaultValue: false,
   },
 ];
@@ -760,6 +797,10 @@ export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; 
   starbucks_layer: {
     label: 'Starbucks Layer',
     description: 'Confidential Starbucks store data — grant only to authorized users',
+  },
+  site_story: {
+    label: 'Site Story',
+    description: 'Site research thread on Starbucks site submits — archetype call, deep pass, brief',
   },
 };
 

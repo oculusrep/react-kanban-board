@@ -12,6 +12,7 @@ import { TaskWithRelations } from '../../types/task';
 import { localDateString } from '../../types/taskBlock';
 import CategoryDropdown from './CategoryDropdown';
 import TaskLinksEditor from './TaskLinksEditor';
+import DescriptionLinks from './DescriptionLinks';
 
 // Composable task detail slideout per docs/OVIS_OVERLAY_UX.md.
 // Opens from anywhere — TasksPage row click, OpenTasksPanel "Open" link,
@@ -429,6 +430,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                   className="mt-1 w-full px-3 py-2 text-sm rounded border resize-y"
                   style={{ borderColor: COLORS.slate, color: COLORS.midnight }}
                 />
+                <DescriptionLinks text={description} />
               </div>
 
               {/* Two-column row: category / owner */}

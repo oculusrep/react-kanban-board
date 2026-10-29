@@ -47,7 +47,7 @@ import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
 import ClientSelector from '../components/mapping/ClientSelector';
-import { ClientSearchResult } from '../hooks/useClientSearch';
+import { ClientSearchResult, getClientIds } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import DrawingToolbar from '../components/mapping/DrawingToolbarV2';
@@ -71,7 +71,7 @@ import PropertySearchResultsTable from '../components/advanced-search/PropertySe
 import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
 import ContactFormModal from '../components/ContactFormModal';
 import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { supportsRightClick, isTouchDevice } from '../utils/deviceDetection';
 import { supabase } from '../lib/supabaseClient';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -104,6 +104,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 }) => {
   const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
+  const canManageLayers = userRole === 'admin' || hasPermission('can_manage_map_layers');
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
   const starbucksOpsAreaFilter = useStarbucksOpsAreaFilter();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
@@ -214,6 +215,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
   // Comp Database slideout — independent of the shared pin-details state.
   const [selectedComp, setSelectedComp] = useState<CompProperty | null>(null);
+  // Comp Database: also draw comps the NNN listing intake created that await review.
+  const [showPendingComps, setShowPendingComps] = useState(false);
   const [compCreateAt, setCompCreateAt] = useState<{ lat: number; lng: number } | null>(null);
   const [verifyingCompId, setVerifyingCompId] = useState<string | null>(null);
   const [compContextMenu, setCompContextMenu] = useState<{
@@ -2493,7 +2496,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // This prevents showing random site submits when clearing the client filter
   const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
     mode: 'client-filtered',
-    clientId: selectedClient?.id || null,
+    clientIds: selectedClient ? getClientIds(selectedClient) : null,
     visibleStages: visibleStages,
     clusterConfig: clusterConfig,
     markerStyle: markerStyle
@@ -2711,6 +2714,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       onClientSelect={handleClientSelection}
                       placeholder="Search active clients..."
                       className="text-sm"
+                      showFamilyOptions
                     />
                   </div>
                   {selectedClient && onSwitchToPipeline && (
@@ -3233,8 +3237,19 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </span>
                       </div>
                       {layerState.comp_database?.isVisible && (
-                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500">
-                          Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.
+                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500 space-y-1.5">
+                          <div>Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.</div>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showPendingComps}
+                              onChange={(e) => setShowPendingComps(e.target.checked)}
+                            />
+                            Show pending NNN listings
+                            <span className="text-gray-400">(hollow pins ·{' '}
+                              <Link to="/listings/review" className="underline">review</Link>)
+                            </span>
+                          </label>
                         </div>
                       )}
                     </div>
@@ -3334,22 +3349,29 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
-                        <a
-                          href="/admin/layers"
-                          className="text-xs text-blue-600 hover:underline"
-                          onClick={() => setShowCustomLayersMenu(false)}
-                        >
-                          Manage
-                        </a>
+                        {canManageLayers && (
+                          <a
+                            href="/admin/layers"
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={() => setShowCustomLayersMenu(false)}
+                          >
+                            Manage
+                          </a>
+                        )}
                       </div>
                     </div>
                     <div className="max-h-64 overflow-y-auto">
                       {customLayers.length === 0 ? (
                         <div className="p-4 text-center text-sm text-gray-500">
-                          No custom layers yet.{' '}
-                          <a href="/admin/layers" className="text-blue-600 hover:underline">
-                            Create one
-                          </a>
+                          No custom layers yet.
+                          {canManageLayers && (
+                            <>
+                              {' '}
+                              <a href="/admin/layers" className="text-blue-600 hover:underline">
+                                Create one
+                              </a>
+                            </>
+                          )}
                         </div>
                       ) : (
                         customLayers.map(layer => (
@@ -3717,6 +3739,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             <CompDatabaseLayer
               map={mapInstance}
               isVisible={layerState.comp_database?.isVisible || false}
+              showPending={showPendingComps}
               selectedCompId={selectedComp?.id ?? null}
               verifyingCompId={verifyingCompId}
               onPinClick={(comp) => { setCompCreateAt(null); setSelectedComp(comp); }}

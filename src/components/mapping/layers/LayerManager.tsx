@@ -32,6 +32,9 @@ export type CachedDemographicsMode = 'rings' | 'polygon';
 // computed string shown in the slideout / KML export (e.g. "+80 RC"). Session
 // state only — resets on refresh.
 export type MunicipalProjectsLabelMode = 'none' | 'total_units' | 'units_label';
+// 'polygon' colors each pin by whether its project has a polygon yet, so the
+// ones still needing one stand out. 'stage' is the original stage-color fill.
+export type MunicipalProjectsPinColorMode = 'polygon' | 'stage';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -108,6 +111,10 @@ export interface LayerManagerContextType {
   // On-map label rendered next to each Municipal Projects pin. Session-only.
   municipalProjectsLabelMode: MunicipalProjectsLabelMode;
   setMunicipalProjectsLabelMode: (m: MunicipalProjectsLabelMode) => void;
+
+  // What drives the pin fill color. Session-only.
+  municipalProjectsPinColorMode: MunicipalProjectsPinColorMode;
+  setMunicipalProjectsPinColorMode: (m: MunicipalProjectsPinColorMode) => void;
 
   // Label typography (session-only). fontSize in pixels; fill = text color;
   // line = the halo/stroke color that outlines the text so it stays readable
@@ -257,8 +264,7 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     description: 'Comparable leases, sales and Operating Memorandums tied to locations',
     defaultVisible: false,
     isSystemLayer: true,
-  },
-];
+  },];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
 
@@ -297,6 +303,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const [municipalProjectsShowPolygons, setMunicipalProjectsShowPolygons] = useState<boolean>(true);
   const [municipalProjectsLabelMode, setMunicipalProjectsLabelMode] =
     useState<MunicipalProjectsLabelMode>('none');
+  const [municipalProjectsPinColorMode, setMunicipalProjectsPinColorMode] =
+    useState<MunicipalProjectsPinColorMode>('polygon');
   const [municipalProjectsLabelFontSize, setMunicipalProjectsLabelFontSize] =
     useState<number>(11);
   const [municipalProjectsLabelFillColor, setMunicipalProjectsLabelFillColor] =
@@ -537,6 +545,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setMunicipalProjectsShowPolygons,
     municipalProjectsLabelMode,
     setMunicipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
+    setMunicipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     setMunicipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
@@ -581,6 +591,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
     municipalProjectsLabelLineColor,

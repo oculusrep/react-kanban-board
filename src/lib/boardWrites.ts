@@ -47,6 +47,22 @@ export async function updateBoardState(s: BoardSubject, patch: Record<string, un
   if (error) throw error;
 }
 
+// Park a card until a review date (YYYY-MM-DD, strictly future — decisions
+// §2.24). It drops into the Parking lot; on the review date it returns with the
+// clock running from then. The history trigger posts "Parked until …" to the
+// chat, and that entry never resets the clock.
+export async function parkCard(s: BoardSubject, until: string, reason: string): Promise<void> {
+  await upsertBoardState(s, {
+    parked_until: until,
+    parked_reason: reason.trim() || null,
+    ball_in_court_since: new Date(`${until}T00:00:00`).toISOString(),
+  });
+}
+
+export async function unparkCard(s: BoardSubject): Promise<void> {
+  await upsertBoardState(s, { parked_until: null, parked_reason: null, ball_in_court_since: new Date().toISOString() });
+}
+
 // Insert a note against a card — into the card's chat thread
 // (site_submit_comment), the same thread the deal and site-submit sidebars
 // show (decisions §5, 2026-10-09). Always internal: origin = 'board_note', and

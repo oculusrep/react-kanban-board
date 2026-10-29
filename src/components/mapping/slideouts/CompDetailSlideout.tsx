@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../utils/format';
 import geocodingService from '../../../services/geocodingService';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
+import ListingTimeline from '../../listings/ListingTimeline';
 import FileManager from '../../FileManager/FileManager';
 import PortalChatTab from '../../portal/PortalChatTab';
 import {
@@ -11,6 +12,7 @@ import {
   SOURCE_TYPES, CONFIDENCE_LEVELS, SALE_CONDITIONS,
   LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS, RENT_BUMP_OPTIONS,
   AskingType, AskingField, AVAILABILITY_TYPE_OPTIONS, ASKING_TYPE_OPTIONS, ASKING_TYPE_FIELDS,
+  CompReviewStatus, GUARANTOR_TYPE_OPTIONS, LISTING_STATUS_LABEL,
 } from '../../../lib/compTypes';
 import {
   allInRentPsf, effectiveRentPsf, monthsRemaining,
@@ -378,6 +380,16 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
     }
   }, [draft, current, userId, onSaved]);
 
+  // NNN listing intake: approve / reject a comp the sweep created (spec v2 §6).
+  const setReview = useCallback(async (status: CompReviewStatus) => {
+    if (!current) return;
+    const { data, error } = await supabase.from('comp_property')
+      .update({ review_status: status, updated_by_id: userId }).eq('id', current.id).select('*').single();
+    if (error) { alert(`Failed to update review status: ${error.message}`); return; }
+    setCurrent(data as CompProperty);
+    onSaved?.(current.id);
+  }, [current, userId, onSaved]);
+
   const deleteComp = useCallback(async () => {
     if (!current) return;
     if (!confirm('Delete this comp and all its leases, sales, OMs and notes? This cannot be undone.')) return;
@@ -407,6 +419,7 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
         onCancel={() => { setDraft(buildDraft(current, createAt)); setHeaderEditing(false); setSaveError(null); }}
         onSave={async () => { const ok = await saveComp(); if (ok) setHeaderEditing(false); }}
         onDelete={deleteComp}
+        onSetReview={setReview}
         onClose={onClose}
       />
 
@@ -453,11 +466,11 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
                 reload={() => { loadChildren(compId); onSaved?.(compId); }} />
             )}
             {tab === 'sales' && (
-              <SalesTab compId={compId} sales={sales} buildingSqft={current?.building_sqft ?? null} userId={userId}
+              <SalesTab compId={compId} sales={sales} leases={leases} buildingSqft={current?.building_sqft ?? null} userId={userId}
                 reload={() => { loadChildren(compId); onSaved?.(compId); }} />
             )}
             {tab === 'om' && (
-              <OmTab compId={compId} oms={oms} userId={userId}
+              <OmTab compId={compId} oms={oms} leases={leases} userId={userId}
                 reload={() => { loadChildren(compId); onSaved?.(compId); }} />
             )}
             {tab === 'availability' && (
@@ -494,8 +507,9 @@ const CompHeader: React.FC<{
   onCancel: () => void;
   onSave: () => void;
   onDelete: () => void;
+  onSetReview: (status: CompReviewStatus) => void;
   onClose: () => void;
-}> = ({ draft, setField, editing, isNew, geocoding, saving, saveError, current, currentAsk, onEdit, onCancel, onSave, onDelete, onClose }) => {
+}> = ({ draft, setField, editing, isNew, geocoding, saving, saveError, current, currentAsk, onEdit, onCancel, onSave, onDelete, onSetReview, onClose }) => {
   const cityLine = [draft.city, draft.state].filter(Boolean).join(', ') + (draft.zip ? ` ${draft.zip}` : '');
   const coordLine = draft.verified_latitude && draft.verified_longitude
     ? `${Number(draft.verified_latitude).toFixed(6)}, ${Number(draft.verified_longitude).toFixed(6)}`
@@ -553,6 +567,26 @@ const CompHeader: React.FC<{
             : current.confidence === 'reported' ? 'bg-yellow-500/30 text-yellow-100'
             : 'bg-white/10 text-gray-300'
           }`}>{current.confidence}</span>
+          {current.review_status !== 'reviewed' && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded uppercase border border-[#A27B5C] text-[#F3D9C4]">
+              {current.review_status === 'pending_review' ? 'Pending review' : 'Rejected'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* NNN listing intake — review actions for a sweep-created comp */}
+      {!editing && current && current.review_status !== 'reviewed' && (
+        <div className="flex items-center gap-2 mt-2">
+          <button onClick={() => onSetReview('reviewed')}
+            className="px-2.5 py-1 rounded bg-white text-black text-xs font-semibold hover:bg-gray-200">Approve</button>
+          {current.review_status === 'pending_review' ? (
+            <button onClick={() => onSetReview('rejected')}
+              className="px-2.5 py-1 rounded border border-gray-500 text-xs text-white hover:bg-white/10">Reject</button>
+          ) : (
+            <button onClick={() => onSetReview('pending_review')}
+              className="px-2.5 py-1 rounded border border-gray-500 text-xs text-white hover:bg-white/10">Back to pending</button>
+          )}
         </div>
       )}
 
@@ -733,7 +767,8 @@ const emptyLease = {
   lease_commencement_date: '', lease_expiration_date: '',
   lease_term_years: '', escalation_pct: '', rent_bump_frequency: '',
   option_count: '', option_term_years: '5',
-  reported_tenant_sales: '', occupancy_status: '', notes: '', source_type: 'manual', confidence: 'unverified',
+  reported_tenant_sales: '', occupancy_status: '', guarantor_type: '', guarantor_name: '',
+  notes: '', source_type: 'manual', confidence: 'unverified',
 };
 
 const LeasesTab: React.FC<{
@@ -754,6 +789,7 @@ const LeasesTab: React.FC<{
       rent_bump_frequency: l.rent_bump_frequency ?? '',
       option_count: l.option_count?.toString() ?? '', option_term_years: l.option_term_years?.toString() ?? '5',
       reported_tenant_sales: l.reported_tenant_sales?.toString() ?? '', occupancy_status: l.occupancy_status ?? '',
+      guarantor_type: l.guarantor_type ?? '', guarantor_name: l.guarantor_name ?? '',
       notes: l.notes ?? '', source_type: l.source_type, confidence: l.confidence,
     });
     setEditing(l.id);
@@ -802,6 +838,8 @@ const LeasesTab: React.FC<{
       reported_tenant_sales: num(f.reported_tenant_sales),
       sales_psf: salesPsf(num(f.reported_tenant_sales), sqft),
       occupancy_status: f.occupancy_status || null,
+      guarantor_type: f.guarantor_type || null,
+      guarantor_name: str(f.guarantor_name),
       notes: str(f.notes),
       source_type: f.source_type, confidence: f.confidence,
     };
@@ -867,6 +905,11 @@ const LeasesTab: React.FC<{
           <NumField label="Number of Options" value={f.option_count} onChange={setV('option_count')} />
           <NumField label="Option Term (years)" value={f.option_term_years} onChange={setV('option_term_years')} />
           <NumField label="Reported Tenant Sales (annual)" kind="currency" className="col-span-2" value={f.reported_tenant_sales} onChange={setV('reported_tenant_sales')} />
+          <SelField label="Guarantor" value={f.guarantor_type} onChange={setV('guarantor_type')}>
+            <option value="">Unconfirmed</option>
+            {GUARANTOR_TYPE_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+          </SelField>
+          <TxtField label="Guarantor Entity" value={f.guarantor_name} onChange={setV('guarantor_name')} />
           <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
           </SelField>
@@ -933,6 +976,10 @@ const LeasesTab: React.FC<{
             <span>NNN PSF: {dash(l.nnn_psf, (n) => `$${n.toFixed(2)}`)}</span>
             <span>Exp: {l.lease_expiration_date ?? '—'}</span>
             <span>Remaining: {dash(monthsRemaining(l.lease_expiration_date))} mo</span>
+            <span className="col-span-3">
+              Guarantor: {l.guarantor_type ? GUARANTOR_TYPE_OPTIONS.find((g) => g.value === l.guarantor_type)?.label : 'Unconfirmed'}
+              {l.guarantor_name ? ` — ${l.guarantor_name}` : ''}
+            </span>
           </div>
           {l.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{l.notes}</p>}
           <RentScheduleCard
@@ -956,24 +1003,27 @@ const LeasesTab: React.FC<{
 // ===========================================================================
 const emptySale = {
   sale_date: '', sale_price: '', cap_rate: '', noi: '', buyer_name: '', seller_name: '',
-  broker: '', financing: '', sale_condition: '', occupancy_at_sale: '', notes: '', source_type: 'manual', confidence: 'unverified',
+  broker: '', financing: '', sale_condition: '', occupancy_at_sale: '', lease_comp_id: '', notes: '', source_type: 'manual', confidence: 'unverified',
 };
 
+const leaseLabel = (l: LeaseComp) => [l.tenant_name || 'Unnamed tenant', l.suite].filter(Boolean).join(' · ');
+
 const SalesTab: React.FC<{
-  compId: string; sales: SaleComp[]; buildingSqft: number | null; userId: string | null; reload: () => void;
-}> = ({ compId, sales, buildingSqft, userId, reload }) => {
+  compId: string; sales: SaleComp[]; leases: LeaseComp[]; buildingSqft: number | null; userId: string | null; reload: () => void;
+}> = ({ compId, sales, leases, buildingSqft, userId, reload }) => {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [f, setF] = useState({ ...emptySale });
   const setV = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
 
-  const startNew = () => { setF({ ...emptySale }); setEditing('new'); };
+  // Single-lease property: that lease is the lease in place by default.
+  const startNew = () => { setF({ ...emptySale, lease_comp_id: leases.length === 1 ? leases[0].id : '' }); setEditing('new'); };
   const startEdit = (s: SaleComp) => {
     setF({
       sale_date: s.sale_date ?? '', sale_price: s.sale_price?.toString() ?? '', cap_rate: s.cap_rate?.toString() ?? '',
       noi: s.noi?.toString() ?? '', buyer_name: s.buyer_name ?? '', seller_name: s.seller_name ?? '',
       broker: s.broker ?? '', financing: s.financing ?? '', sale_condition: s.sale_condition ?? '',
-      occupancy_at_sale: s.occupancy_at_sale?.toString() ?? '', notes: s.notes ?? '',
+      occupancy_at_sale: s.occupancy_at_sale?.toString() ?? '', lease_comp_id: s.lease_comp_id ?? '', notes: s.notes ?? '',
       source_type: s.source_type, confidence: s.confidence,
     });
     setEditing(s.id);
@@ -991,7 +1041,7 @@ const SalesTab: React.FC<{
       noi: num(f.noi), price_psf: pricePsf(price, buildingSqft),
       buyer_name: str(f.buyer_name), seller_name: str(f.seller_name), broker: str(f.broker),
       financing: str(f.financing), sale_condition: f.sale_condition || null,
-      occupancy_at_sale: num(f.occupancy_at_sale), notes: str(f.notes),
+      occupancy_at_sale: num(f.occupancy_at_sale), lease_comp_id: f.lease_comp_id || null, notes: str(f.notes),
       source_type: f.source_type, confidence: f.confidence,
     };
     if (editing === 'new') { payload.created_by_id = userId; await supabase.from('sale_comp').insert(payload); }
@@ -1016,6 +1066,10 @@ const SalesTab: React.FC<{
             placeholder={derivedCap != null ? derivedCap.toFixed(2) : ''} />
           <SelField label="Source" value={f.source_type} onChange={setV('source_type')}>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </SelField>
+          <SelField label="Lease in Place" className="col-span-2" value={f.lease_comp_id} onChange={setV('lease_comp_id')}>
+            <option value="">{leases.length ? '— not linked —' : 'No leases on this comp yet'}</option>
+            {leases.map((l) => <option key={l.id} value={l.id}>{leaseLabel(l)}</option>)}
           </SelField>
         </div>
 
@@ -1074,6 +1128,9 @@ const SalesTab: React.FC<{
             <span>NOI: {dash(s.noi, (n) => formatCurrency(n))}</span>
             <span>$/SF: {dash(s.price_psf, (n) => `$${n.toFixed(0)}`)}</span>
             <span className="col-span-3">Buyer: {s.buyer_name ?? '—'} · Seller: {s.seller_name ?? '—'}</span>
+            <span className="col-span-3">
+              Lease in place: {s.lease_comp_id ? (leases.find((l) => l.id === s.lease_comp_id) ? leaseLabel(leases.find((l) => l.id === s.lease_comp_id)!) : 'linked') : 'not linked'}
+            </span>
           </div>
           {s.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{s.notes}</p>}
           <AuditFooter created_by_id={s.created_by_id} created_at={s.created_at} updated_by_id={s.updated_by_id} updated_at={s.updated_at} />
@@ -1224,23 +1281,25 @@ const AvailabilityTab: React.FC<{
 // ===========================================================================
 const emptyOm = {
   title: '', broker_name: '', brokerage: '', list_date: '', asking_price: '', asking_cap_rate: '',
-  guidance: '', notes: '', source_url: '', source_type: 'om', confidence: 'reported',
+  guidance: '', notes: '', source_url: '', lease_comp_id: '', source_type: 'om', confidence: 'reported',
 };
 
 const OmTab: React.FC<{
-  compId: string; oms: OperatingMemorandum[]; userId: string | null; reload: () => void;
-}> = ({ compId, oms, userId, reload }) => {
+  compId: string; oms: OperatingMemorandum[]; leases: LeaseComp[]; userId: string | null; reload: () => void;
+}> = ({ compId, oms, leases, userId, reload }) => {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [historyOpen, setHistoryOpen] = useState<string | null>(null);
   const [f, setF] = useState({ ...emptyOm });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<any>) => setF((p) => ({ ...p, [k]: e.target.value }));
 
-  const startNew = () => { setF({ ...emptyOm }); setEditing('new'); };
+  const startNew = () => { setF({ ...emptyOm, lease_comp_id: leases.length === 1 ? leases[0].id : '' }); setEditing('new'); };
   const startEdit = (o: OperatingMemorandum) => {
     setF({
       title: o.title ?? '', broker_name: o.broker_name ?? '', brokerage: o.brokerage ?? '',
       list_date: o.list_date ?? '', asking_price: o.asking_price?.toString() ?? '',
       asking_cap_rate: o.asking_cap_rate?.toString() ?? '', guidance: o.guidance ?? '',
-      notes: o.notes ?? '', source_url: o.source_url ?? '', source_type: o.source_type, confidence: o.confidence,
+      notes: o.notes ?? '', source_url: o.source_url ?? '', lease_comp_id: o.lease_comp_id ?? '',
+      source_type: o.source_type, confidence: o.confidence,
     });
     setEditing(o.id);
   };
@@ -1250,7 +1309,8 @@ const OmTab: React.FC<{
       comp_property_id: compId, title: str(f.title), broker_name: str(f.broker_name),
       brokerage: str(f.brokerage), list_date: f.list_date || null, asking_price: num(f.asking_price),
       asking_cap_rate: num(f.asking_cap_rate), guidance: str(f.guidance), notes: str(f.notes),
-      source_url: str(f.source_url), source_type: f.source_type, confidence: f.confidence,
+      source_url: str(f.source_url), lease_comp_id: f.lease_comp_id || null,
+      source_type: f.source_type, confidence: f.confidence,
     };
     if (editing === 'new') { payload.created_by_id = userId; await supabase.from('operating_memorandum').insert(payload); }
     else { payload.updated_by_id = userId; await supabase.from('operating_memorandum').update(payload).eq('id', editing); }
@@ -1274,6 +1334,12 @@ const OmTab: React.FC<{
           <Field label="Asking Price"><input className={inputCls} value={f.asking_price} onChange={set('asking_price')} /></Field>
           <Field label="Asking Cap %"><input className={inputCls} value={f.asking_cap_rate} onChange={set('asking_cap_rate')} /></Field>
           <Field label="Source URL"><input className={inputCls} value={f.source_url} onChange={set('source_url')} /></Field>
+          <Field label="Lease in Place" className="col-span-2">
+            <select className={inputCls} value={f.lease_comp_id} onChange={set('lease_comp_id')}>
+              <option value="">{leases.length ? '— not linked —' : 'No leases on this comp yet'}</option>
+              {leases.map((l) => <option key={l.id} value={l.id}>{leaseLabel(l)}</option>)}
+            </select>
+          </Field>
           <Field label="Guidance" className="col-span-2">
             <textarea className={inputCls} rows={3} value={f.guidance} onChange={set('guidance') as any} />
           </Field>
@@ -1281,7 +1347,10 @@ const OmTab: React.FC<{
             <textarea className={inputCls} rows={2} value={f.notes} onChange={set('notes') as any} placeholder="Any other notes on this OM…" />
           </Field>
         </div>
-        <p className="text-xs text-gray-400">OM PDF files attach via the property's Dropbox folder (Phase 2).</p>
+        <p className="text-xs text-gray-400">
+          Changing the asking price or cap records a price change in the listing history. Status changes and
+          closes are recorded from the NNN Listings review screen. OM PDFs go in the Files tab.
+        </p>
         <div className="flex gap-2">
           <button onClick={save} className="flex-1 py-2.5 rounded-lg bg-[#002147] text-white text-sm font-semibold shadow-sm hover:bg-[#00306a]">Save OM</button>
           <button onClick={() => setEditing(null)} className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
@@ -1308,8 +1377,18 @@ const OmTab: React.FC<{
             <span>List: {o.list_date ?? '—'}</span>
             <span>Asking: {dash(o.asking_price, (n) => formatCurrency(n))}</span>
             <span>Cap: {dash(o.asking_cap_rate, (n) => `${n.toFixed(2)}%`)}</span>
+            <span>Status: {LISTING_STATUS_LABEL[o.listing_status] ?? o.listing_status}</span>
+            <span>Seen: {o.first_seen_at?.slice(0, 10)} → {o.last_seen_at?.slice(0, 10)}</span>
+            {(o.listed_lease_type || o.listed_term_remaining) && (
+              <span className="col-span-2">As listed: {[o.listed_lease_type, o.listed_term_remaining && `${o.listed_term_remaining} left`].filter(Boolean).join(' · ')}</span>
+            )}
             {o.source_url && <a href={o.source_url} target="_blank" rel="noreferrer" className="col-span-2 text-[#4A6B94] hover:underline truncate">{o.source_url}</a>}
           </div>
+          <button onClick={() => setHistoryOpen(historyOpen === o.id ? null : o.id)}
+            className="text-xs text-[#4A6B94] hover:underline mt-1.5">
+            {historyOpen === o.id ? 'Hide price history' : 'Price history'}
+          </button>
+          {historyOpen === o.id && <div className="mt-2"><ListingTimeline listingId={o.id} /></div>}
           {o.notes && <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{o.notes}</p>}
           <AuditFooter created_by_id={o.created_by_id} created_at={o.created_at} updated_by_id={o.updated_by_id} updated_at={o.updated_at} />
         </div>
