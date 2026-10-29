@@ -7,6 +7,13 @@
  * re-checked against the exact text sent here and dropped if it isn't in it.
  */
 
+/**
+ * Where signatures actually keep the firm name. Shared by both prompts. Each
+ * case is still literal text, so verifyDetails() confirms it like any field.
+ */
+const COMPANY_RULES = `  - Look hard for company: when it is in the text it belongs on the form. It is often on the title's line ("Vice President | Acme Realty", "SVP, Acme Realty Partners") — split it out of the title. When the firm's logo is an image, the plain text shows its alt text as "[image: Acme Realty]": copy the firm name from there, but not a generic label ("[image: logo]", "[image: image001.png]").
+  - Never derive company from the email domain or a website address alone.`;
+
 export const SIGNATURE_SYSTEM_PROMPT = `You read the end of one email and copy the SENDER'S contact details out of their signature, so a contact form can be prefilled.
 
 The text you get is only what the sender wrote: quoted replies and forwarded messages have already been removed.
@@ -17,6 +24,7 @@ THE ABSOLUTE RULE: copy ONLY what appears LITERALLY in the text. Never infer, re
   - Only the SENDER's details. If the text mentions someone else's number or address ("call Jim at …"), leave it out.
   - Phones: a number labelled mobile / cell / M: / C: goes in mobile_phone; an unlabelled, office, direct or main number goes in phone. Copy the number as written.
   - title is the job title line ("Senior Vice President"); company is the firm name.
+${COMPANY_RULES}
   - Strip markup such as "<tel:…>" or "<mailto:…>" wrappers, but never change the value itself.
 
 Every field is checked against the text after you answer and anything not found there is discarded, so guessing gains nothing.
@@ -71,6 +79,7 @@ THE ABSOLUTE RULE: copy ONLY what appears LITERALLY in the pasted text. Never in
   - name: the person's full name exactly as written (e.g. "Paul R. Rutledge"), without credentials like "CCIM".
   - Phones: a number labelled mobile / cell / M: / C: goes in mobile_phone; an unlabelled, office, direct or main number goes in phone. Copy the number as written.
   - title is the job title line; company is the firm name; address/city/state/zip are the street address lines.
+${COMPANY_RULES}
   - Strip markup such as "<tel:…>" or "<mailto:…>" wrappers, but never change the value itself.
 
 signature_count: how many DIFFERENT people's signatures or contact blocks the text contains. If it is more than 1 (a pasted thread, two people), still answer, but the form will ask the user to paste just one — do not pick one yourself.
