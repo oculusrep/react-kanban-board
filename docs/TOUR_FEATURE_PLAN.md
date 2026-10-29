@@ -264,6 +264,7 @@ with the original RangeError if the guard is removed).
 
 - Migration `20261028195957_tour_stop_actual_departure`: `tour_stop.actual_departure_at
   timestamptz` (UTC; shown in Eastern). Existing tour_stop grants cover it.
+  Applied to prod + recorded 2026-10-28.
 - A day is **live** when `day_date` = today in **America/New_York** (`todayET`, never device
   zone / UTC). Live days get a LIVE badge, a ≥44px **Leaving now** button on each mapped stop
   (map schedule + Reorder panel), and the stamped time ("✓ Left 10:42 AM") opens a native time
