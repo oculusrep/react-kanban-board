@@ -586,8 +586,13 @@ serve(async (req) => {
     // INCREMENTAL SCOPE. The conversation is still built from the full 14-day
     // window -- the model needs the history to judge direction -- but only
     // conversations carrying a message newer than the watermark are extracted.
+    // PARSE, DON'T STRING-COMPARE. PostgREST renders a timestamptz with a
+    // "+00:00" offset while this cutoff is built with a "Z" suffix, so a
+    // lexicographic compare of the two is only accidentally right and silently
+    // wrong near a shared prefix.
+    const sinceMs = sinceTs ? Date.parse(sinceTs) : null;
     const hasNewMail = (c: Convo) =>
-      !sinceTs || c.rows.some((r) => r.received_at > sinceTs);
+      sinceMs === null || c.rows.some((r) => Date.parse(r.received_at) > sinceMs);
 
     const gated = live.filter((c) => {
       if (!c.hasOwnerSent && !c.priorContact) {
