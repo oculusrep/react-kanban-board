@@ -181,6 +181,52 @@ reason examples (no time words anywhere):
 Never write "This email is about..." — speak about the obligation, not the mail.`;
 }
 
+/**
+ * How many of each kind of example the prompt carries. Small and equal on
+ * purpose.
+ *
+ * These are not symmetric evidence. A rejection is the owner saying "you were
+ * wrong, this was never a commitment" -- unambiguous. A Handled row only says
+ * the obligation was worth surfacing and is now dealt with; the owner may have
+ * archived it while the "what" was half right. So positives teach WHICH KINDS
+ * OF THING matter to this owner, and negatives teach what to stop reporting.
+ *
+ * The cap is also a bias control. There are 116 Handled rows and 0 rejections
+ * today, so an uncapped block would be all-positive and would push the model
+ * towards reporting more, which is the opposite of what it needs. Equal caps
+ * keep one side from drowning the other as the counts drift.
+ */
+const LEARN_LIMIT = 15;
+
+type Example = { what: string; reason_core: string | null; ball: string };
+
+/**
+ * The owner's own verdicts, rendered as prompt text. Returns '' when there is
+ * nothing to show, so a fresh install adds no instructions it cannot support.
+ */
+function learningBlock(negatives: Example[], positives: Example[], ownerName: string): string {
+  if (!negatives.length && !positives.length) return '';
+  const line = (e: Example) => `  - [${e.ball}] ${e.what}${e.reason_core ? ` — ${e.reason_core}` : ''}`;
+  const parts: string[] = [
+    `WHAT ${ownerName.toUpperCase()} HAS ALREADY JUDGED. These are real verdicts on`,
+    `this system's own past output. They are illustrations, NOT a quota: most`,
+    `conversations still hold nothing, and matching the shape of an example is`,
+    `not a reason to report one.`,
+  ];
+  if (negatives.length) {
+    parts.push('', `REPORTED AND REJECTED — ${ownerName} said each of these was NOT a commitment.`,
+      `Something of the same kind should not be reported again:`,
+      ...negatives.map(line));
+  }
+  if (positives.length) {
+    parts.push('', `REPORTED AND CONFIRMED — ${ownerName} acted on each of these, so an`,
+      `obligation of this kind is worth reporting. This says the item mattered; it`,
+      `does not mean the wording was right:`,
+      ...positives.map(line));
+  }
+  return parts.join('\n');
+}
+
 interface Extracted {
   existing_id?: string | null;
   ball: 'them' | 'me' | 'neither';
@@ -300,6 +346,8 @@ serve(async (req) => {
     stopped_on_deadline: false,
     offset,
     next_offset: null as number | null,
+    learned_negatives: 0,
+    learned_positives: 0,
   };
 
   try {
@@ -323,7 +371,51 @@ serve(async (req) => {
     stats.owner = `${ownerName} <${ownerEmail}>`;
 
     const todayEt = etDay(new Date());
-    const SYSTEM = systemPrompt(ownerName, ownerEmail, todayEt);
+
+    // ---- LEARNING FROM THE OWNER'S VERDICTS. Read once per invocation and
+    // appended to the system prompt, so every conversation in the batch sees
+    // the same text. Scoped to THIS mailbox: one person's judgement is not
+    // evidence about another's inbox. Ordered newest-first and capped, which
+    // also keeps the prompt byte-identical across the batches of one run. ----
+    const [{ data: negRows }, { data: posRows }] = await Promise.all([
+      supabase.from('commitment_correction')
+        .select('what, reason_core, ball, created_at')
+        .eq('gmail_connection_id', cid)
+        .eq('correction', 'not_a_commitment')
+        .order('created_at', { ascending: false })
+        .limit(LEARN_LIMIT * 3),
+      supabase.from('commitment')
+        .select('what, reason_core, ball, updated_at')
+        .eq('gmail_connection_id', cid)
+        .eq('status', 'handled')
+        .eq('sync_state', 'synced')     // Gmail confirmed it: the owner really did act
+        .order('updated_at', { ascending: false })
+        .limit(LEARN_LIMIT * 3),
+    ]);
+
+    /** Newest-first, one per distinct `what`, capped. */
+    const pick = (rows: any[] | null): Example[] => {
+      const seen = new Set<string>();
+      const out: Example[] = [];
+      for (const r of rows ?? []) {
+        const what = String(r.what ?? '').trim();
+        if (!what) continue;
+        const key = what.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ what, reason_core: r.reason_core ?? null, ball: String(r.ball ?? '') });
+        if (out.length >= LEARN_LIMIT) break;
+      }
+      return out;
+    };
+    const negatives = pick(negRows), positives = pick(posRows);
+    stats.learned_negatives = negatives.length;
+    stats.learned_positives = positives.length;
+
+    const SYSTEM = [
+      systemPrompt(ownerName, ownerEmail, todayEt),
+      learningBlock(negatives, positives, ownerName),
+    ].filter(Boolean).join('\n\n');
 
     // ---- DAILY CAP. Counted over runs STARTED today in Eastern Time, across
     // both mailboxes and every mode, so a Refresh button cannot be clicked into
