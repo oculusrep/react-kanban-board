@@ -6,6 +6,7 @@ import {
   fetchTour,
   fetchTourDays,
   fetchTourStopsForMap,
+  onTourStopsChanged,
   persistStopPlacements,
   resetDayDepartures,
   setSiteApproach,
@@ -230,6 +231,8 @@ function TourMapPageInner() {
   const narrow = useIsNarrow(); // iPhone width: stack map over schedule
   const toggleFocus = (stopId: string) => setFocusStopId((cur) => (cur === stopId ? null : stopId));
   const redraw = () => setRefreshKey((k) => k + 1);
+  // Stop added/removed from outside the map (e.g. a sidebar's Add to tour menu).
+  useEffect(() => (tourId ? onTourStopsChanged(tourId, () => setRefreshKey((k) => k + 1)) : undefined), [tourId]);
 
   // Load the reorder slideout lazily (keeps map bundle lean).
   useEffect(() => {

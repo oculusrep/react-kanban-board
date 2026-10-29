@@ -11,6 +11,7 @@ import {
   deleteTourDay,
   persistStopPlacements,
   removeTourStop,
+  onTourStopsChanged,
   updateTour,
   updateTourStop,
   deleteTour,
@@ -105,8 +106,9 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   const narrow = useIsNarrow();
   const cancelLabelRef = useRef(false); // Escape: blur without saving
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // silent: refresh in place (external add/remove) without the "Loading tour…" swap.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [t, d, s, c] = await Promise.all([
@@ -130,6 +132,9 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   useEffect(() => {
     load();
   }, [load]);
+
+  // A stop added/removed elsewhere (AddToTourButton in a sidebar, or our own remove).
+  useEffect(() => onTourStopsChanged(tourId, () => load(true)), [tourId, load]);
 
   const categoryById = useMemo(() => {
     const m: Record<string, TourStopCategory> = {};

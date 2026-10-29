@@ -277,6 +277,22 @@ with the original RangeError if the guard is removed).
   **Reset to plan** clears the day's stamps in one UPDATE.
 - iPhone width (<700px): map stacks over a full-width schedule; controls compact.
 
+## Phase 4.8 — Remove from tour via the Add to tour menu (branch `feature/tour-routing`)
+
+No migration. `AddToTourButton` (SiteSubmitSidebar, DealDetailsSlideout, SiteSubmitDetailsPage):
+- Tours already containing the site submit show ✓; hover swaps the stop count for **Remove**; click
+  removes that `tour_stop`. A confirm appears only if the stop carries work: notes, a custom label,
+  an approach override (incl. `[]`), or a Leaving-now stamp. Tours without it: click adds to Unscheduled.
+- Label: "On N tour(s) ▾" when on any tour (count = all `tour_stop` rows for the site submit), else "Add to tour ▾".
+- `removeTourStop` (also used by the tour panel's remove) now deletes, then renumbers the remaining
+  stops in that day / the unscheduled bucket 0..n-1 via `set_tour_stop_placements`. Two calls, not one
+  transaction: a failed renumber leaves a position gap (order still correct) and is reported.
+- Change events: `notifyTourStopsChanged(tourId)` / `onTourStopsChanged(tourId|null, fn)` in `useTours.ts`
+  (window CustomEvent `ovis:tour-stops-changed`, same pattern as packageTracker). Add/remove fire it; every
+  AddToTourButton, `useTours` stop counts, an open TourDetailPanel (silent reload) and the tour map
+  (debounced redraw) listen.
+- Touch: no hover, so a tap on a ✓ row removes directly (confirm still applies when the stop has work).
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding
