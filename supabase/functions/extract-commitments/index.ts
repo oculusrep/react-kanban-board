@@ -233,6 +233,8 @@ serve(async (req) => {
 
   let dryRun = false, maxUsd = 10.0, offset = 0, maxConvos = 60, usdSpent = 0;
   let connectionEmail = '', connectionId = '';
+  let mode: 'incremental' | 'full' = 'incremental';
+  let runId = '', drain = true, dailyCap = 5.0;
   try {
     const b = await req.json();
     dryRun = b?.dry_run === true;
@@ -243,7 +245,16 @@ serve(async (req) => {
     if (typeof b?.usd_spent === 'number') usdSpent = b.usd_spent;
     if (typeof b?.connection_email === 'string') connectionEmail = b.connection_email.toLowerCase();
     if (typeof b?.connection_id === 'string') connectionId = b.connection_id;
+    if (b?.mode === 'full' || b?.mode === 'incremental') mode = b.mode;
+    if (typeof b?.run_id === 'string') runId = b.run_id;
+    if (b?.drain === false) drain = false;
+    if (typeof b?.daily_cap === 'number') dailyCap = b.daily_cap;
   } catch { /* defaults */ }
+
+  // Drain means "keep going until the work is done or the clock runs out",
+  // which is what a Refresh button and an MCP call both need. The 110s deadline
+  // still ends the invocation and hands back next_offset.
+  if (drain) maxConvos = Math.max(maxConvos, 5000);
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const anthropic = new Anthropic({ apiKey });
@@ -274,6 +285,14 @@ serve(async (req) => {
     relay_humans_resolved: 0,
     rows_missed_once: 0,
     suppressed_by_rejection: 0,
+    mode,
+    run_id: null as string | null,
+    since_ts: null as string | null,
+    conversations_with_new_mail: 0,
+    done: false,
+    spent_today_usd: 0,
+    daily_cap_usd: dailyCap,
+    stopped_on_daily_cap: false,
     owner_owes_without_me_row: 0,
     upsert_errors: 0,
     convos_zero: 0,
@@ -305,6 +324,45 @@ serve(async (req) => {
 
     const todayEt = etDay(new Date());
     const SYSTEM = systemPrompt(ownerName, ownerEmail, todayEt);
+
+    // ---- DAILY CAP. Counted over runs STARTED today in Eastern Time, across
+    // both mailboxes and every mode, so a Refresh button cannot be clicked into
+    // a large bill. The cap is on the day, not on the run. ----
+    const etMidnightUtc = new Date(`${todayEt}T00:00:00-04:00`).toISOString();
+    const { data: todayRuns } = await supabase
+      .from('commitment_extraction_run').select('usd').gte('started_at', etMidnightUtc);
+    const spentToday = (todayRuns ?? []).reduce((a, r) => a + Number(r.usd ?? 0), 0);
+    stats.spent_today_usd = Math.round(spentToday * 10000) / 10000;
+    const remainingToday = dailyCap - spentToday;
+    if (remainingToday <= 0) {
+      stats.stopped_on_daily_cap = true;
+      return new Response(JSON.stringify({
+        success: true, model: MODEL, ...stats,
+        note: `daily cap reached: $${spentToday.toFixed(4)} of $${dailyCap} spent today (ET). No model calls made.`,
+      }, null, 2), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    // The run-wide cap and the day cap are both ceilings; take the lower.
+    maxUsd = Math.min(maxUsd, usdSpent + remainingToday);
+
+    // ---- INCREMENTAL WATERMARK. Only a run that FINISHED counts: a run that
+    // died halfway must not advance it, or everything it never reached is
+    // skipped forever. ----
+    let sinceTs: string | null = null;
+    if (mode === 'incremental') {
+      const { data: lastRun } = await supabase
+        .from('commitment_extraction_run')
+        .select('completed_at')
+        .eq('gmail_connection_id', cid)
+        .not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(1);
+      const last = lastRun?.[0]?.completed_at;
+      // 10 minutes of overlap, because a message that arrived mid-run may have
+      // been read before it was ingested. Re-reading a conversation is cheap;
+      // missing one is not.
+      if (last) sinceTs = new Date(Date.parse(String(last)) - 10 * 60_000).toISOString();
+    }
+    stats.since_ts = sinceTs;
     const since = new Date(Date.now() - WINDOW_DAYS * 86400_000).toISOString();
 
     // ---- window pass: metadata only, plus the headers conversations need ----
@@ -525,6 +583,12 @@ serve(async (req) => {
     }
 
     const skippedConvos: Convo[] = [];
+    // INCREMENTAL SCOPE. The conversation is still built from the full 14-day
+    // window -- the model needs the history to judge direction -- but only
+    // conversations carrying a message newer than the watermark are extracted.
+    const hasNewMail = (c: Convo) =>
+      !sinceTs || c.rows.some((r) => r.received_at > sinceTs);
+
     const gated = live.filter((c) => {
       if (!c.hasOwnerSent && !c.priorContact) {
         stats.excluded.no_prior_contact_skipped++; skippedConvos.push(c); return false;
@@ -534,9 +598,12 @@ serve(async (req) => {
     gated.sort((a, b) => b.lastAt - a.lastAt);
     stats.eligible_conversations = gated.length;
 
-    const batch = gated.slice(offset, offset + maxConvos);
+    const scoped = gated.filter(hasNewMail);
+    stats.conversations_with_new_mail = scoped.length;
+
+    const batch = scoped.slice(offset, offset + maxConvos);
     if (dryRun) {
-      stats.next_offset = offset + batch.length < gated.length ? offset + batch.length : null;
+      stats.next_offset = offset + batch.length < scoped.length ? offset + batch.length : null;
       return new Response(JSON.stringify({ success: true, dry_run: true, model: MODEL, ...stats }, null, 2),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -595,7 +662,10 @@ serve(async (req) => {
     // batch 1 and delete it in batch 2 -- two strikes inside ONE run, which is
     // exactly the hysteresis this is supposed to provide. A resumed run
     // (offset > 0) therefore does not re-apply the gate.
-    if (offset === 0) {
+    // FULL MODE ONLY. The gate's candidate set is mailbox-wide, so running it on
+    // every incremental refresh would spend both hysteresis strikes within a
+    // single day and delete rows a run never even looked at.
+    if (offset === 0 && mode === 'full') {
       const rowsFor = (c: Convo) => c.threadIds.flatMap((t) => existingByTid.get(t) ?? []);
       const cands = new Map<string, { id: string; missed: number }>();
       for (const c of skippedConvos) {
@@ -608,6 +678,22 @@ serve(async (req) => {
       // Gated conversations follow the SAME two-strike rule as everything else.
       await retireOrBump([...cands.values()], true);
     }
+
+    // ---- RUN ROW. Created on the first batch, carried by run_id, and
+    // completed_at is written ONLY when the run genuinely finishes. ----
+    if (!runId) {
+      const { data: created, error: runErr } = await supabase
+        .from('commitment_extraction_run')
+        .insert({
+          gmail_connection_id: cid, mode, since_ts: sinceTs,
+          conversations_in_scope: scoped.length,
+        })
+        .select('id')
+        .maybeSingle();
+      if (runErr) console.error(`[extract-commitments] run row: ${runErr.message}`);
+      runId = String(created?.id ?? '');
+    }
+    stats.run_id = runId || null;
 
     let stop = false, consumed = 0;
 
@@ -809,7 +895,34 @@ serve(async (req) => {
     }
 
     const reached = offset + consumed;
-    stats.next_offset = reached < gated.length && !stats.stopped_on_budget ? reached : null;
+    stats.next_offset = reached < scoped.length && !stats.stopped_on_budget ? reached : null;
+    stats.done = stats.next_offset === null;
+
+    if (runId) {
+      // ACCUMULATE, never overwrite: a run spans several invocations and each
+      // one only knows its own batch. Writing usd_this_batch straight in would
+      // make a 5-batch run report the cost of its last batch, and the daily cap
+      // reads this column.
+      const { data: prior } = await supabase
+        .from('commitment_extraction_run')
+        .select('attempted, model_calls, inserted, updated, deleted, usd')
+        .eq('id', runId).maybeSingle();
+      const add = (k: string, v: number) => Number((prior as any)?.[k] ?? 0) + v;
+      const patch: Record<string, unknown> = {
+        attempted: add('attempted', stats.attempted),
+        model_calls: add('model_calls', stats.model_calls),
+        inserted: add('inserted', stats.inserted),
+        updated: add('updated', stats.updated_by_existing_id),
+        deleted: add('deleted', stats.replaced_rows_deleted + stats.gated_rows_retired),
+        usd: Math.round(add('usd', stats.usd_this_batch) * 10000) / 10000,
+        conversations_in_scope: scoped.length,
+      };
+      // Only a finished run becomes a watermark.
+      if (stats.done) patch.completed_at = new Date().toISOString();
+      const { error: finErr } = await supabase
+        .from('commitment_extraction_run').update(patch).eq('id', runId);
+      if (finErr) console.error(`[extract-commitments] finalise: ${finErr.message}`);
+    }
 
     return new Response(JSON.stringify({ success: true, model: MODEL, window_days: WINDOW_DAYS, max_usd: maxUsd, ...stats }, null, 2),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
