@@ -7,20 +7,26 @@ import {
   fetchTourDays,
   fetchTourStopsForMap,
   persistStopPlacements,
+  resetDayDepartures,
   setSiteApproach,
   setStopApproachOverride,
+  setStopDeparture,
 } from '../hooks/useTours';
 import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import {
   MAX_APPROACH_POINTS,
   buildDayRoutePoints,
   computeDaySchedule,
+  computeLiveSchedule,
   dayColor,
   departureFor,
+  etClockMinutes,
   formatTime12,
+  liveAnchorIndex,
   parseTimeToMinutes,
   routeKey,
   solveOpenPath,
+  todayET,
   type ApproachPoint,
   type DaySchedule,
   type RoutePoint,
@@ -32,8 +38,10 @@ import {
   CategoryPill,
   DayTotalsFooter,
   DriveConnector,
+  LiveDepartControl,
   NoLocationTag,
   TourStopCard,
+  useIsNarrow,
   type DayTotals,
 } from '../components/tours/TourStopCard';
 import {
@@ -97,6 +105,10 @@ interface DayRender {
   issues: string[];
   startCoord: google.maps.LatLngLiteral | null;
   endCoord: google.maps.LatLngLiteral | null;
+  isLive: boolean; // day_date is today (Eastern)
+  anchorStopId: string | null; // latest stamped stop in route order
+  liveSchedule: DaySchedule | null; // re-projected from the anchor's departure
+  liveTraffic: 'live' | 'unavailable' | null;
 }
 
 // A dragged leg waiting for Save / Use for this tour / Discard.
@@ -213,6 +225,7 @@ function TourMapPageInner() {
   const [prefs, setPrefs] = useState<MapPrefs>(loadPrefs);
   const prefsRef = useRef(prefs);
   const [mapVersion, setMapVersion] = useState(0); // bumps when the map is recreated
+  const narrow = useIsNarrow(); // iPhone width: stack map over schedule
   const toggleFocus = (stopId: string) => setFocusStopId((cur) => (cur === stopId ? null : stopId));
   const redraw = () => setRefreshKey((k) => k + 1);
 
@@ -409,12 +422,14 @@ function TourMapPageInner() {
         let routeOk = stopovers.length < 2; // nothing to route counts as OK
         let traffic: DayRender['traffic'] = null;
         let chunks: DayChunk[] = [];
+        let typicalLegs: number[] = [];
 
         if (stopovers.length >= 2) {
           const res = await getDayRoute(dirServiceRef.current, points);
           chunks = res.chunks;
           if (res.ok) {
             routeOk = true;
+            typicalLegs = res.legSeconds;
             let allLegs = res.legSeconds;
             const dayStart = departureFor(day.day_date, day.start_time);
             if (dayStart) {
@@ -445,8 +460,49 @@ function TourMapPageInner() {
               )
             : null;
 
+        // ---- live day: re-project the rest of the day from the latest departure stamp ----
+        const isLive = day.day_date === todayET();
+        const anchorIdx = isLive ? liveAnchorIndex(ordered.map((s) => s.actual_departure_at)) : -1;
+        let liveSchedule: DaySchedule | null = null;
+        let liveLegs: number[] = [];
+        let liveTraffic: DayRender['liveTraffic'] = null;
+        if (anchorIdx >= 0 && routeOk) {
+          const anchor = ordered[anchorIdx];
+          const departAt = new Date(anchor.actual_departure_at!);
+          const sOff = startCoord ? 1 : 0;
+          const typicalFrom = typicalLegs.slice(sOff + anchorIdx);
+          const pi = points.findIndex((p) => p.role === 'stop' && p.id === anchor.id);
+          liveLegs = typicalFrom;
+          if (pi >= 0 && pi < points.length - 1) {
+            const sub = points.slice(pi);
+            const minutesById = new Map(ordered.map((s) => [s.id, s.effective_duration_minutes]));
+            // The anchor's own stop time is already spent: the chain starts AT its departure.
+            const svc = sub.map((p, i) => (i === 0 ? 0 : p.role === 'stop' ? minutesById.get(p.id) ?? 0 : 0));
+            const live = await getChainedTrafficLegs(matrixServiceRef.current, sub, svc, departAt, typicalFrom);
+            liveTraffic = live ? 'live' : 'unavailable';
+            if (live) liveLegs = live;
+          }
+          liveSchedule = computeLiveSchedule({
+            anchorDepartMin: etClockMinutes(departAt),
+            legSecondsFromAnchor: liveLegs,
+            suffixDurations: ordered.slice(anchorIdx + 1).map((s) => s.effective_duration_minutes),
+            hasEnd: !!endCoord,
+          });
+        }
+
         ordered.forEach((s, idx) => {
           const isLast = idx === ordered.length - 1;
+          if (liveSchedule) {
+            const k = idx - anchorIdx - 1; // index into the re-projected suffix
+            stopSched[s.id] = {
+              arrivalMin: k >= 0 ? liveSchedule.stops[k].arrivalMin : null,
+              minsToNext: idx < anchorIdx ? null : liveLegs[idx - anchorIdx] != null && (!isLast || endCoord) ? Math.round(liveLegs[idx - anchorIdx] / 60) : null,
+              nextIsEnd: isLast && !!endCoord,
+              minsFromStart: null,
+              done: idx <= anchorIdx,
+            };
+            return;
+          }
           stopSched[s.id] = {
             arrivalMin: schedule?.hasStart ? schedule.stops[idx].arrivalMin : null,
             minsToNext: !routeOk
@@ -461,7 +517,24 @@ function TourMapPageInner() {
           };
         });
 
-        renders.push({ day, color, stops: dayStops, ordered, points, chunks, schedule, routeOk, traffic, issues, startCoord, endCoord });
+        renders.push({
+          day,
+          color,
+          stops: dayStops,
+          ordered,
+          points,
+          chunks,
+          schedule,
+          routeOk,
+          traffic,
+          issues,
+          startCoord,
+          endCoord,
+          isLive,
+          anchorStopId: anchorIdx >= 0 ? ordered[anchorIdx].id : null,
+          liveSchedule,
+          liveTraffic,
+        });
       }
 
       if (seq !== drawSeqRef.current) return; // a newer draw superseded this one
@@ -584,6 +657,22 @@ function TourMapPageInner() {
     redraw();
   };
 
+  // ---- live day: departure stamps ----
+  const [stampingId, setStampingId] = useState<string | null>(null);
+  const stampStop = async (s: NumberedStop, iso: string | null) => {
+    setStampingId(s.id);
+    const r = await setStopDeparture(s.id, iso);
+    setStampingId(null);
+    if (!r.ok) setError(`Couldn’t save the departure time: ${r.error}`);
+    redraw();
+  };
+  const resetDay = async (dr: DayRender) => {
+    if (!window.confirm(`Clear every departure time on Day ${dr.day.day_number} and go back to the plan?`)) return;
+    const r = await resetDayDepartures(dr.day.id);
+    if (!r.ok) setError(`Couldn’t reset the day: ${r.error}`);
+    redraw();
+  };
+
   const discardApproach = () => {
     setPending(null);
     redraw(); // re-renders from cache: 0 Google calls
@@ -663,10 +752,15 @@ function TourMapPageInner() {
   const dayTotalsFor = (dr: DayRender): DayTotals => ({
     driveMin: dr.schedule ? dr.schedule.totalDriveMin : null,
     stopMin: dr.schedule ? dr.schedule.totalStopMin : dr.stops.reduce((sum, s) => sum + s.effective_duration_minutes, 0),
-    finishMin: dr.schedule?.hasStart ? dr.schedule.finishMin : null,
-    overEnd: overEnd(dr.day, dr.schedule),
+    finishMin: dr.liveSchedule ? dr.liveSchedule.finishMin : dr.schedule?.hasStart ? dr.schedule.finishMin : null,
+    plannedFinishMin: dr.liveSchedule && dr.schedule?.hasStart ? dr.schedule.finishMin : null,
+    overEnd: dr.liveSchedule ? overEnd(dr.day, dr.liveSchedule) : overEnd(dr.day, dr.schedule),
     note: !dr.schedule
       ? null
+      : dr.liveSchedule
+      ? dr.liveTraffic === 'live'
+        ? 'Live — remaining legs traffic-aware from the last departure'
+        : 'Live — remaining legs at typical drive times'
       : dr.traffic === 'live'
       ? `Traffic-aware — each leg timed from its own departure (day starts ${formatTime12(dr.day.start_time)} ${dr.day.day_date})`
       : dr.traffic === 'unavailable'
@@ -687,15 +781,15 @@ function TourMapPageInner() {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: narrow ? 'auto' : 'calc(100vh - 64px)', minHeight: narrow ? 'calc(100vh - 64px)' : undefined }}>
       {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 16px', borderBottom: `1px solid ${SLATE}`, background: '#FFFFFF' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: narrow ? 8 : 16, flexWrap: 'wrap', padding: narrow ? '8px 12px' : '10px 16px', borderBottom: `1px solid ${SLATE}`, background: '#FFFFFF' }}>
         <Link to="/tours" style={{ color: STEEL, fontSize: 13, textDecoration: 'none' }}>← Tours</Link>
         <div style={{ fontSize: 16, fontWeight: 700, color: MIDNIGHT }}>{tour?.tour_name ?? 'Tour'} — Route</div>
         {tour && (
           <Link to={`/tours/${tour.id}`} style={{ color: STEEL, fontSize: 13, textDecoration: 'none' }}>edit details</Link>
         )}
-        <span style={{ fontSize: 12, color: SLATE }}>Drag a route into a stop to set its approach.</span>
+        {!narrow && <span style={{ fontSize: 12, color: SLATE }}>Drag a route into a stop to set its approach.</span>}
         <button
           type="button"
           onClick={() => setReorderOpen(true)}
@@ -709,9 +803,9 @@ function TourMapPageInner() {
         <div style={{ padding: 10, color: TERRACOTTA, background: '#FBF3EE', fontSize: 13 }}>{error}</div>
       )}
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', flex: 1, minHeight: 0 }}>
         {/* Map */}
-        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+        <div style={{ flex: narrow ? 'none' : 1, height: narrow ? '42vh' : undefined, minWidth: 0, position: 'relative' }}>
           <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
           <MapTypeControl
             mapType={prefs.mapType}
@@ -719,6 +813,7 @@ function TourMapPageInner() {
             places={prefs.places}
             onPlaces={setPlaces}
             placesToggleAvailable={!!MAP_ID_NO_PLACES && !!MAP_ID_PLACES}
+            compact={narrow}
           />
 
           {focusStopId && (
@@ -797,7 +892,17 @@ function TourMapPageInner() {
         </div>
 
         {/* Schedule readout */}
-        <div style={{ width: 380, borderLeft: `1px solid ${SLATE}`, overflowY: 'auto', padding: 16, background: '#F8FAFC' }}>
+        <div
+          style={{
+            width: narrow ? '100%' : 380,
+            borderLeft: narrow ? 'none' : `1px solid ${SLATE}`,
+            borderTop: narrow ? `1px solid ${SLATE}` : 'none',
+            overflowY: narrow ? 'visible' : 'auto',
+            padding: narrow ? 12 : 16,
+            boxSizing: 'border-box',
+            background: '#F8FAFC',
+          }}
+        >
           {busy && <div style={{ color: SLATE, fontSize: 13, marginBottom: 8 }}>Calculating route…</div>}
 
           {dayRenders.length === 0 && !busy && (
@@ -815,6 +920,18 @@ function TourMapPageInner() {
                   {formatTime12(dr.day.start_time) || '—'}
                   {dr.day.end_time ? ` – ${formatTime12(dr.day.end_time)}` : ''}
                 </span>
+                {dr.isLive && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#FFFFFF', background: '#2E7D32', borderRadius: 999, padding: '1px 8px' }}>LIVE</span>
+                )}
+                {dr.isLive && dr.stops.some((s) => s.actual_departure_at) && (
+                  <button
+                    type="button"
+                    onClick={() => resetDay(dr)}
+                    style={{ border: 'none', background: 'transparent', color: STEEL, fontSize: 12, textDecoration: 'underline', cursor: 'pointer', padding: '6px 2px' }}
+                  >
+                    Reset to plan
+                  </button>
+                )}
                 {canOptimizeDay(dr) && (
                   <button
                     type="button"
@@ -869,6 +986,8 @@ function TourMapPageInner() {
                   {dr.stops.map((s) => {
                     const mapped = s.lat != null && s.lng != null;
                     const timing = mapped ? stopSchedule[s.id] : undefined;
+                    const anchorNumber = dr.anchorStopId ? dr.stops.find((x) => x.id === dr.anchorStopId)?.number ?? 0 : 0;
+                    const done = dr.isLive && s.number <= anchorNumber;
                     return (
                       <div key={`wrap-${s.id}`}>
                       {timing?.minsFromStart != null && (
@@ -883,13 +1002,14 @@ function TourMapPageInner() {
                         style={{ cursor: mapped ? 'pointer' : 'default' }}
                       >
                         <TourStopCard
+                          done={done}
                           highlight={focusStopId === s.id}
                           number={s.number}
                           color={mapped ? dr.color : TERRACOTTA}
                           title={s.display_name}
                           meta={
                             <>
-                              <ArriveText arrivalMin={timing?.arrivalMin} />
+                              {!done && <ArriveText arrivalMin={timing?.arrivalMin} />}
                               <span>{s.effective_duration_minutes} min</span>
                               <CategoryPill name={s.category_name} />
                               {!mapped && <NoLocationTag />}
@@ -902,6 +1022,17 @@ function TourMapPageInner() {
                             </>
                           }
                           subtext={s.display_subtext}
+                          footer={
+                            // Done stops before the anchor need no button; a stamped one stays editable.
+                            dr.isLive && mapped && dr.day.day_date && (!done || s.actual_departure_at) ? (
+                              <LiveDepartControl
+                                stampedAt={s.actual_departure_at}
+                                dayDate={dr.day.day_date}
+                                busy={stampingId === s.id}
+                                onStamp={(iso) => stampStop(s, iso)}
+                              />
+                            ) : undefined
+                          }
                         />
                         <DriveConnector minutes={timing?.minsToNext} label={timing?.nextIsEnd ? 'to end' : undefined} color={dr.color} />
                       </div>
@@ -951,6 +1082,7 @@ function MapTypeControl(props: {
   places: boolean;
   onPlaces: (on: boolean) => void;
   placesToggleAvailable: boolean;
+  compact?: boolean;
 }) {
   const box = { backgroundColor: '#fff', borderRadius: 3, boxShadow: '0 2px 6px rgba(0,0,0,.3)' } as const;
   const btn = (active: boolean) =>
@@ -960,10 +1092,10 @@ function MapTypeControl(props: {
       border: 'none',
       cursor: 'pointer',
       fontFamily: 'Roboto,Arial,sans-serif',
-      fontSize: 16,
-      lineHeight: '38px',
-      padding: '0 12px',
-      height: 40,
+      fontSize: props.compact ? 14 : 16,
+      lineHeight: props.compact ? '34px' : '38px',
+      padding: props.compact ? '0 9px' : '0 12px',
+      height: props.compact ? 36 : 40,
     }) as const;
   const types: [MapTypeChoice, string][] = [
     ['roadmap', 'Map'],

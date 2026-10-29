@@ -1,6 +1,6 @@
-import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { Car } from 'lucide-react';
-import { formatClock12, formatDriveMinutes, formatMinutesDuration } from '../../lib/tourRouting';
+import { etClockMinutes, etHHMM, etWallTimeToDate, formatClock12, formatDriveMinutes, formatMinutesDuration } from '../../lib/tourRouting';
 
 // ---------------------------------------------------------------------------
 // Shared presentation for tour stops — used by the tour map schedule and the
@@ -70,16 +70,18 @@ interface TourStopCardProps {
   dragging?: boolean;
   /** Focused on the map (in/out legs highlighted). */
   highlight?: boolean;
+  /** Live day: already visited (at/before the latest departure stamp). */
+  done?: boolean;
 }
 
-export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging, highlight }: TourStopCardProps) {
+export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging, highlight, done }: TourStopCardProps) {
   return (
     <div
       style={{
         display: 'flex',
         gap: 10,
         alignItems: 'flex-start',
-        background: dragging || highlight ? '#F0F4FA' : '#FFFFFF',
+        background: dragging || highlight ? '#F0F4FA' : done ? '#F4F6F9' : '#FFFFFF',
         border: highlight ? `2px solid ${midnight}` : `1px solid ${cardBorder}`,
         margin: highlight ? -1 : 0, // keep layout steady with the thicker border
         borderRadius: 10,
@@ -94,9 +96,9 @@ export function TourStopCard({ number, color, title, meta, subtext: sub, footer,
           width: 26,
           height: 26,
           borderRadius: '50%',
-          background: color,
+          background: done ? slate : color,
           color: '#FFFFFF',
-          fontSize: 12,
+          fontSize: done ? 14 : 12,
           fontWeight: 700,
           display: 'flex',
           alignItems: 'center',
@@ -105,9 +107,9 @@ export function TourStopCard({ number, color, title, meta, subtext: sub, footer,
           cursor: badgeProps ? 'grab' : 'default',
         }}
       >
-        {number}
+        {done ? '✓' : number}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, opacity: done ? 0.6 : 1 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: midnight, lineHeight: 1.3 }}>{title}</div>
         {meta && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap', fontSize: 12, color: steel }}>
@@ -184,7 +186,8 @@ export function DriveConnector({ minutes, label, color }: { minutes: number | nu
 export interface DayTotals {
   driveMin: number | null; // null = unknown (route unavailable)
   stopMin: number;
-  finishMin: number | null; // null = no start time
+  finishMin: number | null; // null = no start time (projected on a live day)
+  plannedFinishMin?: number | null; // live day with stamps: the plan's finish, for comparison
   overEnd: boolean;
   note?: string | null;
 }
@@ -205,9 +208,22 @@ export function DayTotalsFooter({ totals }: { totals: DayTotals }) {
         {totals.driveMin != null && <Stat label="Drive" value={formatMinutesDuration(totals.driveMin)} />}
         <Stat label="Stops" value={formatMinutesDuration(totals.stopMin)} />
         {totals.finishMin != null && (
-          <Stat label={totals.overEnd ? 'Finish · past end' : 'Finish'} value={formatClock12(totals.finishMin)} warn={totals.overEnd} />
+          <Stat
+            label={(totals.plannedFinishMin != null ? 'Projected finish' : 'Finish') + (totals.overEnd ? ' · past end' : '')}
+            value={formatClock12(totals.finishMin)}
+            warn={totals.overEnd}
+          />
         )}
       </div>
+      {totals.finishMin != null && totals.plannedFinishMin != null && (
+        <div style={{ fontSize: 12, color: totals.overEnd ? terracotta : steel, marginTop: 4, fontWeight: 600 }}>
+          {(() => {
+            const delta = Math.round(totals.finishMin - totals.plannedFinishMin);
+            const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
+            return `Finish ${formatClock12(totals.finishMin)} (planned ${formatClock12(totals.plannedFinishMin)}, ${sign}${Math.abs(delta)} min)`;
+          })()}
+        </div>
+      )}
       {totals.note && <div style={{ fontSize: 11, color: steel, marginTop: 4 }}>{totals.note}</div>}
     </div>
   );
@@ -252,5 +268,133 @@ export function ApproachTag({ source, onClearTour, onClearSite, onSkipOnTour }: 
         </button>
       )}
     </span>
+  );
+}
+
+
+// ---- live day: narrow-screen detection ----
+
+export function useIsNarrow(maxWidth = 700): boolean {
+  const query = `(max-width: ${maxWidth}px)`;
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [query]);
+  return narrow;
+}
+
+// ---- live day: "Leaving now" / stamped time editor ----
+
+interface LiveDepartControlProps {
+  stampedAt: string | null; // UTC ISO
+  dayDate: string; // YYYY-MM-DD (the live day, Eastern)
+  onStamp: (iso: string | null) => void;
+  busy?: boolean;
+}
+
+const TAP = 44; // minimum touch target (Apple HIG)
+
+export function LiveDepartControl({ stampedAt, dayDate, onStamp, busy }: LiveDepartControlProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  // Every tap in here stays here (cards toggle map focus on click).
+  const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
+
+  if (!stampedAt) {
+    return (
+      <div onClick={stop} style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onStamp(new Date().toISOString())}
+          style={{
+            width: '100%',
+            minHeight: TAP,
+            border: 'none',
+            borderRadius: 8,
+            background: midnight,
+            color: '#FFFFFF',
+            fontSize: 16,
+            fontWeight: 700,
+            cursor: busy ? 'wait' : 'pointer',
+            opacity: busy ? 0.6 : 1,
+            touchAction: 'manipulation',
+          }}
+        >
+          Leaving now
+        </button>
+      </div>
+    );
+  }
+
+  const at = new Date(stampedAt);
+  if (!editing) {
+    return (
+      <div onClick={stop} style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(etHHMM(at));
+            setEditing(true);
+          }}
+          title="Edit or clear the departure time"
+          style={{
+            minHeight: TAP,
+            width: '100%',
+            border: `1px solid ${cardBorder}`,
+            borderRadius: 8,
+            background: '#FFFFFF',
+            color: midnight,
+            fontSize: 15,
+            fontWeight: 600,
+            cursor: 'pointer',
+            touchAction: 'manipulation',
+          }}
+        >
+          ✓ Left {formatClock12(etClockMinutes(at))} <span style={{ color: slate, fontWeight: 400, fontSize: 13 }}>· edit</span>
+        </button>
+      </div>
+    );
+  }
+
+  const small: CSSProperties = { minHeight: TAP, borderRadius: 8, fontSize: 15, fontWeight: 600, padding: '0 14px', cursor: 'pointer', touchAction: 'manipulation' };
+  return (
+    <div onClick={stop} style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <input
+        type="time"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        style={{ minHeight: TAP, fontSize: 16, border: `1px solid ${slate}`, borderRadius: 8, padding: '0 8px', flex: '1 1 120px' }}
+      />
+      <button
+        type="button"
+        disabled={!draft || busy}
+        onClick={() => {
+          onStamp(etWallTimeToDate(dayDate, draft).toISOString());
+          setEditing(false);
+        }}
+        style={{ ...small, border: 'none', background: midnight, color: '#fff' }}
+      >
+        Save
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          onStamp(null);
+          setEditing(false);
+        }}
+        style={{ ...small, border: `1px solid ${terracotta}`, background: '#fff', color: terracotta }}
+      >
+        Clear
+      </button>
+      <button type="button" onClick={() => setEditing(false)} style={{ ...small, border: `1px solid ${cardBorder}`, background: '#fff', color: steel }}>
+        Cancel
+      </button>
+    </div>
   );
 }

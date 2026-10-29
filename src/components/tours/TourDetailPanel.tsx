@@ -14,13 +14,16 @@ import {
   updateTour,
   updateTourStop,
   deleteTour,
+  setStopDeparture,
+  resetDayDepartures,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
-import { dayColor, effectiveApproach, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
+import { dayColor, effectiveApproach, liveAnchorIndex, todayET, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
 import {
   ApproachTag,
   ArriveText,
   DayTotalsFooter,
+  LiveDepartControl,
   DriveConnector,
   NoLocationTag,
   TOUR_COLORS,
@@ -329,7 +332,28 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   if (loading) return <div style={{ padding: 24, color: SLATE }}>Loading tour…</div>;
   if (!tour) return <div style={{ padding: 24, color: TERRACOTTA }}>{error ?? 'Tour not found.'}</div>;
 
-  const renderStop = (stop: TourStopWithSiteSubmit, index: number, color: string) => {
+  // ---- live day departures ----
+  const handleStamp = async (stopId: string, iso: string | null) => {
+    const prev = stops.find((s) => s.id === stopId)?.actual_departure_at ?? null;
+    setStops((all) => all.map((s) => (s.id === stopId ? { ...s, actual_departure_at: iso } : s)));
+    const res = await setStopDeparture(stopId, iso);
+    if (!res.ok) {
+      setStops((all) => all.map((s) => (s.id === stopId ? { ...s, actual_departure_at: prev } : s)));
+      setError(res.error ?? 'Failed to save departure time');
+    } else onChanged?.();
+  };
+  const handleResetDay = async (day: TourDay) => {
+    if (!window.confirm(`Clear every departure time on Day ${day.day_number} and go back to the plan?`)) return;
+    const res = await resetDayDepartures(day.id);
+    if (!res.ok) setError(res.error ?? 'Failed to reset the day');
+    else {
+      setStops((all) => all.map((s) => (s.tour_day_id === day.id ? { ...s, actual_departure_at: null } : s)));
+      onChanged?.();
+    }
+  };
+
+  // live: the section's day is today (Eastern) → anchor = last stamped stop in this section.
+  const renderStop = (stop: TourStopWithSiteSubmit, index: number, color: string, live?: { dayDate: string; anchorIdx: number }) => {
     const { name, subtext } = stopDisplayName({
       display_label: stop.display_label,
       site_submit_name: stop.site_submit?.site_submit_name,
@@ -353,6 +377,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
               <DriveConnector minutes={sched.minsFromStart} label="from start" color={color} />
             )}
             <TourStopCard
+              done={!!live && index <= live.anchorIdx}
               number={index + 1}
               color={mapped ? color : TERRACOTTA}
               badgeProps={dp.dragHandleProps ?? undefined}
@@ -391,7 +416,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
               }
               meta={
                 <>
-                  <ArriveText arrivalMin={sched?.arrivalMin} />
+                  {!(live && index <= live.anchorIdx) && <ArriveText arrivalMin={sched?.arrivalMin} />}
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                     <input
                       type="number"
@@ -420,12 +445,17 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
               }
               subtext={subtext ? ssLink(subtext, '#9CA3AF') : null}
               footer={
-                <input
-                  defaultValue={stop.notes ?? ''}
-                  placeholder="Notes…"
-                  onBlur={(e) => handleNotesBlur(stop.id, e.target.value)}
-                  style={{ width: '100%', marginTop: 6, border: `1px solid ${TOUR_COLORS.cardBorder}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
-                />
+                <>
+                  {live && mapped && (index > live.anchorIdx || stop.actual_departure_at) && (
+                    <LiveDepartControl stampedAt={stop.actual_departure_at} dayDate={live.dayDate} onStamp={(iso) => handleStamp(stop.id, iso)} />
+                  )}
+                  <input
+                    defaultValue={stop.notes ?? ''}
+                    placeholder="Notes…"
+                    onBlur={(e) => handleNotesBlur(stop.id, e.target.value)}
+                    style={{ width: '100%', marginTop: 6, border: `1px solid ${TOUR_COLORS.cardBorder}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                  />
+                </>
               }
               aside={
                 <button
@@ -445,13 +475,30 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
     );
   };
 
-  const renderSection = (opts: { id: string; title: React.ReactNode; subtitle?: React.ReactNode; color: string; totals?: DayTotals }) => {
+  const renderSection = (opts: { id: string; title: React.ReactNode; subtitle?: React.ReactNode; color: string; totals?: DayTotals; day?: TourDay }) => {
     const list = sections[opts.id] ?? [];
+    const isLive = !!opts.day?.day_date && opts.day.day_date === todayET();
+    const live = isLive
+      ? {
+          dayDate: opts.day!.day_date!,
+          anchorIdx: liveAnchorIndex(list.map((s) => (resolveStopCoord(s.site_submit) ? s.actual_departure_at : null))),
+        }
+      : undefined;
     return (
       <div style={{ border: `1px solid ${SLATE}`, borderRadius: 8, marginBottom: 12, background: '#F8FAFC' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', flexWrap: 'wrap' }}>
           {opts.title}
-          <span style={{ fontSize: 12, color: STEEL }}>
+          <span style={{ fontSize: 12, color: STEEL, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {isLive && <span style={{ fontSize: 11, fontWeight: 700, color: '#FFFFFF', background: '#2E7D32', borderRadius: 999, padding: '1px 8px' }}>LIVE</span>}
+            {isLive && list.some((s) => s.actual_departure_at) && (
+              <button
+                type="button"
+                onClick={() => handleResetDay(opts.day!)}
+                style={{ border: 'none', background: 'transparent', color: STEEL, fontSize: 12, textDecoration: 'underline', cursor: 'pointer', padding: '6px 2px' }}
+              >
+                Reset to plan
+              </button>
+            )}
             {list.length} stop{list.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -466,7 +513,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
               {list.length === 0 && (
                 <div style={{ color: SLATE, fontSize: 12, padding: '8px 0' }}>Drag stops here…</div>
               )}
-              {list.map((stop, idx) => renderStop(stop, idx, opts.color))}
+              {list.map((stop, idx) => renderStop(stop, idx, opts.color, live))}
               {dp.placeholder}
             </div>
           )}
@@ -524,6 +571,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
           renderSection({
             id: dayDroppableId(day.id),
             color: dayColor(di),
+            day,
             totals: daySummaries?.[day.id] ?? { driveMin: null, stopMin: dayTotal(day.id), finishMin: null, overEnd: false },
             title: (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>

@@ -70,6 +70,8 @@ export interface StopTiming {
   nextIsEnd: boolean;
   /** First routed stop of a day with a start address: drive from the start. */
   minsFromStart?: number | null;
+  /** Live day: at or before the latest departure stamp. */
+  done?: boolean;
 }
 
 // 66 -> "1h 06m", 12 -> "12 min"
@@ -458,4 +460,84 @@ function heuristicOpen(fromOrigin: number[], m: number[][], toEnd?: number[]): n
     }
   }
   return bestOrder;
+}
+
+// ---------------------------------------------------------------------------
+// Live tour day — Eastern Time helpers + re-projection from the latest departure stamp
+// ---------------------------------------------------------------------------
+
+const ET_ZONE = 'America/New_York';
+
+// "YYYY-MM-DD" for the given instant in Eastern Time (not the device's zone, not UTC).
+export function todayET(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: ET_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+}
+
+function etParts(d: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET_ZONE,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return { y: get('year'), mo: get('month'), d: get('day'), h: get('hour') % 24, mi: get('minute'), s: get('second') };
+}
+
+// Minutes since Eastern midnight for an instant (the schedule's clock).
+export function etClockMinutes(d: Date): number {
+  const p = etParts(d);
+  return p.h * 60 + p.mi + p.s / 60;
+}
+
+// "HH:MM" for an instant in Eastern Time (for <input type="time">).
+export function etHHMM(d: Date): string {
+  const p = etParts(d);
+  return `${String(p.h).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
+}
+
+// Eastern wall time on a date ("YYYY-MM-DD" + "HH:MM") → the UTC instant. DST-safe.
+export function etWallTimeToDate(dateStr: string, hhmm: string): Date {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = hhmm.split(':').map(Number);
+  const wantUtcMs = Date.UTC(y, mo - 1, d, h, mi);
+  let guess = wantUtcMs;
+  for (let i = 0; i < 2; i++) {
+    const p = etParts(new Date(guess));
+    const shownAsUtc = Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi);
+    guess += wantUtcMs - shownAsUtc;
+  }
+  return new Date(guess);
+}
+
+// Index of the anchor: the LAST stamped stop in route order (-1 = none).
+export function liveAnchorIndex(stamps: (string | null | undefined)[]): number {
+  for (let i = stamps.length - 1; i >= 0; i--) if (stamps[i]) return i;
+  return -1;
+}
+
+// Re-project the rest of a day from the anchor's actual departure.
+// legSecondsFromAnchor: drive seconds for each stopover leg starting at the anchor —
+//   anchor→suffix[0], suffix[0]→suffix[1], …, and (hasEnd) last→end address.
+// suffixDurations: stop minutes for the stops after the anchor.
+// Returned arrivals/finish are Eastern clock minutes (same scale as computeDaySchedule).
+export function computeLiveSchedule(args: {
+  anchorDepartMin: number;
+  legSecondsFromAnchor: number[];
+  suffixDurations: number[];
+  hasEnd: boolean;
+}): DaySchedule {
+  const { anchorDepartMin, legSecondsFromAnchor: legs, suffixDurations, hasEnd } = args;
+  const n = suffixDurations.length;
+  if (n === 0) {
+    return computeDaySchedule(anchorDepartMin, [], [], { tailSeconds: hasEnd ? legs[0] ?? 0 : 0 });
+  }
+  return computeDaySchedule(anchorDepartMin, legs.slice(1, n), suffixDurations, {
+    leadSeconds: legs[0] ?? 0,
+    tailSeconds: hasEnd ? legs[n] ?? 0 : 0,
+  });
 }

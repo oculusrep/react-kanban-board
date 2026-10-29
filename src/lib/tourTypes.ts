@@ -3,7 +3,7 @@ import type { ApproachPoint, ApproachSource } from './tourRouting';
 // Tour feature types. Hand-written; keep in sync with the tour migrations
 // (20260725170000_tour_schema, 20260726120000_tour_scheduling,
 // 20260726160000_tour_day_endpoints, 20261028165400_tour_hardening,
-// 20261028180635_tour_approach_waypoints).
+// 20261028180635_tour_approach_waypoints, 20261028195957_tour_stop_actual_departure).
 
 export interface TourStopCategory {
   id: string;
@@ -53,6 +53,7 @@ export interface TourStop {
   stop_duration_minutes: number | null; // null = use category default
   display_label: string | null; // null = auto name (see stopDisplayName)
   approach_waypoints_override: ApproachPoint[] | null; // null = site default; [] = none on this tour
+  actual_departure_at: string | null; // live day: when the tour left this stop (UTC ISO)
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -111,4 +112,5 @@ export interface TourStopGeo {
   approach_source: ApproachSource;
   approach_override: ApproachPoint[] | null; // raw tour_stop override
   site_has_approach: boolean; // site_submit default is set
+  actual_departure_at: string | null; // live day departure stamp
 }

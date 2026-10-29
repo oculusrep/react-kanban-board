@@ -260,6 +260,22 @@ boundary ("Reload map"). Regression test: `npm run test:tours`
 (`tests/tours/tourRouteFocus.test.ts`, fake renderer with the same two behaviours; fails
 with the original RangeError if the guard is removed).
 
+## Phase 4.7 — Live tour day (branch `feature/tour-routing`)
+
+- Migration `20261028195957_tour_stop_actual_departure`: `tour_stop.actual_departure_at
+  timestamptz` (UTC; shown in Eastern). Existing tour_stop grants cover it.
+- A day is **live** when `day_date` = today in **America/New_York** (`todayET`, never device
+  zone / UTC). Live days get a LIVE badge, a ≥44px **Leaving now** button on each mapped stop
+  (map schedule + Reorder panel), and the stamped time ("✓ Left 10:42 AM") opens a native time
+  picker to edit or clear (Eastern wall time → UTC via `etWallTimeToDate`, DST-safe).
+- **Anchor** = last stamped stop in route order. It and every earlier stop show done (✓,
+  muted, no button unless stamped). The rest is re-projected by `computeLiveSchedule` from the
+  anchor's departure; traffic for remaining legs via the existing chained Distance Matrix
+  cache (departures snapped ≥ now, 15-min tolerance → repeat taps usually 0 calls).
+- Footer: "Finish 5:12 PM (planned 4:40 PM, +32 min)", terracotta past the day's end time.
+  **Reset to plan** clears the day's stamps in one UPDATE.
+- iPhone width (<700px): map stacks over a full-width schedule; controls compact.
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding
