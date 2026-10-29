@@ -65,6 +65,24 @@ const OVIS_MATCH_WINDOW_MINUTES = 30;
  */
 const PAIR_WINDOW_MINUTES = 10;
 
+/**
+ * OVIS/ labels that are NOT triage categories. OVIS/Flagged is written by the
+ * commitment panel's Flag button (and the owner may add it by hand from a
+ * phone). Either way it says nothing about which category a message belongs
+ * in, so it must never enter the correction set: it would teach the classifier
+ * a category that does not exist, and at 'silent' weight, since OVIS holds no
+ * category label for most flagged mail.
+ *
+ * The event row is still kept and still attributed -- a hand-flag is real
+ * signal for the commitment layer, just not for this one.
+ *
+ * Note the other half of the contract: commitment-action deliberately writes NO
+ * email_label row for this label, which is also what keeps label-inbox's
+ * reconcile pass from stripping it (that pass only touches OVIS's own
+ * email_label writes).
+ */
+const NON_CATEGORY_OVIS = new Set(['OVIS/Flagged']);
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -307,7 +325,7 @@ serve(async (req) => {
       let pairedId: string | null = null;
       let correctionKind: 'silent' | 'wrong' | null = null;
 
-      const isOvisCategory = ev.label.startsWith('OVIS/');
+      const isOvisCategory = ev.label.startsWith('OVIS/') && !NON_CATEGORY_OVIS.has(ev.label);
 
       if (ev.attribution !== 'owner') {
         gesture = 'ovis_write';
@@ -318,10 +336,13 @@ serve(async (req) => {
         gesture = ev.event_type === 'removed' ? 'handled' : 'noise';
         note = ev.event_type === 'removed' ? 'archived out of the inbox' : 'arrived in the inbox';
       } else if (!isOvisCategory) {
-        // The owner's own filing (! [MIKE], _OM, stars). Says nothing about
-        // whether OVIS's category was right, so it is not training signal.
+        // The owner's own filing (! [MIKE], _OM, stars), or an OVIS/ label that
+        // isn't a category. Says nothing about whether OVIS's category was
+        // right, so it is not training signal.
         gesture = 'noise';
-        note = `own filing label, outside the OVIS namespace: ${ev.label}`;
+        note = NON_CATEGORY_OVIS.has(ev.label)
+          ? `${ev.label} is not a triage category: the commitment panel owns it`
+          : `own filing label, outside the OVIS namespace: ${ev.label}`;
       } else if (ev.event_type === 'added') {
         // The owner put an OVIS label on. Either OVIS had it wrong, or OVIS had
         // nothing (Unsorted) and was just told. Both are training signal.
@@ -354,6 +375,9 @@ serve(async (req) => {
           .eq('attribution', 'owner')
           .neq('label', ev.label)
           .like('label', 'OVIS/%')
+          // A commitment flag landing in the pair window is not the other half
+          // of a category correction, so it must not supersede this removal.
+          .not('label', 'in', `(${[...NON_CATEGORY_OVIS].map((l) => `"${l}"`).join(',')})`)
           .gte('observed_at', lo)
           .lte('observed_at', hi)
           .limit(1);

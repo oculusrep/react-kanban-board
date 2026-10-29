@@ -7,22 +7,27 @@
  * two more things to get wrong. The caller is checked with caller-auth, which
  * resolves the JWT's OVIS user and runs is_internal_user() AS that user.
  *
+ * FLAG AND HANDLED BOTH TOUCH GMAIL, so both carry the same contract:
  * HANDLED IS NOT DONE UNTIL GMAIL SAYS SO. status flips to 'handled' with
  * sync_state 'pending', the conversation's INBOX messages are archived, and
  * only Gmail's success response moves sync_state to 'synced'. A failure leaves
  * 'failed' plus sync_error, which the row shows in red. The panel never
  * presents an unsynced row as handled -- "I archived it" is a claim about
- * someone else's mailbox and has to be true.
+ * someone else's mailbox and has to be true. Flag works the same way against
+ * the OVIS/Flagged label: it is applied, not assumed.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { authorizeCaller } from '../_shared/caller-auth.ts';
-import { refreshAccessToken, isTokenExpired, modifyMessageLabels } from '../_shared/gmail.ts';
+import { refreshAccessToken, isTokenExpired, modifyMessageLabels, getOrCreateLabel } from '../_shared/gmail.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 };
+
+/** The one Gmail label this panel writes. Nested name, so it groups under OVIS/. */
+const FLAG_LABEL = 'OVIS/Flagged';
 
 const ET = 'America/New_York';
 /** CLAUDE.md: Eastern Time for every date operation. */
@@ -63,12 +68,118 @@ serve(async (req) => {
   if (readErr) return json({ success: false, error: `read: ${readErr.message}` }, 500);
   if (!row) return json({ success: false, error: 'commitment not found' }, 404);
 
-  // ---- FLAG: stays in the inbox, stays on the panel, marked. ----
+  /** Record that the Gmail half of an action did not happen, and say what went wrong. */
+  const fail = async (msg: string, status: string) => {
+    await supabase.from('commitment')
+      .update({ sync_state: 'failed', sync_error: msg.slice(0, 500) }).eq('id', commitmentId);
+    return json({ success: false, action, status, sync_state: 'failed', error: msg }, 502);
+  };
+
+  /**
+   * A usable access token plus every thread_id in the conversation. Both
+   * Gmail-touching actions need exactly this, and a conversation routinely
+   * spans more than one thread_id -- 23% of replies are stored under a
+   * different one -- so neither action may assume gmail_thread_id is the whole
+   * conversation. Returns a message instead of throwing when it can't.
+   */
+  const resolveGmail = async (): Promise<{ accessToken: string; threadIds: string[] } | string> => {
+    const { data: conn } = await supabase
+      .from('gmail_connection')
+      .select('id, google_email, access_token, refresh_token, token_expires_at')
+      .eq('id', row.gmail_connection_id)
+      .maybeSingle();
+    if (!conn) return 'no gmail_connection on this commitment';
+
+    let accessToken = String(conn.access_token ?? '');
+    try {
+      if (isTokenExpired(conn.token_expires_at)) {
+        const t = await refreshAccessToken(
+          String(conn.refresh_token),
+          Deno.env.get('GOOGLE_CLIENT_ID') ?? '',
+          Deno.env.get('GOOGLE_CLIENT_SECRET') ?? '',
+        );
+        accessToken = t.access_token;
+        await supabase.from('gmail_connection').update({
+          access_token: accessToken,
+          token_expires_at: new Date(Date.now() + (t.expires_in ?? 3600) * 1000).toISOString(),
+        }).eq('id', conn.id);
+      }
+    } catch (e: any) {
+      return `token refresh: ${e?.message ?? e}`;
+    }
+
+    const threadIds = [...new Set([
+      String(row.gmail_thread_id),
+      ...((row.conversation_thread_ids ?? []) as string[]),
+    ].filter(Boolean))];
+    return { accessToken, threadIds };
+  };
+
+  /** One thread's messages, or a problem string. 404 means "not in this mailbox". */
+  const readThread = async (accessToken: string, tid: string): Promise<any[] | null | string> => {
+    const res = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/threads/${tid}?format=minimal`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) return `thread ${tid}: HTTP ${res.status} ${(await res.text()).slice(0, 120)}`;
+    const thread = await res.json();
+    return (thread.messages ?? []) as any[];
+  };
+
+  // ---- FLAG: stays in the inbox, stays on the panel, and takes the
+  // OVIS/Flagged label in Gmail. The label is the point of the button: a flag
+  // only OVIS can see would mean opening OVIS to find out what to do in Gmail.
+  // So the label is not best-effort -- a failure leaves sync_state 'failed'
+  // and the row says so, the same contract Handled has. ----
   if (action === 'flag') {
     const { error } = await supabase.from('commitment')
-      .update({ status: 'flagged', missed_runs: 0 }).eq('id', commitmentId);
+      .update({ status: 'flagged', sync_state: 'pending', sync_error: null, missed_runs: 0 })
+      .eq('id', commitmentId);
     if (error) return json({ success: false, error: `flag: ${error.message}` }, 500);
-    return json({ success: true, action, status: 'flagged' });
+
+    const g = await resolveGmail();
+    if (typeof g === 'string') return await fail(g, 'flagged');
+
+    let labelId: string;
+    try {
+      labelId = await getOrCreateLabel(g.accessToken, FLAG_LABEL);
+    } catch (e: any) {
+      return await fail(`label ${FLAG_LABEL}: ${e?.message ?? e}`, 'flagged');
+    }
+
+    const labelled: string[] = [];
+    const problems: string[] = [];
+    for (const tid of g.threadIds) {
+      try {
+        const msgs = await readThread(g.accessToken, tid);
+        if (msgs === null) continue;
+        if (typeof msgs === 'string') { problems.push(msgs); continue; }
+        // The messages actually sitting in the inbox. If the thread has already
+        // been archived, label its newest message instead, so the thread still
+        // surfaces under the label rather than quietly getting none.
+        const inInbox = msgs.filter((m) => (m.labelIds ?? []).includes('INBOX'));
+        const targets = inInbox.length ? inInbox : msgs.slice(-1);
+        for (const m of targets) {
+          if ((m.labelIds ?? []).includes(labelId)) continue;  // already flagged, re-flag is a no-op
+          await modifyMessageLabels(g.accessToken, String(m.id), [labelId], []);
+          labelled.push(String(m.id));
+        }
+      } catch (e: any) {
+        problems.push(`thread ${tid}: ${e?.message ?? e}`);
+      }
+    }
+
+    if (problems.length) return await fail(problems.join(' | '), 'flagged');
+
+    const { error: syncErr } = await supabase.from('commitment')
+      .update({ sync_state: 'synced', sync_error: null }).eq('id', commitmentId);
+    if (syncErr) return await fail(`sync flag: ${syncErr.message}`, 'flagged');
+
+    return json({
+      success: true, action, status: 'flagged', sync_state: 'synced',
+      label: FLAG_LABEL, threads: g.threadIds.length, labelled_messages: labelled.length,
+    });
   }
 
   // ---- SKIP: defer to tomorrow and count it. Decay is a later step; the
@@ -111,59 +222,22 @@ serve(async (req) => {
     .eq('id', commitmentId);
   if (markErr) return json({ success: false, error: `mark handled: ${markErr.message}` }, 500);
 
-  const fail = async (msg: string) => {
-    await supabase.from('commitment')
-      .update({ sync_state: 'failed', sync_error: msg.slice(0, 500) }).eq('id', commitmentId);
-    return json({ success: false, action, status: 'handled', sync_state: 'failed', error: msg }, 502);
-  };
-
-  const { data: conn } = await supabase
-    .from('gmail_connection')
-    .select('id, google_email, access_token, refresh_token, token_expires_at')
-    .eq('id', row.gmail_connection_id)
-    .maybeSingle();
-  if (!conn) return await fail('no gmail_connection on this commitment');
-
-  const clientId = Deno.env.get('GOOGLE_CLIENT_ID') ?? '';
-  const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? '';
-  let accessToken = String(conn.access_token ?? '');
-  try {
-    if (isTokenExpired(conn.token_expires_at)) {
-      const t = await refreshAccessToken(String(conn.refresh_token), clientId, clientSecret);
-      accessToken = t.access_token;
-      await supabase.from('gmail_connection').update({
-        access_token: accessToken,
-        token_expires_at: new Date(Date.now() + (t.expires_in ?? 3600) * 1000).toISOString(),
-      }).eq('id', conn.id);
-    }
-  } catch (e: any) {
-    return await fail(`token refresh: ${e?.message ?? e}`);
-  }
-
-  // Every thread_id in the conversation, because a conversation can span more
-  // than one: 23% of replies are stored under a different thread_id.
-  const threadIds = [...new Set([
-    String(row.gmail_thread_id),
-    ...((row.conversation_thread_ids ?? []) as string[]),
-  ].filter(Boolean))];
+  const g = await resolveGmail();
+  if (typeof g === 'string') return await fail(g, 'handled');
 
   const archived: string[] = [];
   const problems: string[] = [];
-  for (const tid of threadIds) {
+  for (const tid of g.threadIds) {
     try {
-      const res = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/threads/${tid}?format=minimal`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      );
-      if (res.status === 404) continue;                 // thread not in this mailbox
-      if (!res.ok) { problems.push(`thread ${tid}: HTTP ${res.status} ${(await res.text()).slice(0, 120)}`); continue; }
-      const thread = await res.json();
-      const inInbox = (thread.messages ?? []).filter((m: any) => (m.labelIds ?? []).includes('INBOX'));
+      const msgs = await readThread(g.accessToken, tid);
+      if (msgs === null) continue;                      // thread not in this mailbox
+      if (typeof msgs === 'string') { problems.push(msgs); continue; }
+      const inInbox = msgs.filter((m) => (m.labelIds ?? []).includes('INBOX'));
       for (const m of inInbox) {
         // Remove INBOX by its system id. No label lookup: INBOX is not a
         // user label and findLabelByName would be an extra round trip that
         // can fail open.
-        await modifyMessageLabels(accessToken, String(m.id), [], ['INBOX']);
+        await modifyMessageLabels(g.accessToken, String(m.id), [], ['INBOX']);
         archived.push(String(m.id));
       }
     } catch (e: any) {
@@ -171,14 +245,14 @@ serve(async (req) => {
     }
   }
 
-  if (problems.length) return await fail(problems.join(' | '));
+  if (problems.length) return await fail(problems.join(' | '), 'handled');
 
   const { error: syncErr } = await supabase.from('commitment')
     .update({ sync_state: 'synced', sync_error: null }).eq('id', commitmentId);
-  if (syncErr) return await fail(`sync flag: ${syncErr.message}`);
+  if (syncErr) return await fail(`sync flag: ${syncErr.message}`, 'handled');
 
   return json({
     success: true, action, status: 'handled', sync_state: 'synced',
-    threads: threadIds.length, archived_messages: archived.length,
+    threads: g.threadIds.length, archived_messages: archived.length,
   });
 });

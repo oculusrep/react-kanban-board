@@ -184,7 +184,12 @@ export function TriagePage() {
         throw new Error(body?.error || `HTTP ${res.status}`);
       }
       if (action === 'flag') {
-        setRows((rs) => (rs ?? []).map((r) => (r.id === row.id ? { ...r, status: 'flagged' } : r)));
+        // Flag now labels the thread in Gmail, so a success clears any sync
+        // error a previous attempt left behind -- otherwise the row keeps
+        // showing red after the retry that fixed it.
+        setRows((rs) => (rs ?? []).map((r) => (r.id === row.id
+          ? { ...r, status: 'flagged', sync_state: String(body?.sync_state ?? r.sync_state), sync_error: null }
+          : r)));
       } else {
         // handled (synced), skip (deferred) and reject all leave the panel.
         setRows((rs) => (rs ?? []).filter((r) => r.id !== row.id));
