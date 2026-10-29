@@ -357,3 +357,67 @@ to run against live mail to be measured. The data is better than before the roun
 (10 of 11 pitches gone, #24 restored, 0 time words, 0 errors) but #22 is absent.
 Rolling the function back to `dbb2101a` is one deploy if the panel needs the
 previous behaviour instead.
+
+---
+
+# Waiting list + rejection permanence — 2026-10-29
+
+Migration `20261029084818` adds `untracked` to the status CHECK. **Nothing writes
+it automatically**; it exists so that retiring a row later never has to borrow
+`handled`, which is the only status recording real completion.
+
+## Waiting on others
+
+Every `ball='them'` row is tracked, deal-linked or not. A row shows only once its
+conversation has been silent **`WAITING_QUIET_DAYS` (5)** since the **last message
+of any kind** — their reply resets the clock exactly as the owner's chase does, so
+a moving thread stays out of the way and a reply drops the row off the list
+without a special case. One constant, one place to change it
+(`src/pages/TriagePage.tsx`).
+
+The collapsed header reads **"N waiting, M gone quiet"**, so hidden rows are
+visibly tracked rather than silently dropped. A row with no last message at all
+is treated as still moving rather than having a quiet period invented for it.
+
+## Rejections are permanent
+
+`extract-commitments` now skips any direction the owner has rejected on that
+conversation (`suppressed_by_rejection`). Before this, the next run inserted a
+fresh open row for the exact obligation they had just dismissed.
+
+## Fresh run, 2026-10-29
+
+$0.93 of a $5 cap, 292 model calls, **0 model errors, 0 parse errors, 0 time
+words**, 73 inserted / 31 updated by `existing_id` / 0 bad ids, 20 relay humans
+resolved.
+
+**THE EVAL HAS GONE STALE AND IS NO LONGER A LIVE GATE.** It still reads 1 / 5 / 1
+"at baseline", but its 25 conversations are from the 2026-09/10 window, which has
+rolled out of the 14-day extraction window entirely. Extraction no longer touches
+them, so the score is now measuring frozen rows, not current behaviour. It must be
+re-rated against a current window before it means anything again.
+
+## Rows age out and become immortal
+
+Extraction only sees the last 14 days, so an open row whose conversation falls
+out of the window is never re-judged and never retired. Only 4 such rows exist
+right now, because the owner cleared most of the old ones by hand. It will grow.
+
+## Cron: proposed, NOT scheduled
+
+**A single cron call cannot do a pass.** The function handles one mailbox per
+invocation, batches 50 conversations against a 110s deadline, and hands back
+`next_offset` — and `pg_net` abandons the response after 5s, so the cron can never
+read the result. It needs a cursor, like the deep-sweep state machine: one tick =
+one batch, cursor in a small table, a full pass completing over ~35 minutes and
+then idling.
+
+| option | measured / estimated | per month |
+|---|---|---|
+| daily full pass, both mailboxes | **$0.93** (measured today) | ~$28 |
+| daily full pass, mike@ only | ~$0.73 | ~$22 |
+| incremental (only conversations with new messages) | ~$0.30–0.40 (estimate, needs a code change) | ~$10 |
+
+Recommendation: start with the daily full pass — it also re-judges and retires
+stale rows, which the incremental variant would not — then move to incremental
+once the cursor machinery is proven. **Not scheduled; awaiting approval.**
