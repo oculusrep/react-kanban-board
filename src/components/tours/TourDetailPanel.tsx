@@ -23,7 +23,9 @@ import {
   ApproachTag,
   ArriveText,
   DayTotalsFooter,
-  LiveDepartControl,
+  LeavingNowButton,
+  StampedDeparture,
+  useIsNarrow,
   DriveConnector,
   NoLocationTag,
   TOUR_COLORS,
@@ -100,6 +102,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   const [geocoding, setGeocoding] = useState<string | null>(null); // `${dayId}:start|end`
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
+  const narrow = useIsNarrow();
   const cancelLabelRef = useRef(false); // Escape: blur without saving
 
   const load = useCallback(async () => {
@@ -353,7 +356,12 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   };
 
   // live: the section's day is today (Eastern) → anchor = last stamped stop in this section.
-  const renderStop = (stop: TourStopWithSiteSubmit, index: number, color: string, live?: { dayDate: string; anchorIdx: number }) => {
+  const renderStop = (
+    stop: TourStopWithSiteSubmit,
+    index: number,
+    color: string,
+    live?: { dayDate: string; anchorIdx: number; currentStopId: string | null }
+  ) => {
     const { name, subtext } = stopDisplayName({
       display_label: stop.display_label,
       site_submit_name: stop.site_submit?.site_submit_name,
@@ -439,6 +447,10 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                  {!narrow && live?.currentStopId === stop.id && <LeavingNowButton onStamp={(iso) => handleStamp(stop.id, iso)} />}
+                  {live && stop.actual_departure_at && (
+                    <StampedDeparture stampedAt={stop.actual_departure_at} dayDate={live.dayDate} onStamp={(iso) => handleStamp(stop.id, iso)} />
+                  )}
                   {!mapped && <NoLocationTag />}
                   <ApproachTag source={effectiveApproach(stop.approach_waypoints_override, stop.site_submit?.approach_waypoints).source} />
                 </>
@@ -446,8 +458,8 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
               subtext={subtext ? ssLink(subtext, '#9CA3AF') : null}
               footer={
                 <>
-                  {live && mapped && (index > live.anchorIdx || stop.actual_departure_at) && (
-                    <LiveDepartControl stampedAt={stop.actual_departure_at} dayDate={live.dayDate} onStamp={(iso) => handleStamp(stop.id, iso)} />
+                  {narrow && live?.currentStopId === stop.id && (
+                    <LeavingNowButton block onStamp={(iso) => handleStamp(stop.id, iso)} />
                   )}
                   <input
                     defaultValue={stop.notes ?? ''}
@@ -478,10 +490,13 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   const renderSection = (opts: { id: string; title: React.ReactNode; subtitle?: React.ReactNode; color: string; totals?: DayTotals; day?: TourDay }) => {
     const list = sections[opts.id] ?? [];
     const isLive = !!opts.day?.day_date && opts.day.day_date === todayET();
+    const anchorIdx = liveAnchorIndex(list.map((s) => (resolveStopCoord(s.site_submit) ? s.actual_departure_at : null)));
     const live = isLive
       ? {
           dayDate: opts.day!.day_date!,
-          anchorIdx: liveAnchorIndex(list.map((s) => (resolveStopCoord(s.site_submit) ? s.actual_departure_at : null))),
+          anchorIdx,
+          // Current stop = first mapped stop after the anchor (stop 1 if nothing stamped).
+          currentStopId: list.find((s, i) => i > anchorIdx && !!resolveStopCoord(s.site_submit))?.id ?? null,
         }
       : undefined;
     return (

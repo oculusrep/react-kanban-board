@@ -38,8 +38,9 @@ import {
   CategoryPill,
   DayTotalsFooter,
   DriveConnector,
-  LiveDepartControl,
+  LeavingNowButton,
   NoLocationTag,
+  StampedDeparture,
   TourStopCard,
   useIsNarrow,
   type DayTotals,
@@ -107,6 +108,7 @@ interface DayRender {
   endCoord: google.maps.LatLngLiteral | null;
   isLive: boolean; // day_date is today (Eastern)
   anchorStopId: string | null; // latest stamped stop in route order
+  currentStopId: string | null; // live: the stop we're at now (first mapped stop after the anchor)
   liveSchedule: DaySchedule | null; // re-projected from the anchor's departure
   liveTraffic: 'live' | 'unavailable' | null;
 }
@@ -532,6 +534,7 @@ function TourMapPageInner() {
           endCoord,
           isLive,
           anchorStopId: anchorIdx >= 0 ? ordered[anchorIdx].id : null,
+          currentStopId: isLive ? ordered[anchorIdx + 1]?.id ?? null : null,
           liveSchedule,
           liveTraffic,
         });
@@ -1012,6 +1015,17 @@ function TourMapPageInner() {
                               {!done && <ArriveText arrivalMin={timing?.arrivalMin} />}
                               <span>{s.effective_duration_minutes} min</span>
                               <CategoryPill name={s.category_name} />
+                              {!narrow && s.id === dr.currentStopId && (
+                                <LeavingNowButton busy={stampingId === s.id} onStamp={(iso) => stampStop(s, iso)} />
+                              )}
+                              {dr.isLive && s.actual_departure_at && dr.day.day_date && (
+                                <StampedDeparture
+                                  stampedAt={s.actual_departure_at}
+                                  dayDate={dr.day.day_date}
+                                  busy={stampingId === s.id}
+                                  onStamp={(iso) => stampStop(s, iso)}
+                                />
+                              )}
                               {!mapped && <NoLocationTag />}
                               <ApproachTag
                                 source={s.approach_source}
@@ -1023,14 +1037,9 @@ function TourMapPageInner() {
                           }
                           subtext={s.display_subtext}
                           footer={
-                            // Done stops before the anchor need no button; a stamped one stays editable.
-                            dr.isLive && mapped && dr.day.day_date && (!done || s.actual_departure_at) ? (
-                              <LiveDepartControl
-                                stampedAt={s.actual_departure_at}
-                                dayDate={dr.day.day_date}
-                                busy={stampingId === s.id}
-                                onStamp={(iso) => stampStop(s, iso)}
-                              />
+                            // Phone: full-width (36px) button, current stop only.
+                            narrow && s.id === dr.currentStopId ? (
+                              <LeavingNowButton block busy={stampingId === s.id} onStamp={(iso) => stampStop(s, iso)} />
                             ) : undefined
                           }
                         />

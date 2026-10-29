@@ -287,88 +287,75 @@ export function useIsNarrow(maxWidth = 700): boolean {
   return narrow;
 }
 
-// ---- live day: "Leaving now" / stamped time editor ----
+// ---- live day: "Leaving now" (current stop only) + stamped time ----
 
-interface LiveDepartControlProps {
-  stampedAt: string | null; // UTC ISO
+// Every tap in these stays here (map cards toggle focus on click).
+const stopProp = (e: { stopPropagation(): void }) => e.stopPropagation();
+
+/** Desktop: small pill on line 2, same height as the category pill. Phone: full-width, 36px. */
+export function LeavingNowButton({ onStamp, busy, block }: { onStamp: (iso: string) => void; busy?: boolean; block?: boolean }) {
+  const common: CSSProperties = {
+    border: 'none',
+    background: midnight,
+    color: '#FFFFFF',
+    fontWeight: 700,
+    cursor: busy ? 'wait' : 'pointer',
+    opacity: busy ? 0.6 : 1,
+    touchAction: 'manipulation',
+    whiteSpace: 'nowrap',
+  };
+  const style: CSSProperties = block
+    ? { ...common, width: '100%', height: 36, borderRadius: 8, fontSize: 15, marginTop: 8 }
+    : { ...common, borderRadius: 999, padding: '1px 9px', fontSize: 11, lineHeight: '18px' };
+  return (
+    <button type="button" disabled={busy} onClick={(e) => (stopProp(e), onStamp(new Date().toISOString()))} style={style}>
+      Leaving now ▸
+    </button>
+  );
+}
+
+/** Small "✓ Left 10:42 AM" text; tap to edit (native time picker) or clear. */
+export function StampedDeparture({
+  stampedAt,
+  dayDate,
+  onStamp,
+  busy,
+}: {
+  stampedAt: string; // UTC ISO
   dayDate: string; // YYYY-MM-DD (the live day, Eastern)
   onStamp: (iso: string | null) => void;
   busy?: boolean;
-}
-
-const TAP = 44; // minimum touch target (Apple HIG)
-
-export function LiveDepartControl({ stampedAt, dayDate, onStamp, busy }: LiveDepartControlProps) {
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  // Every tap in here stays here (cards toggle map focus on click).
-  const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
-
-  if (!stampedAt) {
-    return (
-      <div onClick={stop} style={{ marginTop: 8 }}>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onStamp(new Date().toISOString())}
-          style={{
-            width: '100%',
-            minHeight: TAP,
-            border: 'none',
-            borderRadius: 8,
-            background: midnight,
-            color: '#FFFFFF',
-            fontSize: 16,
-            fontWeight: 700,
-            cursor: busy ? 'wait' : 'pointer',
-            opacity: busy ? 0.6 : 1,
-            touchAction: 'manipulation',
-          }}
-        >
-          Leaving now
-        </button>
-      </div>
-    );
-  }
-
   const at = new Date(stampedAt);
+
   if (!editing) {
     return (
-      <div onClick={stop} style={{ marginTop: 8 }}>
-        <button
-          type="button"
-          onClick={() => {
-            setDraft(etHHMM(at));
-            setEditing(true);
-          }}
-          title="Edit or clear the departure time"
-          style={{
-            minHeight: TAP,
-            width: '100%',
-            border: `1px solid ${cardBorder}`,
-            borderRadius: 8,
-            background: '#FFFFFF',
-            color: midnight,
-            fontSize: 15,
-            fontWeight: 600,
-            cursor: 'pointer',
-            touchAction: 'manipulation',
-          }}
-        >
-          ✓ Left {formatClock12(etClockMinutes(at))} <span style={{ color: slate, fontWeight: 400, fontSize: 13 }}>· edit</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          stopProp(e);
+          setDraft(etHHMM(at));
+          setEditing(true);
+        }}
+        title="Edit or clear the departure time"
+        style={{ border: 'none', background: 'transparent', padding: 0, color: steel, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+      >
+        ✓ Left {formatClock12(etClockMinutes(at))}
+      </button>
     );
   }
 
-  const small: CSSProperties = { minHeight: TAP, borderRadius: 8, fontSize: 15, fontWeight: 600, padding: '0 14px', cursor: 'pointer', touchAction: 'manipulation' };
+  const btn: CSSProperties = { height: 32, borderRadius: 6, fontSize: 13, fontWeight: 600, padding: '0 10px', cursor: 'pointer', touchAction: 'manipulation' };
   return (
-    <div onClick={stop} style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+    // flexBasis 100% drops the editor onto its own row inside the card's wrapping meta line.
+    <span onClick={stopProp} style={{ flexBasis: '100%', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
       <input
         type="time"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        style={{ minHeight: TAP, fontSize: 16, border: `1px solid ${slate}`, borderRadius: 8, padding: '0 8px', flex: '1 1 120px' }}
+        style={{ height: 32, fontSize: 16, border: `1px solid ${slate}`, borderRadius: 6, padding: '0 6px' }}
       />
       <button
         type="button"
@@ -377,7 +364,7 @@ export function LiveDepartControl({ stampedAt, dayDate, onStamp, busy }: LiveDep
           onStamp(etWallTimeToDate(dayDate, draft).toISOString());
           setEditing(false);
         }}
-        style={{ ...small, border: 'none', background: midnight, color: '#fff' }}
+        style={{ ...btn, border: 'none', background: midnight, color: '#fff' }}
       >
         Save
       </button>
@@ -388,13 +375,13 @@ export function LiveDepartControl({ stampedAt, dayDate, onStamp, busy }: LiveDep
           onStamp(null);
           setEditing(false);
         }}
-        style={{ ...small, border: `1px solid ${terracotta}`, background: '#fff', color: terracotta }}
+        style={{ ...btn, border: `1px solid ${terracotta}`, background: '#fff', color: terracotta }}
       >
         Clear
       </button>
-      <button type="button" onClick={() => setEditing(false)} style={{ ...small, border: `1px solid ${cardBorder}`, background: '#fff', color: steel }}>
+      <button type="button" onClick={() => setEditing(false)} style={{ ...btn, border: `1px solid ${cardBorder}`, background: '#fff', color: steel }}>
         Cancel
       </button>
-    </div>
+    </span>
   );
 }
