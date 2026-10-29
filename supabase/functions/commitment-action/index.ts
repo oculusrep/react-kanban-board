@@ -34,7 +34,7 @@ const ET = 'America/New_York';
 const etDay = (d: Date) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: ET, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 
-type Action = 'handled' | 'flag' | 'skip' | 'reject';
+type Action = 'handled' | 'flag' | 'skip' | 'reject' | 'not_a_person';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body, null, 2), {
@@ -54,19 +54,43 @@ serve(async (req) => {
     action = String(b?.action ?? '') as Action;
   } catch { /* validated below */ }
 
-  if (!commitmentId || !['handled', 'flag', 'skip', 'reject'].includes(action)) {
-    return json({ success: false, error: 'commitment_id and action (handled|flag|skip|reject) are required' }, 400);
+  if (!commitmentId || !['handled', 'flag', 'skip', 'reject', 'not_a_person'].includes(action)) {
+    return json({
+      success: false,
+      error: 'commitment_id and action (handled|flag|skip|reject|not_a_person) are required',
+    }, 400);
   }
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
   const { data: row, error: readErr } = await supabase
     .from('commitment')
-    .select('id, gmail_thread_id, conversation_thread_ids, gmail_connection_id, ball, what, reason_core, skip_count, status')
+    .select('id, gmail_thread_id, conversation_thread_ids, gmail_connection_id, ball, what, reason_core, skip_count, status, counterparty_email')
     .eq('id', commitmentId)
     .maybeSingle();
   if (readErr) return json({ success: false, error: `read: ${readErr.message}` }, 500);
   if (!row) return json({ success: false, error: 'commitment not found' }, 404);
+
+  // ---- NOT A PERSON: stop offering "Add contact" for this address. The
+  // address is taken FROM THE ROW, never from the request body, so a caller
+  // cannot blacklist an address it was never shown. Nothing about the
+  // commitment itself changes -- the obligation is still real, it just has no
+  // contact behind it. ----
+  if (action === 'not_a_person') {
+    const email = String(row.counterparty_email ?? '').trim();
+    if (!email) return json({ success: false, error: 'this commitment has no counterparty_email' }, 400);
+    // A plain INSERT, not an upsert: the unique index is on lower(email), an
+    // expression, which PostgREST's onConflict cannot name. The index is the
+    // thing that actually guarantees one row per address whoever writes it, so
+    // it stays, and a duplicate is read off the error instead.
+    const lower = email.toLowerCase();
+    const { error } = await supabase.from('commitment_not_a_person')
+      .insert({ email: lower, commitment_id: row.id });
+    if (error && error.code !== '23505') {
+      return json({ success: false, error: `not_a_person: ${error.message}` }, 500);
+    }
+    return json({ success: true, action, email: lower, already: error?.code === '23505' });
+  }
 
   /** Record that the Gmail half of an action did not happen, and say what went wrong. */
   const fail = async (msg: string, status: string) => {

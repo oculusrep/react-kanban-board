@@ -123,7 +123,12 @@ interface FileResponse {
 }
 
 /** supabase.functions.invoke puts the function's own error body out of reach. */
-async function invoke<T>(body: Record<string, unknown>): Promise<T> {
+/**
+ * One call to ovis-knowledge-capture, with its error detail unwrapped.
+ * Exported so other panels (the triage desk's "Add contact") can reuse the
+ * lookup without pulling in this hook's state.
+ */
+export async function invokeKnowledgeCapture<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ovis-knowledge-capture', { body });
   if (error) {
     // FunctionsHttpError carries the response; the detail in it is the useful part.
@@ -153,7 +158,7 @@ export type PastedSignatureResult =
   | { result: 'nothing_found' };
 
 export function parsePastedSignature(text: string): Promise<PastedSignatureResult> {
-  return invoke<PastedSignatureResult>({ action: 'parse_signature', text });
+  return invokeKnowledgeCapture<PastedSignatureResult>({ action: 'parse_signature', text });
 }
 
 export function useKnowledgeCapture(authUserId: string | null) {
@@ -191,7 +196,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
   /** Signature lookup in the user's own mailbox. `senderEmail` is a picked candidate. */
   const lookupEmailSignature = useCallback(
     (name: string, opts: { email?: string; senderEmail?: string } = {}) =>
-      invoke<EmailLookupResult>({
+      invokeKnowledgeCapture<EmailLookupResult>({
         action: 'lookup_email_signature',
         name,
         ...(opts.email ? { email: opts.email } : {}),
@@ -253,7 +258,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
       setError(null);
 
       try {
-        const result = await invoke<TurnResponse>({
+        const result = await invokeKnowledgeCapture<TurnResponse>({
           action: 'converse',
           messages: next,
           entry_draft: { raw_text: noteText },
@@ -347,7 +352,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
     setError(null);
 
     try {
-      const result = await invoke<FileResponse>({
+      const result = await invokeKnowledgeCapture<FileResponse>({
         action: 'file',
         entry: {
           raw_text: rawText,

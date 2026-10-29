@@ -89,7 +89,7 @@ function formatEasternDate(iso: string): string {
 }
 
 /** The source line on the contact form: which email, from whom, and when. */
-function emailPrefillNotice(prefill: EmailPrefill): string {
+export function emailPrefillNotice(prefill: EmailPrefill): string {
   if (!prefill.source) return NO_SIGNATURE_MESSAGE;
   const from = `${prefill.source.sender_email}'s email of ${formatEasternDate(prefill.source.received_at)}`;
   const lines = [
@@ -103,7 +103,7 @@ function emailPrefillNotice(prefill: EmailPrefill): string {
 }
 
 /** Only the fields the contact form takes, and only non-empty ones. */
-function pickContactFields(details?: UnresolvedName['details']) {
+export function pickContactFields(details?: UnresolvedName['details']) {
   if (!details) return {};
   const out: Partial<Record<'email' | 'phone' | 'mobile_phone' | 'title' | 'company', string>> = {};
   for (const key of ['email', 'phone', 'mobile_phone', 'title', 'company'] as const) {

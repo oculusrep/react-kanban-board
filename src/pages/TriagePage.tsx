@@ -16,6 +16,10 @@
  * ALL WRITES GO THROUGH THE commitment-action EDGE FUNCTION. `commitment`
  * grants this role SELECT and nothing else, deliberately.
  *
+ * "ADD CONTACT" REUSES THE APP'S OWN FORM. The modal, the signature lookup and
+ * the deal_contact insert are all the existing ones; this page only decides
+ * WHICH addresses to offer and prefills what the lookup found.
+ *
  * A FAILED QUERY IS NEVER AN EMPTY LIST. Each section carries its own error
  * state. "Nothing to show" and "I could not look" are different claims and must
  * read differently -- that confusion is the recurring failure on this project.
@@ -25,8 +29,17 @@ import { supabase } from '../lib/supabaseClient';
 import {
   CheckCircleIcon, FlagIcon, ClockIcon, NoSymbolIcon,
   ArrowPathIcon, ArrowTopRightOnSquareIcon, ChevronDownIcon, ChevronRightIcon,
-  ExclamationTriangleIcon,
+  ExclamationTriangleIcon, UserPlusIcon, UserMinusIcon,
 } from '@heroicons/react/24/outline';
+import ContactFormModal from '../components/ContactFormModal';
+import { splitPersonName } from '../utils/personName';
+import { prepareInsert } from '../lib/supabaseHelpers';
+import {
+  emailPrefillNotice, pickContactFields, type EmailPrefill,
+} from '../components/knowledgeCapture/KnowledgeCaptureLauncher';
+import {
+  invokeKnowledgeCapture, type EmailLookupResult,
+} from '../components/knowledgeCapture/useKnowledgeCapture';
 
 const OWNER_EMAIL = 'mike@oculusrep.com';
 
@@ -47,7 +60,7 @@ const STEEL = '#4A6B94';
 const SLATE = '#8FA9C8';
 const TERRACOTTA = '#A27B5C';
 
-type Action = 'handled' | 'flag' | 'skip' | 'reject';
+type Action = 'handled' | 'flag' | 'skip' | 'reject' | 'not_a_person';
 
 interface Row {
   id: string;
@@ -63,8 +76,22 @@ interface Row {
   promised_date: string | null;
   deal_id: string | null;
   deal?: { deal_name: string | null } | null;
+  counterparty_name: string | null;
+  counterparty_email: string | null;
   lastAt?: string | null;
 }
+
+/** The contact form, open for one row. */
+interface Creating {
+  row: Row;
+  /** What the email lookup found, or null when it wasn't run. */
+  prefill: EmailPrefill | null;
+  /** Pre-ticked when the row has a deal. */
+  attachDeal: boolean;
+}
+
+/** Above the map/Intel overlay band, per ContactFormModal's zIndex note. */
+const Z_CONTACT_MODAL = 10050;
 
 /** CLAUDE.md: local date, never toISOString(). */
 function todayLocal(): string {
@@ -84,6 +111,23 @@ function agoText(iso: string | null): string {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
+/**
+ * One address, not a list. 3 of 158 counterparty_email values hold two
+ * comma-joined addresses ("cadams@…, koleary@…") because the obligation named
+ * two people and the column takes one. Offering "Add contact" there would open
+ * the form with an address that is not an address, so those rows simply get no
+ * offer. The extractor side of that -- one commitment per counterparty -- is a
+ * separate change.
+ */
+function isSingleAddress(email: string | null): email is string {
+  return !!email && /^[^@\s,]+@[^@\s,]+\.[^@\s,]+$/.test(email.trim());
+}
+
+/** The relay address, if the lookup found one. Narrows the EmailPrefill union. */
+function relayFrom(p: EmailPrefill | null): string | undefined {
+  return p && p.source ? p.relayFrom : undefined;
+}
+
 function gmailLink(threadId: string): string {
   return `https://mail.google.com/mail/u/0/#all/${threadId}`;
 }
@@ -99,6 +143,17 @@ export function TriagePage() {
   const [running, setRunning] = useState<null | 'incremental' | 'full'>(null);
   const [progress, setProgress] = useState<string>('');
   const [runError, setRunError] = useState<string | null>(null);
+  /**
+   * Counterparty addresses that are neither an OVIS contact nor dismissed,
+   * lowercased. null means THE CHECK DID NOT RUN -- no button is offered, and
+   * contactError says why, rather than the page implying every address is known.
+   */
+  const [unknownEmails, setUnknownEmails] = useState<Set<string> | null>(null);
+  const [contactError, setContactError] = useState<string | null>(null);
+  /** Whether to run the mailbox lookup at all (app_settings allowlist). */
+  const [lookupAllowed, setLookupAllowed] = useState(false);
+  const [creating, setCreating] = useState<Creating | null>(null);
+  const [lookingUp, setLookingUp] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,7 +179,7 @@ export function TriagePage() {
       const today = todayLocal();
       const { data, error: rowErr } = await supabase
         .from('commitment')
-        .select('id, gmail_thread_id, conversation_thread_ids, ball, status, sync_state, sync_error, speakable_reason, what, skip_count, promised_date, deal_id, deal:deal_id (deal_name)')
+        .select('id, gmail_thread_id, conversation_thread_ids, ball, status, sync_state, sync_error, speakable_reason, what, skip_count, promised_date, deal_id, deal:deal_id (deal_name), counterparty_name, counterparty_email')
         .eq('gmail_connection_id', conn.id)
         .in('status', ['open', 'flagged', 'skipped'])
         .or(`next_surface_date.is.null,next_surface_date.lte.${today}`)
@@ -155,6 +210,27 @@ export function TriagePage() {
         r.lastAt = keys.map((k) => lastByThread.get(k)).filter(Boolean).sort().pop() ?? null;
       }
       setRows(list);
+
+      // Which counterparties aren't contacts yet. One RPC, not a PostgREST
+      // .in(): the match has to be case-insensitive across contact.email and
+      // contact.personal_email (63 of 4611 stored addresses are mixed-case), and
+      // it folds in the dismissed list at the same time.
+      const addrs = [...new Set(
+        list.map((r) => r.counterparty_email).filter(isSingleAddress).map((e) => e.trim()),
+      )];
+      if (!addrs.length) {
+        setUnknownEmails(new Set());
+      } else {
+        const { data: unknown, error: unkErr } = await supabase
+          .rpc('commitment_unknown_counterparties', { p_emails: addrs });
+        if (unkErr) {
+          setUnknownEmails(null);
+          setContactError(`Could not check which counterparties are contacts: ${unkErr.message}`);
+        } else {
+          setContactError(null);
+          setUnknownEmails(new Set((unknown ?? []).map((r: any) => String(r.email).toLowerCase())));
+        }
+      }
     } catch (e: any) {
       setRows(null);
       setError(String(e?.message ?? e));
@@ -164,6 +240,16 @@ export function TriagePage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Only decides whether to RUN the mailbox lookup; the edge function re-checks.
+  // Not allowed is not an error here -- the form just opens unprefilled.
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc('intel_email_lookup_allowed').then(({ data, error: err }) => {
+      if (!cancelled) setLookupAllowed(!err && data === true);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const act = useCallback(async (row: Row, action: Action) => {
     setBusy((b) => ({ ...b, [row.id]: action }));
@@ -183,7 +269,20 @@ export function TriagePage() {
         // and says what Gmail said.
         throw new Error(body?.error || `HTTP ${res.status}`);
       }
-      if (action === 'flag') {
+      if (action === 'not_a_person') {
+        // The obligation is still real; only the offer to create a contact goes.
+        const addr = isSingleAddress(row.counterparty_email)
+          ? row.counterparty_email.trim().toLowerCase()
+          : null;
+        if (addr) {
+          setUnknownEmails((set) => {
+            if (!set) return set;
+            const next = new Set(set);
+            next.delete(addr);
+            return next;
+          });
+        }
+      } else if (action === 'flag') {
         // Flag now labels the thread in Gmail, so a success clears any sync
         // error a previous attempt left behind -- otherwise the row keeps
         // showing red after the retry that fixed it.
@@ -276,9 +375,85 @@ export function TriagePage() {
     [waitingAll, quietCutoff],
   );
 
+  /**
+   * Open the app's contact form for this row's counterparty, prefilled from the
+   * owner's own mailbox where the lookup can find a signature.
+   *
+   * The lookup is given sender_email, so its name-matching step is skipped
+   * entirely: no full name is needed and no candidate list can come back. A
+   * lookup failure is reported but never blocks the form -- creating the
+   * contact by hand must stay possible.
+   */
+  const addContact = useCallback(async (row: Row) => {
+    setContactError(null);
+    let prefill: EmailPrefill | null = null;
+    if (lookupAllowed && row.counterparty_email) {
+      setLookingUp(row.id);
+      try {
+        const res = await invokeKnowledgeCapture<EmailLookupResult>({
+          action: 'lookup_email_signature',
+          name: row.counterparty_name ?? '',
+          sender_email: row.counterparty_email,
+        });
+        prefill = res.result === 'found'
+          ? {
+              details: res.details,
+              source: res.source,
+              signatureEmail: res.signature_email,
+              relayFrom: res.relay_from,
+            }
+          : { details: {}, source: null };
+      } catch (e: any) {
+        setContactError(`Email lookup failed: ${String(e?.message ?? e)}. The form is empty.`);
+      } finally {
+        setLookingUp(null);
+      }
+    }
+    setCreating({ row, prefill, attachDeal: !!row.deal_id });
+  }, [lookupAllowed]);
+
+  /**
+   * The form created the contact. Attach it to the row's deal if that was
+   * ticked, then stop offering the address.
+   *
+   * A failed attach is reported but not retried or rolled back: the contact
+   * exists either way, and saying so is more useful than implying nothing
+   * happened.
+   */
+  const afterContactSaved = useCallback(async (contactId: string, c: Creating) => {
+    setCreating(null);
+    if (c.attachDeal && c.row.deal_id) {
+      const { error } = await supabase.from('deal_contact').insert(prepareInsert({
+        deal_id: c.row.deal_id,
+        contact_id: contactId,
+        primary_contact: false,
+        role_id: null,
+      }));
+      if (error) {
+        setContactError(`Contact created, but attaching it to ${c.row.deal?.deal_name ?? 'the deal'} failed: ${error.message}`);
+      }
+    }
+    const addr = isSingleAddress(c.row.counterparty_email)
+      ? c.row.counterparty_email.trim().toLowerCase()
+      : null;
+    if (addr) {
+      setUnknownEmails((set) => {
+        if (!set) return set;
+        const next = new Set(set);
+        next.delete(addr);
+        return next;
+      });
+    }
+  }, []);
+
   const renderRow = (row: Row) => {
     const b = busy[row.id];
     const err = rowError[row.id] ?? (row.sync_state === 'failed' ? row.sync_error : null);
+    // Offered only when the check actually ran and said this address is unknown.
+    const addr = isSingleAddress(row.counterparty_email)
+      ? row.counterparty_email.trim().toLowerCase()
+      : null;
+    const offerContact = !!addr && !!unknownEmails?.has(addr);
     return (
       <div key={row.id} className="rounded-lg bg-white p-4" style={{ border: `1px solid ${SLATE}` }}>
         <div className="flex items-start justify-between gap-4">
@@ -341,6 +516,32 @@ export function TriagePage() {
             >
               <NoSymbolIcon className="h-3.5 w-3.5" /> Not a commitment
             </button>
+            {offerContact && (
+              <>
+                <button
+                  onClick={() => void addContact(row)} disabled={!!b || lookingUp === row.id}
+                  className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
+                  style={{ border: `1px solid ${STEEL}`, color: STEEL }}
+                  title={`${row.counterparty_email} isn't an OVIS contact`}
+                >
+                  {lookingUp === row.id
+                    ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                    : <UserPlusIcon className="h-3.5 w-3.5" />}
+                  Add contact
+                </button>
+                <button
+                  onClick={() => act(row, 'not_a_person')} disabled={!!b}
+                  className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs disabled:opacity-50"
+                  style={{ color: SLATE }}
+                  title={`Never offer to add ${row.counterparty_email} again`}
+                >
+                  {b === 'not_a_person'
+                    ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                    : <UserMinusIcon className="h-3.5 w-3.5" />}
+                  Not a person
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -402,6 +603,13 @@ export function TriagePage() {
           </div>
         )}
 
+        {contactError && (
+          <p className="mt-3 flex items-start gap-1 text-xs font-medium" style={{ color: TERRACOTTA }}>
+            <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{contactError}</span>
+          </p>
+        )}
+
         {error && (
           <div className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-red-800">
@@ -459,6 +667,48 @@ export function TriagePage() {
           </>
         )}
       </div>
+
+      {/*
+        The app's own contact form, reused as-is. Everything it needs comes in
+        through initialValues and notice; the record is created by it, and this
+        page only links what it hands back.
+      */}
+      {creating && (
+        <ContactFormModal
+          isOpen
+          zIndex={Z_CONTACT_MODAL}
+          initialValues={{
+            ...splitPersonName(creating.row.counterparty_name ?? ''),
+            ...pickContactFields(creating.prefill?.details),
+            // The address this row is about wins over the signature's, which is
+            // the email lookup's own rule: the From address we searched on IS
+            // the sender's, and a different signature address is named in the
+            // notice rather than used. The exception is a mailing-service From
+            // address, which the lookup deliberately refuses -- overriding it
+            // here would put the relay's address on the contact.
+            ...(creating.row.counterparty_email && !relayFrom(creating.prefill)
+              ? { email: creating.row.counterparty_email }
+              : {}),
+          }}
+          notice={
+            <>
+              {creating.prefill && <span>{emailPrefillNotice(creating.prefill)}</span>}
+              {creating.row.deal_id && (
+                <label className="mt-1 flex items-center gap-1.5" style={{ color: STEEL }}>
+                  <input
+                    type="checkbox"
+                    checked={creating.attachDeal}
+                    onChange={(e) => setCreating((c) => (c ? { ...c, attachDeal: e.target.checked } : c))}
+                  />
+                  <span>Attach to {creating.row.deal?.deal_name ?? 'this deal'}</span>
+                </label>
+              )}
+            </>
+          }
+          onClose={() => setCreating(null)}
+          onSave={(contact) => { void afterContactSaved(contact.id, creating); }}
+        />
+      )}
     </div>
   );
 }
