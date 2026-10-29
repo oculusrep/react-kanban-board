@@ -72,6 +72,18 @@ function todayLocal(): string {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
 }
 
+/** "3 minutes ago" — the only honest way to show a time nobody has to convert. */
+function agoText(iso: string | null): string {
+  if (!iso) return 'never';
+  const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
 function gmailLink(threadId: string): string {
   return `https://mail.google.com/mail/u/0/#all/${threadId}`;
 }
@@ -83,6 +95,10 @@ export function TriagePage() {
   const [busy, setBusy] = useState<Record<string, Action | undefined>>({});
   const [rowError, setRowError] = useState<Record<string, string | undefined>>({});
   const [waitingOpen, setWaitingOpen] = useState(false);
+  const [lastRunAt, setLastRunAt] = useState<string | null>(null);
+  const [running, setRunning] = useState<null | 'incremental' | 'full'>(null);
+  const [progress, setProgress] = useState<string>('');
+  const [runError, setRunError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,6 +108,18 @@ export function TriagePage() {
         .from('gmail_connection').select('id').eq('google_email', OWNER_EMAIL).maybeSingle();
       if (connErr) throw new Error(`gmail_connection: ${connErr.message}`);
       if (!conn) throw new Error(`no gmail_connection for ${OWNER_EMAIL}`);
+
+      // "Last refreshed" is the last run that FINISHED. A half-finished run is
+      // not a refresh and must not claim to be one.
+      const { data: lastRun, error: runReadErr } = await supabase
+        .from('commitment_extraction_run')
+        .select('completed_at')
+        .eq('gmail_connection_id', conn.id)
+        .not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(1);
+      if (runReadErr) throw new Error(`extraction_run: ${runReadErr.message}`);
+      setLastRunAt(lastRun?.[0]?.completed_at ?? null);
 
       const today = todayLocal();
       const { data, error: rowErr } = await supabase
@@ -167,6 +195,64 @@ export function TriagePage() {
       setBusy((b) => ({ ...b, [row.id]: undefined }));
     }
   }, []);
+
+  /**
+   * Drive a run to completion. The function is batch-resumable, so one click can
+   * mean several calls: it hands back next_offset plus the run_id, and the spend
+   * so far travels with each call so the daily cap applies to the run and not to
+   * each batch.
+   */
+  const runExtraction = useCallback(async (mode: 'incremental' | 'full') => {
+    setRunning(mode);
+    setRunError(null);
+    setProgress(mode === 'incremental' ? 'Checking for new mail…' : 'Re-checking everything…');
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('not signed in');
+
+      let offset = 0;
+      let runId: string | undefined;
+      let spent = 0;
+      let attempted = 0;
+      let scope: number | null = null;
+      for (let guard = 0; guard < 60; guard++) {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-commitments`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            connection_email: OWNER_EMAIL, mode, offset, run_id: runId, usd_spent: spent,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body?.success) throw new Error(body?.error || `HTTP ${res.status}`);
+
+        runId = body.run_id ?? runId;
+        spent = body.usd_run_total ?? spent;
+        attempted += body.attempted ?? 0;
+        scope = body.conversations_with_new_mail ?? scope;
+
+        if (body.stopped_on_daily_cap) {
+          setProgress(`Daily cap reached — $${Number(body.spent_today_usd ?? 0).toFixed(2)} of $${body.daily_cap_usd} spent today. Nothing was checked.`);
+          break;
+        }
+        if (scope === 0) { setProgress('No new mail since the last check.'); break; }
+        setProgress(`Checked ${attempted} of ${scope ?? '?'} conversations…`);
+
+        if (body.done || body.next_offset === null || body.next_offset === undefined) {
+          setProgress(`Done — ${attempted} conversation${attempted === 1 ? '' : 's'} checked, $${Number(spent).toFixed(2)}.`);
+          break;
+        }
+        offset = body.next_offset;
+      }
+      await load();
+    } catch (e: any) {
+      setRunError(String(e?.message ?? e));
+      setProgress('');
+    } finally {
+      setRunning(null);
+    }
+  }, [load]);
 
   const byAge = (a: Row, b: Row) => String(a.lastAt ?? '').localeCompare(String(b.lastAt ?? ''));
   const youOwe = useMemo(() => (rows ?? []).filter((r) => r.ball === 'me').sort(byAge), [rows]);
@@ -263,6 +349,53 @@ export function TriagePage() {
         <p className="mt-1 text-sm" style={{ color: STEEL }}>
           Obligations extracted from {OWNER_EMAIL}. Handled archives the conversation in Gmail.
         </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void runExtraction('incremental')}
+            disabled={!!running}
+            className="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            style={{ backgroundColor: NAVY }}
+          >
+            {running === 'incremental'
+              ? <ArrowPathIcon className="h-4 w-4 animate-spin" />
+              : <ArrowPathIcon className="h-4 w-4" />}
+            Check new mail
+          </button>
+
+          <span className="text-xs" style={{ color: STEEL }}>
+            last refreshed {agoText(lastRunAt)}
+          </span>
+
+          <button
+            onClick={() => {
+              // A full pass costs real money and takes real time, so it asks.
+              if (window.confirm('This takes ~35 min and costs about $1. Run it?')) {
+                void runExtraction('full');
+              }
+            }}
+            disabled={!!running}
+            className="ml-auto inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs disabled:opacity-60"
+            style={{ border: `1px solid ${SLATE}`, color: STEEL }}
+          >
+            {running === 'full' && <ArrowPathIcon className="h-3 w-3 animate-spin" />}
+            Re-check everything
+          </button>
+        </div>
+
+        {(progress || runError) && (
+          <div className="mt-3">
+            {progress && !runError && (
+              <p className="text-xs" style={{ color: STEEL }}>{progress}</p>
+            )}
+            {runError && (
+              <p className="flex items-start gap-1 text-xs font-medium text-red-700">
+                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>Check failed — {runError}</span>
+              </p>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
