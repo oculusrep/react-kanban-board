@@ -1,6 +1,6 @@
 # Intel: attachments + Ask mode — plan
 
-**Status:** BUILT on `feature/intel-attachments-ask` (2026-10-30), NOT merged. Migration `20261030083654` APPLIED to the shared prod DB and recorded. Edge function NOT yet deployed from the branch (needs it before the dev-server test). Decisions as approved 2026-10-30 — see "Build notes" at the end; where they differ from the plan below, the build notes win.
+**Status:** BUILT on `feature/intel-attachments-ask` (2026-10-30), NOT merged. Migration `20261030083654` APPLIED to the shared prod DB and recorded. Edge function `ovis-knowledge-capture` DEPLOYED from the branch 2026-10-30 (live e2e passed: text PDF, .docx, .xlsx, scanned PDF all indexed; Ask answered with a cited, page-located source; test entry + Dropbox folder deleted). The 2 old notes without embeddings were backfilled. Decisions as approved 2026-10-30 — see "Build notes" at the end; where they differ from the plan below, the build notes win.
 Related: [KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md).
 
 Two additions to Intel (Alt+K):
@@ -261,3 +261,9 @@ Decisions approved: temporary link per click, never shared links (no `shared_lin
 - No delete for an attached file from the panel.
 - A deal linked without its account files under General (only account links pick the client folder, as specified).
 - Tests: `attachments_test.ts` (incl. real text PDF, image-only PDF, .docx, .xlsx fixtures), `extract_test.ts`, `ask_test.ts` — 91/91 with the existing suites. Run with `--node-modules-dir=none --allow-import --allow-read` (the readers import unpdf/mammoth/SheetJS).
+
+### Deploy notes (2026-10-30)
+
+- **SheetJS is vendored** at `supabase/functions/_shared/vendor/xlsx-0.20.3.mjs` (copy of `https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs`). A dynamic `import('https://…')` is NOT bundled by `supabase functions deploy` — it failed live with "Module not found" — while dynamic `npm:` imports (unpdf, mammoth) and relative files are. The npm `xlsx` package stops at 0.18.5, which has known parser CVEs, so it isn't an option. To upgrade, replace the file and the import path in `readers.ts`.
+- Live check: create a throwaway note, attach the four `fixtures/` files, drive `extract_file`, `ask`, then delete the note (cascades to file rows and chunks) and the Dropbox folder (`dropbox-proxy` op `delete`). With no client, files land in `/Salesforce Documents/Intel/General/`.
+
