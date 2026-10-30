@@ -30,6 +30,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { censusGeocode } from '../_shared/site-research/geocode.ts';
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'https://esm.sh/jose@5.9.6';
 
 const SERVER_INFO = { name: 'ovis-mcp', version: '0.3.0' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
@@ -37,6 +38,9 @@ const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const RESOURCE_URL = `${SUPABASE_URL}/functions/v1/ovis-mcp`;
 const RESOURCE_METADATA_URL = `${RESOURCE_URL}/.well-known/oauth-protected-resource`;
+const AUTH_ISSUER = `${SUPABASE_URL}/auth/v1`;
+// Project signing keys (ES256). Cached by jose across requests in a warm instance.
+const JWKS = createRemoteJWKSet(new URL(`${AUTH_ISSUER}/.well-known/jwks.json`));
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -180,16 +184,32 @@ async function authorize(req: Request): Promise<Caller | Response> {
 
   if (safeEqual(bearer, Deno.env.get('OVIS_MCP_INTAKE_TOKEN') ?? '')) return { kind: 'static' };
 
-  const { data: authData, error: authErr } = await getService().auth.getUser(bearer);
-  if (authErr || !authData?.user) {
-    // Log why, with the token's non-secret claims (never the token), so a failing connector is diagnosable.
-    let claims: Record<string, unknown> = {};
-    try {
-      const p = JSON.parse(atob(bearer.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      claims = { iss: p.iss, aud: p.aud, role: p.role, client_id: p.client_id, exp: p.exp, sub: p.sub };
-    } catch { claims = { not_a_jwt: true } }
-    console.warn(`[ovis-mcp] invalid_token: ${authErr?.message ?? 'no user'} ${JSON.stringify(claims)}`);
-    return unauthorized('invalid_token');
+  // Verify the access token locally against the project's published signing keys (ES256 JWKS),
+  // as a resource server should. GoTrue's /user endpoint rejected OAuth-server tokens from the
+  // claude.ai connector (401 right after a successful token exchange, 2026-10-30), so it is
+  // only a fallback. PostgREST re-verifies the token on the is_internal_user call below.
+  let authUserId: string | null = null;
+  let jwksErr = '';
+  try {
+    const { payload } = await jwtVerify(bearer, JWKS, { issuer: AUTH_ISSUER });
+    if (payload.role === 'authenticated' && typeof payload.sub === 'string') authUserId = payload.sub;
+    else jwksErr = `role=${payload.role}`;
+  } catch (e) {
+    jwksErr = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  }
+  if (!authUserId) {
+    const { data: authData, error: authErr } = await getService().auth.getUser(bearer);
+    if (authData?.user) authUserId = authData.user.id;
+    else {
+      // Log why, with the token's non-secret claims (never the token), so a failing connector is diagnosable.
+      let claims: Record<string, unknown> = {};
+      try {
+        const p = decodeJwt(bearer);
+        claims = { iss: p.iss, aud: p.aud, role: p.role, client_id: p.client_id, exp: p.exp, sub: p.sub };
+      } catch { claims = { not_a_jwt: true } }
+      console.warn(`[ovis-mcp] invalid_token: jwks=${jwksErr}; getUser=${authErr?.message ?? 'no user'} ${JSON.stringify(claims)}`);
+      return unauthorized('invalid_token');
+    }
   }
 
   // "Internal" is whatever the database says it is — checked as the user.
@@ -199,13 +219,13 @@ async function authorize(req: Request): Promise<Caller | Response> {
   });
   const { data: internal, error: rpcErr } = await asUser.rpc('is_internal_user');
   if (rpcErr || internal !== true) {
-    console.warn(`[ovis-mcp] denied ${authData.user.id}: ${rpcErr?.message ?? 'not internal'}`);
+    console.warn(`[ovis-mcp] denied ${authUserId}: ${rpcErr?.message ?? 'not internal'}`);
     return new Response(JSON.stringify({ error: 'forbidden' }), {
       status: 403,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
-  return { kind: 'user', authUserId: authData.user.id };
+  return { kind: 'user', authUserId };
 }
 
 // ----------------------------------------------------------------------------
