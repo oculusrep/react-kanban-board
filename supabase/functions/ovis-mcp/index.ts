@@ -183,7 +183,11 @@ function unauthorized(error: string): Response {
 }
 
 async function authorize(req: Request): Promise<Caller | Response> {
-  const bearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  // Tolerate hand-typed connector headers (claude.ai "Request headers"): a doubled "Bearer",
+  // wrapping quotes or <angle brackets>, stray whitespace.
+  const bearer = (req.headers.get('Authorization') ?? '').trim()
+    .replace(/^(Bearer\s+)+/i, '').trim()
+    .replace(/^["'<]+|[">']+$/g, '').trim();
   if (!bearer) return unauthorized('missing_token');
 
   if (safeEqual(bearer, Deno.env.get('OVIS_MCP_INTAKE_TOKEN') ?? '')) return { kind: 'static' };
@@ -210,7 +214,15 @@ async function authorize(req: Request): Promise<Caller | Response> {
       try {
         const p = decodeJwt(bearer);
         claims = { iss: p.iss, aud: p.aud, role: p.role, client_id: p.client_id, exp: p.exp, sub: p.sub };
-      } catch { claims = { not_a_jwt: true } }
+      } catch {
+        // Not a JWT: probably a mistyped static token. Log its shape only — never the value.
+        const raw = req.headers.get('Authorization') ?? '';
+        claims = {
+          not_a_jwt: true, raw_len: raw.length, token_len: bearer.length,
+          hex64: /^[0-9a-f]{64}$/i.test(bearer), has_space: /\s/.test(bearer),
+          static_len: (Deno.env.get('OVIS_MCP_INTAKE_TOKEN') ?? '').length,
+        };
+      }
       console.warn(`[ovis-mcp] invalid_token: jwks=${jwksErr}; getUser=${authErr?.message ?? 'no user'} ${JSON.stringify(claims)}`);
       return unauthorized('invalid_token');
     }
