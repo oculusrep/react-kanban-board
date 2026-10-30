@@ -13,6 +13,10 @@ Claude (claude.ai connector or Claude Code) finds NNN investment listings and re
    - It fires only when the result has `is_new = true` (a new comp, or a relist on an existing comp). Re-sightings and price/cap changes never create a task.
    - It uses the same code and RPC as `create_va_task` (due today ET, Inbox, Listing + Comp record links, default checklist) and returns `va_task_id`.
    - If the task fails, the listing is still saved and `va_task_error` is returned; retry with `create_va_task`.
+   - **Opt-out (v0.3.1, 2026-10-30):** `upsert_listing` takes an optional boolean `create_va_task`, default `true`.
+     With `false`, a new listing is saved normally but gets no task, and the result returns `va_task_skipped: true`.
+     Use it **only for bulk backfills**; normal intake leaves it at the default. Updates never create tasks either way.
+     Tested live: one listing with `false` and one with the default produced exactly one task. The test rows were deleted.
 2. `create_va_task` stays as a standalone tool: an extra or reassigned task, or a retry after `va_task_error`. Don't call it for a listing `upsert_listing` just created, or Noree gets two tasks.
 3. `list_recent_listings` lets the agent skip listings it has already captured.
 4. `listing_activity` is the daily-summary feed (spec v2 §8.6).

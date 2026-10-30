@@ -32,7 +32,7 @@ import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-
 import { censusGeocode } from '../_shared/site-research/geocode.ts';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'https://esm.sh/jose@5.9.6';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.3.0' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.3.1' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -84,7 +84,7 @@ const TOOLS = [
   {
     name: 'upsert_listing',
     description:
-      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry.',
+      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -106,6 +106,7 @@ const TOOLS = [
         brokerage: { type: ['string', 'null'] },
         source: { type: ['string', 'null'], description: 'Where it was found, e.g. "Crexi", "LoopNet", "broker email".' },
         source_url: { type: ['string', 'null'] },
+        create_va_task: { type: 'boolean', default: true, description: 'Default true: a NEW listing gets its diligence task. false only for bulk backfills; the listing is saved but no task is created (va_task_skipped: true). Updates never create tasks either way.' },
       },
       required: ['tenant', 'address', 'city'],
     },
@@ -371,7 +372,11 @@ async function toolUpsertListing(args: any, caller: Caller) {
   // server-side, same RPC as create_va_task. Re-sightings and price/cap changes never do.
   // A task failure doesn't fail the upsert: the listing is saved, and a retry would be an
   // update (no task), so the error is returned for the caller to fix with create_va_task.
-  if (result.is_new === true && !result.skipped) {
+  // create_va_task: false (bulk backfills) saves the new listing without its task.
+  const wantsTask = args?.create_va_task !== false && args?.create_va_task !== 'false';
+  if (result.is_new === true && !result.skipped && !wantsTask) {
+    result.va_task_skipped = true;
+  } else if (result.is_new === true && !result.skipped) {
     try {
       const task = await createVaTask({ listing_id: result.listing_id }, caller) as Record<string, unknown>;
       result.va_task_id = task?.task_id ?? null;
