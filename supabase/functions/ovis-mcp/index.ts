@@ -15,6 +15,13 @@
  *   3. list_recent_listings(days=30) → comp_listing_facts
  *   4. listing_activity(date? | since?) → listing_activity (daily summary feed)
  *
+ * Voice triage (voice_triage.ts, docs/VOICE_TRIAGE_MCP.md) — the commitment desk
+ * for a spoken agent: run_triage, triage_run_status, get_triage_list,
+ * triage_action, find_deal, create_contact, log_deal_note, update_deal,
+ * create_watch, list_watches, cancel_watch. Those tools are SCOPED TO THE
+ * CALLER's own mailbox and log every write to mcp_audit_log; the static token
+ * acts for OVIS_MCP_OWNER_EMAIL (default mike@oculusrep.com).
+ *
  * Auth — two accepted credentials, both as `Authorization: Bearer …`:
  *   a) OAuth 2.1 access token issued by Supabase Auth's OAuth server (what claude.ai uses; it
  *      discovers the server via the WWW-Authenticate → protected-resource metadata below and
@@ -31,8 +38,13 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { censusGeocode } from '../_shared/site-research/geocode.ts';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'https://esm.sh/jose@5.9.6';
+import {
+  DEFAULT_OWNER_EMAIL, resolveScope, ToolFailure, VOICE_TOOL_IMPLS, VOICE_TOOLS,
+  type Ctx, type InvokeFn,
+} from './voice_triage.ts';
+import { supabaseStore } from './voice_triage_store.ts';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.3.1' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.4.0' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -80,7 +92,7 @@ const E_INTERNAL = -32603;
 // Tool registry
 // ----------------------------------------------------------------------------
 
-const TOOLS = [
+const LISTING_TOOLS = [
   {
     name: 'upsert_listing',
     description:
@@ -152,11 +164,14 @@ const TOOLS = [
   },
 ] as const;
 
+/** What tools/list answers: the listing tools, then the voice-triage desk. */
+const TOOLS = [...LISTING_TOOLS, ...VOICE_TOOLS];
+
 // ----------------------------------------------------------------------------
 // Auth
 // ----------------------------------------------------------------------------
 
-type Caller = { kind: 'static' } | { kind: 'user'; authUserId: string };
+type Caller = { kind: 'static' } | { kind: 'user'; authUserId: string; bearer: string };
 const actingAuthId = (c: Caller) => (c.kind === 'user' ? c.authUserId : null);
 
 function safeEqual(a: string, b: string): boolean {
@@ -242,7 +257,7 @@ async function authorize(req: Request): Promise<Caller | Response> {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
-  return { kind: 'user', authUserId };
+  return { kind: 'user', authUserId, bearer };
 }
 
 // ----------------------------------------------------------------------------
@@ -453,11 +468,58 @@ async function toolListingActivity(args: any) {
   return data;
 }
 
+/**
+ * POST to another OVIS edge function. The service key by default (both
+ * extract-commitments and commitment-action accept it); the caller's own bearer
+ * when the function must run AS the user — the email lookup is gated on
+ * auth.uid() and would refuse the service key.
+ */
+const invokeFunction: InvokeFn = async (fn, body, opts) => {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${opts?.bearer ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}`,
+    },
+    body: JSON.stringify(body),
+    // A full triage pass drains for up to 110s inside extract-commitments.
+    signal: AbortSignal.timeout(130_000),
+  });
+  const text = await res.text();
+  let parsed: unknown = null;
+  try { parsed = JSON.parse(text); } catch { parsed = { error: text.slice(0, 300) }; }
+  return { status: res.status, body: parsed };
+};
+
+/** One mailbox, resolved from the caller, for one tool call. */
+async function voiceCtx(caller: Caller): Promise<Ctx> {
+  const store = supabaseStore(getService());
+  const scope = await resolveScope(
+    store,
+    caller.kind === 'user' ? { kind: 'user', authUserId: caller.authUserId } : { kind: 'static' },
+    caller.kind === 'user' ? caller.bearer : null,
+    Deno.env.get('OVIS_MCP_OWNER_EMAIL') ?? DEFAULT_OWNER_EMAIL,
+  );
+  return { store, invoke: invokeFunction, scope, now: () => new Date() };
+}
+
 const TOOL_IMPLS: Record<string, (args: unknown, caller: Caller) => Promise<unknown>> = {
   upsert_listing: toolUpsertListing,
   create_va_task: createVaTask,
   list_recent_listings: toolListRecentListings,
   listing_activity: toolListingActivity,
+  ...Object.fromEntries(Object.entries(VOICE_TOOL_IMPLS).map(([name, impl]) => [
+    name,
+    async (args: unknown, caller: Caller) => {
+      try {
+        return await impl(args as any, await voiceCtx(caller));
+      } catch (e) {
+        // A ToolFailure is a message for the model to read out, not a 500.
+        if (e instanceof ToolFailure) throw new ToolError(e.message);
+        throw e;
+      }
+    },
+  ])),
 };
 
 // ----------------------------------------------------------------------------
