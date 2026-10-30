@@ -660,16 +660,20 @@ These come from one SQL function, `listing_activity(p_since timestamptz, p_until
 
 ## 11. Phase 1 — as built
 
-**Migrations** (neither one is applied yet):
-- `20261022105905_comp_listing_intake_phase1.sql`: all of phase 1.
-  - It was round-trip tested in a transaction with ROLLBACK against prod.
-  - The test covered every §5 / §8.3 case, impersonated Noree as `authenticated`, and checked anon access.
-- `20261022110419_drop_listing_staging.sql`: the v1 cleanup.
-  - Apply it **only after** `ovis-mcp` is redeployed.
-  - It refuses to run if `listing_staging` has gained rows.
+**Migrations — all applied to prod and recorded in `schema_migrations`:**
+
+| Version | What | Applied |
+|---|---|---|
+| `20261022083335_listing_staging` | v1 staging table + RPCs (superseded) | 2026-10-22 |
+| `20261022105905_comp_listing_intake_phase1` | all of phase 1. Round-trip tested against prod first: every §5 / §8.3 case, Noree impersonated as `authenticated`, anon access checked | 2026-10-28 |
+| `20261028082618_comp_duplicate_review_fixes` | §12 address fixes, Hilton delete, Noree's lease-backfill task | 2026-10-28 |
+| `20261022110419_drop_listing_staging` | v1 cleanup: drops `listing_staging` and its three RPCs, keeps `normalize_listing_address` | 2026-10-28 |
+| `20261030084504_comp_zip_fixes` | Dutch Bros ZIP 31220 → 31210; Hoschton ZIP → 30548 | 2026-10-30 |
+
+**Edge function:** `ovis-mcp` **v0.3.0** is deployed (2026-10-30). v0.3.0 adds the automatic VA task on new listings (§14).
 
 **Code:**
-- **Edge function** `ovis-mcp` v0.2.0: `upsert_listing` / `create_va_task` / `list_recent_listings` were rewritten, and `listing_activity` is new. Audit columns are written with the OAuth caller's **auth** id; the static token writes NULL.
+- **Edge function** `ovis-mcp` v0.2.0: `upsert_listing` / `create_va_task` / `list_recent_listings` were rewritten, and `listing_activity` is new. Audit columns are written with the OAuth caller's **auth** id; the static token writes NULL. (v0.3.0, 2026-10-30: `upsert_listing` also creates Noree's VA task for a new listing — §14.)
 - **Review page** `/listings/review`: reads `comp_listing_facts`. Its tabs are Pending review, Active, Re-listed existing comps, Possibly off market, Under contract / off market / sold, Rejected and All.
 - **`ListingPanel`:**
   - approve / reject;
@@ -701,14 +705,7 @@ These come from one SQL function, `listing_activity(p_since timestamptz, p_until
 | 9 | **The backfill keeps every existing pin's `is_available` exactly as it was.** | The one existing OM got a `listed` event, but its pin colour doesn't change. |
 | 10 | **Lease-in-place backfill:** 2 of 11 sales linked. | Only sales whose comp has exactly one lease were linked. 9 sales are on comps with **no lease recorded at all**, so they can't be linked until a lease is entered. |
 
-**Deploy order** (after §12 is approved):
-1. Apply `…105905` with `--single-transaction`, then record it.
-2. Redeploy `ovis-mcp`.
-3. Smoke-test over HTTPS with the static token, deleting the test rows afterwards.
-4. Apply `…110419`, then record it.
-5. Merge to main, which pushes the UI.
-
-Before step 2, the deployed v1 function still writes to `listing_staging`, which is harmless. Between steps 1 and 5, prod runs the new schema with the old UI, which is compatible: existing screens ignore the new columns.
+**Deploy order** — all done 2026-10-28; see §13.
 
 ## 12. Duplicate comps — proposals (DECIDED 2026-10-28; applied by `20261028082618`)
 
@@ -730,9 +727,7 @@ Before step 2, the deployed v1 function still writes to `listing_staging`, which
 
 Both comps have `year_built` 2028, which fits pads still to be built on vacant land.
 
-**Data-quality flags left as-is** (not part of the decisions):
-- Dutch Bros' stored ZIP is 31220, but 5781 Zebulon Rd is in 31210.
-- Hoschton has no ZIP (the pin's ZIP is 30548).
+**ZIP flags — fixed 2026-10-30** by `20261030084504`: Dutch Bros 31220 → 31210 (5781 Zebulon Rd is in 31210); Hoschton → 30548.
 
 ### Original proposals
 
@@ -782,3 +777,21 @@ Each proposal below rests on three checks: every row's child records were inspec
 4. **`listing_staging` and the v1 RPCs dropped**, and `20261022110419` recorded. `normalize_listing_address` stays, because `address_norm` is generated from it.
 5. Merged to main; the production build passed.
 
+
+## 14. Follow-up (2026-10-30)
+
+1. **End-to-end check passed.** Mike reset `OVIS_MCP_INTAKE_TOKEN` (a separate secret from `OVIS_MCP_BEARER_TOKEN`, which `ovis-research-mcp` / OpenClaw uses). Real MCP `tools/call` requests through the deployed function, with a clearly marked test listing ("ZZ Smoke Test Taco", 9999 Smoketest Pkwy):
+   - `upsert_listing`: new → re-sighting with a variant spelling matched it → price drop recorded as `price_change` with old/new;
+   - `list_recent_listings`: listing returned with the current ask;
+   - `create_va_task`: task with both links and the 8-line checklist; an unknown assignee returns `isError`;
+   - `listing_activity`: new listing and price change in separate groups.
+
+   This closes the gap left in §13 step 3. The OAuth path is still unverified (dashboard step pending).
+2. **`upsert_listing` creates the VA task server-side (ovis-mcp v0.3.0).**
+   - **When:** the result has `is_new = true` — a new comp, or a new offering (relist) on an existing comp. Re-sightings, price/cap changes and skipped results (`rejected`, `recently_closed`) never create one.
+   - **How:** the same code path and RPC as the `create_va_task` tool (`create_comp_va_task`): Noree, due today (ET), Inbox, Listing + Comp record links, default checklist.
+   - **Result fields:** `va_task_id` and `va_task_assignee`. If the task fails, the listing is still saved and `va_task_error` is returned; the caller retries with `create_va_task`. (A retry of the upsert would be an update and would not create the task.)
+   - **`create_va_task` stays** as a standalone tool, for an extra or reassigned task or a retry. Both tool descriptions tell the agent not to call it for a listing `upsert_listing` just created, to avoid a duplicate task.
+   - No migration: the change is in the edge function only.
+   - **Re-tested** after deploy: new listing → one task for Noree (Inbox, due 2026-10-30 ET, both links); re-sighting and price change → no task; standalone `create_va_task` still works. Test comp, events, offering, lease and both tasks deleted; prod back to 28 comps.
+3. **ZIP fixes** applied by `20261030084504` (§12).
