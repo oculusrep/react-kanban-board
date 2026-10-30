@@ -60,8 +60,8 @@ export function ToursListPage() {
     <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
       <h1 style={{ color: MIDNIGHT, fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Tours</h1>
       <p style={{ color: STEEL, fontSize: 13, marginBottom: 20 }}>
-        Stage site submits onto a tour with “Add to tour”, then open a tour to reorder stops and
-        set categories. Route optimization, map rendering, and PDF export come next.
+        Stage site submits onto a tour with “Add to tour”. Open a tour to schedule stops into days;
+        Map shows the driving route, drive times and arrivals, and optimizes each day’s order.
       </p>
 
       {error && (

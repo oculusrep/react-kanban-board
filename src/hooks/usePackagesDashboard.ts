@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useStarbucksBoard from './useStarbucksBoard';
 import { ACCOUNT_ALL, BoardDeal, isParked, isToClassify } from '../lib/starbucksBoard';
 import {
   InputKey, Pace, ProgressRow, SlideRow, fetchAllPackageProgress, fetchAllSlides, fetchResearchInputs,
-  localEffective, paceOf, setSlideDone,
+  localEffective, onAnyPackageChanged, paceOf, setSlideDone,
 } from '../lib/packageTracker';
 import { supabase } from '../lib/supabaseClient';
 
@@ -109,7 +109,29 @@ export default function usePackagesDashboard() {
     });
   }, [cards, progress, research]);
 
-  const refresh = useCallback(() => { board.refresh(); setNonce((n) => n + 1); }, [board]);
+  const boardRefresh = board.refresh;
+  const refresh = useCallback(() => { boardRefresh(); setNonce((n) => n + 1); }, [boardRefresh]);
+
+  // Stay current without Realtime: any package write in the app (the sidebar
+  // panel opened from a row, a badge, this page's own Done boxes) re-reads the
+  // package data as soon as it succeeds; returning to the tab re-reads everything.
+  useEffect(() => onAnyPackageChanged(() => setNonce((n) => n + 1)), []);
+  const lastFocusRefresh = useRef(0);
+  useEffect(() => {
+    const onFocus = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastFocusRefresh.current < 2000) return; // focus + visibilitychange both fire
+      lastFocusRefresh.current = now;
+      refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refresh]);
 
   // Quick-complete from an expanded row: update the slide and the row's counts
   // locally at once, write through the RPC, then re-read the package's truth.
@@ -132,7 +154,8 @@ export default function usePackagesDashboard() {
     }));
     try {
       await setSlideDone(progress.find((p) => p.package_id === packageId)?.deal_id ?? null, slideId, done);
-      setNonce((n) => n + 1); // server truth: gates, pace, tour-ready, done_by
+      // setSlideDone announces the change → the listener above re-reads server
+      // truth (gates, pace, tour-ready, done_by).
     } catch (e: any) {
       setSlides(before.slides);
       setProgress(before.progress);

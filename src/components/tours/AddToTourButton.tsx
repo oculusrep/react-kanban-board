@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { useTours, addSiteSubmitToTour } from '../../hooks/useTours';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useTours,
+  addSiteSubmitToTour,
+  removeTourStop,
+  fetchSiteSubmitTourStops,
+  onTourStopsChanged,
+  type SiteSubmitTourMembership,
+} from '../../hooks/useTours';
 
 // ---------------------------------------------------------------------------
 // AddToTourButton — overlay-first, drop-in staging control.
 //
 // Minimal clicks: "Add to tour ▾" opens a dropdown of the client's tours; pick one
-// to stage this site submit, or create a new tour inline. Takes objectId-style props
+// to stage this site submit (lands in Unscheduled), or create a new tour inline.
+// Tours that already contain it show ✓ and "Remove" on hover; clicking removes the
+// stop (confirming first only if the stop carries work: notes, label, approach
+// override, or a Leaving-now stamp). The button reads "On N tours ▾" when staged. Takes objectId-style props
 // (siteSubmitId + clientId) and does NOT read useParams, so it drops into the site
 // submit slideout, the details page, or a map pin card unchanged.
 // ---------------------------------------------------------------------------
@@ -26,6 +36,17 @@ interface AddToTourButtonProps {
 // OVIS brand palette
 const MIDNIGHT = '#002147';
 const SLATE = '#8FA9C8';
+const TERRACOTTA = '#A27B5C';
+
+// What removing this stop would throw away, for the confirm dialog ([] = no confirm).
+function stopWork(m: SiteSubmitTourMembership): string[] {
+  const w: string[] = [];
+  if (m.notes?.trim()) w.push('notes');
+  if (m.display_label?.trim()) w.push('a custom label');
+  if (m.approach_waypoints_override != null) w.push('an approach override');
+  if (m.actual_departure_at) w.push('a Leaving-now stamp');
+  return w;
+}
 
 export function AddToTourButton({
   siteSubmitId,
@@ -40,11 +61,39 @@ export function AddToTourButton({
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [members, setMembers] = useState<SiteSubmitTourMembership[]>([]);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  // Touch: first tap on a ✓ row arms an inline "Remove from <tour>?" confirm; second tap removes.
+  const [armedId, setArmedId] = useState<string | null>(null);
+  const lastPointerRef = useRef<string>('mouse');
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const loadMembers = useCallback(async () => {
+    if (!siteSubmitId) {
+      setMembers([]);
+      return;
+    }
+    try {
+      setMembers(await fetchSiteSubmitTourStops(siteSubmitId));
+    } catch {
+      /* keep the last known state; the menu still works */
+    }
+  }, [siteSubmitId]);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+  // Any add/remove anywhere (this button, another sidebar, the tour panel) can change membership.
+  useEffect(() => onTourStopsChanged(null, () => void loadMembers()), [loadMembers]);
+
+  const memberByTour = new Map(members.map((m) => [m.tour_id, m]));
 
   // Close on outside click.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setArmedId(null);
+      return;
+    }
     const onClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -67,8 +116,31 @@ export function AddToTourButton({
       setOpen(false);
     } else if (res.alreadyStaged) {
       setStatus('Already on that tour');
+      loadMembers();
     } else {
       setStatus(res.error ?? 'Failed to add');
+    }
+  };
+
+  // confirmed: the touch inline confirm already named the work, so skip the dialog.
+  const unstage = async (m: SiteSubmitTourMembership, tourName: string, confirmed = false) => {
+    const work = stopWork(m);
+    if (
+      !confirmed &&
+      work.length > 0 &&
+      !window.confirm(`Remove this site from "${tourName}"? Its ${work.join(', ')} on that tour will be lost.`)
+    )
+      return;
+    setBusy(true);
+    setStatus(null);
+    const res = await removeTourStop(m.id);
+    setBusy(false);
+    setHoverId(null);
+    setArmedId(null);
+    if (res.ok) setStatus('Removed from tour');
+    else {
+      setStatus(res.error ?? 'Failed to remove');
+      loadMembers();
     }
   };
 
@@ -124,37 +196,88 @@ export function AddToTourButton({
         style={buttonStyle}
         disabled={busy}
       >
-        {label} <span aria-hidden style={{ fontSize: 10 }}>▾</span>
+        {members.length > 0 ? `On ${members.length} tour${members.length === 1 ? '' : 's'}` : label}{' '}
+        <span aria-hidden style={{ fontSize: 10 }}>▾</span>
       </button>
 
       {open && (
         <div style={dropdownStyle} role="menu">
-          {loading && <div style={itemMuted}>Loading tours…</div>}
+          {loading && tours.length === 0 && <div style={itemMuted}>Loading tours…</div>}
 
           {!loading && tours.length === 0 && !creating && (
             <div style={itemMuted}>No tours yet for this client.</div>
           )}
 
-          {!loading &&
-            !creating &&
-            tours.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="menuitem"
-                onClick={() => stage(t.id)}
-                disabled={busy}
-                style={itemButton}
-              >
-                <span style={{ color: MIDNIGHT, fontWeight: 500 }}>
-                  {t.tour_name}
-                  {t.is_archived ? ' (archived)' : ''}
-                </span>
-                <span style={{ color: SLATE, fontSize: 12 }}>
-                  {t.stop_count} stop{t.stop_count === 1 ? '' : 's'}
-                </span>
-              </button>
-            ))}
+          {!creating &&
+            tours.map((t) => {
+              const m = memberByTour.get(t.id);
+              const removing = !!m && hoverId === t.id;
+              if (m && armedId === t.id) {
+                const work = stopWork(m);
+                return (
+                  <div key={t.id} role="menuitem" style={{ ...itemButton, background: '#FBF6F2', cursor: 'default', flexWrap: 'wrap' }}>
+                    <span style={{ color: MIDNIGHT, fontWeight: 500, flex: '1 1 140px' }}>
+                      Remove from {t.tour_name}?
+                      {work.length > 0 && (
+                        <span style={{ display: 'block', color: TERRACOTTA, fontSize: 11, fontWeight: 400 }}>
+                          Loses its {work.join(', ')}.
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => unstage(m, t.tour_name, true)}
+                        disabled={busy}
+                        style={{ ...primaryBtn, background: TERRACOTTA, minHeight: 32 }}
+                      >
+                        Remove
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setArmedId(null)}
+                        style={{ ...primaryBtn, background: 'transparent', color: MIDNIGHT, border: `1px solid ${SLATE}`, minHeight: 32 }}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="menuitem"
+                  onPointerDown={(e) => (lastPointerRef.current = e.pointerType)}
+                  onClick={() => {
+                    if (!m) return stage(t.id);
+                    if (lastPointerRef.current === 'mouse') return unstage(m, t.tour_name);
+                    setArmedId(t.id); // touch/pen: arm, don't remove
+                  }}
+                  onPointerEnter={(e) => e.pointerType === 'mouse' && setHoverId(t.id)}
+                  onPointerLeave={() => setHoverId((h) => (h === t.id ? null : h))}
+                  disabled={busy}
+                  title={m ? 'On this tour — click to remove' : 'Add to Unscheduled on this tour'}
+                  style={{ ...itemButton, background: removing ? '#FBF6F2' : 'transparent' }}
+                >
+                  <span style={{ color: MIDNIGHT, fontWeight: 500, display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                    <span aria-hidden style={{ width: 12, color: '#2E7D32', fontWeight: 700 }}>{m ? '✓' : ''}</span>
+                    <span>
+                      {t.tour_name}
+                      {t.is_archived ? ' (archived)' : ''}
+                    </span>
+                  </span>
+                  {removing ? (
+                    <span style={{ color: TERRACOTTA, fontSize: 12, fontWeight: 600 }}>Remove</span>
+                  ) : (
+                    <span style={{ color: SLATE, fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {t.stop_count} stop{t.stop_count === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
 
           <div style={{ borderTop: `1px solid ${SLATE}`, margin: '4px 0' }} />
 

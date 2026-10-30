@@ -91,6 +91,7 @@ export interface RolePermissions {
 
   // Map Features
   can_verify_restaurant_locations?: boolean;
+  can_manage_map_layers?: boolean;
 
   // Client Portal
   can_access_client_portal?: boolean;
@@ -557,6 +558,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_verify_restaurant_locations',
     label: 'Verify Restaurant Locations',
     description: 'Right-click on Restaurant Trends pins to verify/update pin location',
+    category: 'map_features',
+    defaultValue: false,
+  },
+  {
+    key: 'can_manage_map_layers',
+    label: 'Manage Custom Layers',
+    description: 'Open the Manage Layers page (/admin/layers) to create, edit, delete and share custom map layers',
     category: 'map_features',
     defaultValue: false,
   },

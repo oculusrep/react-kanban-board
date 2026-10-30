@@ -179,13 +179,20 @@ export const PACE_LABEL: Record<Pace, string> = {
 // ─── Change notifications (badge + panel stay in sync without prop drilling) ──
 
 const EVENT = 'ovis:package-updated';
-export function notifyPackageChanged(dealId: string) {
+// dealId null = a package with no deal (site-only); still announced so
+// all-package listeners (Packages dashboard) refetch.
+export function notifyPackageChanged(dealId: string | null) {
   window.dispatchEvent(new CustomEvent(EVENT, { detail: { dealId } }));
 }
 export function onPackageChanged(dealId: string, fn: () => void): () => void {
   const h = (e: Event) => { if ((e as CustomEvent).detail?.dealId === dealId) fn(); };
   window.addEventListener(EVENT, h);
   return () => window.removeEventListener(EVENT, h);
+}
+// Any package write anywhere in the app (sidebar panel, badge, header bar, dashboard).
+export function onAnyPackageChanged(fn: () => void): () => void {
+  window.addEventListener(EVENT, fn);
+  return () => window.removeEventListener(EVENT, fn);
 }
 
 // ─── Reads ──────────────────────────────────────────────────────────────────
@@ -256,7 +263,7 @@ export async function startPackage(dealId: string): Promise<string> {
 export async function startPackageForCard(siteSubmitId: string | null, dealId: string | null): Promise<string> {
   const { data, error } = await supabase.rpc('start_package', { p_site_submit_id: siteSubmitId, p_deal_id: dealId });
   if (error) throw error;
-  if (dealId) notifyPackageChanged(dealId);
+  notifyPackageChanged(dealId);
   return data as string;
 }
 
@@ -310,7 +317,7 @@ export async function setSlideStatus(dealId: string, slide: SlideRow, status: Sl
 export async function setSlideDone(dealId: string | null, slideId: string, done: boolean): Promise<void> {
   const { error } = await supabase.rpc('set_package_slide_done', { p_slide_id: slideId, p_done: done });
   if (error) throw error;
-  if (dealId) notifyPackageChanged(dealId);
+  notifyPackageChanged(dealId);
 }
 
 // Every package's slides (dashboard expandable rows); grouped by package id.

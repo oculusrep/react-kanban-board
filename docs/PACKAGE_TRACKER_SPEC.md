@@ -492,3 +492,21 @@ UI on the branch: the package section comes first in the DATA tab and is collaps
 - Mike checked off Grovetown Exchange Drive Time on the production queue. The task completed and the slide moved to Waiting on Mike.
 - Grovetown's `ball_in_court_since` and `court_since` were unchanged, and no timeline posts were made.
 - One drag saved the order of Noree's 50 open tasks (ranks 1000–50000).
+
+## 16. Dashboard stays current with sidebar writes (2026-10-28)
+
+Bug: package writes in the sidebar (Done, Start, hand-off, Approve, inputs, gate dates)
+didn't reach `/reports/starbucks-packages` until a reload.
+
+- Every package write in `lib/packageTracker.ts` already fired `ovis:package-updated`
+  (keyed by deal). It now fires for site-only packages too (`dealId` null), and
+  `onAnyPackageChanged()` lets a surface listen to every package.
+- `usePackagesDashboard` re-reads progress, slides and research inputs on any package
+  event — so the row's bar, counts, missing inputs, Tour-ready, gate and pace update
+  as soon as the write succeeds, sidebar still open.
+- Also refreshes (board + packages) when the sidebar closes and when the tab regains
+  focus (`focus` / `visibilitychange`, throttled to once per 2s).
+- No Realtime subscription (by decision). Writes from another browser or person show
+  on the next focus, sidebar close or reload.
+- Board cards carry no package progress (the badge / panel already listen per deal
+  through `useDealPackage`), so nothing changed there.
