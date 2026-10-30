@@ -54,7 +54,11 @@ export async function docxText(bytes: Uint8Array): Promise<string> {
 }
 
 export async function sheets(bytes: Uint8Array) {
-  const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+  // Vendored copy of https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs: a
+  // dynamic https: import isn't bundled by `supabase functions deploy` (it
+  // failed live with "Module not found"); a relative file is. The npm `xlsx`
+  // package is stuck at 0.18.5 with known parser CVEs, so it isn't an option.
+  const XLSX = await import('../vendor/xlsx-0.20.3.mjs');
   // sheetRows stops the parser after the header + MAX_SHEET_ROWS rows, which is
   // what keeps a huge workbook inside the CPU limit.
   const wb = XLSX.read(bytes, { type: 'array', sheetRows: MAX_SHEET_ROWS + 1, cellDates: true });
