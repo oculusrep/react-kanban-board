@@ -106,12 +106,22 @@ export interface FiledEntry {
 
 const RECENT_LIMIT = 5;
 
+/** What filing hands the attachment upload. */
+export interface FiledResult {
+  entry_id: string;
+  /** The first linked account in the panel's order: the Dropbox folder's client. */
+  client_id: string | null;
+  short_title: string;
+}
+
 interface TurnResponse {
   reply: string;
   proposal: Proposal;
   ready_to_file: boolean;
   model: string;
   unresolved?: UnresolvedName[];
+  /** A few words naming the fact — the Dropbox folder title for attached files. */
+  short_title?: string;
 }
 
 interface FileResponse {
@@ -123,7 +133,7 @@ interface FileResponse {
 }
 
 /** supabase.functions.invoke puts the function's own error body out of reach. */
-async function invoke<T>(body: Record<string, unknown>): Promise<T> {
+export async function invokeKnowledgeCapture<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ovis-knowledge-capture', { body });
   if (error) {
     // FunctionsHttpError carries the response; the detail in it is the useful part.
@@ -153,7 +163,7 @@ export type PastedSignatureResult =
   | { result: 'nothing_found' };
 
 export function parsePastedSignature(text: string): Promise<PastedSignatureResult> {
-  return invoke<PastedSignatureResult>({ action: 'parse_signature', text });
+  return invokeKnowledgeCapture<PastedSignatureResult>({ action: 'parse_signature', text });
 }
 
 export function useKnowledgeCapture(authUserId: string | null) {
@@ -176,6 +186,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
   // just chip edits. Never overwritten mid-conversation.
   const baselineRef = useRef<Proposal | null>(null);
   const proposalModelRef = useRef<string | null>(null);
+  const shortTitleRef = useRef<string>('');
 
   useEffect(() => {
     if (!authUserId) return;
@@ -191,7 +202,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
   /** Signature lookup in the user's own mailbox. `senderEmail` is a picked candidate. */
   const lookupEmailSignature = useCallback(
     (name: string, opts: { email?: string; senderEmail?: string } = {}) =>
-      invoke<EmailLookupResult>({
+      invokeKnowledgeCapture<EmailLookupResult>({
         action: 'lookup_email_signature',
         name,
         ...(opts.email ? { email: opts.email } : {}),
@@ -234,6 +245,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
     setUnresolved([]);
     baselineRef.current = null;
     proposalModelRef.current = null;
+    shortTitleRef.current = '';
   }, []);
 
   /** Send a note (first turn) or a reply (every turn after). */
@@ -253,7 +265,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
       setError(null);
 
       try {
-        const result = await invoke<TurnResponse>({
+        const result = await invokeKnowledgeCapture<TurnResponse>({
           action: 'converse',
           messages: next,
           entry_draft: { raw_text: noteText },
@@ -262,6 +274,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
         setProposal(result.proposal);
         setReadyToFile(result.ready_to_file);
         setUnresolved(result.unresolved ?? []);
+        if (result.short_title) shortTitleRef.current = result.short_title;
         if (!baselineRef.current) {
           baselineRef.current = result.proposal;
           proposalModelRef.current = result.model;
@@ -329,9 +342,12 @@ export function useKnowledgeCapture(authUserId: string | null) {
   /**
    * File it. The button is the only thing that files — ready_to_file just lights
    * it up. Optimistic: the row appears in the list immediately.
+   *
+   * Resolves to what the attachment upload needs (the new entry, its first
+   * linked client, the short title), or null if filing failed.
    */
-  const fileIt = useCallback(async () => {
-    if (!proposal || !rawText || filing) return;
+  const fileIt = useCallback(async (): Promise<FiledResult | null> => {
+    if (!proposal || !rawText || filing) return null;
     const tempId = `pending-${crypto.randomUUID()}`;
     const optimistic: FiledEntry = {
       id: tempId,
@@ -347,7 +363,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
     setError(null);
 
     try {
-      const result = await invoke<FileResponse>({
+      const result = await invokeKnowledgeCapture<FileResponse>({
         action: 'file',
         entry: {
           raw_text: rawText,
@@ -367,13 +383,18 @@ export function useKnowledgeCapture(authUserId: string | null) {
             : entry,
         ),
       );
+      const filed: FiledResult = {
+        entry_id: result.entry_id,
+        client_id: proposal.links.find((l) => l.object_type === 'account')?.object_id ?? null,
+        short_title: shortTitleRef.current,
+      };
       // Ready for the next note; the panel stays open.
       reset();
-      return true;
+      return filed;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not file this entry');
       setRecent((r) => r.filter((entry) => entry.id !== tempId));
-      return false;
+      return null;
     } finally {
       setFiling(false);
     }
