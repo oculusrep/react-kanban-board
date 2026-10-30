@@ -111,3 +111,32 @@ Deno.test('thread detection matches what ownText() would cut, not ordinary signa
   assertEquals(looksLikeThread(SIGNATURE), false)
   assertEquals(looksLikeThread('Dana Webb\n---------- Forwarded message ---------\nFrom: X <x@y.com>'), true)
 })
+
+Deno.test('company: kept from a title line, logo alt text, or with different punctuation', async () => {
+  const text = [
+    'Dana Webb',
+    'Senior Vice President | Example Realty Partners, LLC',
+    '[image: Webb Retail Group Logo]',
+    '404-555-0199',
+  ].join('\n')
+  const fill = async (company: string) =>
+    ((await parsePastedSignature(deps({ signature_count: 1, name: 'Dana Webb', details: { company } }), { text })).body as {
+      details?: { company?: string }
+    }).details?.company
+  assertEquals(await fill('Example Realty Partners LLC'), 'Example Realty Partners LLC')
+  assertEquals(await fill('Example Realty Partners, LLC'), 'Example Realty Partners, LLC')
+  assertEquals(await fill('[image: Webb Retail Group Logo]'), 'Webb Retail Group')
+  assertEquals(await fill('Webb Retail Group'), 'Webb Retail Group')
+})
+
+Deno.test('company: never a generic logo label, a domain-derived name, or part of a word', async () => {
+  const text = 'Dana Webb\n[image: logo]\n[image: image001.png]\nExampleRealty Inc\ndwebb@webbretail.com'
+  const fill = async (company: string) =>
+    ((await parsePastedSignature(deps({ signature_count: 1, name: 'Dana Webb', details: { company } }), { text })).body as {
+      details?: { company?: string }
+    }).details?.company
+  assertEquals(await fill('logo'), undefined)
+  assertEquals(await fill('image001.png'), undefined)
+  assertEquals(await fill('Webb Retail'), undefined)
+  assertEquals(await fill('Realty Inc'), undefined)
+})

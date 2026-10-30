@@ -128,6 +128,31 @@ export function TourStopCard({ number, color, title, meta, subtext: sub, footer,
   );
 }
 
+// Stop name as a link + small ↗ that opens the site submit sidebar (overlay, no navigation).
+// Stops propagation so the card's own click (map focus) doesn't also fire.
+export function OpenSiteLink({ text, onOpen, color = midnight }: { text: ReactNode; onOpen: () => void; color?: string }) {
+  const open = (e: import("react").MouseEvent) => {
+    e.stopPropagation();
+    onOpen();
+  };
+  const btn: CSSProperties = { border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', font: 'inherit', color, textAlign: 'left' };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={open}
+        title="Open site details"
+        style={{ ...btn, textDecoration: 'underline', textDecorationColor: slate, textUnderlineOffset: 2 }}
+      >
+        {text}
+      </button>
+      <button type="button" onClick={open} title="Open site details" aria-label="Open site details" style={{ ...btn, color: steel, fontSize: 12, fontWeight: 600 }}>
+        ↗
+      </button>
+    </span>
+  );
+}
+
 export function ArriveText({ arrivalMin }: { arrivalMin: number | null | undefined }) {
   if (arrivalMin == null) return null;
   return <span style={{ fontWeight: 700, color: midnight }}>Arrive {formatClock12(arrivalMin)}</span>;

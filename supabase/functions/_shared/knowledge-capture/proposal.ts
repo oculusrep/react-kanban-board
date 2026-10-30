@@ -168,7 +168,29 @@ function looksLikeEmail(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
-const TEXT_FIELDS = ['title', 'company', 'address', 'city', 'state', 'zip'] as const;
+const TEXT_FIELDS = ['title', 'address', 'city', 'state', 'zip'] as const;
+
+/** Letters and digits only, single-spaced: "Acme Realty, LLC." → "acme realty llc". */
+function wordsOnly(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** A logo's alt text that isn't a firm name: "logo", "image001.png", "signature". */
+const NOT_A_COMPANY = /^(?:logo|image|signature|banner|photo|icon)?\s*\d*$|\.(?:png|jpe?g|gif|bmp|svg|webp)$/i;
+
+/**
+ * Company is compared on its words, not its punctuation: the model writes
+ * "Acme Realty Partners LLC" for "Acme Realty Partners, LLC" and a literal
+ * test would throw away a correct value. A trailing "Logo" from alt text
+ * ("[image: Acme Realty Logo]") is dropped.
+ */
+function verifyCompany(value: string, rawText: string): string | undefined {
+  const name = value.replace(/^\[?image:\s*/i, '').replace(/\]$/, '').replace(/\s+logo$/i, '').trim();
+  if (!name || NOT_A_COMPANY.test(name)) return undefined;
+  const words = wordsOnly(name);
+  if (!words) return undefined;
+  return ` ${wordsOnly(rawText)} `.includes(` ${words} `) ? name : undefined;
+}
 
 /**
  * Keep only the detail fields that actually appear in `rawText`. The model
@@ -198,6 +220,9 @@ export function verifyDetails(raw: unknown, rawText: string): UnresolvedDetails 
     const value = str(d[field]);
     if (value && appearsIn(note, value)) out[field] = value;
   }
+
+  const company = verifyCompany(str(d.company), rawText);
+  if (company) out.company = company;
 
   return Object.keys(out).length > 0 ? out : undefined;
 }

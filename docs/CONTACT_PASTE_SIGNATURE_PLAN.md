@@ -64,3 +64,13 @@ Cost: one Sonnet call per paste, well under a cent.
 - **B. Contacts screen.** "Contacts screen" (Navbar → New Contact) uses a different form. Include it (+2–3 h), or ship the ContactFormModal screens first? Recommendation: **ship first, add after**.
 - **C. The two attach bugs.** Fix them in this branch (+1–2 h), or separately? Recommendation: **fix here**, since "attaches to whatever record I opened it from" is part of the ask and is currently false for deals and clients.
 - **Fill behaviour (create mode):** recommendation — a paste overwrites the fields it found and leaves the rest alone, and a note lists what it filled so you can check before saving.
+
+## Follow-on: contacts screen + company fill (2026-10-29, branch feature/contacts-screen-paste-signature — NOT merged)
+
+- **Contacts screen.** `ContactOverviewTab` (Navbar → New Contact, and the contact detail page) now renders the same `PasteSignatureBox`, calling the same `parse_signature` action. Same rules: a new contact takes every found field; an existing contact fills empty fields only, and the note lists filled vs skipped. Because this screen auto-saves, an existing contact's filled fields are written in ONE update (not one per field).
+- **Company not filling.** Production rows couldn't be read to confirm the failing email, so the fix covers the shapes signatures actually use, all still literal-text-verified:
+  - company on the title line ("Vice President | Acme Realty") — the prompt now says to split it out;
+  - company only in a logo — Gmail's plain text shows it as `[image: Acme Realty]`; the prompt now uses it, and `verifyCompany()` drops a trailing "Logo" and rejects generic labels (`logo`, `image001.png`);
+  - punctuation differences ("Acme Realty Partners LLC" vs "…, LLC") no longer fail verification — company is compared word-by-word, whole words only.
+  - Never derived from the email domain. The Oculus filter is unchanged.
+  - Applies to Intel "Look up in my email", Paste signature, and note filing (all use `verifyDetails`). Needs an `ovis-knowledge-capture` deploy to take effect.
