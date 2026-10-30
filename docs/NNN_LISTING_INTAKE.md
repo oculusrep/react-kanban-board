@@ -9,8 +9,13 @@
 Claude (claude.ai connector or Claude Code) finds NNN investment listings and records them in OVIS:
 
 1. `upsert_listing` normalizes the address, inserts the listing or bumps `last_seen`, and geocodes new rows onto the map.
-2. `create_va_task` puts a diligence task with a checklist into Noree's task Inbox.
+   **Since ovis-mcp v0.3.0 (2026-10-30), a new listing also gets its diligence task server-side**, assigned to Noree:
+   - It fires only when the result has `is_new = true` (a new comp, or a relist on an existing comp). Re-sightings and price/cap changes never create a task.
+   - It uses the same code and RPC as `create_va_task` (due today ET, Inbox, Listing + Comp record links, default checklist) and returns `va_task_id`.
+   - If the task fails, the listing is still saved and `va_task_error` is returned; retry with `create_va_task`.
+2. `create_va_task` stays as a standalone tool: an extra or reassigned task, or a retry after `va_task_error`. Don't call it for a listing `upsert_listing` just created, or Noree gets two tasks.
 3. `list_recent_listings` lets the agent skip listings it has already captured.
+4. `listing_activity` is the daily-summary feed (spec v2 §8.6).
 
 In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the review queue.
 **Promote to comp** creates Comp Database records and links them back.
@@ -73,7 +78,10 @@ Two credentials are accepted, both as `Authorization: Bearer …`:
    function validates it (`auth.getUser`) and then requires `is_internal_user()` **as that user**. Admin, broker
    and VA accounts pass; portal and coach accounts get 403.
 2. **Static token** = secret `OVIS_MCP_INTAKE_TOKEN`, for Claude Code and scripts. It acts as no OVIS user
-   (`created_by_id` / `assigned_by_id` are NULL).
+   (`created_by_id` / `assigned_by_id` are NULL). Reset 2026-10-30; the value is in Mike's password manager.
+   It is **not** `OVIS_MCP_BEARER_TOKEN` (that one is `ovis-research-mcp` / OpenClaw). To rotate:
+   `openssl rand -hex 32`, then `supabase secrets set OVIS_MCP_INTAKE_TOKEN=<value> --project-ref rqbvcvwbziilnycqtmnc`.
+   Claude Code: `claude mcp add --transport http ovis <endpoint> --header "Authorization: Bearer <value>"`.
 
 ### To turn on the claude.ai connector (Mike, Supabase dashboard)
 
