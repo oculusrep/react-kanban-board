@@ -125,7 +125,7 @@ fence:
 "unresolved": [{"object_type": "contact", "name": "Nick Lukens",
 "details": {"email": "only if literally in the note", "mobile_phone": "only if literally in the note"}}],
 "tags": ["..."],
-"is_general": false, "ready_to_file": false}
+"is_general": false, "ready_to_file": false, "short_title": "2-6 words, e.g. Bridge prototype drywall cost"}
 
 (The API normally enforces this shape for you. State it correctly regardless — the
 request is retried without that enforcement if it is ever unavailable.)`;
@@ -206,6 +206,10 @@ export const PROPOSAL_OUTPUT_FORMAT: Record<string, unknown> = {
       ready_to_file: {
         type: 'boolean',
         description: 'True only when the user has explicitly confirmed. Never on the first proposal.',
+      },
+      short_title: {
+        type: 'string',
+        description: 'A 2–6 word title for the fact, for a folder name: "Chipotle work letter TI". No date, no punctuation.',
       },
     },
     required: ['reply', 'clean_text', 'links', 'unresolved', 'tags', 'is_general', 'ready_to_file'],

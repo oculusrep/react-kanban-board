@@ -6,6 +6,8 @@ import {
   fetchTour,
   fetchTourDays,
   fetchTourStopsForMap,
+  notifyTourStopsChanged,
+  onTourStopsChanged,
   persistStopPlacements,
   resetDayDepartures,
   setSiteApproach,
@@ -13,6 +15,7 @@ import {
   setStopDeparture,
 } from '../hooks/useTours';
 import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
+import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import {
   MAX_APPROACH_POINTS,
   buildDayRoutePoints,
@@ -40,6 +43,7 @@ import {
   DriveConnector,
   LeavingNowButton,
   NoLocationTag,
+  OpenSiteLink,
   StampedDeparture,
   TourStopCard,
   useIsNarrow,
@@ -224,12 +228,18 @@ function TourMapPageInner() {
   const [pending, setPending] = useState<PendingApproach | null>(null);
   const [savingApproach, setSavingApproach] = useState(false);
   const [focusStopId, setFocusStopId] = useState<string | null>(null);
+  const [siteSidebarId, setSiteSidebarId] = useState<string | null>(null);
+  const siteSidebarRef = useRef<string | null>(null);
+  const openSiteRef = useRef<(siteSubmitId: string, stopId: string) => void>(() => {});
+  const stopPosRef = useRef(new Map<string, { lat: number; lng: number }>());
   const [prefs, setPrefs] = useState<MapPrefs>(loadPrefs);
   const prefsRef = useRef(prefs);
   const [mapVersion, setMapVersion] = useState(0); // bumps when the map is recreated
   const narrow = useIsNarrow(); // iPhone width: stack map over schedule
   const toggleFocus = (stopId: string) => setFocusStopId((cur) => (cur === stopId ? null : stopId));
   const redraw = () => setRefreshKey((k) => k + 1);
+  // Stop added/removed from outside the map (e.g. a sidebar's Add to tour menu).
+  useEffect(() => (tourId ? onTourStopsChanged(tourId, () => setRefreshKey((k) => k + 1)) : undefined), [tourId]);
 
   // Load the reorder slideout lazily (keeps map bundle lean).
   useEffect(() => {
@@ -276,8 +286,37 @@ function TourMapPageInner() {
   useEffect(() => {
     focusRef.current = focusStopId;
     if (mapRef.current) focusCtl.setFocus(focusStopId);
-    if (focusStopId) cardRefs.current[focusStopId]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // Not while the site sidebar covers the schedule: closing it must return to the
+    // schedule exactly where it was.
+    if (focusStopId && !siteSidebarRef.current)
+      cardRefs.current[focusStopId]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [focusStopId, focusCtl]);
+
+  // ---- site submit sidebar (overlay over the schedule) ----
+  // Opening focuses the stop and pans to it; with the sidebar open, a pin or card click
+  // switches it to that site. Marker listeners are bound inside draw(), so they read
+  // the open state and the opener through refs.
+  const openSite = (siteSubmitId: string, stopId: string) => {
+    siteSidebarRef.current = siteSubmitId;
+    setSiteSidebarId(siteSubmitId);
+    setFocusStopId(stopId);
+    const pos = stopPosRef.current.get(stopId);
+    const map = mapRef.current;
+    if (pos && map) {
+      map.panTo(pos);
+      // Center the stop in the part of the map the 500px sidebar leaves visible.
+      const rect = map.getDiv().getBoundingClientRect();
+      const sidebarW = Math.min(500, window.innerWidth * 0.9);
+      const overlap = Math.max(0, sidebarW - (window.innerWidth - rect.right));
+      if (overlap > 0 && overlap < rect.width) map.panBy(overlap / 2, 0);
+    }
+  };
+  openSiteRef.current = openSite;
+  const closeSite = () => {
+    siteSidebarRef.current = null;
+    setSiteSidebarId(null);
+    if (tourId) notifyTourStopsChanged(tourId); // safety net for edits that don't report back
+  };
 
   // Esc clears focus; so does a click on the map itself.
   useEffect(() => {
@@ -378,6 +417,9 @@ function TourMapPageInner() {
         fetchTourStopsForMap(tourId),
       ]);
 
+      stopPosRef.current = new Map(
+        stops.filter((s) => s.lat != null && s.lng != null).map((s) => [s.id, { lat: s.lat!, lng: s.lng! }])
+      );
       const byDay = (dayId: string | null) =>
         stops.filter((s) => s.tour_day_id === dayId).sort((a, b) => a.position - b.position);
 
@@ -567,7 +609,8 @@ function TourMapPageInner() {
           const marker = makeMarker(map, pos, String(s.number), dr.color, `Day ${dr.day.day_number} · ${s.number}. ${s.display_name}`);
           marker.addListener('click', () => {
             markerClickAtRef.current = Date.now();
-            toggleFocus(s.id);
+            if (siteSidebarRef.current) openSiteRef.current(s.site_submit_id, s.id);
+            else toggleFocus(s.id);
           });
           overlaysRef.current.markers.push(marker);
           extend(pos);
@@ -594,7 +637,12 @@ function TourMapPageInner() {
         .filter((s) => s.lat != null && s.lng != null)
         .forEach((s) => {
           const pos = { lat: s.lat!, lng: s.lng! };
-          overlaysRef.current.markers.push(makeMarker(map, pos, '•', SLATE, `Unscheduled · ${s.display_name}`));
+          const marker = makeMarker(map, pos, '•', SLATE, `Unscheduled · ${s.display_name}`);
+          marker.addListener('click', () => {
+            markerClickAtRef.current = Date.now();
+            if (siteSidebarRef.current) openSiteRef.current(s.site_submit_id, s.id);
+          });
+          overlaysRef.current.markers.push(marker);
           extend(pos);
         });
 
@@ -1001,15 +1049,18 @@ function TourMapPageInner() {
                         ref={(el) => {
                           cardRefs.current[s.id] = el;
                         }}
-                        onClick={() => mapped && toggleFocus(s.id)}
-                        style={{ cursor: mapped ? 'pointer' : 'default' }}
+                        onClick={() => {
+                          if (siteSidebarId) openSite(s.site_submit_id, s.id);
+                          else if (mapped) toggleFocus(s.id);
+                        }}
+                        style={{ cursor: mapped || siteSidebarId ? 'pointer' : 'default' }}
                       >
                         <TourStopCard
                           done={done}
                           highlight={focusStopId === s.id}
                           number={s.number}
                           color={mapped ? dr.color : TERRACOTTA}
-                          title={s.display_name}
+                          title={<OpenSiteLink text={s.display_name} onOpen={() => openSite(s.site_submit_id, s.id)} />}
                           meta={
                             <>
                               {!done && <ArriveText arrivalMin={timing?.arrivalMin} />}
@@ -1077,8 +1128,21 @@ function TourMapPageInner() {
           onChanged={redraw}
           stopSchedule={stopSchedule}
           daySummaries={daySummaries}
+          onOpenSite={openSite}
         />
       )}
+
+      {/* Same site submit sidebar as the main map (green + deal tab when it has a deal). */}
+      <SiteSubmitSidebar
+        siteSubmitId={siteSidebarId}
+        isOpen={siteSidebarId !== null}
+        onClose={closeSite}
+        context="map"
+        isEditable={true}
+        onDataUpdate={() => tourId && notifyTourStopsChanged(tourId)}
+        onStatusChange={() => tourId && notifyTourStopsChanged(tourId)}
+        onCenterOnPin={(lat, lng) => mapRef.current?.panTo({ lat, lng })}
+      />
     </div>
   );
 }

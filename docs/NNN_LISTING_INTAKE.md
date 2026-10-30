@@ -9,8 +9,17 @@
 Claude (claude.ai connector or Claude Code) finds NNN investment listings and records them in OVIS:
 
 1. `upsert_listing` normalizes the address, inserts the listing or bumps `last_seen`, and geocodes new rows onto the map.
-2. `create_va_task` puts a diligence task with a checklist into Noree's task Inbox.
+   **Since ovis-mcp v0.3.0 (2026-10-30), a new listing also gets its diligence task server-side**, assigned to Noree:
+   - It fires only when the result has `is_new = true` (a new comp, or a relist on an existing comp). Re-sightings and price/cap changes never create a task.
+   - It uses the same code and RPC as `create_va_task` (due today ET, Inbox, Listing + Comp record links, default checklist) and returns `va_task_id`.
+   - If the task fails, the listing is still saved and `va_task_error` is returned; retry with `create_va_task`.
+   - **Opt-out (v0.3.1, 2026-10-30):** `upsert_listing` takes an optional boolean `create_va_task`, default `true`.
+     With `false`, a new listing is saved normally but gets no task, and the result returns `va_task_skipped: true`.
+     Use it **only for bulk backfills**; normal intake leaves it at the default. Updates never create tasks either way.
+     Tested live: one listing with `false` and one with the default produced exactly one task. The test rows were deleted.
+2. `create_va_task` stays as a standalone tool: an extra or reassigned task, or a retry after `va_task_error`. Don't call it for a listing `upsert_listing` just created, or Noree gets two tasks.
 3. `list_recent_listings` lets the agent skip listings it has already captured.
+4. `listing_activity` is the daily-summary feed (spec v2 §8.6).
 
 In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the review queue.
 **Promote to comp** creates Comp Database records and links them back.
@@ -64,16 +73,47 @@ A `cap_rate` passed as a fraction (`0.0575`) is converted to a percent (`5.75`).
 
 Endpoint: `https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/ovis-mcp`
 
+### How claude.ai is connected (2026-10-30, 2:03 PM ET): OAuth
+
+claude.ai → Settings → Connectors → custom connector **"OVIS (oAuth)"**: the endpoint URL, the sign-in
+option, no client ID/secret and no request header. It is connected per user, and writes are audited as the
+signed-in OVIS user.
+
+**How OAuth got unblocked: the JWT signing key was rotated to ES256 on 2026-10-30.**
+- claude.ai requests the authorization server's full scope list, including `openid`. While the
+  current signing key was the legacy HS256 secret, `/oauth/token` returned **500 "HS256 is not
+  supported for ID token signing"**.
+- Advertising `scopes_supported` without `openid` doesn't work around it: claude.ai abandons sign-in
+  before registering. That was tested three ways; don't re-add it.
+- The rotation dialog warned that ~50 `verify_jwt = true` functions might break. **They didn't.**
+  Tested live after the rotation:
+  - ES256 user tokens got 200 through the gateway on `dropbox-proxy` and `streetlight`.
+  - HS256 tokens (the legacy anon JWT in cron/pg_net calls, older sessions) still get 200 on
+    `email-triage`, `gmail-sync` and `send-portal-comment-alert`.
+  - There were no 401s.
+- **Never revoke the previous HS256 key.** The cron/pg_net callers still sign with it.
+- **Rollback**, if ever needed: JWT Keys → move the HS256 key back to Standby → Rotate.
+- `_shared/jwt.ts` (send-site-submit-email) and `ovis-mcp` verify ES256 in code via JWKS.
+- Diagnose with the Management API logs endpoint (`/analytics/endpoints/logs`, unified `logs` table:
+  `source = 'auth_logs' | 'edge_logs' | 'function_logs' | 'function_edge_logs'`).
+
+Earlier the same day the connector ran on **No sign-in** with the header
+`Authorization: Bearer <OVIS_MCP_INTAKE_TOKEN>`. That still works as a fallback, but writes are
+audited as no user. That connector was deleted when OAuth went live.
+
 Two credentials are accepted, both as `Authorization: Bearer …`:
 
-1. **OAuth 2.1 (claude.ai custom connector).** claude.ai web connectors **cannot send a static bearer
+1. **OAuth 2.1** (live; see above). At the time of writing, claude.ai web connectors **could not send a static bearer
    header**. They need OAuth with Dynamic Client Registration and PKCE. The function returns
    `401` + `WWW-Authenticate: Bearer resource_metadata=".../ovis-mcp/.well-known/oauth-protected-resource"`.
    That metadata names Supabase Auth (`/auth/v1`) as the authorization server. Supabase Auth issues the token, and the
    function validates it (`auth.getUser`) and then requires `is_internal_user()` **as that user**. Admin, broker
    and VA accounts pass; portal and coach accounts get 403.
-2. **Static token** = secret `OVIS_MCP_INTAKE_TOKEN`, for Claude Code and scripts. It acts as no OVIS user
-   (`created_by_id` / `assigned_by_id` are NULL).
+2. **Static token** = secret `OVIS_MCP_INTAKE_TOKEN`, for the claude.ai connector (as a request header), Claude Code and scripts. It acts as no OVIS user
+   (`created_by_id` / `assigned_by_id` are NULL). Reset 2026-10-30; the value is in Mike's password manager.
+   It is **not** `OVIS_MCP_BEARER_TOKEN` (that one is `ovis-research-mcp` / OpenClaw). To rotate:
+   `openssl rand -hex 32`, then `supabase secrets set OVIS_MCP_INTAKE_TOKEN=<value> --project-ref rqbvcvwbziilnycqtmnc`.
+   Claude Code: `claude mcp add --transport http ovis <endpoint> --header "Authorization: Bearer <value>"`.
 
 ### To turn on the claude.ai connector (Mike, Supabase dashboard)
 
@@ -109,7 +149,8 @@ https://supabase.com/docs/guides/auth/oauth-server/getting-started
   - `create_va_task` lands in the Inbox with 8 checklist lines, and an unknown assignee gives `isError`.
 
   The test rows were deleted.
-- **Not verified:** the OAuth path, because it is blocked on the dashboard steps above. Also not verified: the UI in a browser.
+- The OAuth path was verified 2026-10-30 after the ES256 rotation: DCR 201, consent 200, `/oauth/token` 200, and ES256 tool calls 200 from Claude-User.
+- **Not verified:** the UI in a browser.
 
 ## Open items
 

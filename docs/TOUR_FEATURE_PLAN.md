@@ -277,6 +277,41 @@ with the original RangeError if the guard is removed).
   **Reset to plan** clears the day's stamps in one UPDATE.
 - iPhone width (<700px): map stacks over a full-width schedule; controls compact.
 
+## Phase 4.8 — Remove from tour via the Add to tour menu (branch `feature/tour-routing`)
+
+No migration. `AddToTourButton` (SiteSubmitSidebar, DealDetailsSlideout, SiteSubmitDetailsPage):
+- Tours already containing the site submit show ✓; hover swaps the stop count for **Remove**; click
+  removes that `tour_stop`. A confirm appears only if the stop carries work: notes, a custom label,
+  an approach override (incl. `[]`), or a Leaving-now stamp. Tours without it: click adds to Unscheduled.
+- Label: "On N tour(s) ▾" when on any tour (count = all `tour_stop` rows for the site submit), else "Add to tour ▾".
+- `removeTourStop` (also used by the tour panel's remove) now deletes, then renumbers the remaining
+  stops in that day / the unscheduled bucket 0..n-1 via `set_tour_stop_placements`. Two calls, not one
+  transaction: a failed renumber leaves a position gap (order still correct) and is reported.
+- Change events: `notifyTourStopsChanged(tourId)` / `onTourStopsChanged(tourId|null, fn)` in `useTours.ts`
+  (window CustomEvent `ovis:tour-stops-changed`, same pattern as packageTracker). Add/remove fire it; every
+  AddToTourButton, `useTours` stop counts, an open TourDetailPanel (silent reload) and the tour map
+  (debounced redraw) listen.
+- Touch/pen (by `pointerType`): first tap on a ✓ row turns it into "Remove from <tour>?" with Remove / Cancel
+  (naming any work that would be lost, instead of a dialog); second tap removes. Mouse hover/click unchanged;
+  keyboard activation follows the mouse path.
+
+## Phase 4.9 — Open the site sidebar from the tour map (branch `feature/tour-routing`)
+
+No migration. On `/tours/:id/map`:
+- Stop names on the map schedule cards and the Reorder stops panel are links with a small ↗
+  (`OpenSiteLink` in TourStopCard.tsx). Either opens the shared `SiteSubmitSidebar` (`context="map"`,
+  same as the main map — it turns green with the deal tab on its own when the submit has a deal).
+  The panel only links this way when hosted by the map (`onOpenSite` prop); elsewhere it keeps the
+  `/site-submit/:id` link.
+- Opening focuses the stop (green/orange legs) and pans so the stop sits centered in the map area the
+  500px sidebar leaves visible. The schedule stays mounted underneath and its auto-scroll-to-focused-card
+  is suppressed while the sidebar is open, so closing returns to the same scroll position.
+- While open, a pin click (scheduled or unscheduled) or a stop-card click switches the sidebar to that
+  site. With it closed, card/pin clicks keep the toggle-focus behavior.
+- Sidebar `onDataUpdate` / `onStatusChange` and close fire `notifyTourStopsChanged(tourId)`, which
+  redraws the map and silently reloads an open Reorder panel; Add to tour / remove inside the sidebar
+  already fire it.
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding

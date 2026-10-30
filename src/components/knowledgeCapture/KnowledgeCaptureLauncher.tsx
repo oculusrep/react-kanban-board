@@ -18,6 +18,9 @@ import {
   type UnresolvedName,
   useKnowledgeCapture,
 } from './useKnowledgeCapture';
+import { ACCEPT_ATTR, type IntelFile, useIntelFiles } from './useIntelFiles';
+import { DraftFileList, FileChips, PaperclipIcon } from './IntelFiles';
+import { IntelAsk } from './IntelAsk';
 
 // Intel (internally "knowledge capture" — table, function and file names use that
 // prefix): a floating button on every internal page that opens a panel
@@ -415,7 +418,13 @@ const UnresolvedRow: React.FC<{
   );
 };
 
-const RecentList: React.FC<{ entries: FiledEntry[] }> = ({ entries }) => {
+const RecentList: React.FC<{
+  entries: FiledEntry[];
+  files: Record<string, IntelFile[]>;
+  onOpenFile: (fileId: string) => void;
+  onRetry: (file: IntelFile) => void;
+  canRetry: (localId: string) => boolean;
+}> = ({ entries, files, onOpenFile, onRetry, canRetry }) => {
   if (entries.length === 0) return null;
   return (
     <section className="mt-3 pt-2" style={{ borderTop: `1px solid ${COLORS.slate}` }}>
@@ -448,6 +457,7 @@ const RecentList: React.FC<{ entries: FiledEntry[] }> = ({ entries }) => {
                 </span>
               )}
             </div>
+            <FileChips files={files[entry.id] ?? []} onOpen={onOpenFile} onRetry={onRetry} canRetry={canRetry} />
           </li>
         ))}
       </ul>
@@ -509,6 +519,28 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
   }, []);
 
   const capture = useKnowledgeCapture(user?.id ?? null);
+  const intelFiles = useIntelFiles(user?.id ?? null);
+  const [mode, setMode] = useState<'capture' | 'ask'>('capture');
+  const [dragDepth, setDragDepth] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Files of the notes in "Recently filed" — and resume indexing any of this
+  // user's files a closed tab left unfinished.
+  const recentIds = capture.recent.filter((e) => !e.pending).map((e) => e.id).join(',');
+  const loadFilesFor = intelFiles.loadFor;
+  useEffect(() => {
+    if (!open || !recentIds) return;
+    loadFilesFor(recentIds.split(','));
+  }, [open, recentIds, loadFilesFor]);
+
+  const fileWithAttachments = useCallback(async () => {
+    const drafts = intelFiles.drafts;
+    const filed = await capture.fileIt();
+    if (filed && drafts.length > 0) {
+      intelFiles.clearDrafts();
+      void intelFiles.uploadForEntry(filed, drafts);
+    }
+  }, [capture, intelFiles]);
   const toggle = useCallback(() => setOpen((o) => !o), []);
   const fab = useDraggableFab(POS_KEY, FAB_CORNER);
 
@@ -601,6 +633,24 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
         }}
         aria-hidden={!open}
         aria-label="Intel"
+        // Drop files anywhere on the panel to attach them to the note being written.
+        onDragEnter={(e) => {
+          if (mode !== 'capture' || !e.dataTransfer.types.includes('Files')) return;
+          e.preventDefault();
+          setDragDepth((d) => d + 1);
+        }}
+        onDragOver={(e) => {
+          if (mode !== 'capture' || !e.dataTransfer.types.includes('Files')) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+        onDragLeave={() => setDragDepth((d) => Math.max(0, d - 1))}
+        onDrop={(e) => {
+          if (mode !== 'capture' || e.dataTransfer.files.length === 0) return;
+          e.preventDefault();
+          setDragDepth(0);
+          intelFiles.addDrafts(e.dataTransfer.files);
+        }}
         onKeyDown={(e) => {
           // stopPropagation so Esc here doesn't also close a map slideout behind us.
           if (e.key === 'Escape') {
@@ -632,6 +682,40 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           </button>
         </header>
 
+        <div className="flex flex-shrink-0 gap-1 px-4 pt-2" style={{ backgroundColor: COLORS.white }} role="tablist">
+          {(['capture', 'ask'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => setMode(m)}
+              tabIndex={open ? 0 : -1}
+              className="rounded-t px-3 py-1 text-xs font-semibold"
+              style={
+                mode === m
+                  ? { color: COLORS.midnight, borderBottom: `2px solid ${COLORS.midnight}` }
+                  : { color: COLORS.slate, borderBottom: '2px solid transparent' }
+              }
+            >
+              {m === 'capture' ? 'Capture' : 'Ask'}
+            </button>
+          ))}
+        </div>
+
+        {dragDepth > 0 && mode === 'capture' && (
+          <div
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(248,250,252,0.92)', border: `2px dashed ${COLORS.steel}` }}
+          >
+            <p className="text-sm font-semibold" style={{ color: COLORS.steel }}>Drop files to attach them to this note</p>
+          </div>
+        )}
+
+        {mode === 'ask' ? (
+          <IntelAsk open={open} onOpenFile={intelFiles.openFile} />
+        ) : (
+        <>
         <form onSubmit={submit} className="flex-shrink-0 px-4 pt-3 pb-2" style={{ backgroundColor: COLORS.white }}>
           <textarea
             ref={inputRef}
@@ -653,13 +737,49 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
           />
           <div className="mt-1 flex items-center justify-between text-[11px]" style={{ color: COLORS.steel }}>
             <span>{capture.thinking ? 'Thinking…' : 'Enter to send · Shift+Enter for a new line'}</span>
-            {!isFirstTurn && (
-              <button type="button" onClick={() => { capture.reset(); setDraft(''); }} className="underline">
-                Start over
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-0.5 underline"
+                title="Attach PDF, Word, Excel or image files (or drop them on the panel)"
+              >
+                <PaperclipIcon /> Attach
               </button>
-            )}
+              {!isFirstTurn && (
+                <button
+                  type="button"
+                  onClick={() => { capture.reset(); intelFiles.clearDrafts(); setDraft(''); }}
+                  className="underline"
+                >
+                  Start over
+                </button>
+              )}
+            </span>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPT_ATTR}
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) intelFiles.addDrafts(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <DraftFileList drafts={intelFiles.drafts} onRemove={intelFiles.removeDraft} />
         </form>
+
+        {intelFiles.notice && (
+          <div
+            className="mx-4 mt-2 flex flex-shrink-0 items-start justify-between gap-2 rounded px-2 py-1 text-xs"
+            style={{ color: COLORS.terracotta, border: `1px solid ${COLORS.terracotta}`, backgroundColor: COLORS.white }}
+          >
+            <span>{intelFiles.notice}</span>
+            <button type="button" onClick={intelFiles.clearNotice} className="underline">dismiss</button>
+          </div>
+        )}
 
         {capture.error && (
           <div
@@ -718,7 +838,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
               />
               <button
                 type="button"
-                onClick={() => { capture.fileIt(); inputRef.current?.focus(); }}
+                onClick={() => { void fileWithAttachments(); inputRef.current?.focus(); }}
                 disabled={capture.filing || !capture.proposal.clean_text.trim()}
                 className="mt-2 w-full rounded-md py-2 text-sm font-semibold disabled:opacity-50"
                 style={
@@ -729,13 +849,25 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
                     : { backgroundColor: COLORS.white, color: COLORS.midnight, border: `1px solid ${COLORS.midnight}` }
                 }
               >
-                {capture.filing ? 'Filing…' : 'File it'}
+                {capture.filing
+                  ? 'Filing…'
+                  : intelFiles.drafts.length > 0
+                    ? `File it + ${intelFiles.drafts.length} file${intelFiles.drafts.length === 1 ? '' : 's'}`
+                    : 'File it'}
               </button>
             </div>
           )}
 
-          <RecentList entries={capture.recent} />
+          <RecentList
+            entries={capture.recent}
+            files={intelFiles.files}
+            onOpenFile={intelFiles.openFile}
+            onRetry={intelFiles.retryUpload}
+            canRetry={intelFiles.canRetry}
+          />
         </div>
+        </>
+        )}
       </aside>
 
       {/*

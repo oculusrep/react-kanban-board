@@ -106,12 +106,22 @@ export interface FiledEntry {
 
 const RECENT_LIMIT = 5;
 
+/** What filing hands the attachment upload. */
+export interface FiledResult {
+  entry_id: string;
+  /** The first linked account in the panel's order: the Dropbox folder's client. */
+  client_id: string | null;
+  short_title: string;
+}
+
 interface TurnResponse {
   reply: string;
   proposal: Proposal;
   ready_to_file: boolean;
   model: string;
   unresolved?: UnresolvedName[];
+  /** A few words naming the fact — the Dropbox folder title for attached files. */
+  short_title?: string;
 }
 
 interface FileResponse {
@@ -181,6 +191,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
   // just chip edits. Never overwritten mid-conversation.
   const baselineRef = useRef<Proposal | null>(null);
   const proposalModelRef = useRef<string | null>(null);
+  const shortTitleRef = useRef<string>('');
 
   useEffect(() => {
     if (!authUserId) return;
@@ -239,6 +250,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
     setUnresolved([]);
     baselineRef.current = null;
     proposalModelRef.current = null;
+    shortTitleRef.current = '';
   }, []);
 
   /** Send a note (first turn) or a reply (every turn after). */
@@ -267,6 +279,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
         setProposal(result.proposal);
         setReadyToFile(result.ready_to_file);
         setUnresolved(result.unresolved ?? []);
+        if (result.short_title) shortTitleRef.current = result.short_title;
         if (!baselineRef.current) {
           baselineRef.current = result.proposal;
           proposalModelRef.current = result.model;
@@ -334,9 +347,12 @@ export function useKnowledgeCapture(authUserId: string | null) {
   /**
    * File it. The button is the only thing that files — ready_to_file just lights
    * it up. Optimistic: the row appears in the list immediately.
+   *
+   * Resolves to what the attachment upload needs (the new entry, its first
+   * linked client, the short title), or null if filing failed.
    */
-  const fileIt = useCallback(async () => {
-    if (!proposal || !rawText || filing) return;
+  const fileIt = useCallback(async (): Promise<FiledResult | null> => {
+    if (!proposal || !rawText || filing) return null;
     const tempId = `pending-${crypto.randomUUID()}`;
     const optimistic: FiledEntry = {
       id: tempId,
@@ -372,13 +388,18 @@ export function useKnowledgeCapture(authUserId: string | null) {
             : entry,
         ),
       );
+      const filed: FiledResult = {
+        entry_id: result.entry_id,
+        client_id: proposal.links.find((l) => l.object_type === 'account')?.object_id ?? null,
+        short_title: shortTitleRef.current,
+      };
       // Ready for the next note; the panel stays open.
       reset();
-      return true;
+      return filed;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not file this entry');
       setRecent((r) => r.filter((entry) => entry.id !== tempId));
-      return false;
+      return null;
     } finally {
       setFiling(false);
     }

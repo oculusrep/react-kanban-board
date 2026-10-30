@@ -24,6 +24,8 @@ export interface TurnResult {
     is_general: boolean;
   };
   ready_to_file: boolean;
+  /** A few words naming the fact — the Dropbox folder title if files are attached. */
+  short_title: string;
   /** Proposed links that don't exist in OVIS; shown, never filed. */
   dropped_links: Array<{ object_type?: string; object_id?: string }>;
   /**
@@ -76,6 +78,7 @@ export async function runTurn(opts: {
       is_general: answer.is_general,
     },
     ready_to_file: answer.ready_to_file,
+    short_title: typeof parsed.short_title === 'string' ? parsed.short_title.trim().replace(/\s+/g, ' ').slice(0, 60) : '',
     dropped_links: answer.dropped_links,
     unresolved: answer.unresolved,
     model: CHAT_MODEL,
