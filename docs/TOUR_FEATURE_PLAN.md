@@ -291,7 +291,9 @@ No migration. `AddToTourButton` (SiteSubmitSidebar, DealDetailsSlideout, SiteSub
   (window CustomEvent `ovis:tour-stops-changed`, same pattern as packageTracker). Add/remove fire it; every
   AddToTourButton, `useTours` stop counts, an open TourDetailPanel (silent reload) and the tour map
   (debounced redraw) listen.
-- Touch: no hover, so a tap on a ✓ row removes directly (confirm still applies when the stop has work).
+- Touch/pen (by `pointerType`): first tap on a ✓ row turns it into "Remove from <tour>?" with Remove / Cancel
+  (naming any work that would be lost, instead of a dialog); second tap removes. Mouse hover/click unchanged;
+  keyboard activation follows the mouse path.
 
 ## Cleanup list
 
