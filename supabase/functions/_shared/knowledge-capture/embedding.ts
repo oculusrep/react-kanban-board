@@ -81,3 +81,40 @@ export async function createEmbedding(text: string): Promise<Embedding> {
     dimensions: vector.length,
   };
 }
+
+/** Inputs per request: well inside OpenAI's per-request token limit at ~1,500 tokens each. */
+const BATCH_SIZE = 64;
+
+/**
+ * Embed several pieces of text (file chunks) — one request per BATCH_SIZE,
+ * results in input order. Throws on any failure; the extraction step retries.
+ */
+export async function createEmbeddings(texts: string[]): Promise<{ vectors: number[][]; model: string; dimensions: number }> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not set');
+  const vectors: number[][] = [];
+  let model = EMBEDDING_MODEL;
+  for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+    const input = texts.slice(i, i + BATCH_SIZE).map((t) => t.trim() || '(empty)');
+    const res = await fetch(OPENAI_EMBEDDINGS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: EMBEDDING_MODEL, input, dimensions: EMBEDDING_DIMENSIONS }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      throw new Error(`embedding request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+    }
+    const body = await res.json() as { model?: string; data?: Array<{ index: number; embedding?: number[] }> };
+    const data = [...(body.data ?? [])].sort((a, b) => a.index - b.index);
+    if (data.length !== input.length) throw new Error('embedding response count mismatch');
+    for (const d of data) {
+      if (!Array.isArray(d.embedding) || d.embedding.length !== EMBEDDING_DIMENSIONS) {
+        throw new Error(`embedding width mismatch: expected ${EMBEDDING_DIMENSIONS}`);
+      }
+      vectors.push(d.embedding);
+    }
+    model = body.model?.trim() || model;
+  }
+  return { vectors, model, dimensions: EMBEDDING_DIMENSIONS };
+}

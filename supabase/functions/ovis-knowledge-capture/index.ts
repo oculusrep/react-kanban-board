@@ -28,6 +28,16 @@
  *      pasted block. Writes nothing. Any internal user (the gate above).
  *      See _shared/knowledge-capture/pasteSignature.ts.
  *
+ *   5. Attachments (the note's owner only, for attach_start/attach_finish):
+ *      attach_start / attach_finish / extract_file / file_link.
+ *      Files live in Dropbox under /Salesforce Documents/Intel; they open through
+ *      a per-click 4-hour temporary link, never a shared link.
+ *      See _shared/knowledge-capture/attachActions.ts.
+ *
+ *   6. { action: 'ask', question } -> answered | nothing_found
+ *      Answers only from Intel notes and file text, every statement cited with a
+ *      quote verified word for word. See _shared/knowledge-capture/ask.ts.
+ *
  * Unlike ovis-site-research this runs synchronously. That function had to move to
  * a background queue because Opus with web search blew past Supabase's 150 s idle
  * timeout; a turn here is Sonnet plus a few name lookups against Postgres, so the
@@ -43,6 +53,9 @@ import { normalizeMessages } from '../_shared/knowledge-capture/messages.ts';
 import { fileEntry } from '../_shared/knowledge-capture/file.ts';
 import { lookupEmailSignature } from '../_shared/knowledge-capture/emailLookup.ts';
 import { parsePastedSignature } from '../_shared/knowledge-capture/pasteSignature.ts';
+import { attachFinish, attachStart, extractFile, fileLink } from '../_shared/knowledge-capture/attachActions.ts';
+import { ASK_OUTPUT_FORMAT, ASK_SYSTEM_PROMPT, askIntel, type SearchRow } from '../_shared/knowledge-capture/ask.ts';
+import { createEmbedding, toVectorLiteral } from '../_shared/knowledge-capture/embedding.ts';
 import { runToolLoop } from '../_shared/knowledge-capture/loop.ts';
 import { parseModelJson } from '../_shared/knowledge-capture/proposal.ts';
 import { anthropicCreate, buildBaseParams, CHAT_PRICING } from '../_shared/knowledge-capture/config.ts';
@@ -114,6 +127,11 @@ serve(async (req: Request) => {
     if (action === 'file') return await file(service, userClient, body);
     if (action === 'lookup_email_signature') return await lookupSignature(userClient, body);
     if (action === 'parse_signature') return await parseSignature(userClient, body);
+    if (action === 'attach_start') return send(await attachStart(service, userClient, authData.user.id, body));
+    if (action === 'attach_finish') return send(await attachFinish(service, authData.user.id, body));
+    if (action === 'extract_file') return send(await extractFile(service, body));
+    if (action === 'file_link') return send(await fileLink(userClient, body));
+    if (action === 'ask') return await ask(userClient, body);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -226,6 +244,49 @@ async function parseSignature(userClient: SupabaseClient, body: Record<string, u
           tools: [],
           pricing: CHAT_PRICING,
           outputFormat: PASTE_SIGNATURE_OUTPUT_FORMAT,
+        });
+        return parseModelJson(out.text);
+      },
+    },
+    body,
+  );
+  return jsonResponse(result.body, result.status);
+}
+
+function send(result: { status: number; body: unknown }): Response {
+  return jsonResponse(result.body, result.status);
+}
+
+// ---------------------------------------------------------------------------
+// Action: ask
+// ---------------------------------------------------------------------------
+async function ask(userClient: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) return jsonResponse({ error: 'anthropic_key_missing' }, 500);
+
+  const result = await askIntel(
+    {
+      embed: async (text) => (await createEmbedding(text)).vector,
+      // userClient: intel_search is SECURITY INVOKER, so the caller's RLS decides
+      // what can be found.
+      search: async (question, embedding, limit) => {
+        const { data, error } = await userClient.rpc('intel_search', {
+          p_query: question,
+          p_embedding: embedding ? toVectorLiteral(embedding) : null,
+          p_limit: limit,
+        });
+        if (error) throw Object.assign(new Error(`search failed: ${error.message}`), { status: error.code === '42501' ? 403 : 500 });
+        return (data ?? []) as SearchRow[];
+      },
+      answer: async (prompt) => {
+        const out = await runToolLoop({
+          create: anthropicCreate(apiKey),
+          execute: () => Promise.reject(new Error('no tools')),
+          baseParams: buildBaseParams(ASK_SYSTEM_PROMPT),
+          messages: [{ role: 'user', content: prompt }],
+          tools: [],
+          pricing: CHAT_PRICING,
+          outputFormat: ASK_OUTPUT_FORMAT,
         });
         return parseModelJson(out.text);
       },
