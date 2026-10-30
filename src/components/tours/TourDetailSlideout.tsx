@@ -13,13 +13,14 @@ interface TourDetailSlideoutProps {
   stopSchedule?: Record<string, StopTiming>;
   /** Per-day Drive/Stops/Finish totals, when hosted alongside the map. */
   daySummaries?: Record<string, DayTotals>;
+  onOpenSite?: (siteSubmitId: string, stopId: string) => void;
 }
 
-export function TourDetailSlideout({ tourId, isOpen, onClose, onChanged, stopSchedule, daySummaries }: TourDetailSlideoutProps) {
+export function TourDetailSlideout({ tourId, isOpen, onClose, onChanged, stopSchedule, daySummaries, onOpenSite }: TourDetailSlideoutProps) {
   return (
     <SlideOutPanel isOpen={isOpen} onClose={onClose} title="Tour" width="540px">
       {tourId && (
-        <TourDetailPanel tourId={tourId} onChanged={onChanged} onDeleted={onClose} stopSchedule={stopSchedule} daySummaries={daySummaries} />
+        <TourDetailPanel tourId={tourId} onChanged={onChanged} onDeleted={onClose} stopSchedule={stopSchedule} daySummaries={daySummaries} onOpenSite={onOpenSite} />
       )}
     </SlideOutPanel>
   );

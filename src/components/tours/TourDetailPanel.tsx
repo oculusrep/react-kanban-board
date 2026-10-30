@@ -33,6 +33,7 @@ import {
   TourStopCard,
   categoryPillStyle,
   type DayTotals,
+  OpenSiteLink,
 } from './TourStopCard';
 import { geocodingService } from '../../services/geocodingService';
 
@@ -61,6 +62,8 @@ interface TourDetailPanelProps {
   stopSchedule?: Record<string, StopTiming>;
   /** Per-day Drive/Stops/Finish from the map host; without it the footer shows Stops only. */
   daySummaries?: Record<string, DayTotals>;
+  /** When set (tour map host), stop names open the site submit sidebar instead of navigating. */
+  onOpenSite?: (siteSubmitId: string, stopId: string) => void;
 }
 
 const dayDroppableId = (dayId: string) => `day:${dayId}`;
@@ -92,7 +95,7 @@ function TimeSelect({ value, onChange }: { value: string | null; onChange: (v: s
   );
 }
 
-export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, daySummaries }: TourDetailPanelProps) {
+export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, daySummaries, onOpenSite }: TourDetailPanelProps) {
   const [tour, setTour] = useState<Tour | null>(null);
   const [days, setDays] = useState<TourDay[]>([]);
   const [stops, setStops] = useState<TourStopWithSiteSubmit[]>([]);
@@ -415,7 +418,11 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                   />
                 ) : (
                   <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
-                    <span>{subtext ? name : ssLink(name, MIDNIGHT)}</span>
+                    {onOpenSite && stop.site_submit?.id ? (
+                      <OpenSiteLink text={name} onOpen={() => onOpenSite(stop.site_submit!.id, stop.id)} />
+                    ) : (
+                      <span>{subtext ? name : ssLink(name, MIDNIGHT)}</span>
+                    )}
                     <button
                       type="button"
                       onClick={() => startLabelEdit(stop)}
@@ -460,7 +467,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                   <ApproachTag source={effectiveApproach(stop.approach_waypoints_override, stop.site_submit?.approach_waypoints).source} />
                 </>
               }
-              subtext={subtext ? ssLink(subtext, '#9CA3AF') : null}
+              subtext={subtext ? (onOpenSite ? subtext : ssLink(subtext, '#9CA3AF')) : null}
               footer={
                 <>
                   {narrow && live?.currentStopId === stop.id && (

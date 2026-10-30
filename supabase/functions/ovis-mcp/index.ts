@@ -30,13 +30,21 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { censusGeocode } from '../_shared/site-research/geocode.ts';
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'https://esm.sh/jose@5.9.6';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.3.0' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.3.1' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const RESOURCE_URL = `${SUPABASE_URL}/functions/v1/ovis-mcp`;
 const RESOURCE_METADATA_URL = `${RESOURCE_URL}/.well-known/oauth-protected-resource`;
+const AUTH_ISSUER = `${SUPABASE_URL}/auth/v1`;
+// Don't advertise scopes_supported: with it, the claude.ai connector abandons sign-in before
+// registering (tested 2026-10-30, with and without a WWW-Authenticate scope). Without it,
+// claude.ai requests the AS's full list incl. `openid`, and Supabase's /oauth/token 500s
+// "HS256 is not supported for ID token signing" until the project signing key is ES256.
+// Project signing keys (ES256). Cached by jose across requests in a warm instance.
+const JWKS = createRemoteJWKSet(new URL(`${AUTH_ISSUER}/.well-known/jwks.json`));
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -76,7 +84,7 @@ const TOOLS = [
   {
     name: 'upsert_listing',
     description:
-      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry.',
+      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -98,6 +106,7 @@ const TOOLS = [
         brokerage: { type: ['string', 'null'] },
         source: { type: ['string', 'null'], description: 'Where it was found, e.g. "Crexi", "LoopNet", "broker email".' },
         source_url: { type: ['string', 'null'] },
+        create_va_task: { type: 'boolean', default: true, description: 'Default true: a NEW listing gets its diligence task. false only for bulk backfills; the listing is saved but no task is created (va_task_skipped: true). Updates never create tasks either way.' },
       },
       required: ['tenant', 'address', 'city'],
     },
@@ -175,13 +184,50 @@ function unauthorized(error: string): Response {
 }
 
 async function authorize(req: Request): Promise<Caller | Response> {
-  const bearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  // Tolerate hand-typed connector headers (claude.ai "Request headers"): a doubled "Bearer",
+  // wrapping quotes or <angle brackets>, stray whitespace.
+  const bearer = (req.headers.get('Authorization') ?? '').trim()
+    .replace(/^(Bearer\s+)+/i, '').trim()
+    .replace(/^["'<]+|[">']+$/g, '').trim();
   if (!bearer) return unauthorized('missing_token');
 
   if (safeEqual(bearer, Deno.env.get('OVIS_MCP_INTAKE_TOKEN') ?? '')) return { kind: 'static' };
 
-  const { data: authData, error: authErr } = await getService().auth.getUser(bearer);
-  if (authErr || !authData?.user) return unauthorized('invalid_token');
+  // Verify the access token locally against the project's published signing keys (ES256 JWKS),
+  // as a resource server should. GoTrue's /user endpoint rejected OAuth-server tokens from the
+  // claude.ai connector (401 right after a successful token exchange, 2026-10-30), so it is
+  // only a fallback. PostgREST re-verifies the token on the is_internal_user call below.
+  let authUserId: string | null = null;
+  let jwksErr = '';
+  try {
+    const { payload } = await jwtVerify(bearer, JWKS, { issuer: AUTH_ISSUER });
+    if (payload.role === 'authenticated' && typeof payload.sub === 'string') authUserId = payload.sub;
+    else jwksErr = `role=${payload.role}`;
+  } catch (e) {
+    jwksErr = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  }
+  if (!authUserId) {
+    const { data: authData, error: authErr } = await getService().auth.getUser(bearer);
+    if (authData?.user) authUserId = authData.user.id;
+    else {
+      // Log why, with the token's non-secret claims (never the token), so a failing connector is diagnosable.
+      let claims: Record<string, unknown> = {};
+      try {
+        const p = decodeJwt(bearer);
+        claims = { iss: p.iss, aud: p.aud, role: p.role, client_id: p.client_id, exp: p.exp, sub: p.sub };
+      } catch {
+        // Not a JWT: probably a mistyped static token. Log its shape only — never the value.
+        const raw = req.headers.get('Authorization') ?? '';
+        claims = {
+          not_a_jwt: true, raw_len: raw.length, token_len: bearer.length,
+          hex64: /^[0-9a-f]{64}$/i.test(bearer), has_space: /\s/.test(bearer),
+          static_len: (Deno.env.get('OVIS_MCP_INTAKE_TOKEN') ?? '').length,
+        };
+      }
+      console.warn(`[ovis-mcp] invalid_token: jwks=${jwksErr}; getUser=${authErr?.message ?? 'no user'} ${JSON.stringify(claims)}`);
+      return unauthorized('invalid_token');
+    }
+  }
 
   // "Internal" is whatever the database says it is — checked as the user.
   const asUser = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
@@ -190,13 +236,13 @@ async function authorize(req: Request): Promise<Caller | Response> {
   });
   const { data: internal, error: rpcErr } = await asUser.rpc('is_internal_user');
   if (rpcErr || internal !== true) {
-    console.warn(`[ovis-mcp] denied ${authData.user.id}: ${rpcErr?.message ?? 'not internal'}`);
+    console.warn(`[ovis-mcp] denied ${authUserId}: ${rpcErr?.message ?? 'not internal'}`);
     return new Response(JSON.stringify({ error: 'forbidden' }), {
       status: 403,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
-  return { kind: 'user', authUserId: authData.user.id };
+  return { kind: 'user', authUserId };
 }
 
 // ----------------------------------------------------------------------------
@@ -326,7 +372,11 @@ async function toolUpsertListing(args: any, caller: Caller) {
   // server-side, same RPC as create_va_task. Re-sightings and price/cap changes never do.
   // A task failure doesn't fail the upsert: the listing is saved, and a retry would be an
   // update (no task), so the error is returned for the caller to fix with create_va_task.
-  if (result.is_new === true && !result.skipped) {
+  // create_va_task: false (bulk backfills) saves the new listing without its task.
+  const wantsTask = args?.create_va_task !== false && args?.create_va_task !== 'false';
+  if (result.is_new === true && !result.skipped && !wantsTask) {
+    result.va_task_skipped = true;
+  } else if (result.is_new === true && !result.skipped) {
     try {
       const task = await createVaTask({ listing_id: result.listing_id }, caller) as Record<string, unknown>;
       result.va_task_id = task?.task_id ?? null;
