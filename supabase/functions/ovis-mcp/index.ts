@@ -9,7 +9,8 @@
  * comp_listing_event (price/status history).
  *
  * Tools (narrow — no raw SQL; writes are SECURITY DEFINER RPCs granted to service_role):
- *   1. upsert_listing(tenant, address, city, price, cap_rate, …) → upsert_comp_listing
+ *   1. upsert_listing(tenant, address, city, price, cap_rate, …) → upsert_comp_listing;
+ *      a NEW offering also gets Noree's VA task server-side (same RPC as create_va_task)
  *   2. create_va_task(listing_id, assignee='Noree', due=today, title?, checklist?) → create_comp_va_task
  *   3. list_recent_listings(days=30) → comp_listing_facts
  *   4. listing_activity(date? | since?) → listing_activity (daily summary feed)
@@ -30,7 +31,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { censusGeocode } from '../_shared/site-research/geocode.ts';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.2.0' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.3.0' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -43,6 +44,8 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Expose-Headers': 'WWW-Authenticate',
 };
+
+const DEFAULT_VA_ASSIGNEE = 'Noree';
 
 // Each line says where on the comp (CompDetailSlideout) the answer goes.
 const DEFAULT_VA_CHECKLIST = [
@@ -73,7 +76,7 @@ const TOOLS = [
   {
     name: 'upsert_listing',
     description:
-      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). Call create_va_task for results with is_new = true.',
+      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -102,7 +105,7 @@ const TOOLS = [
   {
     name: 'create_va_task',
     description:
-      "Create a diligence task for a listing in a VA's OVIS task Inbox (default: Noree). The task links to the listing in OVIS and carries a checklist saying where each answer goes on the comp: OM, guarantor (corp vs franchisee + name), base rent/NOI, increases, options, lease start/expiry, APN, OM PDF. Returns the task id.",
+      "Create a diligence task for a listing in a VA's OVIS task Inbox (default: Noree). The task links to the listing in OVIS and carries a checklist saying where each answer goes on the comp: OM, guarantor (corp vs franchisee + name), base rent/NOI, increases, options, lease start/expiry, APN, OM PDF. Returns the task id. upsert_listing already creates this task for new listings — use this tool only for an extra or reassigned task, or to retry after va_task_error.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -318,10 +321,25 @@ async function toolUpsertListing(args: any, caller: Caller) {
     }
   }
   delete result.needs_geocode;
+
+  // A NEW offering (new comp, or a relist of an existing comp) gets its diligence task
+  // server-side, same RPC as create_va_task. Re-sightings and price/cap changes never do.
+  // A task failure doesn't fail the upsert: the listing is saved, and a retry would be an
+  // update (no task), so the error is returned for the caller to fix with create_va_task.
+  if (result.is_new === true && !result.skipped) {
+    try {
+      const task = await createVaTask({ listing_id: result.listing_id }, caller) as Record<string, unknown>;
+      result.va_task_id = task?.task_id ?? null;
+      result.va_task_assignee = DEFAULT_VA_ASSIGNEE;
+    } catch (e) {
+      result.va_task_error = `${e instanceof Error ? e.message : e} — listing saved; call create_va_task to retry`;
+    }
+  }
   return { id: result.listing_id, ...result }; // `id` kept for v1 callers
 }
 
-async function toolCreateVaTask(args: any, caller: Caller) {
+/** Shared by create_va_task and upsert_listing's automatic task for new listings. */
+async function createVaTask(args: any, caller: Caller) {
   const listingId = str(args?.listing_id);
   if (!listingId) throw new ToolError('listing_id is required');
   const due = isoDate(args?.due, 'due') ?? etToday();
@@ -331,7 +349,7 @@ async function toolCreateVaTask(args: any, caller: Caller) {
 
   const { data, error } = await getService().rpc('create_comp_va_task', {
     p_listing_id: listingId,
-    p_assignee_first_name: str(args?.assignee) ?? 'Noree',
+    p_assignee_first_name: str(args?.assignee) ?? DEFAULT_VA_ASSIGNEE,
     p_due: due,
     p_title: str(args?.title),
     p_checklist: checklist,
@@ -387,7 +405,7 @@ async function toolListingActivity(args: any) {
 
 const TOOL_IMPLS: Record<string, (args: unknown, caller: Caller) => Promise<unknown>> = {
   upsert_listing: toolUpsertListing,
-  create_va_task: toolCreateVaTask,
+  create_va_task: createVaTask,
   list_recent_listings: toolListRecentListings,
   listing_activity: toolListingActivity,
 };
