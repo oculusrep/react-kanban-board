@@ -39,11 +39,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const RESOURCE_URL = `${SUPABASE_URL}/functions/v1/ovis-mcp`;
 const RESOURCE_METADATA_URL = `${RESOURCE_URL}/.well-known/oauth-protected-resource`;
 const AUTH_ISSUER = `${SUPABASE_URL}/auth/v1`;
-// Scopes clients should request. NOT `openid`: with it Supabase must sign an ID token, and this
-// project's current signing key is legacy HS256 → /oauth/token 500 "HS256 is not supported for
-// ID token signing" (claude.ai connector, 2026-10-30). Rotating to ES256 would fix that but
-// breaks ~50 verify_jwt functions, so the connector simply doesn't ask for an ID token.
-const OAUTH_SCOPES = ['email', 'profile'];
+// Don't advertise scopes_supported: with it, the claude.ai connector abandons sign-in before
+// registering (tested 2026-10-30, with and without a WWW-Authenticate scope). Without it,
+// claude.ai requests the AS's full list incl. `openid`, and Supabase's /oauth/token 500s
+// "HS256 is not supported for ID token signing" until the project signing key is ES256.
 // Project signing keys (ES256). Cached by jose across requests in a warm instance.
 const JWKS = createRemoteJWKSet(new URL(`${AUTH_ISSUER}/.well-known/jwks.json`));
 
@@ -178,7 +177,7 @@ function unauthorized(error: string): Response {
       'Content-Type': 'application/json',
       // RFC 9728: points the MCP client at our protected-resource metadata, which names
       // Supabase Auth as the authorization server.
-      'WWW-Authenticate': `Bearer resource_metadata="${RESOURCE_METADATA_URL}", scope="${OAUTH_SCOPES.join(' ')}"`,
+      'WWW-Authenticate': `Bearer resource_metadata="${RESOURCE_METADATA_URL}"`,
     },
   });
 }
@@ -504,7 +503,6 @@ serve(async (req) => {
       resource: RESOURCE_URL,
       authorization_servers: [`${SUPABASE_URL}/auth/v1`],
       bearer_methods_supported: ['header'],
-      scopes_supported: OAUTH_SCOPES,
       resource_name: 'OVIS',
     });
   }
