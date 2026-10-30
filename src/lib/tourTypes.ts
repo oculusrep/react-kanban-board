@@ -113,4 +113,6 @@ export interface TourStopGeo {
   approach_override: ApproachPoint[] | null; // raw tour_stop override
   site_has_approach: boolean; // site_submit default is set
   actual_departure_at: string | null; // live day departure stamp
+  notes: string | null;
+  address: string | null; // property street, city (for the PDF)
 }

@@ -5,6 +5,7 @@ import { Loader } from '@googlemaps/js-api-loader';
 import {
   fetchTour,
   fetchTourDays,
+  fetchClientName,
   fetchTourStopsForMap,
   notifyTourStopsChanged,
   onTourStopsChanged,
@@ -229,6 +230,9 @@ function TourMapPageInner() {
   const [savingApproach, setSavingApproach] = useState(false);
   const [focusStopId, setFocusStopId] = useState<string | null>(null);
   const [siteSidebarId, setSiteSidebarId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<() => void>(() => {});
+  const autoExportRef = useRef(new URLSearchParams(window.location.search).get('export') === '1');
   const siteSidebarRef = useRef<string | null>(null);
   const openSiteRef = useRef<(siteSubmitId: string, stopId: string) => void>(() => {});
   const stopPosRef = useRef(new Map<string, { lat: number; lng: number }>());
@@ -820,6 +824,111 @@ function TourMapPageInner() {
   });
   const daySummaries: Record<string, DayTotals> = Object.fromEntries(dayRenders.map((dr) => [dr.day.id, dayTotalsFor(dr)]));
 
+  // ---- PDF export ----
+  // Built from what this page already computed (cached Directions results + the planned
+  // schedule) — no Directions / Matrix calls. Only network: one Static Maps basemap per map.
+  const exportPdf = async () => {
+    if (!tour || exporting) return;
+    if (
+      unscheduledCount > 0 &&
+      !window.confirm(
+        `${unscheduledCount} unscheduled stop${unscheduledCount === 1 ? '' : 's'} won’t be in the PDF (only stops placed on a day are exported). Export anyway?`
+      )
+    )
+      return;
+    setExporting(true);
+    setError(null);
+    try {
+      const [{ buildTourPdf, fetchImageAsDataUrl }, client] = await Promise.all([
+        import('../lib/tourPdf'),
+        fetchClientName(tour.client_id),
+      ]);
+      const ll = (p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() });
+      const days = dayRenders.map((dr) => {
+        const sched = dr.schedule; // planned itinerary (not the live re-projection)
+        const startMin = parseTimeToMinutes(dr.day.start_time);
+        const idxOf = new Map(dr.ordered.map((s, i) => [s.id, i]));
+        const stops = dr.stops.map((s) => {
+          const i = idxOf.get(s.id);
+          const mapped = i != null;
+          let driveNextMin: number | null = null;
+          if (mapped && sched) {
+            const cur = sched.stops[i];
+            if (i < sched.stops.length - 1) driveNextMin = sched.stops[i + 1].arrivalMin - cur.departMin;
+            else if (dr.endCoord) driveNextMin = sched.finishMin - cur.departMin;
+          }
+          return {
+            number: s.number,
+            name: s.display_name,
+            address: s.address ?? null,
+            arriveMin: mapped && sched?.hasStart ? sched.stops[i].arrivalMin : null,
+            minutes: s.effective_duration_minutes,
+            category: s.category_name,
+            driveNextMin,
+            nextIsEnd: mapped && i === dr.ordered.length - 1 && !!dr.endCoord,
+            notes: s.notes ?? null,
+            coord: mapped ? { lat: s.lat!, lng: s.lng! } : null,
+            approach: dr.points.filter((p) => p.via && p.stopId === s.id).map((p) => ({ lat: p.lat, lng: p.lng })),
+          };
+        });
+        const paths = dr.chunks
+          .filter((c) => c.result)
+          .map((c) => c.result!.routes[0]?.legs.flatMap((l) => l.steps.flatMap((st) => (st.path ?? []).map(ll))) ?? []);
+        return {
+          dayNumber: dr.day.day_number,
+          date: dr.day.day_date,
+          color: dr.color,
+          startAddress: dr.day.start_location_address,
+          startCoord: dr.startCoord,
+          startTimeMin: startMin,
+          driveFromStartMin: sched && dr.startCoord && sched.stops.length ? sched.stops[0].arrivalMin - (startMin ?? 0) : null,
+          endAddress: dr.day.end_location_address,
+          endCoord: dr.endCoord,
+          endTimeMin: parseTimeToMinutes(dr.day.end_time),
+          stops,
+          paths,
+          totals: {
+            driveMin: sched ? sched.totalDriveMin : null,
+            stopMin: sched ? sched.totalStopMin : dr.stops.reduce((n, s) => n + s.effective_duration_minutes, 0),
+            finishMin: sched?.hasStart ? sched.finishMin : null,
+            overEnd: overEnd(dr.day, sched),
+          },
+          note: !sched
+            ? null
+            : dr.traffic === 'live'
+            ? `Traffic-aware drive times - each leg timed from its own departure (day starts ${formatTime12(dr.day.start_time)}).`
+            : 'Typical drive times (no traffic forecast).',
+        };
+      });
+      const now = new Date();
+      const doc = await buildTourPdf(
+        {
+          name: tour.tour_name,
+          client,
+          days,
+          generatedLabel: `${now.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} ET`,
+        },
+        { apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY, loadImage: fetchImageAsDataUrl }
+      );
+      doc.save(`${tour.tour_name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Tour'} - Tour.pdf`);
+    } catch (e: any) {
+      setError(`PDF export failed: ${e?.message ?? e}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+  exportRef.current = exportPdf;
+
+  // From the Tours list (?export=1): export once the first draw has finished.
+  useEffect(() => {
+    if (!autoExportRef.current || busy || !tour) return;
+    autoExportRef.current = false;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('export');
+    window.history.replaceState(window.history.state, '', url.toString());
+    exportRef.current();
+  }, [busy, tour]);
+
   const btn = (bg: string, fg: string, border: string) => ({
     border: `1px solid ${border}`,
     color: fg,
@@ -843,8 +952,17 @@ function TourMapPageInner() {
         {!narrow && <span style={{ fontSize: 12, color: SLATE }}>Drag a route into a stop to set its approach.</span>}
         <button
           type="button"
+          onClick={exportPdf}
+          disabled={!tour || busy || exporting}
+          title={busy ? 'Waiting for routes…' : 'Download a printable PDF of this tour'}
+          style={{ marginLeft: 'auto', border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: busy || exporting ? 'wait' : 'pointer', opacity: !tour || busy ? 0.6 : 1 }}
+        >
+          {exporting ? 'Exporting…' : 'Export PDF'}
+        </button>
+        <button
+          type="button"
           onClick={() => setReorderOpen(true)}
-          style={{ marginLeft: 'auto', border: `1px solid ${MIDNIGHT}`, color: '#fff', background: MIDNIGHT, borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
+          style={{ border: `1px solid ${MIDNIGHT}`, color: '#fff', background: MIDNIGHT, borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
         >
           Reorder stops
         </button>

@@ -371,7 +371,7 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
     .from('tour_stop')
     .select(
       `id, tour_day_id, position, site_submit_id, category_id, stop_duration_minutes, display_label,
-       approach_waypoints_override, actual_departure_at,
+       approach_waypoints_override, actual_departure_at, notes,
        category:category_id ( name, default_stop_duration_minutes ),
        site_submit:site_submit_id (
          id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
@@ -414,8 +414,19 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
       approach_override: parseApproach(row.approach_waypoints_override),
       site_has_approach: (parseApproach(row.site_submit?.approach_waypoints)?.length ?? 0) > 0,
       actual_departure_at: row.actual_departure_at ?? null,
+      notes: row.notes ?? null,
+      address:
+        [row.site_submit?.property?.address, row.site_submit?.property?.city].filter((x: string | null) => x && String(x).trim()).join(', ') ||
+        null,
     };
   });
+}
+
+// Client display name for the tour PDF cover.
+export async function fetchClientName(clientId: string | null | undefined): Promise<string | null> {
+  if (!clientId) return null;
+  const { data } = await supabase.from('client').select('client_name').eq('id', clientId).maybeSingle();
+  return (data as { client_name?: string | null } | null)?.client_name ?? null;
 }
 
 export async function fetchTourStopCategories(): Promise<TourStopCategory[]> {

@@ -312,6 +312,35 @@ No migration. On `/tours/:id/map`:
   redraws the map and silently reloads an open Reorder panel; Add to tour / remove inside the sidebar
   already fire it.
 
+## Phase 5 (MVP) — Tour PDF export (branch `feature/tour-routing`)
+
+No migration. New dependency: `jspdf` 4.2.1 (3.x had open advisories; lazy-loaded with
+`src/lib/tourPdf.ts` only when Export is clicked).
+
+- **Buttons:** "Export PDF" in the tour map header; "Export PDF" on each Tours list row opens
+  `/tours/:id/map?export=1`, which exports once the first draw finishes and strips the param.
+- **Content (Letter portrait):** cover with Oculus band, tour name, client, date range, day/stop count
+  and an overview map of all days (per-day dash patterns + legend). One section per day: date + start/end
+  line, day map, then # / Stop / Address / Arrive / Min / Category / Drive to next, with A (start) and B (end)
+  rows, stop notes in italics, totals (drive, stops, finish), a past-planned-end warning and the traffic
+  note. The day map shrinks (283pt → min 190pt) when that keeps the whole day on one page.
+- **Schedule source:** the PLANNED schedule (`dr.schedule`), not a live re-projection. Fields: stop
+  display name, property address (`;` → ` / `), times, minutes, category, notes. Nothing from deals/emails.
+- **Unscheduled stops:** omitted; a confirm warns before export when any exist.
+- **No routing calls:** route lines come from the map page's cached `DirectionsResult` step paths; drive and
+  arrival times from the already-computed schedule.
+- **Static map images:** `src/lib/staticMapProjection.ts` picks center + integer zoom for the points
+  (Web Mercator, 256px tiles) and requests ONLY a grayscale basemap from the Maps Static API (640px wide,
+  scale=2, POI/transit off) — no paths/markers in the URL, so no 16k URL cap and no 1-character label
+  limit. Routes (white casing + dark line), white numbered pins, black A/B squares and hollow approach rings
+  are drawn as PDF vectors with the same projection (checked against a Google-placed marker: within 1px).
+  If a basemap fails, the vectors are drawn on blank paper with a note.
+- **Cost:** 1 Static Maps request per map image = 1 (overview) + 1 per day. Jared's 2-day tour: 3 requests.
+  Static Maps bills ~$2 / 1,000 after the monthly free allowance, so effectively free. The Maps Static API
+  is enabled on the project and added to the browser key's API restrictions (2026-10-30).
+- **Tests:** `tests/tours/tourPdf.test.ts` (fit/projection, simplification, URL has no paths/markers,
+  WinAnsi text mapping, builder smoke test: page count + one basemap per map).
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding
