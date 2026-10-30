@@ -510,3 +510,33 @@ didn't reach `/reports/starbucks-packages` until a reload.
   on the next focus, sidebar close or reload.
 - Board cards carry no package progress (the badge / panel already listen per deal
   through `useDealPackage`), so nothing changed there.
+
+## 17. Tour-aware Packages dashboard (2026-10-30)
+
+`/reports/starbucks-packages` gains a **Tour** filter (default: All packages, which is
+today's view unchanged). The selected tour is kept in the URL (`?tour=<id>`).
+
+**How tours are stored (read-only, no migration):**
+- `tour`: one row per tour.
+- `tour_day`: `day_number` per tour.
+- `tour_stop`: `tour_id`, `site_submit_id` (required, unique per tour), `tour_day_id`
+  (null = unscheduled) and `position`. `position` orders stops *within a day*.
+- A stop links only to a site_submit; the deal comes from `site_submit.deal_id`, and
+  the package from `deal_package.site_submit_id`.
+
+**Tour view (decisions 2026-10-30):**
+- One row per stop, in stop order: day number, then position; unscheduled stops last.
+- Stop numbers restart each day, as on the tour map ("D1·3"); unscheduled stops show "—".
+- Every stop gets a row in any stage, packaged or not. A stop that's a board card reuses
+  its card (and the To-classify rule). A stop that isn't builds its row from the site,
+  and Start Package is offered unless the stage is closed. Pursuing Ownership is active.
+- Closed stages: Pass, Lost / Killed, Use Declined, Not Available. Those stops are
+  dimmed, sorted last, have no Start Package, and are hidden by default ("Hide closed"
+  toggle).
+- Header: active sites · Tour-ready (packaged, all 3 tour-ready slides done) · not
+  started, with "X closed" shown separately. Closed stops are excluded from every count.
+- Rows, ▸ checklist, sidebar and refresh behaviour are the same as the All view.
+  Tour rows re-read on the same package events, sidebar close and tab focus (§16).
+
+Code: `lib/packageTours.ts`, `hooks/useTourPackageRows.ts`. `usePackagesDashboard` now
+exposes `progressFor`, `boardCardBySite` and `version`.

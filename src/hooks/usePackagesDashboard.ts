@@ -14,8 +14,12 @@ import { supabase } from '../lib/supabaseClient';
 
 export const DASHBOARD_STAGES = ['Pre-Submittal', 'Submitted-Reviewing', 'Negotiating LOI'] as const;
 
+// The card fields a dashboard row renders. Board cards satisfy it; tour stops that
+// aren't on the board get one built from the site (packageTours).
+export type RowCard = Pick<BoardDeal, 'id' | 'name' | 'city' | 'accountToken' | 'dealId' | 'siteSubmitId' | 'stageLabel'>;
+
 export interface PackageRowView {
-  card: BoardDeal;
+  card: RowCard;
   progress: ProgressRow | null;     // null = not started
   pace: Pace | null;                // null when not started
   toClassify: boolean;              // Start Package not offered (decision 3)
@@ -23,12 +27,26 @@ export interface PackageRowView {
   missing: InputKey[];              // packaged: from the view; not started: research inputs only
 }
 
+export type ResearchInputs = { marketResearch: Set<string>; siteStory: Set<string> };
+
+// Packaged: the view's missing_inputs. Not started: the two research inputs only.
+export function missingInputs(p: ProgressRow | null, siteSubmitId: string | null, research: ResearchInputs | null): InputKey[] {
+  if (p) return p.missing_inputs ?? [];
+  if (!siteSubmitId) return ['market_research', 'site_story']; // no site: the research inputs can never be met
+  const missing: InputKey[] = [];
+  if (research) {
+    if (!research.marketResearch.has(siteSubmitId)) missing.push('market_research');
+    if (!research.siteStory.has(siteSubmitId)) missing.push('site_story');
+  }
+  return missing;
+}
+
 const PACE_RANK: Record<Pace, number> = { late: 0, behind: 1, unknown: 2, on_pace: 3 };
 
 export default function usePackagesDashboard() {
   const board = useStarbucksBoard(ACCOUNT_ALL);
   const [progress, setProgress] = useState<ProgressRow[]>([]);
-  const [research, setResearch] = useState<{ marketResearch: Set<string>; siteStory: Set<string> } | null>(null);
+  const [research, setResearch] = useState<ResearchInputs | null>(null);
   const [slides, setSlides] = useState<Map<string, SlideRow[]>>(new Map());
   const [names, setNames] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -75,30 +93,36 @@ export default function usePackagesDashboard() {
     return () => { cancelled = true; };
   }, [siteKey, nonce]);
 
-  const rows: PackageRowView[] = useMemo(() => {
+  const progressFor = useMemo(() => {
     const bySite = new Map<string, ProgressRow>();
     const byDeal = new Map<string, ProgressRow>();
     for (const p of progress) {
       if (p.site_submit_id) bySite.set(p.site_submit_id, p);
       if (p.deal_id) byDeal.set(p.deal_id, p);
     }
+    return (siteSubmitId: string | null, dealId: string | null): ProgressRow | null =>
+      (siteSubmitId && bySite.get(siteSubmitId)) || (dealId && byDeal.get(dealId)) || null;
+  }, [progress]);
+
+  // Every board card in any stage, by site (the tour view reuses a stop's card).
+  const boardCardBySite = useMemo(() => {
+    const m = new Map<string, BoardDeal>();
+    for (const d of [...board.columns.flatMap((c) => c.deals), ...board.ready, ...board.toClassify, ...board.parked]) {
+      if (d.siteSubmitId) m.set(d.siteSubmitId, d);
+    }
+    return m;
+  }, [board.columns, board.ready, board.toClassify, board.parked]);
+
+  const rows: PackageRowView[] = useMemo(() => {
     const out = cards.map((card): PackageRowView => {
-      const p = (card.siteSubmitId && bySite.get(card.siteSubmitId)) || (card.dealId && byDeal.get(card.dealId)) || null;
-      let missing: InputKey[] = [];
-      if (p) missing = p.missing_inputs ?? [];
-      else if (research && card.siteSubmitId) {
-        if (!research.marketResearch.has(card.siteSubmitId)) missing.push('market_research');
-        if (!research.siteStory.has(card.siteSubmitId)) missing.push('site_story');
-      } else if (!card.siteSubmitId) {
-        missing = ['market_research', 'site_story']; // no site: the research inputs can never be met
-      }
+      const p = progressFor(card.siteSubmitId, card.dealId);
       return {
         card,
         progress: p,
         pace: p ? paceOf(p) : null,
         toClassify: isToClassify(card),
         parked: isParked(card),
-        missing,
+        missing: missingInputs(p, card.siteSubmitId, research),
       };
     });
     // Not started first; then late → behind → unknown → on pace; then name.
@@ -107,7 +131,7 @@ export default function usePackagesDashboard() {
       if (a.pace && b.pace && a.pace !== b.pace) return PACE_RANK[a.pace] - PACE_RANK[b.pace];
       return a.card.name.localeCompare(b.card.name);
     });
-  }, [cards, progress, research]);
+  }, [cards, progressFor, research]);
 
   const boardRefresh = board.refresh;
   const refresh = useCallback(() => { boardRefresh(); setNonce((n) => n + 1); }, [boardRefresh]);
@@ -163,5 +187,8 @@ export default function usePackagesDashboard() {
     }
   }, [slides, progress]);
 
-  return { rows, slides, names, toggleDone, loading: board.loading || research === null, error: error ?? board.error, refresh };
+  return {
+    rows, slides, names, toggleDone, progressFor, boardCardBySite, version: nonce,
+    loading: board.loading || research === null, error: error ?? board.error, refresh,
+  };
 }
