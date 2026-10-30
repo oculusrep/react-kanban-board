@@ -181,7 +181,16 @@ async function authorize(req: Request): Promise<Caller | Response> {
   if (safeEqual(bearer, Deno.env.get('OVIS_MCP_INTAKE_TOKEN') ?? '')) return { kind: 'static' };
 
   const { data: authData, error: authErr } = await getService().auth.getUser(bearer);
-  if (authErr || !authData?.user) return unauthorized('invalid_token');
+  if (authErr || !authData?.user) {
+    // Log why, with the token's non-secret claims (never the token), so a failing connector is diagnosable.
+    let claims: Record<string, unknown> = {};
+    try {
+      const p = JSON.parse(atob(bearer.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      claims = { iss: p.iss, aud: p.aud, role: p.role, client_id: p.client_id, exp: p.exp, sub: p.sub };
+    } catch { claims = { not_a_jwt: true } }
+    console.warn(`[ovis-mcp] invalid_token: ${authErr?.message ?? 'no user'} ${JSON.stringify(claims)}`);
+    return unauthorized('invalid_token');
+  }
 
   // "Internal" is whatever the database says it is — checked as the user.
   const asUser = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
