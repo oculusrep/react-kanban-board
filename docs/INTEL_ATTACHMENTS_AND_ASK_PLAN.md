@@ -1,6 +1,6 @@
 # Intel: attachments + Ask mode — plan
 
-**Status:** BUILT on `feature/intel-attachments-ask` (2026-10-30), NOT merged. Migration `20261030083654` APPLIED to the shared prod DB and recorded. Edge function `ovis-knowledge-capture` DEPLOYED from the branch 2026-10-30 (live e2e passed: text PDF, .docx, .xlsx, scanned PDF all indexed; Ask answered with a cited, page-located source; test entry + Dropbox folder deleted). The 2 old notes without embeddings were backfilled. Decisions as approved 2026-10-30 — see "Build notes" at the end; where they differ from the plan below, the build notes win.
+**Status:** SHIPPED to prod 2026-10-30 (main 793ae62b; `ovis-knowledge-capture` redeployed from main and live-checked). Migration `20261030083654` APPLIED to the shared prod DB and recorded. Edge function `ovis-knowledge-capture` DEPLOYED from the branch 2026-10-30 (live e2e passed: text PDF, .docx, .xlsx, scanned PDF all indexed; Ask answered with a cited, page-located source; test entry + Dropbox folder deleted). The 2 old notes without embeddings were backfilled. Decisions as approved 2026-10-30 — see "Build notes" at the end; where they differ from the plan below, the build notes win.
 Related: [KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md).
 
 Two additions to Intel (Alt+K):
