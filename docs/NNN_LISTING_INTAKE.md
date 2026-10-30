@@ -69,15 +69,39 @@ A `cap_rate` passed as a fraction (`0.0575`) is converted to a percent (`5.75`).
 
 Endpoint: `https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/ovis-mcp`
 
+### How claude.ai is actually connected (2026-10-30): static token header, not OAuth
+
+claude.ai → Settings → Connectors → Add custom connector:
+- **URL:** the endpoint above. **Authentication:** **No sign-in**.
+- **Request headers:** `Authorization` = `Bearer <OVIS_MCP_INTAKE_TOKEN>`.
+
+Connected and working 2026-10-30 (11:05 ET). Writes through it are audited as no user
+(`created_by_id` / `assigned_by_id` NULL). If the connector is ever made org-wide, everyone in the
+org shares that token.
+
+**Why not OAuth:** it is blocked by this project's JWT signing key.
+- claude.ai requests the authorization server's full scope list, including `openid`.
+- With `openid`, Supabase's `/oauth/token` returns **500 "HS256 is not supported for ID token
+  signing"**: the project's current signing key is still the legacy HS256 secret.
+- If `ovis-mcp` advertises `scopes_supported` without `openid`, claude.ai abandons sign-in
+  before registering. That was tested three ways: with and without a `WWW-Authenticate` scope,
+  and with and without `offline_access`.
+- **Fix:** rotate the signing key to ES256. Before rotating, move the ~63 functions that use
+  the default `verify_jwt` (gateway checks the legacy secret only) to in-code verification;
+  the rotation dialog lists them.
+- `_shared/jwt.ts` (send-site-submit-email) already accepts ES256 via JWKS, and so does `ovis-mcp`.
+- Diagnose with the Management API logs endpoint (`/analytics/endpoints/logs`, unified `logs` table:
+  `source = 'auth_logs' | 'edge_logs' | 'function_logs' | 'function_edge_logs'`).
+
 Two credentials are accepted, both as `Authorization: Bearer …`:
 
-1. **OAuth 2.1 (claude.ai custom connector).** claude.ai web connectors **cannot send a static bearer
+1. **OAuth 2.1** (built, but blocked; see above). At the time of writing, claude.ai web connectors **could not send a static bearer
    header**. They need OAuth with Dynamic Client Registration and PKCE. The function returns
    `401` + `WWW-Authenticate: Bearer resource_metadata=".../ovis-mcp/.well-known/oauth-protected-resource"`.
    That metadata names Supabase Auth (`/auth/v1`) as the authorization server. Supabase Auth issues the token, and the
    function validates it (`auth.getUser`) and then requires `is_internal_user()` **as that user**. Admin, broker
    and VA accounts pass; portal and coach accounts get 403.
-2. **Static token** = secret `OVIS_MCP_INTAKE_TOKEN`, for Claude Code and scripts. It acts as no OVIS user
+2. **Static token** = secret `OVIS_MCP_INTAKE_TOKEN`, for the claude.ai connector (as a request header), Claude Code and scripts. It acts as no OVIS user
    (`created_by_id` / `assigned_by_id` are NULL). Reset 2026-10-30; the value is in Mike's password manager.
    It is **not** `OVIS_MCP_BEARER_TOKEN` (that one is `ovis-research-mcp` / OpenClaw). To rotate:
    `openssl rand -hex 32`, then `supabase secrets set OVIS_MCP_INTAKE_TOKEN=<value> --project-ref rqbvcvwbziilnycqtmnc`.
