@@ -8,6 +8,10 @@ An always-available way to capture ad hoc facts that arrive by phone call, text 
 
 **Intel is not Quick Notes.** Quick Notes ([docs/QUICK_NOTE.md](QUICK_NOTE.md)) is a personal 7-day sticky list: no AI, no tags, private to you, gone in a week. Knowledge Capture is shared, permanent, AI-linked company knowledge. Nothing here touches `quick_note`, and the two are deliberately different colours and icons so they can't be confused.
 
+## Attachments and Ask
+
+Files on notes (Dropbox under `/Salesforce Documents/Intel`, text extracted and embedded) and the Ask tab (answers only from Intel, every quote verified): see [INTEL_ATTACHMENTS_AND_ASK_PLAN.md](INTEL_ATTACHMENTS_AND_ASK_PLAN.md) — build notes at the end.
+
 ## Behaviour
 
 - **Launcher:** steel-blue button with a lightbulb, tooltip "Capture intel (Alt+K)", bottom right, stacked directly above the Quick Notes button (navy `+`). Every internal page; not the portal, not `?embedded=true`, not coach users.

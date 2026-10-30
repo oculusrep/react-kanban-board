@@ -1,6 +1,6 @@
 # Intel: attachments + Ask mode — plan
 
-**Status:** PLAN ONLY (2026-10-29). Nothing built. Branch `feature/intel-attachments-ask`.
+**Status:** BUILT on `feature/intel-attachments-ask` (2026-10-30), NOT merged. Migration `20261030083654` APPLIED to the shared prod DB and recorded. Edge function NOT yet deployed from the branch (needs it before the dev-server test). Decisions as approved 2026-10-30 — see "Build notes" at the end; where they differ from the plan below, the build notes win.
 Related: [KNOWLEDGE_CAPTURE.md](KNOWLEDGE_CAPTURE.md).
 
 Two additions to Intel (Alt+K):
@@ -227,3 +227,37 @@ To stay inside it, each `extract_file` run handles a batch (a few PDF pages or a
 - [Supabase Edge Function limits](https://supabase.com/docs/guides/functions/limits)
 - [Claude PDF support](https://docs.anthropic.com/en/docs/build-with-claude/pdf-support)
 - [Dropbox HTTP API](https://www.dropbox.com/developers/documentation/http/documentation) (`files/get_temporary_upload_link`, `sharing/create_shared_link_with_settings`)
+
+---
+
+## Build notes (2026-10-30)
+
+Decisions approved: temporary link per click, never shared links (no `shared_link` column exists); scanned PDFs read by Claude from the start; folders `/Salesforce Documents/Intel/{first linked client | General}/{YYYY-MM-DD ET} {short title}/` (a client named "General" becomes "General (client)"); proxy NOT widened; attachments then Ask, one branch; caps 50 MB / 10 files.
+
+**Migration `20261030083654_intel_attachments_and_ask.sql`** — applied + recorded in `schema_migrations`.
+- `knowledge_entry_file` (status machine: uploading → pending → extracting → done | truncated | no_text | unsupported | failed; upload_failed). Path CHECK pins every row under `/Salesforce Documents/Intel/`.
+- `knowledge_file_chunk` (`tsv` generated + GIN, `embedding vector(1536)` with the provenance check, `method` text|scan).
+- `knowledge_entry.tsv` generated column + GIN.
+- Read: `is_internal_user()` only. Write: **service_role only** — `authenticated` has SELECT and nothing else, so the browser can't write a file row or chunk at all (avoids the "edge fn writes with user JWT" trap).
+- Service-only helpers: `knowledge_file_claim` (lock), `knowledge_file_save_step` (chunks + progress in one transaction; replaces chunks from the step's first ord so a retried step never duplicates), `knowledge_file_fail_step` (3 strikes → failed).
+- `intel_search(p_query, p_embedding, p_limit)` SECURITY INVOKER; EXECUTE for authenticated + service_role only.
+- Verified: `scripts/intel_attachments_persona_test.sql` 48/48 (Mike/Arty/VA read 1 row + search hits; coach/portal 0 rows / 0 hits; every persona refused on insert/update/claim/save; anon 42501). Anonymous HTTP: both tables and the RPC return 401, the edge function 401.
+
+**Edge function** (`ovis-knowledge-capture`, all behind `is_internal_user()`):
+- `attach_start` (note owner only) picks the folder, a free file name (Dropbox listing + rows still uploading), returns a Dropbox temporary upload link and inserts the row; `attach_finish` confirms the bytes landed (`get_metadata`); `extract_file` runs ONE step; `file_link` returns a 4-hour `get_temporary_link` (the row is read through the caller's RLS first); `ask`.
+- Dropbox calls live in `_shared/knowledge-capture/dropbox.ts`, separate from `dropbox-proxy` (same secrets), every call asserts the path is inside `/Salesforce Documents/Intel/`.
+- Extraction is **driven by the browser**, one step per request (2 s CPU each); a closed tab is resumed the next time its owner opens Intel. No cron (avoids the cron-auth landmine).
+  - PDF text layer: unpdf, up to 40 pages / ~0.9 s per step. Pages with < 40 characters of text are queued as scans.
+  - Scans: Claude (Sonnet, the document block cached across steps) 3 pages per step. PDFs over ~22 MB or 100 pages can't go to the reader: those pages are reported in `status_note`, never silently empty.
+  - .docx mammoth; .xlsx/.xls/.csv SheetJS with `sheetRows` (5,000 rows/sheet); images and .doc stored, not indexed.
+  - Chunks ~6,000 chars, 300 overlap; a chunk never spans a page gap ("p. 1–4" can't claim page 2 it doesn't contain). 300,000 characters per file, then `truncated`.
+- Converse now also returns `short_title` (optional in the schema) for the folder name; fallback is the note's first six words.
+
+**Ask** (`_shared/knowledge-capture/ask.ts`): search → floor (a candidate found only by meaning needs similarity ≥ 0.30) → if nothing, "nothing found" with no model call → Sonnet answers in `{answered, statements[{text, citations[{source, quote}]}]}` → `verifyAnswer` drops any citation to a source not sent, any quote not found word for word (case/whitespace/curly-quote/line-break-hyphen normalised), and any statement containing a number absent from the sources it cites. No surviving statement → "Nothing in Intel answers that."
+
+**Not done / known gaps**
+- The 2 entries with no embedding are still not backfilled; Ask finds them by keyword/tag/link only.
+- A failed upload can be retried only from the same tab session (the browser still holds the file). Otherwise re-file.
+- No delete for an attached file from the panel.
+- A deal linked without its account files under General (only account links pick the client folder, as specified).
+- Tests: `attachments_test.ts` (incl. real text PDF, image-only PDF, .docx, .xlsx fixtures), `extract_test.ts`, `ask_test.ts` — 91/91 with the existing suites. Run with `--node-modules-dir=none --allow-import --allow-read` (the readers import unpdf/mammoth/SheetJS).
