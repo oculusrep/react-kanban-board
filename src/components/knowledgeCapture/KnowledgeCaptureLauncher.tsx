@@ -424,13 +424,30 @@ const RecentList: React.FC<{
   onOpenFile: (fileId: string) => void;
   onRetry: (file: IntelFile) => void;
   canRetry: (localId: string) => boolean;
-}> = ({ entries, files, onOpenFile, onRetry, canRetry }) => {
+  onAttach: (entryId: string, files: FileList) => void;
+  onDelete: (file: IntelFile) => Promise<boolean>;
+  canDelete: (file: IntelFile) => boolean;
+}> = ({ entries, files, onOpenFile, onRetry, canRetry, onAttach, onDelete, canDelete }) => {
+  // One hidden picker for every note; attachTarget says which note it's for.
+  const pickerRef = useRef<HTMLInputElement>(null);
+  const attachTarget = useRef<string | null>(null);
   if (entries.length === 0) return null;
   return (
     <section className="mt-3 pt-2" style={{ borderTop: `1px solid ${COLORS.slate}` }}>
       <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: COLORS.steel }}>
         Recently filed
       </h3>
+      <input
+        ref={pickerRef}
+        type="file"
+        multiple
+        accept={ACCEPT_ATTR}
+        className="hidden"
+        onChange={(e) => {
+          if (attachTarget.current && e.target.files?.length) onAttach(attachTarget.current, e.target.files);
+          e.target.value = '';
+        }}
+      />
       <ul className="mt-1 space-y-1">
         {entries.map((entry) => (
           <li
@@ -456,8 +473,26 @@ const RecentList: React.FC<{
                   · no embedding
                 </span>
               )}
+              {!entry.pending && (
+                <button
+                  type="button"
+                  onClick={() => { attachTarget.current = entry.id; pickerRef.current?.click(); }}
+                  className="ml-auto inline-flex items-center gap-0.5 underline"
+                  style={{ color: COLORS.steel }}
+                  title="Attach files to this note (PDF, Word, Excel/CSV, images; 50 MB each, 10 per note)"
+                >
+                  <PaperclipIcon className="h-2.5 w-2.5" /> Attach
+                </button>
+              )}
             </div>
-            <FileChips files={files[entry.id] ?? []} onOpen={onOpenFile} onRetry={onRetry} canRetry={canRetry} />
+            <FileChips
+              files={files[entry.id] ?? []}
+              onOpen={onOpenFile}
+              onRetry={onRetry}
+              canRetry={canRetry}
+              onDelete={onDelete}
+              canDelete={canDelete}
+            />
           </li>
         ))}
       </ul>
@@ -864,6 +899,10 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
             onOpenFile={intelFiles.openFile}
             onRetry={intelFiles.retryUpload}
             canRetry={intelFiles.canRetry}
+            onAttach={intelFiles.attachToEntry}
+            onDelete={intelFiles.deleteFile}
+            // The server enforces this (uploader or admin); this only hides the link.
+            canDelete={(f) => userRole === 'admin' || (!!user && f.created_by === user.id)}
           />
         </div>
         </>

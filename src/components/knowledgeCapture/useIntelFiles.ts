@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { type FiledResult, invokeKnowledgeCapture } from './useKnowledgeCapture';
+import { type FileStatus, screenFiles } from './intelFileRules';
+
+export {
+  ACCEPT_ATTR, ACCEPTED_EXTENSIONS, FAILED_STATUSES, type FileStatus, formatBytes, MAX_FILE_BYTES, MAX_FILES,
+} from './intelFileRules';
 
 // Intel attachments in the browser: files waiting to be filed with a note, the
 // upload after filing, and the extraction steps that make them searchable.
@@ -10,17 +15,6 @@ import { type FiledResult, invokeKnowledgeCapture } from './useKnowledgeCapture'
 // requests (edge functions get 2 s of CPU each), driven from here; if the tab
 // closes mid-way, opening Intel again resumes this user's unfinished files.
 // Docs: docs/INTEL_ATTACHMENTS_AND_ASK_PLAN.md
-
-export const MAX_FILE_BYTES = 50 * 1024 * 1024;
-export const MAX_FILES = 10;
-export const ACCEPTED_EXTENSIONS = [
-  'pdf', 'docx', 'doc', 'xlsx', 'xlsm', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'tif', 'tiff',
-];
-export const ACCEPT_ATTR = ACCEPTED_EXTENSIONS.map((e) => `.${e}`).join(',');
-
-export type FileStatus =
-  | 'queued' | 'uploading' | 'upload_failed' | 'pending' | 'extracting'
-  | 'done' | 'truncated' | 'no_text' | 'unsupported' | 'failed';
 
 /** A file chosen in the panel, not yet filed. */
 export interface DraftFile {
@@ -38,18 +32,16 @@ export interface IntelFile {
   size: number;
   status: FileStatus;
   status_note: string | null;
+  /** Who attached it (auth user id); null for rows not loaded yet. */
+  created_by: string | null;
 }
 
-function ext(name: string): string {
-  const m = /\.([a-z0-9]{1,8})$/i.exec(name);
-  return m ? m[1].toLowerCase() : '';
-}
-
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
+/**
+ * A row still 'uploading' this long after its last change was abandoned (tab
+ * closed mid-upload; the Dropbox upload link lasts 1 hour), so it is shown as
+ * failed.
+ */
+const STALE_UPLOAD_MS = 60 * 60 * 1000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MAX_STEPS = 300;
@@ -74,23 +66,11 @@ export function useIntelFiles(authUserId: string | null) {
   /** Add files to the note being written. Returns why any were refused. */
   const addDrafts = useCallback((incoming: File[] | FileList) => {
     const list = Array.from(incoming);
-    const refused: string[] = [];
+    let refused: string[] = [];
     setDrafts((current) => {
-      const next = [...current];
-      for (const file of list) {
-        if (!ACCEPTED_EXTENSIONS.includes(ext(file.name))) {
-          refused.push(`${file.name}: only PDF, Word, Excel/CSV and images can be attached.`);
-        } else if (file.size > MAX_FILE_BYTES) {
-          refused.push(`${file.name} is over 50 MB.`);
-        } else if (file.size === 0) {
-          refused.push(`${file.name} is empty.`);
-        } else if (next.length >= MAX_FILES) {
-          refused.push(`${file.name}: a note takes at most ${MAX_FILES} files.`);
-        } else if (!next.some((d) => d.file.name === file.name && d.file.size === file.size)) {
-          next.push({ localId: crypto.randomUUID(), file });
-        }
-      }
-      return next;
+      const screened = screenFiles(list, current.map((d) => d.file));
+      refused = screened.refused;
+      return [...current, ...screened.accepted.map((file) => ({ localId: crypto.randomUUID(), file }))];
     });
     setNotice(refused.length ? refused.join(' ') : null);
   }, []);
@@ -184,6 +164,7 @@ export function useIntelFiles(authUserId: string | null) {
       size: d.file.size,
       status: 'queued',
       status_note: null,
+      created_by: authUserId,
     }));
     for (const d of toUpload) bytesRef.current.set(d.localId, d.file);
     setFiles((all) => ({ ...all, [filed.entry_id]: [...(all[filed.entry_id] ?? []), ...items] }));
@@ -191,7 +172,40 @@ export function useIntelFiles(authUserId: string | null) {
       const file = bytesRef.current.get(item.localId);
       if (file) await uploadOne(filed, item, file);
     }
-  }, [uploadOne]);
+  }, [authUserId, uploadOne]);
+
+  /**
+   * Add files to a note that's already filed: same caps, same upload and
+   * indexing, same Dropbox folder (the server reuses the note's folder).
+   */
+  const attachToEntry = useCallback((entryId: string, incoming: File[] | FileList) => {
+    const onNote = (files[entryId] ?? []).filter((f) => f.status !== 'upload_failed');
+    const { accepted, refused } = screenFiles(Array.from(incoming), onNote.map((f) => ({ name: f.filename, size: f.size })));
+    setNotice(refused.length ? refused.join(' ') : null);
+    if (accepted.length === 0) return;
+    const filed = filedRef.current.get(entryId) ?? { entry_id: entryId, client_id: null, short_title: '' };
+    void uploadForEntry(filed, accepted.map((file) => ({ localId: crypto.randomUUID(), file })));
+  }, [files, uploadForEntry]);
+
+  /**
+   * Delete an attached file (the uploader or an admin; the server checks):
+   * Dropbox copy, row and searchable text all go.
+   */
+  const deleteFile = useCallback(async (item: IntelFile): Promise<boolean> => {
+    if (!item.id) return false;
+    try {
+      await invokeKnowledgeCapture({ action: 'delete_file', file_id: item.id });
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Could not delete the file');
+      return false;
+    }
+    bytesRef.current.delete(item.localId);
+    setFiles((all) => ({
+      ...all,
+      [item.entry_id]: (all[item.entry_id] ?? []).filter((f) => f.localId !== item.localId),
+    }));
+    return true;
+  }, []);
 
   const retryUpload = useCallback((item: IntelFile) => {
     const file = bytesRef.current.get(item.localId);
@@ -213,14 +227,17 @@ export function useIntelFiles(authUserId: string | null) {
     const byEntry: Record<string, IntelFile[]> = {};
     for (const row of data as Array<Record<string, unknown>>) {
       const entryId = String(row.entry_id);
+      const abandoned = row.status === 'uploading' && !drivingRef.current.has(String(row.id))
+        && Date.now() - new Date(String(row.updated_at)).getTime() > STALE_UPLOAD_MS;
       (byEntry[entryId] ??= []).push({
         id: String(row.id),
         localId: String(row.id),
         entry_id: entryId,
         filename: String(row.filename),
         size: Number(row.size_bytes),
-        status: row.status as FileStatus,
-        status_note: (row.status_note as string | null) ?? null,
+        status: abandoned ? 'upload_failed' : row.status as FileStatus,
+        status_note: abandoned ? 'The upload never finished.' : (row.status_note as string | null) ?? null,
+        created_by: (row.created_by as string | null) ?? null,
       });
     }
     setFiles((all) => {
@@ -279,6 +296,8 @@ export function useIntelFiles(authUserId: string | null) {
     uploadForEntry,
     retryUpload,
     canRetry,
+    attachToEntry,
+    deleteFile,
     loadFor,
     openFile,
   };

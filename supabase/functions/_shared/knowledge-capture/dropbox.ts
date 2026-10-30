@@ -147,3 +147,15 @@ export async function download(path: string): Promise<Uint8Array> {
   }
   throw new Error('Dropbox download failed');
 }
+
+/** Delete a file or folder. False when nothing was at `path` (already gone). */
+export async function remove(path: string): Promise<boolean> {
+  assertIntel(path);
+  try {
+    await rpc('files/delete_v2', { path });
+    return true;
+  } catch (e) {
+    if (isNotFound(e)) return false;
+    throw e;
+  }
+}

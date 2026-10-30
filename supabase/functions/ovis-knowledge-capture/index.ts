@@ -29,7 +29,8 @@
  *      See _shared/knowledge-capture/pasteSignature.ts.
  *
  *   5. Attachments (the note's owner only, for attach_start/attach_finish):
- *      attach_start / attach_finish / extract_file / file_link.
+ *      attach_start / attach_finish / extract_file / file_link, and delete_file
+ *      (the uploader or an admin).
  *      Files live in Dropbox under /Salesforce Documents/Intel; they open through
  *      a per-click 4-hour temporary link, never a shared link.
  *      See _shared/knowledge-capture/attachActions.ts.
@@ -53,7 +54,7 @@ import { normalizeMessages } from '../_shared/knowledge-capture/messages.ts';
 import { fileEntry } from '../_shared/knowledge-capture/file.ts';
 import { lookupEmailSignature } from '../_shared/knowledge-capture/emailLookup.ts';
 import { parsePastedSignature } from '../_shared/knowledge-capture/pasteSignature.ts';
-import { attachFinish, attachStart, extractFile, fileLink } from '../_shared/knowledge-capture/attachActions.ts';
+import { attachFinish, attachStart, deleteFile, extractFile, fileLink } from '../_shared/knowledge-capture/attachActions.ts';
 import { ASK_OUTPUT_FORMAT, ASK_SYSTEM_PROMPT, askIntel, type SearchRow } from '../_shared/knowledge-capture/ask.ts';
 import { createEmbedding, toVectorLiteral } from '../_shared/knowledge-capture/embedding.ts';
 import { runToolLoop } from '../_shared/knowledge-capture/loop.ts';
@@ -131,6 +132,7 @@ serve(async (req: Request) => {
     if (action === 'attach_finish') return send(await attachFinish(service, authData.user.id, body));
     if (action === 'extract_file') return send(await extractFile(service, body));
     if (action === 'file_link') return send(await fileLink(userClient, body));
+    if (action === 'delete_file') return send(await deleteFile(service, userClient, authData.user.id, body));
     if (action === 'ask') return await ask(userClient, body);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {

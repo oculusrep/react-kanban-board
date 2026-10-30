@@ -267,3 +267,23 @@ Decisions approved: temporary link per click, never shared links (no `shared_lin
 - **SheetJS is vendored** at `supabase/functions/_shared/vendor/xlsx-0.20.3.mjs` (copy of `https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs`). A dynamic `import('https://…')` is NOT bundled by `supabase functions deploy` — it failed live with "Module not found" — while dynamic `npm:` imports (unpdf, mammoth) and relative files are. The npm `xlsx` package stops at 0.18.5, which has known parser CVEs, so it isn't an option. To upgrade, replace the file and the import path in `readers.ts`.
 - Live check: create a throwaway note, attach the four `fixtures/` files, drive `extract_file`, `ask`, then delete the note (cascades to file rows and chunks) and the Dropbox folder (`dropbox-proxy` op `delete`). With no client, files land in `/Salesforce Documents/Intel/General/`.
 
+
+## Follow-up: delete a file, attach to a filed note (2026-10-30, `feature/intel-file-delete-attach`)
+
+**Delete.** Each file on a filed note has a *delete* link (inline confirm: "Delete from Dropbox and Intel?").
+- Edge action `delete_file { file_id }` → `{ deleted: true }`. Allowed for the uploader (`created_by`) or an admin (`is_admin()`, called as the user); anyone else gets 403. Portal and coach never get that far — the `is_internal_user()` gate refuses them first.
+- Order: Dropbox file first, then the row. If Dropbox refuses (502), nothing changes and the user can try again. A file already gone from Dropbox still loses its row.
+- The row delete cascades to `knowledge_file_chunk`, so neither `intel_search` path (keyword, meaning) can return the text — Ask can't cite it. An extraction step still running for the file fails its save (`knowledge_file_save_step` raises when the row is gone) rather than writing orphan chunks.
+- When the note's folder is empty afterwards, it is deleted too (best effort).
+- Browsers still can't delete rows directly (`authenticated` has SELECT only) — the persona test checks it.
+- The UI hides *delete* unless you uploaded the file or are an admin; the server is the control.
+- No migration.
+
+**Attach to a filed note.** Each note in "Recently filed" has an *Attach* link: same picker, caps (50 MB, 10 files per note counting what's already on it, allowed types), upload and indexing as a new note. The server reuses the note's folder from its existing file rows; a note with no files yet gets a folder named from its date and text, as before. Only your own notes (attach_start's owner check, unchanged).
+
+**Failed files.** `upload_failed` and `failed` both show **Failed** on the note with what happened and what to do ("…delete it and attach the file again"). A row left `uploading` for over an hour (tab closed mid-upload; the upload link lasts an hour) is shown as Failed — "The upload never finished."
+
+**Tests.**
+- `deleteFile_test.ts`: permissions (uploader, admin, other → 403), Dropbox-then-row order, a Dropbox failure leaves everything, already-gone file, folder cleanup, and *a deleted file no longer appears in Ask results* (askIntel over an in-memory index answers before the delete, `nothing_found` after).
+- `intelFileRules_test.ts` (tests `src/components/knowledgeCapture/intelFileRules.ts`, the browser's pure rules): caps when attaching to a note that already has files, repeats, the Failed messages.
+- `scripts/intel_attachments_persona_test.sql`: every persona's direct DELETE is refused (42501); after a service-role delete, the file's chunks and both `intel_search` hits are gone (56/56).

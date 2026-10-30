@@ -3,7 +3,8 @@
 --   set -a && . ./.env && set +a
 --   psql "$DATABASE_URL" -f scripts/intel_attachments_persona_test.sql
 -- Applies the migration (if not yet live), seeds one file + chunk on an existing
--- entry, probes every persona, then ROLLBACK — nothing persists.
+-- entry, probes every persona, deletes the file as the edge function would and
+-- checks Ask's search can no longer find it, then ROLLBACK — nothing persists.
 \set ON_ERROR_STOP on
 \set QUIET on
 \pset footer off
@@ -81,6 +82,9 @@ BEGIN
       'insert into knowledge_entry_file (entry_id, created_by, dropbox_path, dropbox_folder, filename, file_ext, size_bytes) select entry_id, auth.uid(), ''/Salesforce Documents/Intel/x/y.pdf'', ''/Salesforce Documents/Intel/x'', ''y.pdf'', ''pdf'', 1 from fx returning ''inserted''');
     PERFORM pg_temp.probe(personas[i][1], 'update file row', CASE WHEN internal THEN 'ERROR 42501' ELSE 'ERROR 42501' END,
       'update knowledge_entry_file set status = ''done'' where id = (select file_id from fx) returning ''updated''');
+    -- Deleting goes through the edge function (uploader or admin), never the browser.
+    PERFORM pg_temp.probe(personas[i][1], 'delete file row', 'ERROR 42501',
+      'delete from knowledge_entry_file where id = (select file_id from fx) returning ''deleted''');
     PERFORM pg_temp.probe(personas[i][1], 'call knowledge_file_claim', 'ERROR 42501',
       'select count(*)::text from fx, knowledge_file_claim(fx.file_id)');
     PERFORM pg_temp.probe(personas[i][1], 'call knowledge_file_save_step', 'ERROR 42501',
@@ -97,6 +101,21 @@ BEGIN
 END $$;
 
 SELECT pg_temp.run_personas() \gset ig_
+
+-- delete_file: the edge function deletes the row as service_role; the chunks
+-- cascade, so neither search path can find the file's text afterwards.
+SET LOCAL ROLE service_role;
+DELETE FROM public.knowledge_entry_file WHERE id = (SELECT file_id FROM fx);
+RESET ROLE;
+SELECT set_config('request.jwt.claims', json_build_object('sub', 'fe6e516f-11e1-4a3b-b914-910d59d9e8df', 'role', 'authenticated')::text, true) \gset ig_
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.probe('mike', 'after delete: chunks left', '0',
+  'select count(*)::text from knowledge_file_chunk k join fx on k.file_id = fx.file_id') \gset ig_
+SELECT pg_temp.probe('mike', 'after delete: intel_search keyword hit', '0',
+  'select count(*)::text from intel_search(''what is the zebrafinch allowance?'') s join fx on s.file_id = fx.file_id') \gset ig_
+SELECT pg_temp.probe('mike', 'after delete: intel_search meaning hit', '0',
+  'select count(*)::text from fx, intel_search(''unrelated words'', fx.vec) s where s.file_id = fx.file_id') \gset ig_
+RESET ROLE;
 
 SELECT persona, check_name, expected, actual,
        CASE WHEN actual = expected THEN 'PASS' ELSE 'FAIL' END AS result
