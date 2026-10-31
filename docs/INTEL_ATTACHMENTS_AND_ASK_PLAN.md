@@ -287,3 +287,13 @@ Decisions approved: temporary link per click, never shared links (no `shared_lin
 - `deleteFile_test.ts`: permissions (uploader, admin, other → 403), Dropbox-then-row order, a Dropbox failure leaves everything, already-gone file, folder cleanup, and *a deleted file no longer appears in Ask results* (askIntel over an in-memory index answers before the delete, `nothing_found` after).
 - `intelFileRules_test.ts` (tests `src/components/knowledgeCapture/intelFileRules.ts`, the browser's pure rules): caps when attaching to a note that already has files, repeats, the Failed messages.
 - `scripts/intel_attachments_persona_test.sql`: every persona's direct DELETE is refused (42501); after a service-role delete, the file's chunks and both `intel_search` hits are gone (56/56).
+
+## Follow-up: 30-second call timeout (2026-10-31, `fix/intel-call-timeout`, frontend only)
+
+Every browser call to `ovis-knowledge-capture` goes through `invokeKnowledgeCapture`, which now races the call against 30 s (`src/components/knowledgeCapture/callTimeout.ts`). supabase-js's `functions.invoke` (functions-js 2.4.x) takes no AbortSignal, so the request may still finish on the server; the browser stops waiting, the button resets, and the message is "Timed out, try again." That covers converse, file, Ask, delete, open file, attach start/finish, paste signature and email lookup (also on the triage page, which shares the helper).
+
+Two deliberate exceptions to "timeout = error":
+- **Indexing steps** (`extract_file`): a step reading scanned pages with Claude can run past 30 s and still finish. A timeout there is treated like "busy" — wait, ask again — so indexing isn't marked failed.
+- **File it**: a timed-out file may have saved anyway, so the Recently filed list reloads; if the note appears there, don't file it again.
+
+The direct browser → Dropbox upload POST isn't a call to the function and has no limit (a 50 MB upload can legitimately take longer). Tests: `callTimeout_test.ts`.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { CALL_TIMEOUT_MS, isCallTimeout, withTimeout } from './callTimeout';
 
 // Knowledge Capture state: one capture conversation at a time, plus the last few
 // entries this user filed. SEPARATE from Quick Notes — different table, different
@@ -132,14 +133,19 @@ interface FileResponse {
   correction_written: boolean;
 }
 
-/** supabase.functions.invoke puts the function's own error body out of reach. */
 /**
- * One call to ovis-knowledge-capture, with its error detail unwrapped.
+ * One call to ovis-knowledge-capture, with its error detail unwrapped, limited
+ * to 30 seconds: past that it throws CallTimeoutError ("Timed out, try again.")
+ * so the panel's buttons reset instead of spinning forever.
  * Exported so other panels (the triage desk's "Add contact") can reuse the
  * lookup without pulling in this hook's state.
  */
-export async function invokeKnowledgeCapture<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('ovis-knowledge-capture', { body });
+export async function invokeKnowledgeCapture<T>(
+  body: Record<string, unknown>,
+  timeoutMs: number = CALL_TIMEOUT_MS,
+): Promise<T> {
+  // supabase.functions.invoke puts the function's own error body out of reach.
+  const { data, error } = await withTimeout(supabase.functions.invoke('ovis-knowledge-capture', { body }), timeoutMs);
   if (error) {
     // FunctionsHttpError carries the response; the detail in it is the useful part.
     const ctx = (error as { context?: Response }).context;
@@ -399,11 +405,14 @@ export function useKnowledgeCapture(authUserId: string | null) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not file this entry');
       setRecent((r) => r.filter((entry) => entry.id !== tempId));
+      // A timed-out file may still have saved on the server: reload the list so
+      // it shows up there rather than being filed twice on the retry.
+      if (isCallTimeout(e)) void loadRecent();
       return null;
     } finally {
       setFiling(false);
     }
-  }, [filing, proposal, rawText, reset]);
+  }, [filing, proposal, rawText, reset, loadRecent]);
 
   return {
     messages,

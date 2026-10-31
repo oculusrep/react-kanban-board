@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { type FiledResult, invokeKnowledgeCapture } from './useKnowledgeCapture';
+import { isCallTimeout } from './callTimeout';
 import { type FileStatus, screenFiles } from './intelFileRules';
 
 export {
@@ -88,9 +89,16 @@ export function useIntelFiles(authUserId: string | null) {
     try {
       let busyWaits = 0;
       for (let i = 0; i < MAX_STEPS; i++) {
-        const r = await invokeKnowledgeCapture<{ status: FileStatus; more: boolean; busy?: boolean; status_note?: string | null }>(
-          { action: 'extract_file', file_id: fileId },
-        );
+        let r: { status: FileStatus; more: boolean; busy?: boolean; status_note?: string | null };
+        try {
+          r = await invokeKnowledgeCapture({ action: 'extract_file', file_id: fileId });
+        } catch (e) {
+          // A step reading scanned pages with Claude can run past the 30 s
+          // limit and still finish on the server (it holds the file's lock
+          // meanwhile). Treat the timeout like "busy": wait, then ask again.
+          if (!isCallTimeout(e)) throw e;
+          r = { status: 'extracting', more: true, busy: true };
+        }
         patch(entryId, localId, { status: r.status, status_note: r.status_note ?? null });
         if (!r.more) break;
         if (r.busy) {
