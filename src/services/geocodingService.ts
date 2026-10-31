@@ -1,3 +1,5 @@
+import { googleGeocode } from './googleGeocode';
+
 export interface GeocodeResult {
   latitude: number;
   longitude: number;
@@ -26,7 +28,6 @@ export interface GeocodeError {
  * with OpenStreetMap Nominatim as fallback
  */
 class GeocodingService {
-  private readonly GOOGLE_GEOCODING_BASE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
   private readonly NOMINATIM_BASE_URL = 'https://nominatim.openstreetmap.org/search';
   private readonly USER_AGENT = 'PropertyKanbanApp/1.0';
 
@@ -90,30 +91,13 @@ class GeocodingService {
    * Geocode using Google Geocoding API (primary method)
    */
   private async geocodeWithGoogle(address: string): Promise<GeocodeResult | GeocodeError> {
-    // Use dedicated Geocoding API key, fallback to Maps API key
-    const apiKey = import.meta.env.VITE_GOOGLE_GEOCODING_API_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      return { error: 'Google Maps/Geocoding API key not configured', code: 'MISSING_API_KEY' };
-    }
-
+    // Google is reached through the `geocode` edge function (server key); no key in the browser.
     try {
       // Apply rate limiting
       await this.waitForRateLimit(this.lastGoogleRequest, this.GOOGLE_RATE_LIMIT_MS);
       this.lastGoogleRequest = Date.now();
 
-      const response = await fetch(
-        `${this.GOOGLE_GEOCODING_BASE_URL}?` + new URLSearchParams({
-          address: address,
-          key: apiKey,
-          region: 'us', // Bias results to US
-        })
-      );
-
-      if (!response.ok) {
-        throw new Error(`Google Geocoding API responded with status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await googleGeocode({ address, region: 'us' }); // Bias results to US
 
       console.log('📊 Google API Response Status:', data.status);
 
@@ -490,20 +474,8 @@ class GeocodingService {
     if (!city || !zip) return false;
 
     try {
-      const apiKey = import.meta.env.VITE_GOOGLE_GEOCODING_API_KEY;
-      if (!apiKey) return false;
-
       // Query Google with ZIP code to see what city it returns
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?` + new URLSearchParams({
-          address: zip,
-          key: apiKey,
-        })
-      );
-
-      if (!response.ok) return false;
-
-      const data = await response.json();
+      const data = await googleGeocode({ address: zip });
 
       if (data.status === 'OK' && data.results?.[0]) {
         const components = data.results[0].address_components || [];
@@ -534,23 +506,7 @@ class GeocodingService {
    */
   async reverseGeocodeWithGoogle(lat: number, lng: number): Promise<GeocodeResult | GeocodeError> {
     try {
-      const apiKey = import.meta.env.VITE_GOOGLE_GEOCODING_API_KEY;
-      if (!apiKey) {
-        throw new Error('Google Geocoding API key not configured');
-      }
-
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?` + new URLSearchParams({
-          latlng: `${lat},${lng}`,
-          key: apiKey,
-        })
-      );
-
-      if (!response.ok) {
-        throw new Error(`Google Geocoding API responded with status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await googleGeocode({ latlng: `${lat},${lng}` });
 
       if (data.status !== 'OK' || !data.results || data.results.length === 0) {
         return { error: `Google API error: ${data.status}`, code: 'GOOGLE_API_ERROR' };

@@ -13,6 +13,8 @@
  * cached onto the record, and can never become the pin.
  */
 
+import { googleGeocode } from './googleGeocode';
+
 /** How precisely the stored address resolves. Ordered best → worst. */
 export type GeocodeGranularity =
   | 'address'       // street_address / premise — a specific building
@@ -99,18 +101,9 @@ export function geocodeForOrientation(
   if (hit) return hit;
 
   const p = (async (): Promise<OrientationGeocode | null> => {
-    const apiKey = import.meta.env.VITE_GOOGLE_GEOCODING_API_KEY;
-    if (!apiKey) {
-      console.warn('[orientation] VITE_GOOGLE_GEOCODING_API_KEY not configured');
-      return null;
-    }
     try {
-      const res = await fetch(
-        'https://maps.googleapis.com/maps/api/geocode/json?' +
-          new URLSearchParams({ address: key, key: apiKey })
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      // Through the `geocode` edge function (server key); no Google key in the browser.
+      const data = await googleGeocode({ address: key });
       if (data.status !== 'OK' || !data.results?.[0]) {
         // ZERO_RESULTS is a fact about the address, not a failure to hide: the
         // caller falls back to the municipality outline and says so.
