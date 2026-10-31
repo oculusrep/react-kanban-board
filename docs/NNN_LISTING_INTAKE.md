@@ -62,6 +62,30 @@ In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the
   `geocodingService` and accepts only ROOFTOP/RANGE_INTERPOLATED precision.
 - Added columns not in the spec: `geocode_status`, `va_task_id`, `created_by_id`, `updated_at`.
 
+## Geocoding and the Unmapped queue (2026-10-31, ovis-mcp v0.4.0)
+
+- **Order:** Census first. When Census finds nothing or only an inexact match, Google Geocoding is tried with the
+  server key `GOOGLE_GEOCODING_API_KEY` (a Supabase secret, Geocoding-API-only). Google counts only as ROOFTOP or
+  RANGE_INTERPOLATED and not `partial_match`. The upsert result carries `geocode_source` (`census` / `google`).
+- **Status is stored** on `comp_property` (migration `20261031091217_comp_geocode_status.sql`):
+  - `geocode_status`: `placed`, `no_match`, `ambiguous` (only inexact matches, deliberately not pinned) or `manual`;
+  - `geocode_source`: `census`, `google` or `manual`;
+  - `geocoded_at`.
+
+  A transient error (network, Google `REQUEST_DENIED` / quota) leaves the status alone, and the next sighting retries.
+- **"Unmapped" is derived, not stored:** no `verified_*` and no raw `latitude/longitude`, the same test the map layer uses
+  to skip a comp. Rejected comps are excluded.
+- **Queue UI**, modeled on the municipal "not on map" worklist:
+  - `/listings/review` has an **Unmapped** tab (tenant, address, city, source link, why). Its **Place on map** button opens
+    `/mapping?place-comp=<id>`.
+  - The map's Layers menu → **Comp Database** row has a "N not on map" list (`CompUnplacedPanel`). It shows even with the layer off.
+  - The comp slideout shows a **Not on the map** bar with **Drop a pin**. Click the map to drop a pin (drag it, or click
+    again to move it), then **Place pin here**.
+  - **Place pin here** calls `set_comp_property_pin`, which writes `verified_latitude/longitude` and sets `geocode_status = manual`.
+    It is `SECURITY INVOKER`, executable by `authenticated` only, and gated by comp RLS.
+  - Pending listings get "Show pending" switched on, so the placed pin is visible.
+- Like the municipal worklist, this lives only in the map page's Layers popup, not in `LayerManager`.
+
 ## Upsert semantics
 
 On a repeat sighting, `last_seen` is set to now and any non-null incoming field (price, cap rate, tenant,

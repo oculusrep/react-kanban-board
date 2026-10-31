@@ -89,6 +89,10 @@ export interface CompProperty extends CompProvenance {
   longitude: number | null;
   verified_latitude: number | null;
   verified_longitude: number | null;
+  // Why the comp is (or isn't) on the map. Unmapped itself = compCoords() is null.
+  geocode_status: GeocodeStatus | null;
+  geocode_source: 'census' | 'google' | 'manual' | null;
+  geocoded_at: string | null;
   property_type_id: string | null;
   building_sqft: number | null;
   land_acres: number | null;
@@ -249,6 +253,18 @@ export interface CompPropertyWithCounts extends CompProperty {
   lease_count: number;
   sale_count: number;
   om_count: number;
+}
+
+export type GeocodeStatus = 'placed' | 'no_match' | 'ambiguous' | 'manual';
+
+/** Why an unmapped comp has no pin, for the Unmapped queue. */
+export function unmappedReasonLabel(status: GeocodeStatus | null | undefined): string {
+  switch (status) {
+    case 'no_match': return "Address didn't geocode";
+    case 'ambiguous': return 'Only an inexact match';
+    case null: case undefined: return 'Not geocoded yet';
+    default: return 'No coordinates';
+  }
 }
 
 /** Resolve the display coordinates for a comp: verified wins over raw (OVIS coord rule). */

@@ -11,6 +11,7 @@ import MunicipalProjectInlineFilters from '../components/mapping/layers/Municipa
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
 import MunicipalProjectUnplacedPanel from '../components/mapping/layers/MunicipalProjectUnplacedPanel';
+import CompUnplacedPanel from '../components/mapping/layers/CompUnplacedPanel';
 import MunicipalProjectOrientationOverlay from '../components/mapping/layers/MunicipalProjectOrientationOverlay';
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
@@ -42,7 +43,7 @@ import CachedDemographicsLayer from '../components/mapping/layers/CachedDemograp
 import CompDatabaseLayer from '../components/mapping/layers/CompDatabaseLayer';
 import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
 import CompContextMenu from '../components/mapping/CompContextMenu';
-import { CompProperty } from '../lib/compTypes';
+import { CompProperty, compCoords } from '../lib/compTypes';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
@@ -219,6 +220,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   const [showPendingComps, setShowPendingComps] = useState(false);
   const [compCreateAt, setCompCreateAt] = useState<{ lat: number; lng: number } | null>(null);
   const [verifyingCompId, setVerifyingCompId] = useState<string | null>(null);
+  // Placing an UNMAPPED comp by hand (Unmapped queue → Drop a pin), the comp twin of
+  // pinDropMunicipalProjectId: map clicks set the point, the temp marker drags it.
+  const [pinDropCompId, setPinDropCompId] = useState<string | null>(null);
+  const [compPinDropPoint, setCompPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [placingCompPin, setPlacingCompPin] = useState(false);
+  const [compUnplacedRefreshToken, setCompUnplacedRefreshToken] = useState(0);
   const [compContextMenu, setCompContextMenu] = useState<{
     isVisible: boolean; x: number; y: number; comp: CompProperty | null;
   }>({ isVisible: false, x: 0, y: 0, comp: null });
@@ -502,6 +509,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Same stale-listener problem as drawingMunicipalProjectId: the map click
   // handlers stack one closure per render, so the live value must come from a ref.
   const pinDropMunicipalProjectIdRef = useRef<string | null>(null);
+  const pinDropCompIdRef = useRef<string | null>(null);
   const createModeRef = useRef<typeof createMode>(null);
   useEffect(() => {
     drawingMunicipalProjectIdRef.current = drawingMunicipalProjectId;
@@ -509,6 +517,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   useEffect(() => {
     pinDropMunicipalProjectIdRef.current = pinDropMunicipalProjectId;
   }, [pinDropMunicipalProjectId]);
+  useEffect(() => {
+    pinDropCompIdRef.current = pinDropCompId;
+  }, [pinDropCompId]);
   useEffect(() => {
     createModeRef.current = createMode;
   }, [createMode]);
@@ -892,6 +903,75 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     }
   }, [location.search, mapInstance, layerState.properties?.isVisible, toggleLayer, setVerifyingPropertyId]);
 
+  // ── Unmapped comp pin drop ─────────────────────────────────────────────
+  // Start: the comp slideout's "Drop a pin" (or ?place-comp=). A pending NNN listing is
+  // only drawn with "Show pending" on, so turn that on or the placed pin would vanish.
+  const startCompPinDrop = (compId: string) => {
+    setVerifyingCompId(null);
+    setCompPinDropPoint(null);
+    setPinDropCompId(compId);
+    setShowPendingComps(true);
+    if (!layerState.comp_database?.isVisible) toggleLayer('comp_database');
+  };
+  const cancelCompPinDrop = () => { setPinDropCompId(null); setCompPinDropPoint(null); };
+
+  // Save: set_comp_property_pin writes verified_lat/lng + geocode_status = 'manual'.
+  const saveCompPin = async () => {
+    if (!pinDropCompId || !compPinDropPoint) return;
+    setPlacingCompPin(true);
+    try {
+      const { error } = await supabase.rpc('set_comp_property_pin', {
+        p_id: pinDropCompId, p_lat: compPinDropPoint.lat, p_lng: compPinDropPoint.lng,
+      });
+      if (error) throw error;
+      const { data } = await supabase.from('comp_property').select('*').eq('id', pinDropCompId).maybeSingle();
+      if (data) setSelectedComp((prev) => (prev && prev.id === pinDropCompId ? (data as CompProperty) : prev));
+      cancelCompPinDrop();
+      refreshLayer('comp_database');
+      setCompUnplacedRefreshToken((n) => n + 1);
+      showToast('Pin placed', { type: 'success' });
+    } catch (e) {
+      showToast(`Couldn't place the pin: ${e instanceof Error ? e.message : String(e)}`, { type: 'error' });
+    } finally {
+      setPlacingCompPin(false);
+    }
+  };
+
+  // The pending pin: a draggable marker at the clicked point; dragging moves the point.
+  useEffect(() => {
+    if (!mapInstance || !pinDropCompId || !compPinDropPoint) return;
+    const marker = new google.maps.Marker({
+      map: mapInstance,
+      position: compPinDropPoint,
+      draggable: true,
+      zIndex: 5000,
+      title: 'Drag to adjust, then Place pin here',
+    });
+    marker.addListener('dragend', (e: google.maps.MapMouseEvent) => {
+      if (e.latLng) setCompPinDropPoint({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+    });
+    return () => marker.setMap(null);
+  }, [mapInstance, pinDropCompId, compPinDropPoint]);
+
+  // /mapping?place-comp=<id> (the review page's "Place on map"): open that comp and start
+  // its pin drop. The param is consumed so a refresh doesn't restart it.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const compId = params.get('place-comp');
+    if (!compId || !mapInstance) return;
+    params.delete('place-comp');
+    window.history.replaceState({}, '', `${location.pathname}${params.toString() ? '?' + params.toString() : ''}`);
+    supabase.from('comp_property').select('*').eq('id', compId).maybeSingle().then(({ data, error }) => {
+      if (error || !data) { showToast('That comp no longer exists', { type: 'error' }); return; }
+      if (!layerState.comp_database?.isVisible) toggleLayer('comp_database');
+      if ((data as CompProperty).review_status === 'pending_review') setShowPendingComps(true);
+      setCompCreateAt(null);
+      setSelectedComp(data as CompProperty);
+      if (!compCoords(data as CompProperty)) startCompPinDrop(compId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search, mapInstance]);
+
   // Handle property centering from URL parameter (without verify mode)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1049,6 +1129,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       // must not also fall through to createMode and open the "new" modal.
       if (pinDropMunicipalProjectIdRef.current && event.latLng) {
         setPinDropPoint({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+        return;
+      }
+      // Same for an unmapped comp: the click sets (or moves) its pending pin.
+      if (pinDropCompIdRef.current && event.latLng) {
+        setCompPinDropPoint({ lat: event.latLng.lat(), lng: event.latLng.lng() });
         return;
       }
 
@@ -3236,6 +3321,21 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                           {layerState.comp_database?.count ?? 0}
                         </span>
                       </div>
+
+                      {/* Unmapped worklist — OUTSIDE the isVisible guard, like the
+                          municipal one: these comps have no pin, so the count must
+                          show with the layer off or the queue grows unnoticed. */}
+                      <div className="pl-11 pr-1">
+                        <CompUnplacedPanel
+                          onSelect={(comp) => {
+                            setCompCreateAt(null);
+                            setSelectedComp(comp);
+                            setShowCustomLayersMenu(false);
+                          }}
+                          selectedId={selectedComp?.id ?? null}
+                          refreshToken={compUnplacedRefreshToken}
+                        />
+                      </div>
                       {layerState.comp_database?.isVisible && (
                         <div className="mt-2 pl-11 pr-1 text-xs text-gray-500 space-y-1.5">
                           <div>Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.</div>
@@ -4349,7 +4449,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           createAt={compCreateAt}
           topOffset={showPropertySearch ? 45 : 0}
           onClose={() => { setSelectedComp(null); setCompCreateAt(null); }}
-          onSaved={() => refreshLayer('comp_database')}
+          onSaved={() => { refreshLayer('comp_database'); setCompUnplacedRefreshToken((n) => n + 1); }}
+          onStartDroppingPin={startCompPinDrop}
+          isDroppingPin={!!selectedComp && pinDropCompId === selectedComp.id}
         />
       )}
 
@@ -4426,6 +4528,38 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           if (compContextMenu.comp) setVerifyingCompId(compContextMenu.comp.id);
         }}
       />
+
+      {/* Unmapped comp pin-drop banner */}
+      {pinDropCompId && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2.5 rounded-lg shadow-xl"
+          style={{ backgroundColor: '#FFFFFF', border: '2px solid #002147' }}
+        >
+          <span className="text-sm font-semibold" style={{ color: '#002147' }}>Placing comp</span>
+          <span className="text-xs" style={{ color: '#4A6B94' }}>
+            {compPinDropPoint
+              ? `${compPinDropPoint.lat.toFixed(5)}, ${compPinDropPoint.lng.toFixed(5)} — drag or click again to adjust`
+              : 'Click the map where it is'}
+          </span>
+          <button
+            type="button"
+            onClick={saveCompPin}
+            disabled={!compPinDropPoint || placingCompPin}
+            className="px-2.5 py-1 text-xs rounded text-white font-semibold disabled:opacity-40"
+            style={{ backgroundColor: '#002147' }}
+          >
+            {placingCompPin ? 'Placing…' : 'Place pin here'}
+          </button>
+          <button
+            type="button"
+            onClick={cancelCompPinDrop}
+            className="px-2 py-1 text-xs rounded border"
+            style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Comp verify-location banner */}
       {verifyingCompId && (

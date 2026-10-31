@@ -96,7 +96,7 @@ const LISTING_TOOLS = [
   {
     name: 'upsert_listing',
     description:
-      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).',
+      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map (Census, then Google as fallback; geocode_source says which placed it). If neither places it, the listing is still saved and goes to the Unmapped queue in OVIS for a manual pin. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -305,30 +305,67 @@ function etMidnight(date: string): Date {
   return new Date(utcMidnight.getTime() - offsetMin * 60_000);
 }
 
+type GeoAttempt =
+  | { ok: true; lat: number; lng: number; source: 'census' | 'google' }
+  | { ok: false; status: 'no_match' | 'ambiguous'; detail: string }
+  | { ok: false; status: null; detail: string }; // transient error: retry on the next sighting
+
 /**
- * Google Geocoding when a server-side key is configured (GOOGLE_GEOCODING_API_KEY — the
- * browser VITE_ key is referrer-restricted and can't be used here), otherwise the free US
- * Census geocoder. Only an unambiguous match is accepted; anything else leaves the comp
- * without coordinates, which the review screen reports as "not on map".
+ * Census first (free), then Google Geocoding as the fallback when Census finds nothing or only
+ * an inexact match. Google uses GOOGLE_GEOCODING_API_KEY, a server key; the browser VITE_ keys are
+ * website-restricted and fail here. Google is accepted only as ROOFTOP or RANGE_INTERPOLATED and
+ * not partial_match, the same rule as the review page's browser Retry. Anything less leaves the comp
+ * unmapped (geocode_status no_match / ambiguous), and it shows in the Unmapped queue for a manual pin.
  * Google API: https://developers.google.com/maps/documentation/geocoding/requests-geocoding
  */
-async function geocode(oneLine: string): Promise<{ lat: number; lng: number; via: string } | { error: string }> {
-  const key = Deno.env.get('GOOGLE_GEOCODING_API_KEY');
-  if (key) {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?${new URLSearchParams({ address: oneLine, key, region: 'us' })}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    const body = await res.json();
-    if (body.status !== 'OK' || !body.results?.length) return { error: `google: ${body.status}` };
-    const r = body.results[0];
-    if (r.partial_match) return { error: 'google: partial match only' };
-    return { lat: r.geometry.location.lat, lng: r.geometry.location.lng, via: 'google' };
-  }
+async function geocode(oneLine: string): Promise<GeoAttempt> {
+  const notes: string[] = [];
+  let inexact = false;
+  let transient = false;
+
   // Census matches street addresses only; drop a trailing suite/unit, which it doesn't index.
   const cleaned = oneLine.replace(/\s*,?\s*(suite|ste|unit|#)\s*[\w-]+/i, '');
-  const m = await censusGeocode(cleaned);
-  if (!m) return { error: 'census: no match' };
-  if (m.match_quality !== 'exact') return { error: `census: ${m.match_quality}` };
-  return { lat: m.latitude, lng: m.longitude, via: 'census' };
+  try {
+    const m = await censusGeocode(cleaned);
+    if (m?.match_quality === 'exact') return { ok: true, lat: m.latitude, lng: m.longitude, source: 'census' };
+    if (m) { inexact = true; notes.push(`census: ${m.match_quality}`); } else notes.push('census: no match');
+  } catch (e) {
+    transient = true;
+    notes.push(`census error: ${e instanceof Error ? e.message : e}`);
+  }
+
+  const key = Deno.env.get('GOOGLE_GEOCODING_API_KEY');
+  if (!key) {
+    notes.push('google: no server key');
+  } else {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?${new URLSearchParams({ address: oneLine, key, region: 'us' })}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      const body = await res.json();
+      if (body.status === 'OK' && body.results?.length) {
+        const r = body.results[0];
+        const type = r.geometry?.location_type;
+        if (!r.partial_match && (type === 'ROOFTOP' || type === 'RANGE_INTERPOLATED')) {
+          return { ok: true, lat: r.geometry.location.lat, lng: r.geometry.location.lng, source: 'google' };
+        }
+        inexact = true;
+        notes.push(`google: ${r.partial_match ? 'partial match' : type}`);
+      } else if (body.status === 'ZERO_RESULTS') {
+        notes.push('google: no match');
+      } else {
+        transient = true; // REQUEST_DENIED / OVER_QUERY_LIMIT / etc.: a config or quota problem, not the address
+        notes.push(`google: ${body.status}${body.error_message ? ` (${body.error_message})` : ''}`);
+      }
+    } catch (e) {
+      transient = true;
+      notes.push(`google error: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  const detail = notes.join('; ');
+  if (inexact) return { ok: false, status: 'ambiguous', detail };
+  if (transient) return { ok: false, status: null, detail };
+  return { ok: false, status: 'no_match', detail };
 }
 
 async function toolUpsertListing(args: any, caller: Caller) {
@@ -371,11 +408,23 @@ async function toolUpsertListing(args: any, caller: Caller) {
   if (result.needs_geocode && !result.skipped) {
     try {
       const g = await geocode(`${address}, ${city}, ${state}`);
-      if ('error' in g) {
-        result.geocode = `not placed on map (${g.error})`;
+      const now = new Date().toISOString();
+      if (g.ok) {
+        await supabase.from('comp_property')
+          .update({ latitude: g.lat, longitude: g.lng, geocode_status: 'placed', geocode_source: g.source, geocoded_at: now })
+          .eq('id', result.comp_property_id);
+        result.geocode = `placed on map via ${g.source}`;
+        result.geocode_source = g.source;
       } else {
-        await supabase.from('comp_property').update({ latitude: g.lat, longitude: g.lng }).eq('id', result.comp_property_id);
-        result.geocode = `placed on map via ${g.via}`;
+        if (g.status) {
+          await supabase.from('comp_property')
+            .update({ geocode_status: g.status, geocode_source: null, geocoded_at: now })
+            .eq('id', result.comp_property_id);
+        }
+        result.geocode = g.status
+          ? `not placed on map (${g.detail}); in the Unmapped queue for a manual pin`
+          : `geocoding error, will retry on next sighting (${g.detail})`;
+        result.geocode_status = g.status ?? 'error';
       }
     } catch (e) {
       result.geocode = `geocoding error, will retry on next sighting: ${e instanceof Error ? e.message : e}`;
