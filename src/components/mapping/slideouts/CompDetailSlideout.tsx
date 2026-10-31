@@ -5,7 +5,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../utils/format';
 import geocodingService from '../../../services/geocodingService';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
-import ListingTimeline from '../../listings/ListingTimeline';
+import ListingTimeline, { CalcBadge } from '../../listings/ListingTimeline';
 import FileManager from '../../FileManager/FileManager';
 import PortalChatTab from '../../portal/PortalChatTab';
 import {
@@ -871,6 +871,12 @@ const LeasesTab: React.FC<{
       notes: str(f.notes),
       source_type: f.source_type, confidence: f.confidence,
     };
+    // A rent typed over a derived one (from listing NOI) is now stated: drop its "derived" mark.
+    const orig = editing !== 'new' ? leases.find((x) => x.id === editing) : undefined;
+    if (orig?.field_basis?.annual_base_rent && annual !== orig.annual_base_rent) {
+      const { annual_base_rent: _drop, ...rest } = orig.field_basis;
+      payload.field_basis = rest;
+    }
     if (editing === 'new') { payload.created_by_id = userId; await supabase.from('lease_comp').insert(payload); }
     else { payload.updated_by_id = userId; await supabase.from('lease_comp').update(payload).eq('id', editing); }
     setEditing(null);
@@ -1000,7 +1006,7 @@ const LeasesTab: React.FC<{
           <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-600">
             <span>Type: {l.lease_type ? LEASE_TYPE_LABEL[l.lease_type] : '—'}</span>
             <span>SF: {dash(l.tenant_sqft)}</span>
-            <span>Rent/yr: {dash(l.annual_base_rent, (n) => formatCurrency(n))}</span>
+            <span>Rent/yr: {dash(l.annual_base_rent, (n) => formatCurrency(n))}{l.annual_base_rent != null && l.field_basis?.annual_base_rent && <CalcBadge />}</span>
             <span>NNN PSF: {dash(l.nnn_psf, (n) => `$${n.toFixed(2)}`)}</span>
             <span>Exp: {l.lease_expiration_date ?? '—'}</span>
             <span>Remaining: {dash(monthsRemaining(l.lease_expiration_date))} mo</span>

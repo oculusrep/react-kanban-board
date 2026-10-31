@@ -1,6 +1,6 @@
 # NNN listing intake: lease terms, derived financials, broker contacts, source adapters (PLAN)
 
-Status: **plan only, nothing built** (2026-10-31). Branch `feature/nnn-lease-financials`, worktree `react-kanban-board-nnn-lease`.
+Status: approved 2026-10-31; order 3 → 2 → 4. **§3 live 2026-10-31.** Branch `feature/nnn-lease-financials`, worktree `react-kanban-board-nnn-lease`.
 Context: [NNN_LISTING_INTAKE.md](NNN_LISTING_INTAKE.md), [NNN_LISTING_INTAKE_SPEC_v2.md](NNN_LISTING_INTAKE_SPEC_v2.md).
 
 ## 1. Audit: what `upsert_listing` writes today
