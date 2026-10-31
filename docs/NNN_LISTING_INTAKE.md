@@ -86,6 +86,18 @@ In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the
   - Pending listings get "Show pending" switched on, so the placed pin is visible.
 - Like the municipal worklist, this lives only in the map page's Layers popup, not in `LayerManager`.
 
+## Derived financials (2026-10-31, migration `20261031100649_comp_derived_financials.sql`)
+
+- **Any two of price / cap / NOI give the third** (NOI = price × cap / 100; cap is a percent). A BEFORE INSERT trigger on
+  `comp_listing_event` does the calculation, so the MCP sweep, the UI and backfills share one implementation. Derived figures are marked in
+  `field_basis` (e.g. `{"noi":"derived"}`); a missing key means stated. A caller's stated value is never overwritten.
+  Events are append-only, so a later stated figure arrives as a new event.
+- **NOI → lease rent:** on a `bts_nnn` lease, the offering's latest NOI fills `lease_comp.annual_base_rent` when it's empty or
+  was itself derived, marked `{"annual_base_rent":"derived"}`. Ground, multi-tenant and untyped leases are left alone. Editing the
+  rent in the Leases tab makes it stated (the mark is dropped), and NOI never touches it again.
+- **UI:** derived figures show a "calc" badge in the listing timeline and the Leases tab.
+- **Backfill (2026-10-31):** 30 listing events got a derived NOI (none needed cap or price). 16 `bts_nnn` leases got rent from NOI.
+
 ## Upsert semantics
 
 On a repeat sighting, `last_seen` is set to now and any non-null incoming field (price, cap rate, tenant,

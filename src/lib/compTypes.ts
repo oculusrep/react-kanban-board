@@ -157,6 +157,8 @@ export interface CompAvailability extends CompProvenance {
 
 export interface LeaseComp extends CompProvenance {
   id: string;
+  /** Fields computed rather than stated, e.g. { annual_base_rent: 'derived' } (rent = listing NOI on a bts_nnn lease). */
+  field_basis?: Record<string, 'derived'>;
   comp_property_id: string;
   tenant_name: string | null;
   merchant_brand_id: string | null;
