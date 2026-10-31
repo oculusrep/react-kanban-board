@@ -10,8 +10,8 @@
  *   bun scripts/backfillMunicipalProjectCentroids.ts --limit 25        # cap how many to do
  *   bun scripts/backfillMunicipalProjectCentroids.ts --dry-run         # fetch + geocode, no DB write
  *
- * Uses VITE_GOOGLE_GEOCODING_API_KEY (falls back to VITE_GOOGLE_MAPS_API_KEY)
- * and SUPABASE_SERVICE_ROLE_KEY from .env.
+ * Uses GOOGLE_GEOCODING_API_KEY (the server key, no referrer restriction; the browser
+ * VITE_ Google keys are website-restricted and fail here) and SUPABASE_SERVICE_ROLE_KEY from .env.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -28,10 +28,10 @@ const dryRun = args.includes('--dry-run');
 const onlyRunId = argVal('run-id');
 const limit = parseInt(argVal('limit') ?? '100', 10);
 
-const apiKey = process.env.VITE_GOOGLE_GEOCODING_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
+const apiKey = process.env.GOOGLE_GEOCODING_API_KEY;
 const supaUrl = process.env.VITE_SUPABASE_URL;
 const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!apiKey) { console.error('Missing VITE_GOOGLE_GEOCODING_API_KEY (or VITE_GOOGLE_MAPS_API_KEY)'); process.exit(1); }
+if (!apiKey) { console.error('Missing GOOGLE_GEOCODING_API_KEY (server key; the VITE_ browser keys are website-restricted)'); process.exit(1); }
 if (!supaUrl || !supaKey) { console.error('Missing VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'); process.exit(1); }
 
 const supabase = createClient(supaUrl, supaKey, { auth: { persistSession: false } });
