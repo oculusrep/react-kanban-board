@@ -48,7 +48,12 @@ import {
 } from './voice_triage.ts';
 import { supabaseStore } from './voice_triage_store.ts';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.6.0' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.6.1' };
+
+/** Link that opens a listing's review panel in OVIS (timeline, sources, conflicts, comp). */
+const OVIS_ORIGIN = 'https://ovis.oculusrep.com';
+const ovisListingUrl = (listingId: unknown) =>
+  typeof listingId === 'string' && listingId ? `${OVIS_ORIGIN}/listings/review?listing=${listingId}` : null;
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -100,7 +105,7 @@ const LISTING_TOOLS = [
   {
     name: 'upsert_listing',
     description:
-      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map (Census, then Google as fallback; geocode_source says which placed it). If neither places it, the listing is still saved and goes to the Unmapped queue in OVIS for a manual pin. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).\n\nSOURCES & PRECEDENCE: call once per source you saw the listing on (source + source_url each time); every source is kept, none replaces another. When sources disagree the higher-ranked one wins: manual in OVIS > OM > Showcase > Crexi / LoopNet / CoStar > aggregators (BuyNNN, Net Lease World, InvestmentGrade, broker sites). A lower-ranked source only fills empty fields (fields_kept_higher_source lists what it could not change). A different price/cap from another live source is kept as a tagged event and flags the listing for review (price_conflict) instead of replacing the ask.\n\nSTATED VALUES ONLY: pass exactly what the source states and leave the rest null. Never compute NOI, cap, price or a lease expiration yourself; OVIS derives the missing one of price/cap/NOI and an expiration from term_left, marked as derived.',
+      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map (Census, then Google as fallback; geocode_source says which placed it). If neither places it, the listing is still saved and goes to the Unmapped queue in OVIS for a manual pin. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).\n\nSOURCES & PRECEDENCE: call once per source you saw the listing on (source + source_url each time); every source is kept, none replaces another. When sources disagree the higher-ranked one wins: manual in OVIS > OM > Showcase > Crexi / LoopNet / CoStar > aggregators (BuyNNN, Net Lease World, InvestmentGrade, broker sites). A lower-ranked source only fills empty fields (fields_kept_higher_source lists what it could not change). A different price/cap from another live source is kept as a tagged event and flags the listing for review (price_conflict) instead of replacing the ask.\n\nSTATED VALUES ONLY: pass exactly what the source states and leave the rest null. Never compute NOI, cap, price or a lease expiration yourself; OVIS derives the missing one of price/cap/NOI and an expiration from term_left, marked as derived.\n\nThe result includes ovis_url: the OVIS link that opens this listing for review. Give it to the user whenever you report the listing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -166,7 +171,7 @@ const LISTING_TOOLS = [
   {
     name: 'listing_activity',
     description:
-      'Daily-summary feed. For one Eastern-time day (date, default today) or since a timestamp: new listings, price/cap changes (old → new), status changes (under contract, back on market, off market, closed), and listings possibly off market (active but unseen 21+ days — for VA review, never auto-closed). Report the groups separately.',
+      'Daily-summary feed. For one Eastern-time day (date, default today) or since a timestamp: new listings, price/cap changes (old → new), status changes (under contract, back on market, off market, closed), and listings possibly off market (active but unseen 21+ days — for VA review, never auto-closed). Report the groups separately. Each row carries ovis_url, the OVIS link that opens that listing for review; include it when reporting the row.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -513,7 +518,7 @@ async function toolUpsertListing(args: any, caller: Caller) {
       result.va_task_error = `${e instanceof Error ? e.message : e} — listing saved; call create_va_task to retry`;
     }
   }
-  return { id: result.listing_id, ...result }; // `id` kept for v1 callers
+  return { id: result.listing_id, ...result, ovis_url: ovisListingUrl(result.listing_id) }; // `id` kept for v1 callers
 }
 
 /** Shared by create_va_task and upsert_listing's automatic task for new listings. */
@@ -578,7 +583,17 @@ async function toolListingActivity(args: any) {
     p_until: until.toISOString(),
   });
   if (error) throw new ToolError(`listing_activity failed: ${error.message}`);
-  return data;
+  // Every feed row that names a listing gets its OVIS link.
+  const feed = (data ?? {}) as Record<string, unknown>;
+  for (const rows of Object.values(feed)) {
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (row && typeof row === 'object' && 'listing_id' in row) {
+        (row as Record<string, unknown>).ovis_url = ovisListingUrl((row as Record<string, unknown>).listing_id);
+      }
+    }
+  }
+  return feed;
 }
 
 /**

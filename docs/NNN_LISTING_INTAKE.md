@@ -20,6 +20,8 @@ Claude (claude.ai connector or Claude Code) finds NNN investment listings and re
 2. `create_va_task` stays as a standalone tool: an extra or reassigned task, or a retry after `va_task_error`. Don't call it for a listing `upsert_listing` just created, or Noree gets two tasks.
 3. `list_recent_listings` lets the agent skip listings it has already captured.
 4. `listing_activity` is the daily-summary feed (spec v2 §8.6).
+5. **`ovis_url` (v0.6.1, 2026-11-02):** `upsert_listing` results and every `listing_activity` row that names a listing (`new_listings`, `price_changes`, `status_changes`, `possibly_off_market`) carry `ovis_url` = `https://ovis.oculusrep.com/listings/review?listing=<listing_id>`.
+   That opens the listing's review panel (timeline, sources, conflicts, broker, link to the comp) over the queue, whatever tab it's on. Built in the edge function; no migration.
 
 In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the review queue.
 **Promote to comp** creates Comp Database records and links them back.
