@@ -125,6 +125,12 @@ In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the
   list date, term and lease type as listed) and the lease (lease type, guarantor, rent, start, expiration, bumps, options):
   - A lower rank fills only empty fields. The result's `fields_kept_higher_source` lists what it couldn't change.
   - An equal or higher rank may update a field. Every change is logged in `comp_field_change` with the old and new value and the old and new source.
+  - **`comp_field_change` log (migration `20261102112859`, 2026-11-02).** One row per field event from `upsert_comp_listing`: `table_name`, `record_id`, `field`, `old_value`, `new_value`, `old_source`, `new_source`, `source_url`, `changed_at`, `outcome`.
+    - `outcome = 'applied'`: the value changed, including a fill of an empty field (old value and old source null). Hand edits in OVIS log here too, as `new_source = 'manual'`.
+    - `outcome = 'blocked'`: a lower-ranked source sent a **different** value and the higher-ranked one was kept. `old_*` is what was kept; `new_*` and `source_url` are what was refused. The same value gets no row.
+    - The same refusal again (same field, source, URL, refused value and kept value) isn't logged twice, so a daily re-sighting doesn't add a row a day.
+    - A derived value (such as an expiration from `term_left`) losing to a stated one isn't a blocked source and isn't logged.
+    - The same migration fixed a piece-2 bug: when a higher-ranked source restated a value a lower one already held, `comp_merge_fields` raised `malformed array literal: "__prov__"` and the whole upsert failed.
   - Null or blank never overwrites a value.
   - Each value's source is stored in `field_source` beside `field_basis` (stated vs derived).
   - **A person editing a tracked field in OVIS** makes it `manual` (via the `comp_mark_manual_fields` trigger), and the sweep can't overwrite it after that.
