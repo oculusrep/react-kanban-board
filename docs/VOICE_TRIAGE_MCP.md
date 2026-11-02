@@ -12,7 +12,7 @@ Status: **built and merged 2026-10-30**, server version `0.4.0`.
 |---|---|
 | `voice_triage.ts` | Tool definitions, the tool bodies, and all the decisions (ranking, validation, scoping) |
 | `voice_triage_store.ts` | The one PostgREST implementation of `TriageStore` |
-| `voice_triage_test.ts` | 48 tests, all of it driven through fakes — no network, no Gmail, no model spend |
+| `voice_triage_test.ts` | 63 tests, all of it driven through fakes — no network, no Gmail, no model spend |
 | `index.ts` | Registers the tools and builds one `Ctx` per call |
 
 ## The tools
@@ -28,6 +28,8 @@ Status: **built and merged 2026-10-30**, server version `0.4.0`.
 | `log_deal_note(deal_id, note)` | writes | `note` + `note_object_link` |
 | `update_deal(deal_id, fields)` | writes | `deal` (whitelist) |
 | `create_watch` / `list_watches` / `cancel_watch` | writes / reads / writes | `mcp_thread_watch` |
+| `log_intel_note(title, note, tags?, source?)` | writes | `ovis-knowledge-capture` `action: 'file'` |
+| `find_intel_note(query)` | reads | the `intel_search` RPC |
 
 Nothing re-implements a decision the desk already makes. Extraction is
 `extract-commitments`; the verdicts are `commitment-action` (and so Handled
@@ -37,6 +39,45 @@ success until Gmail confirms it); the contact prefill is the same
 
 **There are no email-sending tools, deliberately.** Drafts come from the Gmail
 connector; OVIS is not in that path.
+
+## Intel: `log_intel_note` and `find_intel_note`
+
+Same table the Intel panel reads (`knowledge_entry` — docs/KNOWLEDGE_CAPTURE.md),
+and the same write path: `log_intel_note` POSTs `{ action: 'file', entry }` to
+`ovis-knowledge-capture`, so the embedding, the tag cleaning, the link
+verification and the RLS check all come from the code that already owns them.
+Nothing here knows how to insert a `knowledge_entry`.
+
+**`log_intel_note` needs an OAuth caller, and the static token is refused.**
+That write runs *as the person filing* — `knowledge_entry.user_id` defaults to
+`auth.uid()` and the INSERT policy compares against it — so there is no way to
+file with the service key short of inserting the row ourselves, which would be a
+second write path for the same table. The connector signs in, which is the voice
+path that matters; the refusal is explicit and audited.
+
+Three shaping decisions:
+
+- **`raw_text` is the dictation, verbatim.** The spoken title goes on the front
+  of `clean_text` (what the panel shows and retrieval reads), never into
+  `raw_text` — that column's whole job is to be the untouched original.
+- **`source` has two readings and both are honoured.** The column only accepts
+  `typed` or `voice`, so those two words set it; anything else ("a call with
+  Jake") is provenance and is kept at the end of `clean_text`.
+- **`is_general` is always true.** These notes are dictated with no record in
+  front of you. Linking a fact to a deal or a contact stays in the panel, where
+  you can see what you are linking to.
+
+**`find_intel_note` matches words, tags and linked record names — not meaning.**
+`intel_search` takes an optional query embedding and the MCP has no embedding
+provider, so it is called with `p_embedding` NULL, which turns off the vector
+arm. (Entries filed while `OPENAI_API_KEY` was unset have no vector anyway.) The
+tool description tells the model to search with the words a note would use.
+
+**`view_url` is `https://ovis.oculusrep.com/?intel=<entry id>`**, and that deep
+link is implemented in `KnowledgeCaptureLauncher`: it opens the panel and fetches
+that one entry *by id*. Not by looking it up in "Recently filed" — that list is
+the last five of your own notes, so a link would decay after five more notes and
+never resolve for a note somebody else filed.
 
 ## Things that are easy to get wrong here
 
@@ -113,7 +154,7 @@ is your own rows only), writes to `service_role` alone.
 
 ## What was verified, and how
 
-48 unit tests cover every tool through fakes. Beyond that, the function was run
+63 unit tests cover every tool through fakes. Beyond that, the function was run
 locally under plain `deno run` against the production database (no Docker here,
 so no `supabase functions serve`) and driven over real JSON-RPC:
 
@@ -136,3 +177,8 @@ Not exercised from here: the OAuth caller path (needs Mike's own token, so the
 email-lookup prefill is unit-tested only), and `triage_action handled` / `flag`,
 which write to Gmail — `skip` was used instead to prove the wiring without
 touching the mailbox.
+
+The two Intel tools (added 2026-11-02) are unit-tested only, for the same
+reason: `log_intel_note` refuses the static token by design, so filing one can
+only be driven from the connector. `find_intel_note` reads `intel_search`, which
+the Ask tab already exercises in production.

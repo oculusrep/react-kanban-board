@@ -22,6 +22,10 @@
  * CALLER's own mailbox and log every write to mcp_audit_log; the static token
  * acts for OVIS_MCP_OWNER_EMAIL (default mike@oculusrep.com).
  *
+ * Intel (same module, docs/KNOWLEDGE_CAPTURE.md): log_intel_note files through
+ * ovis-knowledge-capture's own `file` action and so needs an OAuth caller — it
+ * runs as them, like the panel does. find_intel_note reads the intel_search RPC.
+ *
  * Auth — two accepted credentials, both as `Authorization: Bearer …`:
  *   a) OAuth 2.1 access token issued by Supabase Auth's OAuth server (what claude.ai uses; it
  *      discovers the server via the WWW-Authenticate → protected-resource metadata below and
@@ -44,7 +48,7 @@ import {
 } from './voice_triage.ts';
 import { supabaseStore } from './voice_triage_store.ts';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.4.0' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.5.0' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;

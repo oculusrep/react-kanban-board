@@ -12,6 +12,21 @@ An always-available way to capture ad hoc facts that arrive by phone call, text 
 
 Files on notes (Dropbox under `/Salesforce Documents/Intel`, text extracted and embedded) and the Ask tab (answers only from Intel, every quote verified): see [INTEL_ATTACHMENTS_AND_ASK_PLAN.md](INTEL_ATTACHMENTS_AND_ASK_PLAN.md) — build notes at the end.
 
+## Filing by voice (MCP)
+
+The OVIS MCP server has two Intel tools — `log_intel_note` and
+`find_intel_note` — so a spoken agent can file a fact and check whether one is
+already there. `log_intel_note` calls this function's own `action: 'file'` with
+the caller's JWT, so a dictated note is filed by exactly the path the panel's
+"File it" button uses. It needs a signed-in (OAuth) caller for that reason; the
+static script token is refused. Details and the shaping rules:
+[VOICE_TRIAGE_MCP.md](VOICE_TRIAGE_MCP.md#intel-log_intel_note-and-find_intel_note).
+
+**Deep link: `/?intel=<entry id>`** opens the panel and shows that one entry
+under "Opened from a link", fetched by id. That is the `view_url` the MCP hands
+back after filing. By id, not out of "Recently filed", so the link still works
+after five more notes and for a note somebody else filed.
+
 ## Behaviour
 
 - **Launcher:** steel-blue button with a lightbulb, tooltip "Capture intel (Alt+K)", bottom right, stacked directly above the Quick Notes button (navy `+`). Every internal page; not the portal, not `?embedded=true`, not coach users.

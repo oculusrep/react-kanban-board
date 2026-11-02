@@ -17,7 +17,7 @@
  */
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import type {
-  AuditEntry, CommitmentRow, Conn, DealMatch, ThreadMail, TriageStore, WatchRow,
+  AuditEntry, CommitmentRow, Conn, DealMatch, IntelHit, ThreadMail, TriageStore, WatchRow,
 } from './voice_triage.ts';
 import { escapeLike } from './voice_triage.ts';
 
@@ -278,6 +278,26 @@ export function supabaseStore(db: SupabaseClient): TriageStore {
       const res = await db.from('commitment_extraction_run').select('*').eq('id', runId).maybeSingle();
       if (res.error) throw new Error(`extraction run: ${res.error.message}`);
       return (res.data as any) ?? null;
+    },
+
+    async searchIntel(query, limit) {
+      // The Ask tab's own RPC, called with no embedding: p_embedding NULL turns
+      // off the vector arm and leaves words, tags and linked record names. The
+      // MCP has no embedding provider, and an entry filed without one (the
+      // backfill queue) is invisible to the vector arm anyway.
+      const res = await db.rpc('intel_search', { p_query: query, p_limit: limit });
+      if (res.error) throw new Error(`intel search: ${res.error.message}`);
+      return ((res.data ?? []) as any[]).map((r) => ({
+        source_kind: String(r.source_kind ?? 'note'),
+        entry_id: String(r.entry_id),
+        file_id: r.file_id ? String(r.file_id) : null,
+        content: String(r.content ?? ''),
+        locator: r.locator ?? null,
+        filename: r.filename ?? null,
+        entry_created_at: r.entry_created_at ?? null,
+        author_name: r.author_name ?? null,
+        matched: Array.isArray(r.matched) ? r.matched.map(String) : null,
+      })) as IntelHit[];
     },
 
     async audit(entry: AuditEntry) {

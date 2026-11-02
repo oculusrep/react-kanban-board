@@ -100,6 +100,19 @@ export interface WatchRow {
   created_at: string;
 }
 
+/** One hit from intel_search: a filed note, or a chunk of a file attached to one. */
+export interface IntelHit {
+  source_kind: string;
+  entry_id: string;
+  file_id: string | null;
+  content: string;
+  locator: string | null;
+  filename: string | null;
+  entry_created_at: string | null;
+  author_name: string | null;
+  matched: string[] | null;
+}
+
 export interface AuditEntry {
   tool: string;
   caller: 'user' | 'static';
@@ -143,6 +156,9 @@ export interface TriageStore {
   cancelWatch(id: string): Promise<void>;
   /** Mail in any of these threads strictly after an instant, oldest first. */
   mailAfter(threadIds: string[], afterIso: string): Promise<ThreadMail[]>;
+
+  /** Intel (knowledge_entry) search — the existing intel_search RPC, unchanged. */
+  searchIntel(query: string, limit: number): Promise<IntelHit[]>;
 
   extractionRun(runId: string): Promise<Record<string, unknown> | null>;
   audit(entry: AuditEntry): Promise<void>;
@@ -390,6 +406,64 @@ export function contactMissingFields(c: Record<string, unknown>): string[] {
 
 export function escapeLike(s: string): string {
   return s.replace(/[%_]/g, (m) => `\\${m}`);
+}
+
+/** Where a filed note can be looked at: the Intel panel, opened on that entry. */
+export const OVIS_APP_URL = 'https://ovis.oculusrep.com';
+
+export const intelViewUrl = (entryId: string) => `${OVIS_APP_URL}/?intel=${entryId}`;
+
+/** The two text columns Intel stores, built from what was said.
+ *
+ * `raw_text` is the dictated note, verbatim and never rewritten — that column's
+ * whole job is to be the untouched original. `clean_text` is what the panel
+ * shows and what retrieval reads, so the spoken title goes at the front of it
+ * (a note read back as a bare sentence is hard to scan) and a stated provenance
+ * goes at the end.
+ *
+ * `source` has two readings and both are honoured: the column only accepts
+ * 'typed' or 'voice', so those two words set it, and anything else is treated as
+ * where the fact came from — "a call with Jake" — and kept in the text.
+ */
+export function composeIntelNote(
+  title: unknown,
+  note: unknown,
+  source: unknown,
+): { raw_text: string; clean_text: string; source: 'typed' | 'voice' } {
+  const raw = String(note ?? '').trim();
+  if (!raw) throw new ToolFailure('the note itself is required — say the fact, not just a title');
+  const head = String(title ?? '').trim().replace(/[.\s]+$/, '');
+
+  const said = String(source ?? '').trim();
+  const column: 'typed' | 'voice' = said.toLowerCase() === 'typed' ? 'typed' : 'voice';
+  const provenance = said && !['typed', 'voice'].includes(said.toLowerCase()) ? said : '';
+
+  // Don't repeat a title the note already opens with.
+  const repeats = head && raw.toLowerCase().startsWith(head.toLowerCase());
+  const clean = [
+    head && !repeats ? `${head} — ${raw}` : raw,
+    provenance ? ` (source: ${provenance})` : '',
+  ].join('');
+
+  return { raw_text: raw, clean_text: clean, source: column };
+}
+
+/** Lowercase, deduplicated, blank-free. The edge function normalises again; this
+ * is so the audit row and the spoken confirmation say what was actually sent. */
+export function intelTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const out: string[] = [];
+  for (const t of tags) {
+    const v = String(t ?? '').trim().toLowerCase();
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out.slice(0, 10);
+}
+
+/** Keep a spoken answer speakable: whole first sentences up to a budget. */
+export function clip(text: unknown, max = 400): string {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+  return t.length <= max ? t : `${t.slice(0, max).replace(/\s+\S*$/, '')}…`;
 }
 
 // ----------------------------------------------------------------------------
@@ -931,6 +1005,101 @@ export async function cancelWatch(args: any, ctx: Ctx) {
   });
 }
 
+/**
+ * File one Intel note. This writes through the Intel feature's own `file`
+ * action — the same path the panel's "File it" button uses — so the entry gets
+ * its embedding, its tag cleaning and its RLS check from the code that already
+ * owns them, and nothing here knows how to insert a knowledge_entry.
+ *
+ * That action runs AS the caller (knowledge_entry.user_id defaults to
+ * auth.uid()), which is also the scoping: a note is filed by whoever is signed
+ * in, and the static script token, having nobody behind it, cannot file at all.
+ *
+ * is_general is always true: these notes are dictated with no record in front of
+ * them. Linking a note to a deal or a contact is the panel's job, where you can
+ * see what you are linking to.
+ */
+export async function logIntelNote(args: any, ctx: Ctx) {
+  const tags = intelTags(args?.tags);
+
+  return await audited(ctx, 'log_intel_note', {
+    title: String(args?.title ?? '').trim() || null,
+    chars: String(args?.note ?? '').trim().length,
+    tags,
+    source: args?.source ?? null,
+  }, async () => {
+    const composed = composeIntelNote(args?.title, args?.note, args?.source);
+    if (ctx.scope.caller !== 'user' || !ctx.scope.bearer) {
+      throw new ToolFailure(
+        'filing intel runs as the person filing it, so it needs a signed-in connection. The static script token cannot file notes.',
+      );
+    }
+
+    const res = await ctx.invoke('ovis-knowledge-capture', {
+      action: 'file',
+      entry: { ...composed, is_general: true, links: [], tags },
+    }, { bearer: ctx.scope.bearer });
+
+    const body = res.body ?? {};
+    if (res.status !== 201 && res.status !== 200) {
+      throw new ToolFailure(`filing the note failed: ${body.detail ?? body.error ?? `HTTP ${res.status}`}`);
+    }
+    const entryId = String(body.entry_id ?? '');
+    if (!entryId) throw new ToolFailure('the note did not come back with an id, so it may not be filed — check Intel');
+
+    return {
+      entry_id: entryId,
+      view_url: intelViewUrl(entryId),
+      text: composed.clean_text,
+      tags,
+      filed_at: etStamp(ctx.now().toISOString()),
+      // False means the entry is filed but not yet searchable by meaning; the
+      // backfill queue picks it up. Worth surfacing, not worth failing on.
+      embedded: body.embedded === true,
+      embedding_error: body.embedding_error ?? null,
+      say: `Filed it to Intel${tags.length ? ` under ${tags.join(', ')}` : ''}.`,
+    };
+  });
+}
+
+/**
+ * Search Intel before adding to it. Calls the existing intel_search RPC — the
+ * same one behind the Ask tab — so notes and the text of files attached to them
+ * come back together, ranked the same way.
+ *
+ * Words, tags and linked record names only, no semantic search: that needs an
+ * embedding of the query, and nothing in the MCP mints one. Phrase the query
+ * with the words the note would use.
+ */
+export async function findIntelNote(args: any, ctx: Ctx) {
+  const query = String(args?.query ?? '').trim();
+  if (!query) throw new ToolFailure('say what to look for');
+  const asked = Number(args?.limit);
+  const limit = Number.isFinite(asked) ? Math.min(30, Math.max(1, Math.trunc(asked))) : 8;
+
+  const hits = await ctx.store.searchIntel(query, limit);
+  const results = hits.map((h) => ({
+    entry_id: h.entry_id,
+    kind: h.source_kind === 'file' ? 'file' : 'note',
+    text: clip(h.content),
+    filename: h.filename ?? undefined,
+    where_in_file: h.locator ?? undefined,
+    filed_at: etStamp(h.entry_created_at),
+    filed_by: h.author_name ?? null,
+    matched_on: h.matched ?? [],
+    view_url: intelViewUrl(h.entry_id),
+  }));
+
+  return {
+    query,
+    count: results.length,
+    results,
+    say: results.length === 0
+      ? `Nothing in Intel about ${query}.`
+      : `${results.length} in Intel about ${query}. ${results[0].text}`,
+  };
+}
+
 export const VOICE_TOOL_IMPLS: Record<string, (args: any, ctx: Ctx) => Promise<unknown>> = {
   run_triage: runTriage,
   triage_run_status: triageRunStatus,
@@ -943,6 +1112,8 @@ export const VOICE_TOOL_IMPLS: Record<string, (args: any, ctx: Ctx) => Promise<u
   create_watch: createWatch,
   list_watches: listWatches,
   cancel_watch: cancelWatch,
+  log_intel_note: logIntelNote,
+  find_intel_note: findIntelNote,
 };
 
 // ----------------------------------------------------------------------------
@@ -1092,6 +1263,34 @@ export const VOICE_TOOLS = [
       type: 'object',
       properties: { watch_id: { type: 'string', format: 'uuid', description: 'From list_watches.' } },
       required: ['watch_id'],
+    },
+  },
+  {
+    name: 'log_intel_note',
+    description:
+      "File a fact in OVIS Intel — the company's permanent notebook of things people say: \"the Starbucks work letter puts drywall at $18 a foot\", \"Pace Academy is out of the market until spring\". Use it whenever he tells you something worth keeping that is not about one deal: a rule of thumb, a price, a rumour, a name worth remembering. It shows up in the Intel panel the moment it is filed, everyone internal can read it, and nothing ever expires it. Say the title short — it is the headline he will scan — and put the whole fact in the note. Tags are the subjects it is about (\"construction costs\", \"starbucks\"), never the kind of statement, so no \"note\", \"update\" or \"estimate\". Check find_intel_note first if he might be repeating himself. This files it with no record attached; linking a fact to a deal or a contact is done in the panel, where he can see what he is linking to. Only works when he is signed in.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'A short headline, 2-6 words. Read back first when the note is found again.' },
+        note: { type: 'string', description: 'The fact itself, in his words, whole. This is what gets kept and searched.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Subjects, lowercase: "construction costs", "starbucks", "forsyth county". Up to ten.' },
+        source: { type: 'string', description: 'Where the fact came from, if he says — "a call with Jake", "the Q3 work letter". Kept with the note.' },
+      },
+      required: ['note'],
+    },
+  },
+  {
+    name: 'find_intel_note',
+    description:
+      "Look something up in OVIS Intel before asking him or writing it down again: what has already been filed about a subject, a client, a price, a county. Searches the notes and the text of files attached to them, and returns both with who filed each one and when, oldest wins nothing — the best match comes first. It matches WORDS, tags and the names of linked records, not meaning, so search with the words a note would actually use (\"drywall cost\", not \"how expensive is the interior work\"); try a second, plainer query before concluding there is nothing. Reads only — it never files anything.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The words to look for. Plain and specific beats a full question.' },
+        limit: { type: 'integer', minimum: 1, maximum: 30, default: 8, description: 'How many to bring back.' },
+      },
+      required: ['query'],
     },
   },
 ] as const;

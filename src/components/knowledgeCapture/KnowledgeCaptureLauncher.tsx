@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
 import { ObjectPicker } from './ObjectPicker';
 import ContactFormModal from '../ContactFormModal';
 import InlinePropertyCreationModal from '../mapping/InlinePropertyCreationModal';
@@ -424,12 +425,13 @@ const RecentList: React.FC<{
   onOpenFile: (fileId: string) => void;
   onRetry: (file: IntelFile) => void;
   canRetry: (localId: string) => boolean;
-}> = ({ entries, files, onOpenFile, onRetry, canRetry }) => {
+  heading?: string;
+}> = ({ entries, files, onOpenFile, onRetry, canRetry, heading = 'Recently filed' }) => {
   if (entries.length === 0) return null;
   return (
     <section className="mt-3 pt-2" style={{ borderTop: `1px solid ${COLORS.slate}` }}>
       <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: COLORS.steel }}>
-        Recently filed
+        {heading}
       </h3>
       <ul className="mt-1 space-y-1">
         {entries.map((entry) => (
@@ -467,6 +469,55 @@ const RecentList: React.FC<{
 
 // ---------------------------------------------------------------------------
 // Launcher + panel
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `/?intel=<entry id>` — the link the MCP's log_intel_note hands back after
+ * filing a note by voice. It opens the panel and shows that one entry.
+ *
+ * Fetched by id rather than picked out of "Recently filed": that list is the
+ * last five of YOUR OWN notes, so a link would stop resolving after five more
+ * notes, or immediately for a note somebody else filed. Read is the only thing
+ * the policy allows anyone internal to do here, so by-id is safe.
+ */
+function useIntelDeepLink(): { id: string | null; entry: FiledEntry | null } {
+  const [id] = useState(() => {
+    try {
+      const raw = new URLSearchParams(window.location.search).get('intel');
+      return raw && UUID_RE.test(raw) ? raw : null;
+    } catch {
+      return null;
+    }
+  });
+  const [entry, setEntry] = useState<FiledEntry | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('knowledge_entry')
+        .select('id, clean_text, is_general, created_at, links:knowledge_entry_link(object_type, object_id), tags:knowledge_entry_tag(tag)')
+        .eq('id', id)
+        .maybeSingle();
+      if (cancelled || !data) return; // A dead link just opens the panel.
+      setEntry({
+        id: String(data.id),
+        clean_text: String(data.clean_text ?? ''),
+        is_general: data.is_general === true,
+        created_at: String(data.created_at),
+        links: (data.links ?? []) as FiledEntry['links'],
+        tags: ((data.tags ?? []) as Array<{ tag: string }>).map((t) => t.tag),
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  return { id, entry };
+}
+
 // ---------------------------------------------------------------------------
 export const KnowledgeCaptureLauncher: React.FC = () => {
   const { user, userRole, isPortalUser } = useAuth();
@@ -517,6 +568,12 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
       setGeocoding(false);
     }
   }, []);
+
+  // A link from log_intel_note opens the panel on the note it filed.
+  const deepLink = useIntelDeepLink();
+  useEffect(() => {
+    if (deepLink.id) setOpen(true);
+  }, [deepLink.id]);
 
   const capture = useKnowledgeCapture(user?.id ?? null);
   const intelFiles = useIntelFiles(user?.id ?? null);
@@ -856,6 +913,17 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
                     : 'File it'}
               </button>
             </div>
+          )}
+
+          {deepLink.entry && (
+            <RecentList
+              heading="Opened from a link"
+              entries={[deepLink.entry]}
+              files={intelFiles.files}
+              onOpenFile={intelFiles.openFile}
+              onRetry={intelFiles.retryUpload}
+              canRetry={intelFiles.canRetry}
+            />
           )}
 
           <RecentList

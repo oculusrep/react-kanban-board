@@ -9,11 +9,12 @@
  */
 import { assert, assertEquals, assertRejects, assertStringIncludes, assertThrows } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import {
-  actionFor, buildDealPatch, cancelWatch, composeNote, contactMissingFields, createContact,
-  createWatch, daysSince, findDeal, firstReplyAfter, getTriageList, isSingleAddress, listWatches,
-  logDealNote, rankTriage, resolveScope, runTriage, ToolFailure, triageAction, triageRunStatus,
-  updateDeal, VOICE_TOOL_IMPLS, VOICE_TOOLS, withoutStaleAge,
-  type AuditEntry, type CommitmentRow, type Ctx, type ThreadMail, type TriageStore,
+  actionFor, buildDealPatch, cancelWatch, clip, composeIntelNote, composeNote, contactMissingFields,
+  createContact, createWatch, daysSince, findDeal, findIntelNote, firstReplyAfter, getTriageList,
+  intelTags, isSingleAddress, listWatches, logDealNote, logIntelNote, rankTriage, resolveScope,
+  runTriage, ToolFailure, triageAction, triageRunStatus, updateDeal, VOICE_TOOL_IMPLS, VOICE_TOOLS,
+  withoutStaleAge,
+  type AuditEntry, type CommitmentRow, type Ctx, type IntelHit, type ThreadMail, type TriageStore,
 } from './voice_triage.ts';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,7 @@ interface FakeOpts {
   run?: Record<string, unknown> | null;
   insertContactFails?: string;
   attachFails?: string;
+  intel?: IntelHit[];
 }
 
 function fakeStore(o: FakeOpts = {}) {
@@ -101,6 +103,7 @@ function fakeStore(o: FakeOpts = {}) {
     cancelWatch: (id) => { writes.push(['cancelWatch', id]); const w = watches.find((x) => x.id === id); if (w) w.status = 'cancelled'; return Promise.resolve(); },
     mailAfter: (tids, after) => Promise.resolve((o.mails ?? []).filter((m) => tids.includes(m.thread_id) && m.received_at > after)),
     extractionRun: () => Promise.resolve(o.run ?? null),
+    searchIntel: (q, limit) => Promise.resolve((o.intel ?? []).filter((h) => h.content.toLowerCase().includes(q.toLowerCase())).slice(0, limit)),
     audit: (e) => { audits.push(e); return Promise.resolve(); },
   };
   return { store, audits, writes, watches };
@@ -705,4 +708,172 @@ Deno.test('cancel_watch stops an active watch and is idempotent after that', asy
   assertStringIncludes(second.say, 'already cancelled');
   await assertRejects(() => cancelWatch({ watch_id: 'nope' }, ctx), ToolFailure);
   assertEquals(audits.filter((a) => a.tool === 'cancel_watch').length, 3);
+});
+
+// ---------------------------------------------------------------------------
+// Intel
+// ---------------------------------------------------------------------------
+
+const intelHit = (over: Partial<IntelHit> = {}): IntelHit => ({
+  source_kind: 'note', entry_id: 'entry-1', file_id: null,
+  content: 'Starbucks work letter puts drywall at $18 a foot on the Bridge prototype',
+  locator: null, filename: null, entry_created_at: '2026-10-20T15:00:00Z',
+  author_name: 'Mike Minihan', matched: ['keyword'], ...over,
+});
+
+Deno.test('composeIntelNote keeps the dictation raw and puts the title in front of the clean text', () => {
+  const c = composeIntelNote('Bridge drywall cost', 'The work letter puts drywall at $18 a foot.', undefined);
+  assertEquals(c.raw_text, 'The work letter puts drywall at $18 a foot.');
+  assertEquals(c.clean_text, 'Bridge drywall cost — The work letter puts drywall at $18 a foot.');
+  assertEquals(c.source, 'voice');
+});
+
+Deno.test('composeIntelNote does not repeat a title the note already opens with', () => {
+  const c = composeIntelNote('Pace Academy', 'Pace Academy is out of the market until spring.', undefined);
+  assertEquals(c.clean_text, 'Pace Academy is out of the market until spring.');
+});
+
+Deno.test('composeIntelNote: source is the column when it names one, provenance otherwise', () => {
+  assertEquals(composeIntelNote('', 'A fact.', 'typed').source, 'typed');
+  assertEquals(composeIntelNote('', 'A fact.', 'voice').clean_text, 'A fact.');
+  const called = composeIntelNote('', 'Jake says the park is full.', 'a call with Jake');
+  assertEquals(called.source, 'voice');
+  assertEquals(called.clean_text, 'Jake says the park is full. (source: a call with Jake)');
+  // The raw column never carries the provenance — it is the dictation, verbatim.
+  assertEquals(called.raw_text, 'Jake says the park is full.');
+});
+
+Deno.test('composeIntelNote refuses a title with no fact behind it', () => {
+  assertThrows(() => composeIntelNote('Drywall', '   ', undefined), ToolFailure);
+});
+
+Deno.test('intelTags lowercases, dedupes and caps; clip ends on a word', () => {
+  assertEquals(intelTags(['Starbucks', 'starbucks', ' Construction Costs ', '']), ['starbucks', 'construction costs']);
+  assertEquals(intelTags('starbucks'), []);
+  assertEquals(intelTags(Array.from({ length: 14 }, (_, i) => `t${i}`)).length, 10);
+  assertEquals(clip('one two three', 7), 'one…');
+  assertEquals(clip('short'), 'short');
+});
+
+Deno.test('log_intel_note files through the Intel feature, as the caller, and returns a view url', async () => {
+  const { store, audits } = fakeStore();
+  const invoked: Array<[string, any, any]> = [];
+  const ctx = ctxFor(store, invoked, () => ({ status: 201, body: { entry_id: 'entry-9', embedded: true } }));
+
+  const out: any = await logIntelNote({
+    title: 'Bridge drywall', note: 'Drywall runs $18 a foot.', tags: ['Construction Costs'],
+  }, ctx);
+
+  // One call, to the Intel function's own file action, with the caller's JWT —
+  // nothing here inserts a knowledge_entry itself.
+  assertEquals(invoked.length, 1);
+  assertEquals(invoked[0][0], 'ovis-knowledge-capture');
+  assertEquals(invoked[0][1].action, 'file');
+  assertEquals(invoked[0][2], { bearer: 'user-jwt' });
+  assertEquals(invoked[0][1].entry.is_general, true);
+  assertEquals(invoked[0][1].entry.links, []);
+  assertEquals(invoked[0][1].entry.tags, ['construction costs']);
+  assertEquals(invoked[0][1].entry.source, 'voice');
+
+  assertEquals(out.entry_id, 'entry-9');
+  assertEquals(out.view_url, 'https://ovis.oculusrep.com/?intel=entry-9');
+  assertEquals(out.embedded, true);
+  assertStringIncludes(out.filed_at, 'Oct 30, 2026');
+  assertEquals(audits.length, 1);
+  assertEquals(audits[0].ok, true);
+  assertEquals(audits[0].tool, 'log_intel_note');
+});
+
+Deno.test('log_intel_note says so when the entry filed without an embedding', async () => {
+  const { store } = fakeStore();
+  const ctx = ctxFor(store, [], () => ({ status: 201, body: { entry_id: 'e1', embedded: false, embedding_error: 'no OPENAI_API_KEY' } }));
+  const out: any = await logIntelNote({ note: 'A fact.' }, ctx);
+  assertEquals(out.embedded, false);
+  assertEquals(out.embedding_error, 'no OPENAI_API_KEY');
+});
+
+Deno.test('log_intel_note refuses the static token, and the refusal is audited', async () => {
+  const { store, audits } = fakeStore();
+  const invoked: Array<[string, any, any]> = [];
+  const ctx = ctxFor(store, invoked, () => ({ status: 201, body: { entry_id: 'x' } }), 'static');
+
+  await assertRejects(() => logIntelNote({ note: 'A fact.' }, ctx), ToolFailure, 'signed-in');
+  assertEquals(invoked.length, 0);
+  assertEquals(audits.length, 1);
+  assertEquals(audits[0].ok, false);
+  assertEquals(audits[0].caller, 'static');
+});
+
+Deno.test('log_intel_note surfaces the filing error rather than claiming it filed', async () => {
+  const { store, audits } = fakeStore();
+  const ctx = ctxFor(store, [], () => ({ status: 403, body: { error: 'forbidden', detail: 'internal users only' } }));
+  await assertRejects(() => logIntelNote({ note: 'A fact.' }, ctx), ToolFailure, 'internal users only');
+  assertEquals(audits[0].ok, false);
+});
+
+Deno.test('log_intel_note treats a missing entry_id as a failure', async () => {
+  const { store } = fakeStore();
+  const ctx = ctxFor(store, [], () => ({ status: 201, body: {} }));
+  await assertRejects(() => logIntelNote({ note: 'A fact.' }, ctx), ToolFailure, 'did not come back with an id');
+});
+
+Deno.test('log_intel_note audits the argument refusal too, with no filing attempt', async () => {
+  const { store, audits } = fakeStore();
+  const invoked: Array<[string, any, any]> = [];
+  const ctx = ctxFor(store, invoked, () => ({ status: 201, body: { entry_id: 'x' } }));
+  await assertRejects(() => logIntelNote({ title: 'Just a headline' }, ctx), ToolFailure, 'the note itself is required');
+  assertEquals(invoked.length, 0);
+  assertEquals(audits.length, 1);
+  assertEquals(audits[0].ok, false);
+});
+
+Deno.test('find_intel_note reads, shapes and never writes', async () => {
+  const { store, audits, writes } = fakeStore({
+    intel: [
+      intelHit(),
+      intelHit({ entry_id: 'entry-2', source_kind: 'file', file_id: 'f1', filename: 'work-letter.pdf', locator: 'page 4', content: 'drywall allowance of $18/sf', matched: ['keyword', 'meaning'] }),
+      intelHit({ entry_id: 'entry-3', content: 'Nothing to do with it' }),
+    ],
+  });
+  const out: any = await findIntelNote({ query: 'drywall' }, ctxFor(store, [], () => ({ status: 200, body: {} })));
+
+  assertEquals(out.count, 2);
+  assertEquals(out.results[0].kind, 'note');
+  assertEquals(out.results[0].view_url, 'https://ovis.oculusrep.com/?intel=entry-1');
+  assertStringIncludes(out.results[0].filed_at, 'Oct 20, 2026');
+  assertEquals(out.results[1].kind, 'file');
+  assertEquals(out.results[1].filename, 'work-letter.pdf');
+  assertEquals(out.results[1].where_in_file, 'page 4');
+  assertEquals(out.results[1].matched_on, ['keyword', 'meaning']);
+  // A read: nothing written, nothing logged.
+  assertEquals(writes.length, 0);
+  assertEquals(audits.length, 0);
+});
+
+Deno.test('find_intel_note says plainly when Intel has nothing, and needs a query', async () => {
+  const { store } = fakeStore({ intel: [intelHit()] });
+  const ctx = ctxFor(store, [], () => ({ status: 200, body: {} }));
+  const out: any = await findIntelNote({ query: 'helipad' }, ctx);
+  assertEquals(out.count, 0);
+  assertStringIncludes(out.say, 'Nothing in Intel');
+  await assertRejects(() => findIntelNote({ query: '  ' }, ctx), ToolFailure, 'say what to look for');
+});
+
+Deno.test('find_intel_note clamps the limit it passes down', async () => {
+  const seen: number[] = [];
+  const { store } = fakeStore();
+  store.searchIntel = (_q, limit) => { seen.push(limit); return Promise.resolve([]); };
+  const ctx = ctxFor(store, [], () => ({ status: 200, body: {} }));
+  await findIntelNote({ query: 'x', limit: 500 }, ctx);
+  await findIntelNote({ query: 'x', limit: 0 }, ctx);
+  await findIntelNote({ query: 'x' }, ctx);
+  assertEquals(seen, [30, 1, 8]);
+});
+
+Deno.test('find_intel_note clips a long file chunk so it stays speakable', async () => {
+  const long = 'word '.repeat(300) + 'drywall';
+  const { store } = fakeStore({ intel: [intelHit({ content: long })] });
+  const out: any = await findIntelNote({ query: 'drywall' }, ctxFor(store, [], () => ({ status: 200, body: {} })));
+  assert(out.results[0].text.length <= 401, out.results[0].text.length);
+  assert(out.results[0].text.endsWith('…'));
 });
