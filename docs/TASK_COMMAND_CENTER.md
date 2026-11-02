@@ -17,6 +17,12 @@ Shipped 2026-11-02. Redesign of the Package Tracker Phase 3 queue (spec §7 in
 - **Controls (2026-11-02 polish):** an empty checkbox on each slide / task completes it (shows checked only while
   saving). Start and Chat are icon buttons with tooltips; Chat carries the unread dot. Nothing is filled dark unless
   it is actually done (a checked box, the Tour-ready tag). The tour tag reads "Tour-ready N/3" until reached.
+- **Undo (2026-11-02):** a check-off shows a toast "Marked done: <slide> · <site>" with Undo for 6 seconds.
+  Undo sets the task back to `open` (`sync_slide_from_task` moves a `waiting_on_mike` / `done` slide back to
+  `in_progress`, not to `not_started`), re-starts it if it had been started, and saves the queue order from before
+  the check-off through `set_task_queue_order` (tasks released since go after). Status and `queue_rank` writes
+  have no clock triggers. Test: `supabase/tests/task_undo_clock_test.sql` (clock and court_since unchanged, no
+  activity / comment / note rows, original position restored).
 - **Launcher clearance:** the page has bottom and right padding so the floating Quick Note / Intel button
   and the Intel button stacked above it (together 132px up, 72px in from the corner) don't cover cards.
 - **Card ranking: no migration.** A card ranks at its best-ranked task (the queue is read sorted by `queue_rank`).
