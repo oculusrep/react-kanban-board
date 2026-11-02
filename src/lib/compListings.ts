@@ -71,6 +71,8 @@ export interface ListingEvent {
   price: number | null;
   cap_rate: number | null;
   noi: number | null;
+  /** Figures computed from the other two (price × cap = NOI), e.g. { noi: 'derived' }. Missing key = stated. */
+  field_basis?: Record<string, 'derived'>;
   sale_comp_id: string | null;
   source_type: string | null;
   source_url: string | null;

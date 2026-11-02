@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { ListingFacts, fetchListingFacts, fmtMoney, fmtPct, fmtDateET } from '../lib/compListings';
-import { CompProperty, LISTING_STATUS_LABEL } from '../lib/compTypes';
+import { CompProperty, GeocodeStatus, LISTING_STATUS_LABEL, unmappedReasonLabel } from '../lib/compTypes';
 import ListingSlideout from '../components/listings/ListingSlideout';
 import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
 
@@ -10,7 +10,7 @@ import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideo
 // operating_memorandum + comp_listing_event); this page reads comp_listing_facts.
 // Spec: docs/NNN_LISTING_INTAKE_SPEC_v2.md §6 / §8.
 
-type TabKey = 'pending' | 'active' | 'relisted' | 'possibly_off' | 'closed' | 'rejected' | 'all';
+type TabKey = 'pending' | 'active' | 'relisted' | 'possibly_off' | 'closed' | 'unmapped' | 'rejected' | 'all';
 
 const DAY = 86_400_000;
 
@@ -29,6 +29,8 @@ const TABS: { key: TabKey; label: string; test: (l: ListingFacts) => boolean }[]
     key: 'closed', label: 'Under contract / off market / sold',
     test: (l) => l.listing_status !== 'active' && l.review_status !== 'rejected',
   },
+  // No pin: no geocoder placed the address. Same test as the map's Unmapped worklist.
+  { key: 'unmapped', label: 'Unmapped', test: (l) => l.lat == null && l.review_status !== 'rejected' },
   { key: 'rejected', label: 'Rejected', test: (l) => l.review_status === 'rejected' },
   { key: 'all', label: 'All', test: () => true },
 ];
@@ -78,6 +80,18 @@ export default function ListingReviewPage() {
 
   const unplaced = rows.filter((l) => l.lat == null && l.review_status !== 'rejected').length;
 
+  // Why each unmapped comp has no pin (comp_listing_facts doesn't carry geocode_status).
+  const [geoStatus, setGeoStatus] = useState<Record<string, GeocodeStatus | null>>({});
+  const unmappedIds = useMemo(
+    () => [...new Set(rows.filter((l) => l.lat == null).map((l) => l.comp_property_id))],
+    [rows],
+  );
+  useEffect(() => {
+    if (unmappedIds.length === 0) return;
+    supabase.from('comp_property').select('id, geocode_status').in('id', unmappedIds)
+      .then(({ data }) => setGeoStatus(Object.fromEntries((data ?? []).map((r: any) => [r.id, r.geocode_status]))));
+  }, [unmappedIds]);
+
   const openCompById = (compId: string) => setParam('comp', compId);
 
   // ?comp=<id> opens the comp slideout over the queue — the link VA tasks carry.
@@ -101,7 +115,11 @@ export default function ListingReviewPage() {
             <h1 className="text-2xl font-semibold text-[#002147]">NNN Listings</h1>
             <p className="text-sm text-[#4A6B94]">
               Offerings in the Comp Database. Approve to show a new comp on the map; diligence happens on the comp.
-              {unplaced > 0 && <span className="ml-2 text-[#A27B5C]">{unplaced} not on the map (address didn't geocode).</span>}
+              {unplaced > 0 && (
+                <button type="button" onClick={() => setTab('unmapped')} className="ml-2 text-[#A27B5C] underline">
+                  {unplaced} not on the map
+                </button>
+              )}
             </p>
           </div>
           <input
@@ -130,6 +148,48 @@ export default function ListingReviewPage() {
 
         {error && <div className="mb-3 text-sm text-red-700 border border-red-300 rounded p-2 bg-white">{error}</div>}
 
+        {tab === 'unmapped' ? (
+        <div className="bg-white border border-[#8FA9C8] rounded overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-left text-[11px] uppercase tracking-wide text-[#4A6B94] border-b border-[#8FA9C8]">
+              <tr>
+                <th className="px-3 py-2">Tenant</th>
+                <th className="px-3 py-2">Address</th>
+                <th className="px-3 py-2">City</th>
+                <th className="px-3 py-2">Source</th>
+                <th className="px-3 py-2">Why</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {!loading && visible.length === 0 && (
+                <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-500">Every listing is on the map.</td></tr>
+              )}
+              {visible.map((l) => (
+                <tr key={l.listing_id} onClick={() => select(l.listing_id)}
+                    className={`border-b border-gray-100 cursor-pointer hover:bg-[#8FA9C8]/10 ${selectedId === l.listing_id ? 'bg-[#8FA9C8]/20' : ''}`}>
+                  <td className="px-3 py-2 font-medium text-[#002147]">{l.tenant ?? l.property_name ?? '—'}</td>
+                  <td className="px-3 py-2 text-[#002147]">{l.address ?? '—'}</td>
+                  <td className="px-3 py-2 text-[#002147]">{[l.city, l.state].filter(Boolean).join(', ') || '—'}</td>
+                  <td className="px-3 py-2">
+                    {l.source_url
+                      ? <a href={l.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                           className="text-[#4A6B94] underline">{l.source_type ?? 'link'}</a>
+                      : <span className="text-gray-400">{l.source_type ?? '—'}</span>}
+                  </td>
+                  <td className="px-3 py-2 text-[#A27B5C] whitespace-nowrap">{unmappedReasonLabel(geoStatus[l.comp_property_id])}</td>
+                  <td className="px-3 py-2 text-right">
+                    <Link to={`/mapping?place-comp=${l.comp_property_id}`} onClick={(e) => e.stopPropagation()}
+                          className="px-2.5 py-1 rounded text-white text-xs font-semibold bg-[#002147] whitespace-nowrap">
+                      Place on map
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        ) : (
         <div className="bg-white border border-[#8FA9C8] rounded overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="text-left text-[11px] uppercase tracking-wide text-[#4A6B94] border-b border-[#8FA9C8]">
@@ -181,6 +241,7 @@ export default function ListingReviewPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {selectedId && (

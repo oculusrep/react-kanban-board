@@ -62,6 +62,42 @@ In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the
   `geocodingService` and accepts only ROOFTOP/RANGE_INTERPOLATED precision.
 - Added columns not in the spec: `geocode_status`, `va_task_id`, `created_by_id`, `updated_at`.
 
+## Geocoding and the Unmapped queue (2026-10-31, ovis-mcp v0.4.0)
+
+- **Order:** Census first. When Census finds nothing or only an inexact match, Google Geocoding is tried with the
+  server key `GOOGLE_GEOCODING_API_KEY` (a Supabase secret, Geocoding-API-only). Google counts only as ROOFTOP or
+  RANGE_INTERPOLATED and not `partial_match`. The upsert result carries `geocode_source` (`census` / `google`).
+- **Status is stored** on `comp_property` (migration `20261031091217_comp_geocode_status.sql`):
+  - `geocode_status`: `placed`, `no_match`, `ambiguous` (only inexact matches, deliberately not pinned) or `manual`;
+  - `geocode_source`: `census`, `google` or `manual`;
+  - `geocoded_at`.
+
+  A transient error (network, Google `REQUEST_DENIED` / quota) leaves the status alone, and the next sighting retries.
+- **"Unmapped" is derived, not stored:** no `verified_*` and no raw `latitude/longitude`, the same test the map layer uses
+  to skip a comp. Rejected comps are excluded.
+- **Queue UI**, modeled on the municipal "not on map" worklist:
+  - `/listings/review` has an **Unmapped** tab (tenant, address, city, source link, why). Its **Place on map** button opens
+    `/mapping?place-comp=<id>`.
+  - The map's Layers menu → **Comp Database** row has a "N not on map" list (`CompUnplacedPanel`). It shows even with the layer off.
+  - The comp slideout shows a **Not on the map** bar with **Drop a pin**. Click the map to drop a pin (drag it, or click
+    again to move it), then **Place pin here**.
+  - **Place pin here** calls `set_comp_property_pin`, which writes `verified_latitude/longitude` and sets `geocode_status = manual`.
+    It is `SECURITY INVOKER`, executable by `authenticated` only, and gated by comp RLS.
+  - Pending listings get "Show pending" switched on, so the placed pin is visible.
+- Like the municipal worklist, this lives only in the map page's Layers popup, not in `LayerManager`.
+
+## Derived financials (2026-10-31, migration `20261031100649_comp_derived_financials.sql`)
+
+- **Any two of price / cap / NOI give the third** (NOI = price × cap / 100; cap is a percent). A BEFORE INSERT trigger on
+  `comp_listing_event` does the calculation, so the MCP sweep, the UI and backfills share one implementation. Derived figures are marked in
+  `field_basis` (e.g. `{"noi":"derived"}`); a missing key means stated. A caller's stated value is never overwritten.
+  Events are append-only, so a later stated figure arrives as a new event.
+- **NOI → lease rent:** on a `bts_nnn` lease, the offering's latest NOI fills `lease_comp.annual_base_rent` when it's empty or
+  was itself derived, marked `{"annual_base_rent":"derived"}`. Ground, multi-tenant and untyped leases are left alone. Editing the
+  rent in the Leases tab makes it stated (the mark is dropped), and NOI never touches it again.
+- **UI:** derived figures show a "calc" badge in the listing timeline and the Leases tab.
+- **Backfill (2026-10-31):** 30 listing events got a derived NOI (none needed cap or price). 16 `bts_nnn` leases got rent from NOI.
+
 ## Upsert semantics
 
 On a repeat sighting, `last_seen` is set to now and any non-null incoming field (price, cap rate, tenant,

@@ -25,6 +25,12 @@ function delta(curr: number | null, prev: number | null) {
   return `${curr < prev ? '▼' : '▲'} ${fmtMoney(Math.abs(curr - prev))} (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)`;
 }
 
+// A figure computed from the other two (NOI = price × cap), not stated by the source.
+export const CalcBadge = () => (
+  <span title="Calculated from the other two figures (NOI = price × cap), not stated by the source"
+        className="ml-1 align-middle text-[9px] uppercase px-1 rounded border border-[#8FA9C8] text-[#8FA9C8]">calc</span>
+);
+
 const ASK_TYPES = new Set(['listed', 'relisted', 'price_change', 'cap_change', 'back_on_market']);
 
 export function ListingTimeline({ listingId, refreshKey = 0 }: { listingId: string; refreshKey?: number }) {
@@ -79,8 +85,9 @@ export function ListingTimeline({ listingId, refreshKey = 0 }: { listingId: stri
               </div>
             ) : (e.price != null || e.cap_rate != null) && (
               <div className="text-sm text-[#002147] mt-0.5">
-                {fmtMoney(e.price)}{e.cap_rate != null && ` @ ${fmtPct(e.cap_rate)}`}
-                {e.noi != null && <span className="text-gray-500"> · NOI {fmtMoney(e.noi)}</span>}
+                {fmtMoney(e.price)}{e.field_basis?.price && <CalcBadge />}
+                {e.cap_rate != null && <> @ {fmtPct(e.cap_rate)}{e.field_basis?.cap_rate && <CalcBadge />}</>}
+                {e.noi != null && <span className="text-gray-500"> · NOI {fmtMoney(e.noi)}{e.field_basis?.noi && <CalcBadge />}</span>}
                 {d && <span className={`ml-2 text-xs ${d.startsWith('▼') ? 'text-[#A27B5C]' : 'text-[#4A6B94]'}`}>{d}</span>}
               </div>
             )}

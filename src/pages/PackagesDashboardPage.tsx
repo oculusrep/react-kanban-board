@@ -1,7 +1,9 @@
-import { Fragment, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Fragment, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import usePackagesDashboard, { PackageRowView } from '../hooks/usePackagesDashboard';
+import useTourPackageRows, { TourRowView } from '../hooks/useTourPackageRows';
+import { TourOption, fetchTourOptions } from '../lib/packageTours';
 import {
   BRAND, GateState, INPUT_LABEL, PACE_LABEL, ProgressRow, STATUS_LABEL, SlideRow, paceStyle, shortDate, startPackageForCard,
 } from '../lib/packageTracker';
@@ -10,7 +12,13 @@ import {
 // Package. Rows = board cards in Pre-Submittal, Submitted-Reviewing and
 // Negotiating LOI; not-started rows first, then by pace. Row click opens the
 // same sidebar the map and pipeline report open. Board colours, no green.
-// The first column is reserved for drag-to-prioritize (later).
+// The first column is reserved for drag-to-prioritize (later); in a tour view it
+// holds the stop number.
+//
+// Tour filter (2026-10-30): a tour shows every stop, in stop order, packaged or
+// not and in any stage. Closed stops (Pass, Lost / Killed, Use Declined, Not
+// Available) sit dimmed at the bottom, hidden by default, and stay out of the
+// header counts.
 
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -31,10 +39,34 @@ const STAGE_SHORT: Record<string, string> = {
   'Submitted-Reviewing': 'Submitted',
   'Negotiating LOI': 'LOI',
 };
+const LOI_STAGES = ['Negotiating LOI', 'LOI'];
 
 export default function PackagesDashboardPage() {
   const navigate = useNavigate();
-  const { rows, slides, names, toggleDone, loading, error, refresh } = usePackagesDashboard();
+  const dash = usePackagesDashboard();
+  const { slides, names, toggleDone, refresh } = dash;
+  const [params, setParams] = useSearchParams();
+  const tourId = params.get('tour');
+  const [tours, setTours] = useState<TourOption[]>([]);
+  const [hideClosed, setHideClosed] = useState(true);
+  const tour = useTourPackageRows(tourId, dash);
+  const tourName = tours.find((t) => t.id === tourId)?.tour_name ?? 'Tour';
+
+  useEffect(() => {
+    fetchTourOptions().then(setTours).catch(() => setTours([]));
+  }, []);
+
+  const setTour = (id: string) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('tour', id); else next.delete('tour');
+    setParams(next, { replace: true });
+  };
+
+  const rows: (PackageRowView | TourRowView)[] = tourId
+    ? tour.rows.filter((r) => !(hideClosed && r.closed))
+    : dash.rows;
+  const loading = tourId ? tour.loading || dash.loading : dash.loading;
+  const error = tourId ? tour.error ?? dash.error : dash.error;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpand = (id: string) => setExpanded((cur) => {
     const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n;
@@ -67,12 +99,39 @@ export default function PackagesDashboardPage() {
       <div className="max-w-[1400px] mx-auto">
         <div className="flex items-end justify-between mb-4">
           <div>
-            <h1 className="text-xl font-semibold" style={{ color: BRAND.navy }}>Starbucks Packages</h1>
+            <h1 className="text-xl font-semibold" style={{ color: BRAND.navy }}>
+              Starbucks Packages{tourId ? <span style={{ color: BRAND.steel }}> · {tourName}</span> : null}
+            </h1>
             <p className="text-sm" style={{ color: BRAND.steel }}>
-              {rows.length} sites in Pre-Submittal, Submitted and LOI · {notStarted} not started
+              {tourId ? (
+                <>
+                  {tour.summary.sites} sites · {tour.summary.tourReady} Tour-ready · {tour.summary.notStarted} not started
+                  {tour.summary.closed > 0 && <span style={{ color: BRAND.slate }}> · {tour.summary.closed} closed</span>}
+                </>
+              ) : (
+                <>{rows.length} sites in Pre-Submittal, Submitted and LOI · {notStarted} not started</>
+              )}
             </p>
           </div>
-          <div className="flex gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm">
+            {tourId && tour.summary.closed > 0 && (
+              <label className="flex items-center gap-1.5 text-xs mr-1" style={{ color: BRAND.steel }}>
+                <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} />
+                Hide closed
+              </label>
+            )}
+            <select
+              value={tourId ?? ''}
+              onChange={(e) => setTour(e.target.value)}
+              className="px-2 py-1.5 rounded bg-white"
+              style={{ border: `1px solid ${BRAND.slate}`, color: BRAND.navy }}
+              aria-label="Tour"
+            >
+              <option value="">All packages</option>
+              {tours.map((t) => (
+                <option key={t.id} value={t.id}>{t.tour_name}{t.is_archived ? ' (archived)' : ''}</option>
+              ))}
+            </select>
             <button type="button" onClick={() => navigate('/starbucks-board')} className="px-3 py-1.5 rounded"
                     style={{ border: `1px solid ${BRAND.slate}`, color: BRAND.navy, backgroundColor: '#FFFFFF' }}>Deal Board</button>
             <button type="button" onClick={() => navigate('/reports/starbucks-pipeline')} className="px-3 py-1.5 rounded"
@@ -88,7 +147,9 @@ export default function PackagesDashboardPage() {
           <table className="w-full text-sm" style={{ color: BRAND.navy }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${BRAND.slate}`, backgroundColor: BRAND.page }}>
-                <th className="w-6" aria-label="Priority (drag — coming later)" />
+                {tourId
+                  ? <th className={th}>Stop</th>
+                  : <th className="w-6" aria-label="Priority (drag — coming later)" />}
                 <th className={th}>Site / deal</th>
                 <th className={th}>Stage</th>
                 <th className={th}>Progress</th>
@@ -104,11 +165,18 @@ export default function PackagesDashboardPage() {
               {loading && rows.length === 0 && (
                 <tr><td colSpan={10} className={td} style={{ color: BRAND.steel }}>Loading…</td></tr>
               )}
+              {tourId && !loading && rows.length === 0 && (
+                <tr><td colSpan={10} className={td} style={{ color: BRAND.steel }}>
+                  {tour.rows.length ? 'Every stop on this tour is closed.' : 'No stops on this tour yet.'}
+                </td></tr>
+              )}
               {rows.map((r) => (
                 <Fragment key={r.card.id}>
                   <Row
                     r={r}
                     td={td}
+                    stopLabel={'stopLabel' in r ? r.stopLabel : undefined}
+                    closed={'closed' in r ? r.closed : false}
                     starting={starting === r.card.id}
                     expanded={expanded.has(r.card.id)}
                     onToggle={r.progress ? () => toggleExpand(r.card.id) : undefined}
@@ -129,7 +197,8 @@ export default function PackagesDashboardPage() {
         </div>
         <p className="text-xs mt-2" style={{ color: BRAND.slate }}>
           Tour-ready = Market Aerial, Demo Map and Site Plan done. Pace follows the LOI gates; pre-LOI packages read on pace.
-          Start Package isn’t offered on cards still waiting to be classified on the board.
+          Start Package isn’t offered on cards still waiting to be classified on the board
+          {tourId ? ', or on closed stops (Pass, Lost / Killed, Use Declined, Not Available). Stops are numbered per tour day, as on the tour map; — = unscheduled.' : '.'}
         </p>
       </div>
 
@@ -181,18 +250,21 @@ function SlidesRow({ slides, names, onDone }: {
   );
 }
 
-function Row({ r, td, starting, expanded, onToggle, onOpen, onStart }: {
-  r: PackageRowView; td: string; starting: boolean; expanded: boolean;
+function Row({ r, td, stopLabel, closed, starting, expanded, onToggle, onOpen, onStart }: {
+  r: PackageRowView; td: string; stopLabel?: string; closed: boolean; starting: boolean; expanded: boolean;
   onToggle?: () => void; onOpen: () => void; onStart: () => void;
 }) {
   const p = r.progress;
   const pct = p && p.applicable > 0 ? Math.round((p.done / p.applicable) * 100) : 0;
   const style = r.pace ? paceStyle(r.pace) : null;
-  const gate = p && r.card.stageLabel === 'Negotiating LOI' ? currentGate(p) : null;
+  const gate = p && LOI_STAGES.includes(r.card.stageLabel) ? currentGate(p) : null;
 
   return (
-    <tr onClick={onOpen} className="cursor-pointer hover:bg-slate-50" style={{ borderBottom: `1px solid ${BRAND.page}` }}>
-      <td className="w-6" />
+    <tr onClick={onOpen} className="cursor-pointer hover:bg-slate-50"
+        style={{ borderBottom: `1px solid ${BRAND.page}`, opacity: closed ? 0.5 : 1 }}>
+      {stopLabel !== undefined
+        ? <td className={`${td} text-xs whitespace-nowrap font-semibold`} style={{ color: BRAND.steel }}>{stopLabel}</td>
+        : <td className="w-6" />}
       <td className={td}>
         <div className="font-medium flex items-center gap-1">
           {onToggle && (
@@ -225,6 +297,8 @@ function Row({ r, td, starting, expanded, onToggle, onOpen, onStart }: {
             </div>
             <span className="text-xs whitespace-nowrap">{p.done} of {p.applicable}</span>
           </div>
+        ) : closed ? (
+          <span className="text-xs" style={{ color: BRAND.slate }}>Not started · closed</span>
         ) : r.toClassify ? (
           <span className="text-xs" style={{ color: BRAND.slate }} title="Classify this card on the deal board first">
             Not started · classify first

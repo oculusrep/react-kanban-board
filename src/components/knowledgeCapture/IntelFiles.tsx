@@ -1,5 +1,6 @@
-import React from 'react';
-import { type DraftFile, formatBytes, type IntelFile } from './useIntelFiles';
+import React, { useState } from 'react';
+import { FAILED_STATUSES, failureMessage, formatBytes } from './intelFileRules';
+import { type DraftFile, type IntelFile } from './useIntelFiles';
 
 // Attachment chips for the Intel panel: files waiting to be filed with the note,
 // and files on filed notes with where their indexing stands.
@@ -58,14 +59,14 @@ export const DraftFileList: React.FC<{ drafts: DraftFile[]; onRemove: (localId: 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'waiting',
   uploading: 'uploading…',
-  upload_failed: 'upload failed',
+  upload_failed: 'Failed',
   pending: 'indexing…',
   extracting: 'indexing…',
   done: 'searchable',
   truncated: 'partly searchable',
   no_text: 'no text found',
   unsupported: 'stored, not searchable',
-  failed: 'could not read',
+  failed: 'Failed',
 };
 
 const WARN = new Set(['upload_failed', 'truncated', 'no_text', 'failed']);
@@ -75,12 +76,19 @@ export const FileChips: React.FC<{
   onOpen: (fileId: string) => void;
   onRetry?: (file: IntelFile) => void;
   canRetry?: (localId: string) => boolean;
-}> = ({ files, onOpen, onRetry, canRetry }) => {
+  onDelete?: (file: IntelFile) => Promise<boolean>;
+  canDelete?: (file: IntelFile) => boolean;
+}> = ({ files, onOpen, onRetry, canRetry, onDelete, canDelete }) => {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   if (files.length === 0) return null;
   return (
     <ul className="mt-1 space-y-0.5">
       {files.map((f) => {
         const openable = !!f.id && f.status !== 'uploading' && f.status !== 'upload_failed' && f.status !== 'queued';
+        // Not while this tab is still sending the bytes.
+        const deletable = !!onDelete && !!f.id && f.status !== 'queued' && f.status !== 'uploading' && (canDelete?.(f) ?? false);
+        const failure = failureMessage(f);
         return (
           <li key={f.localId} className="flex flex-wrap items-center gap-1 text-[10px]">
             <span style={{ color: COLORS.steel }}><PaperclipIcon /></span>
@@ -98,6 +106,7 @@ export const FileChips: React.FC<{
               <span className="max-w-[220px] truncate" style={{ color: COLORS.midnight }}>{f.filename}</span>
             )}
             <span
+              className={FAILED_STATUSES.has(f.status) ? 'font-semibold' : undefined}
               style={{ color: WARN.has(f.status) ? COLORS.terracotta : COLORS.slate }}
               title={f.status_note ?? undefined}
             >
@@ -108,7 +117,42 @@ export const FileChips: React.FC<{
                 retry
               </button>
             )}
-            {f.status_note && WARN.has(f.status) && (
+            {deletable && confirming !== f.localId && (
+              <button
+                type="button"
+                onClick={() => setConfirming(f.localId)}
+                className="underline"
+                style={{ color: COLORS.slate }}
+                aria-label={`Delete ${f.filename}`}
+              >
+                delete
+              </button>
+            )}
+            {confirming === f.localId && (
+              <span className="inline-flex items-center gap-1" style={{ color: COLORS.midnight }}>
+                Delete from Dropbox and Intel?
+                <button
+                  type="button"
+                  disabled={deleting === f.localId}
+                  onClick={async () => {
+                    setDeleting(f.localId);
+                    const ok = await onDelete!(f);
+                    setDeleting(null);
+                    if (ok) setConfirming(null);
+                  }}
+                  className="rounded px-1 font-semibold disabled:opacity-50"
+                  style={{ color: COLORS.white, backgroundColor: COLORS.terracotta }}
+                >
+                  {deleting === f.localId ? 'deleting…' : 'Delete'}
+                </button>
+                <button type="button" onClick={() => setConfirming(null)} className="underline" style={{ color: COLORS.steel }}>
+                  cancel
+                </button>
+              </span>
+            )}
+            {failure ? (
+              <span className="basis-full pl-4" style={{ color: COLORS.terracotta }}>{failure}</span>
+            ) : f.status_note && WARN.has(f.status) && (
               <span className="basis-full pl-4" style={{ color: COLORS.terracotta }}>{f.status_note}</span>
             )}
           </li>

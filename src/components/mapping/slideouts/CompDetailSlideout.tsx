@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../utils/format';
 import geocodingService from '../../../services/geocodingService';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
-import ListingTimeline from '../../listings/ListingTimeline';
+import ListingTimeline, { CalcBadge } from '../../listings/ListingTimeline';
 import FileManager from '../../FileManager/FileManager';
 import PortalChatTab from '../../portal/PortalChatTab';
 import {
@@ -13,6 +14,7 @@ import {
   LeaseType, LeaseField, LEASE_TYPE_OPTIONS, LEASE_TYPE_LABEL, LEASE_TYPE_FIELDS, RENT_BUMP_OPTIONS,
   AskingType, AskingField, AVAILABILITY_TYPE_OPTIONS, ASKING_TYPE_OPTIONS, ASKING_TYPE_FIELDS,
   CompReviewStatus, GUARANTOR_TYPE_OPTIONS, LISTING_STATUS_LABEL,
+  compCoords, unmappedReasonLabel,
 } from '../../../lib/compTypes';
 import {
   allInRentPsf, effectiveRentPsf, monthsRemaining,
@@ -27,6 +29,10 @@ interface CompDetailSlideoutProps {
   onClose: () => void;
   onSaved?: (compId: string) => void;             // fired after any change that affects the map
   topOffset?: number;
+  /** Map only: start placing this unmapped comp by clicking the map. Off the map, the
+   *  banner links to /mapping?place-comp=<id> instead. */
+  onStartDroppingPin?: (compId: string) => void;
+  isDroppingPin?: boolean;
 }
 
 interface LookupOption { id: string; label: string; }
@@ -268,7 +274,7 @@ function draftToPayload(d: Draft): any {
 // MAIN SLIDEOUT
 // ===========================================================================
 const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
-  comp, createAt, onClose, onSaved, topOffset = 0,
+  comp, createAt, onClose, onSaved, topOffset = 0, onStartDroppingPin, isDroppingPin,
 }) => {
   const { zIndex, bringToFront } = useOverlayStack();
   const [tab, setTab] = useState<Tab>('overview');
@@ -422,6 +428,28 @@ const CompDetailSlideout: React.FC<CompDetailSlideoutProps> = ({
         onSetReview={setReview}
         onClose={onClose}
       />
+
+      {/* Unmapped comp: say so, and offer the pin drop (same flow as unplaced municipal projects). */}
+      {current && !compCoords(current) && !headerEditing && (
+        <div className="flex-shrink-0 flex items-center gap-2 flex-wrap px-5 py-2 text-xs border-b"
+             style={{ borderColor: '#A27B5C', color: '#4A6B94', backgroundColor: '#F8FAFC' }}>
+          <span className="font-semibold" style={{ color: '#A27B5C' }}>Not on the map</span>
+          <span>· {unmappedReasonLabel(current.geocode_status)}</span>
+          {onStartDroppingPin ? (
+            <button type="button" onClick={() => onStartDroppingPin(current.id)} disabled={isDroppingPin}
+                    className="ml-auto px-2.5 py-1 rounded text-white font-semibold disabled:opacity-50"
+                    style={{ backgroundColor: '#002147' }}>
+              {isDroppingPin ? 'Click the map…' : 'Drop a pin'}
+            </button>
+          ) : (
+            <Link to={`/mapping?place-comp=${current.id}`}
+                  className="ml-auto px-2.5 py-1 rounded text-white font-semibold"
+                  style={{ backgroundColor: '#002147' }}>
+              Place on map
+            </Link>
+          )}
+        </div>
+      )}
 
       {!compId && (
         <div className="flex-1 overflow-y-auto p-5">
@@ -843,6 +871,12 @@ const LeasesTab: React.FC<{
       notes: str(f.notes),
       source_type: f.source_type, confidence: f.confidence,
     };
+    // A rent typed over a derived one (from listing NOI) is now stated: drop its "derived" mark.
+    const orig = editing !== 'new' ? leases.find((x) => x.id === editing) : undefined;
+    if (orig?.field_basis?.annual_base_rent && annual !== orig.annual_base_rent) {
+      const { annual_base_rent: _drop, ...rest } = orig.field_basis;
+      payload.field_basis = rest;
+    }
     if (editing === 'new') { payload.created_by_id = userId; await supabase.from('lease_comp').insert(payload); }
     else { payload.updated_by_id = userId; await supabase.from('lease_comp').update(payload).eq('id', editing); }
     setEditing(null);
@@ -972,7 +1006,7 @@ const LeasesTab: React.FC<{
           <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-600">
             <span>Type: {l.lease_type ? LEASE_TYPE_LABEL[l.lease_type] : '—'}</span>
             <span>SF: {dash(l.tenant_sqft)}</span>
-            <span>Rent/yr: {dash(l.annual_base_rent, (n) => formatCurrency(n))}</span>
+            <span>Rent/yr: {dash(l.annual_base_rent, (n) => formatCurrency(n))}{l.annual_base_rent != null && l.field_basis?.annual_base_rent && <CalcBadge />}</span>
             <span>NNN PSF: {dash(l.nnn_psf, (n) => `$${n.toFixed(2)}`)}</span>
             <span>Exp: {l.lease_expiration_date ?? '—'}</span>
             <span>Remaining: {dash(monthsRemaining(l.lease_expiration_date))} mo</span>

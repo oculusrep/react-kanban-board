@@ -8,6 +8,10 @@
  *   attach_finish  { file_id, ok }      → { status }
  *   extract_file   { file_id }          → { status, more, status_note }
  *   file_link      { file_id }          → { url }   (4-hour temporary link)
+ *   delete_file    { file_id }          → { deleted: true }
+ *                  The uploader or an admin only (403 otherwise). Removes the
+ *                  Dropbox file, then the row — its chunks cascade, so Ask can no
+ *                  longer find or cite it. The note's folder goes too once empty.
  *
  * Bytes never pass through the function: the browser POSTs them to the one-time
  * Dropbox upload link from attach_start.
@@ -118,7 +122,7 @@ export async function attachFinish(service: SupabaseClient, userId: string, body
   if (file.status !== 'uploading' && file.status !== 'upload_failed') return { status: 200, body: { status: file.status } };
 
   let status = 'upload_failed';
-  let note: string | null = 'The upload did not complete.';
+  let note: string | null = 'The upload did not finish.';
   if (body.ok === true) {
     const meta = await dropbox.metadata(String(file.dropbox_path));
     if (meta) {
@@ -193,3 +197,74 @@ export async function fileLink(userClient: SupabaseClient, body: Record<string, 
   return { status: 200, body: { url: await dropbox.temporaryLink(String(file.dropbox_path)) } };
 }
 
+
+/** Who may delete an attached file: whoever uploaded it, or an admin. */
+export function canDeleteFile(file: { created_by: string }, userId: string, isAdmin: boolean): boolean {
+  return isAdmin || file.created_by === userId;
+}
+
+export interface DeleteDeps {
+  getFile(id: string): Promise<{ id: string; created_by: string; dropbox_path: string; dropbox_folder: string } | null>;
+  isAdmin(): Promise<boolean>;
+  removeDropbox(path: string): Promise<boolean>;
+  listFolder(folder: string): Promise<Set<string>>;
+  deleteRow(id: string): Promise<void>;
+}
+
+/**
+ * Dropbox first, row second: if Dropbox refuses, nothing has changed and the
+ * user can try again; once the row is gone the chunks go with it (FK cascade),
+ * and an extraction step still running for this file fails its save instead of
+ * writing orphan chunks (knowledge_file_save_step raises when the row is gone).
+ */
+export async function deleteFileWith(deps: DeleteDeps, userId: string, body: Record<string, unknown>): Promise<Result> {
+  const fileId = typeof body.file_id === 'string' ? body.file_id : '';
+  if (!fileId) return fail(400, 'file_id is required');
+  const file = await deps.getFile(fileId);
+  if (!file) return fail(404, 'file_not_found');
+  if (!canDeleteFile(file, userId, await deps.isAdmin())) {
+    return fail(403, 'forbidden', 'Only the person who attached this file, or an admin, can delete it.');
+  }
+  if (!withinIntel(file.dropbox_path)) return fail(500, 'bad_path');
+  try {
+    await deps.removeDropbox(file.dropbox_path); // false = already gone, which is fine
+  } catch (e) {
+    return fail(502, 'dropbox_delete_failed', e instanceof Error ? e.message : String(e));
+  }
+  await deps.deleteRow(fileId);
+  // Tidy: drop the note's folder once nothing is left in it. Best effort.
+  try {
+    if ((await deps.listFolder(file.dropbox_folder)).size === 0) await deps.removeDropbox(file.dropbox_folder);
+  } catch (e) {
+    console.warn('[knowledge-capture] folder cleanup skipped:', e instanceof Error ? e.message : e);
+  }
+  return { status: 200, body: { deleted: true } };
+}
+
+export function deleteFile(
+  service: SupabaseClient,
+  userClient: SupabaseClient,
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<Result> {
+  return deleteFileWith({
+    getFile: async (id) => {
+      const { data, error } = await service.from('knowledge_entry_file')
+        .select('id, created_by, dropbox_path, dropbox_folder').eq('id', id).maybeSingle();
+      if (error) throw new Error(`file lookup failed: ${error.message}`);
+      return data;
+    },
+    // On userClient so auth.uid() resolves inside the helper.
+    isAdmin: async () => {
+      const { data, error } = await userClient.rpc('is_admin');
+      if (error) throw new Error(`admin check failed: ${error.message}`);
+      return data === true;
+    },
+    removeDropbox: dropbox.remove,
+    listFolder: dropbox.listNames,
+    deleteRow: async (id) => {
+      const { error } = await service.from('knowledge_entry_file').delete().eq('id', id);
+      if (error) throw new Error(`file delete failed: ${error.message}`);
+    },
+  }, userId, body);
+}
