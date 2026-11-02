@@ -99,10 +99,37 @@ export interface FiledEntry {
   created_at: string;
   links: Array<{ object_type: ObjectType; object_id: string }>;
   tags: string[];
+  /** 'typed' (the panel) or 'voice' (dictated through the MCP). */
+  source?: string;
+  /** Who filed it. Null when the name can't be resolved — never guessed. */
+  author_name?: string | null;
   /** True while the insert is in flight. */
   pending?: boolean;
   /** Set when the entry filed but its embedding didn't. */
   embedding_failed?: boolean;
+}
+
+/**
+ * Author names for entries, keyed by the LOGIN id in knowledge_entry.user_id.
+ *
+ * A separate query on purpose: user_id references auth.users, which has no
+ * foreign key to public."user", so PostgREST cannot embed the person. Exported
+ * because both the recent list and the deep-linked entry need it.
+ */
+export async function fetchAuthorNames(authUserIds: string[]): Promise<Record<string, string>> {
+  const ids = [...new Set(authUserIds.filter(Boolean))];
+  if (ids.length === 0) return {};
+  const { data } = await supabase
+    .from('user')
+    .select('auth_user_id, name, first_name, last_name')
+    .in('auth_user_id', ids);
+  const out: Record<string, string> = {};
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    const name = String(row.name ?? '').trim()
+      || [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
+    if (row.auth_user_id && name) out[String(row.auth_user_id)] = name;
+  }
+  return out;
 }
 
 const RECENT_LIMIT = 5;
@@ -226,17 +253,21 @@ export function useKnowledgeCapture(authUserId: string | null) {
     if (!authUserId) return;
     const { data, error: err } = await supabase
       .from('knowledge_entry')
-      .select('id, clean_text, is_general, created_at, links:knowledge_entry_link(object_type, object_id), tags:knowledge_entry_tag(tag)')
+      .select('id, clean_text, is_general, source, user_id, created_at, links:knowledge_entry_link(object_type, object_id), tags:knowledge_entry_tag(tag)')
       .eq('user_id', authUserId)
       .order('created_at', { ascending: false })
       .limit(RECENT_LIMIT);
     if (err) return; // The list is reassurance, not the feature — never block on it.
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    const names = await fetchAuthorNames(rows.map((r) => String(r.user_id ?? '')));
     setRecent(
-      (data ?? []).map((row: Record<string, unknown>) => ({
+      rows.map((row) => ({
         id: String(row.id),
         clean_text: String(row.clean_text ?? ''),
         is_general: row.is_general === true,
         created_at: String(row.created_at),
+        source: row.source ? String(row.source) : undefined,
+        author_name: names[String(row.user_id ?? '')] ?? null,
         links: (row.links ?? []) as FiledEntry['links'],
         tags: ((row.tags ?? []) as Array<{ tag: string }>).map((t) => t.tag),
       })),
@@ -367,6 +398,7 @@ export function useKnowledgeCapture(authUserId: string | null) {
       created_at: new Date().toISOString(),
       links: proposal.links.map((l) => ({ object_type: l.object_type, object_id: l.object_id })),
       tags: proposal.tags,
+      source: 'typed',
       pending: true,
     };
     setRecent((r) => [optimistic, ...r].slice(0, RECENT_LIMIT));

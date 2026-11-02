@@ -58,14 +58,29 @@ const SourceCard: React.FC<{ source: AskSource; onOpenFile: (id: string) => void
         border: `1px solid ${highlight ? COLORS.steel : '#E2E8F0'}`,
       }}
     >
-      <div className="flex items-start gap-1.5">
+      {/* Same gesture as the panel's note rows: the card body toggles. The
+          filename button stops the click so opening a file still opens it. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((e) => !e)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded((x) => !x);
+          }
+        }}
+        className="flex cursor-pointer items-start gap-1.5 text-left"
+        title={expanded ? 'Click to collapse' : 'Click to read the whole quote'}
+      >
         <span className="font-semibold" style={{ color: COLORS.steel }}>[{source.n}]</span>
         <div className="min-w-0 flex-1">
           {source.kind === 'file' ? (
             <div className="flex flex-wrap items-baseline gap-1">
               <button
                 type="button"
-                onClick={() => source.file_id && onOpenFile(source.file_id)}
+                onClick={(e) => { e.stopPropagation(); if (source.file_id) onOpenFile(source.file_id); }}
                 className="truncate font-medium underline"
                 style={{ color: COLORS.steel }}
                 title="Open the Dropbox copy (link valid 4 hours)"
@@ -82,7 +97,12 @@ const SourceCard: React.FC<{ source: AskSource; onOpenFile: (id: string) => void
             {source.excerpt}
           </p>
           {source.excerpt.length > 180 && (
-            <button type="button" onClick={() => setExpanded((e) => !e)} className="text-[10px] underline" style={{ color: COLORS.slate }}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setExpanded((x) => !x); }}
+              className="text-[10px] underline"
+              style={{ color: COLORS.slate }}
+            >
               {expanded ? 'less' : 'more'}
             </button>
           )}

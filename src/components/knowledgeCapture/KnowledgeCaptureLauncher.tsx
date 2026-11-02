@@ -12,6 +12,7 @@ import {
   type EmailLookupResult,
   type EmailSenderCandidate,
   type EmailSignatureSource,
+  fetchAuthorNames,
   type FiledEntry,
   type KnowledgeLink,
   type ObjectType,
@@ -419,6 +420,15 @@ const UnresolvedRow: React.FC<{
   );
 };
 
+/** When a note was filed, in Eastern Time and labelled — never the viewer's zone. */
+function easternStamp(iso: string): string {
+  return `${new Date(iso).toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  })} ET`;
+}
+
 const RecentList: React.FC<{
   entries: FiledEntry[];
   files: Record<string, IntelFile[]>;
@@ -429,13 +439,24 @@ const RecentList: React.FC<{
   onDelete: (file: IntelFile) => Promise<boolean>;
   canDelete: (file: IntelFile) => boolean;
   heading?: string;
+  /** Entries to show open on first render — a deep link arrives expanded. */
+  openByDefault?: string[];
 }> = ({
   entries, files, onOpenFile, onRetry, canRetry, onAttach, onDelete, canDelete,
-  heading = 'Recently filed',
+  heading = 'Recently filed', openByDefault,
 }) => {
   // One hidden picker for every note; attachTarget says which note it's for.
   const pickerRef = useRef<HTMLInputElement>(null);
   const attachTarget = useRef<string | null>(null);
+  // Which rows are open. A filed note is one fact, but a dictated one runs to
+  // several paragraphs, so the row is a two-line preview until it's clicked.
+  const [open, setOpen] = useState<string[]>(openByDefault ?? []);
+  const defaults = (openByDefault ?? []).join(',');
+  useEffect(() => {
+    if (!defaults) return;
+    setOpen((o) => [...new Set([...o, ...defaults.split(',')])]);
+  }, [defaults]);
+  const toggle = (id: string) => setOpen((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]));
   if (entries.length === 0) return null;
   return (
     <section className="mt-3 pt-2" style={{ borderTop: `1px solid ${COLORS.slate}` }}>
@@ -464,7 +485,40 @@ const RecentList: React.FC<{
               opacity: entry.pending ? 0.6 : 1,
             }}
           >
-            <p className="line-clamp-2" style={{ color: COLORS.midnight }}>{entry.clean_text}</p>
+            {/* The whole text block is the toggle. Not the <li>: the meta row
+                below carries Attach, and the chips under it carry Open and
+                Delete — nesting those inside a button is invalid and would
+                swallow their clicks. */}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={open.includes(entry.id)}
+              onClick={() => toggle(entry.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggle(entry.id);
+                }
+              }}
+              className="cursor-pointer text-left"
+              title={open.includes(entry.id) ? 'Click to collapse' : 'Click to read the whole note'}
+            >
+              <p
+                className={open.includes(entry.id) ? 'whitespace-pre-wrap' : 'line-clamp-2'}
+                style={{ color: COLORS.midnight }}
+              >
+                {entry.clean_text}
+              </p>
+              {open.includes(entry.id) && (
+                <p className="mt-1 text-[10px]" style={{ color: COLORS.slate }}>
+                  {[
+                    entry.pending ? 'saving…' : `filed ${easternStamp(entry.created_at)}`,
+                    entry.author_name ? `by ${entry.author_name}` : null,
+                    entry.source === 'voice' ? 'dictated' : entry.source === 'typed' ? 'typed' : null,
+                  ].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px]" style={{ color: COLORS.slate }}>
               <span>
                 {entry.is_general
@@ -535,15 +589,19 @@ function useIntelDeepLink(): { id: string | null; entry: FiledEntry | null } {
     void (async () => {
       const { data } = await supabase
         .from('knowledge_entry')
-        .select('id, clean_text, is_general, created_at, links:knowledge_entry_link(object_type, object_id), tags:knowledge_entry_tag(tag)')
+        .select('id, clean_text, is_general, source, user_id, created_at, links:knowledge_entry_link(object_type, object_id), tags:knowledge_entry_tag(tag)')
         .eq('id', id)
         .maybeSingle();
       if (cancelled || !data) return; // A dead link just opens the panel.
+      const names = await fetchAuthorNames([String(data.user_id ?? '')]);
+      if (cancelled) return;
       setEntry({
         id: String(data.id),
         clean_text: String(data.clean_text ?? ''),
         is_general: data.is_general === true,
         created_at: String(data.created_at),
+        source: data.source ? String(data.source) : undefined,
+        author_name: names[String(data.user_id ?? '')] ?? null,
         links: (data.links ?? []) as FiledEntry['links'],
         tags: ((data.tags ?? []) as Array<{ tag: string }>).map((t) => t.tag),
       });
@@ -963,6 +1021,7 @@ export const KnowledgeCaptureLauncher: React.FC = () => {
             <RecentList
               heading="Opened from a link"
               entries={[deepLink.entry]}
+              openByDefault={[deepLink.entry.id]}
               files={intelFiles.files}
               onOpenFile={intelFiles.openFile}
               onRetry={intelFiles.retryUpload}
