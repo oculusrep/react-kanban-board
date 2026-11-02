@@ -33,12 +33,12 @@ export interface PdfStopRow {
   nextIsEnd: boolean;
   coord: LatLng | null; // null = no location (listed, not routed)
   approach: LatLng[];
-  iconUrl: string | null; // store logo (Atlas / licensed)
+  iconUrl: string | null; // Atlas store logo (licensed stops get a plain 'LS' pin — no licensed logos on PDF maps)
   glyph: string | null; // custom stop letter (L / C / H / M / *)
 }
 
 export interface PdfStore {
-  kind: 'atlas_store' | 'licensed_store';
+  kind: 'atlas_store';
   store_number: string;
   lat: number;
   lng: number;
@@ -67,10 +67,11 @@ export interface PdfTour {
   client: string | null;
   days: PdfDay[];
   generatedLabel: string;
-  /** Atlas / licensed stores to overlay on maps (already filtered by the export checkboxes). */
+  /** Atlas stores that may be overlaid on maps (the builder filters per map). */
   contextStores: PdfStore[];
-  showAtlas: boolean;
-  showLicensed: boolean;
+  /** off = none; near = within 3 mi of that map's route; all = every Atlas store in the frame.
+   *  Atlas stores that are tour stops are always drawn (as stops). */
+  atlasMode: 'off' | 'near' | 'all';
 }
 
 export interface PdfOptions {
@@ -344,7 +345,7 @@ function dayHeaderLines(doc: jsPDF, d: PdfDay): string[] {
   return parts.flatMap((p) => doc.splitTextToSize(pdfText(p), CW) as string[]);
 }
 function dayHeaderHeight(doc: jsPDF, d: PdfDay) {
-  return 28 + dayHeaderLines(doc, d).length * 12;
+  return 26 + dayHeaderLines(doc, d).length * 11.5;
 }
 function drawDayHeader(doc: jsPDF, d: PdfDay, y: number): number {
   doc.setFillColor(d.color); // day route color swatch
@@ -358,7 +359,7 @@ function drawDayHeader(doc: jsPDF, d: PdfDay, y: number): number {
   doc.line(M, y + 22, M + CW, y + 22);
   const lines = dayHeaderLines(doc, d);
   doc.setTextColor(STEEL);
-  doc.text(lines, M, y + 37);
+  doc.text(lines, M, y + 35, { lineHeightFactor: 1.2 });
   return y + dayHeaderHeight(doc, d);
 }
 
@@ -369,7 +370,7 @@ function drawDayHeader(doc: jsPDF, d: PdfDay, y: number): number {
 function drawAgenda(doc: jsPDF, d: PdfDay, y: number, tourName: string, measure: boolean): number {
   const FS = 7.5;
   const LH = 9;
-  const PADY = 3.5;
+  const PADY = 3;
   const HEAD_H = 22;
 
   const header = (yy: number) => {
@@ -592,9 +593,38 @@ function drawRoute(doc: jsPDF, ctx: MapCtx, paths: LatLng[][], color: string) {
 const inside = (ctx: MapCtx, p: { x: number; y: number }, pad = 4) =>
   p.x >= ctx.x + pad && p.x <= ctx.x + ctx.w - pad && p.y >= ctx.y + pad && p.y <= ctx.y + ctx.h - pad;
 
-// Every Atlas / licensed store inside the frame (export checkboxes already applied), minus
-// the ones that are stops on these days (those are drawn larger, as stops).
+export const NEAR_ROUTE_METERS = 4828; // 3 mi
+
+/** Shortest distance (m) from a point to any segment of the paths. Local equirectangular
+ *  projection around the point — accurate to well under 1% at these distances. */
+export function distanceToPathsMeters(p: LatLng, paths: LatLng[][]): number {
+  const R = 6371000;
+  const kx = R * Math.cos((p.lat * Math.PI) / 180) * (Math.PI / 180);
+  const ky = R * (Math.PI / 180);
+  let best = Infinity;
+  for (const path of paths) {
+    for (let i = 0; i < path.length; i++) {
+      const ax = (path[i].lng - p.lng) * kx, ay = (path[i].lat - p.lat) * ky;
+      if (path.length === 1) {
+        best = Math.min(best, Math.hypot(ax, ay));
+        continue;
+      }
+      if (i === path.length - 1) break;
+      const bx = (path[i + 1].lng - p.lng) * kx, by = (path[i + 1].lat - p.lat) * ky;
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
+      best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+    }
+  }
+  return best;
+}
+
+// Atlas stores for this map: within 3 mi of ITS route (atlasMode 'near') or every one in the
+// frame ('all'), minus the ones that are stops on these days (those are drawn larger, as stops).
 function drawContextStores(doc: jsPDF, ctx: MapCtx, frame: Frame, tour: PdfTour, icons: Map<string, string | null>, days: PdfDay[]) {
+  if (tour.atlasMode === 'off') return;
+  const routePaths = days.flatMap((d) => d.paths);
   const b = frameBounds(frame);
   const key = (p: LatLng) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
   const stopKeys = new Set<string>();
@@ -602,6 +632,7 @@ function drawContextStores(doc: jsPDF, ctx: MapCtx, frame: Frame, tour: PdfTour,
   for (const st of tour.contextStores) {
     if (st.lat < b.south || st.lat > b.north || st.lng < b.west || st.lng > b.east) continue;
     if (stopKeys.has(key(st))) continue;
+    if (tour.atlasMode === 'near' && distanceToPathsMeters(st, routePaths) > NEAR_ROUTE_METERS) continue;
     const img = icons.get(st.iconUrl);
     const p = ctx.toPt(st);
     if (!img || !inside(ctx, p, 6)) continue;
@@ -634,8 +665,8 @@ function drawDayMarkers(doc: jsPDF, ctx: MapCtx, d: PdfDay, icons: Map<string, s
         doc.setLineWidth(1.6);
         doc.circle(p.x, p.y, r, 'FD');
         doc.addImage(img, 'PNG', p.x - r * 0.82, p.y - r * 0.82, r * 1.64, r * 1.64, aliasOf(img), 'FAST');
-      } else if (s.kind === 'custom') {
-        pin(doc, p, s.glyph ?? '*', CUSTOM_GRAY, scale);
+      } else if (s.kind === 'custom' || s.kind === 'licensed_store') {
+        pin(doc, p, s.kind === 'licensed_store' ? 'LS' : s.glyph ?? '*', CUSTOM_GRAY, scale);
       } else {
         pin(doc, p, s.siteNo != null ? String(s.siteNo) : '', d.color, scale);
       }
@@ -682,23 +713,14 @@ function drawLegend(doc: jsPDF, x: number, y: number, tour: PdfTour, icons: Map<
     )
   );
   item(() => pin(doc, { x: cx + 5, y: y + 6 }, '#', days[0]?.color ?? MIDNIGHT, 0.7), 'Site (numbered)', 82);
-  const shown = (kind: 'atlas_store' | 'licensed_store') =>
-    (kind === 'atlas_store' ? tour.showAtlas : tour.showLicensed) || days.some((d) => d.stops.some((s) => s.kind === kind));
-  const iconFor = (kind: 'atlas_store' | 'licensed_store') => {
-    const url =
-      days.flatMap((d) => d.stops).find((s) => s.kind === kind)?.iconUrl ?? tour.contextStores.find((s) => s.kind === kind)?.iconUrl;
-    return url ? icons.get(url) ?? null : null;
-  };
-  (['atlas_store', 'licensed_store'] as const).forEach((kind) => {
-    const img = iconFor(kind);
-    if (!img || !shown(kind)) return;
-    item(
-      () => doc.addImage(img, 'PNG', cx, y - 4, 9, 9, aliasOf(img), 'FAST'),
-      kind === 'atlas_store' ? 'Starbucks store (Atlas)' : 'Licensed store',
-      kind === 'atlas_store' ? 110 : 76
-    );
-  });
-  if (days.some((d) => d.stops.some((s) => s.kind === 'custom'))) {
+  const atlasStop = days.some((d) => d.stops.some((s) => s.kind === 'atlas_store'));
+  const atlasUrl = days.flatMap((d) => d.stops).find((s) => s.kind === 'atlas_store')?.iconUrl ?? tour.contextStores[0]?.iconUrl;
+  const atlasImg = atlasUrl ? icons.get(atlasUrl) ?? null : null;
+  if (atlasImg && (tour.atlasMode !== 'off' || atlasStop)) {
+    const label = tour.atlasMode === 'near' ? 'Starbucks store (within 3 mi of route)' : 'Starbucks store (Atlas)';
+    item(() => doc.addImage(atlasImg, 'PNG', cx, y - 4, 9, 9, aliasOf(atlasImg), 'FAST'), label, tour.atlasMode === 'near' ? 168 : 110);
+  }
+  if (days.some((d) => d.stops.some((s) => s.kind === 'custom' || s.kind === 'licensed_store'))) {
     item(() => pin(doc, { x: cx + 5, y: y + 6 }, '*', CUSTOM_GRAY, 0.7), 'Other stop', 60);
   }
   item(() => pin(doc, { x: cx + 5, y: y + 6 }, 'A', START_GREEN, 0.7), 'Start', 40);

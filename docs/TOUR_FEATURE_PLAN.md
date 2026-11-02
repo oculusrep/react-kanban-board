@@ -369,7 +369,7 @@ Migration `20261102091623_tour_stop_kinds.sql` (applied to prod + recorded 2026-
   Start | End | Drive to next | Arrive next, A/B rows, gold totals line, traffic note; day map shares the last
   agenda page only when it keeps the same zoom, else gets its own page. Maps: standard color Static Maps
   basemap (JPEG; business POIs hidden), routes in day colors, teardrop pins like the tour map, A green / B red,
-  every Atlas / licensed store in frame drawn with its logo (export checkboxes, default on), legend.
+  Atlas stores within 3 mi of THAT map's route (plus Atlas stops) drawn with their logo — Export menu: "Starbucks stores within 3 mi of route" (default on) and "All Atlas stores in frame" (default off); legend. Licensed stores are never drawn on PDF maps (2026-11-02): no licensed layer/checkbox/legend; a licensed STOP appears as a gray 'LS' pin (legend: Other stop) and stays in the agenda as "Licensed store".
   Footer on every page: gold rule, Oculus mark, "Oculus Real Estate Partners · oculusrep.com", generated date,
   Page X of Y. Starbucks logo top-right only if `public/brand/starbucks-logo.*` exists (none today).
 - **Brand assets**: `public/brand/*.svg` (Oculus logos) are rasterized to PNG in a canvas at export (band logo

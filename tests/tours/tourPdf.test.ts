@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fitFrame, projector, simplifyPx, staticMapUrl } from '../../src/lib/staticMapProjection';
-import { buildTourPdf, formatDayDate, pdfText, type PdfDay, type PdfStopRow } from '../../src/lib/tourPdf';
+import { buildTourPdf, distanceToPathsMeters, formatDayDate, pdfText, type PdfDay, type PdfStopRow } from '../../src/lib/tourPdf';
 
 const pts = [
   { lat: 33.3459, lng: -84.1091 },
@@ -95,16 +95,16 @@ test('buildTourPdf: landscape cover + per-day agenda/map, survives failed images
       client: 'Starbucks',
       days: [day(1, Array.from({ length: 24 }, (_, i) => row(i))), day(2, [row(0, 'atlas_store'), row(1, 'custom'), row(2)])],
       generatedLabel: 'Nov 2, 2026 ET',
-      contextStores: [{ kind: 'licensed_store', store_number: '1', lat: 33.3, lng: -84.1, iconUrl: '/Images/LICENSE-CAFE.png' }],
-      showAtlas: true,
-      showLicensed: true,
+      contextStores: [{ kind: 'atlas_store', store_number: '1', lat: 33.3, lng: -84.1, iconUrl: '/Images/SBUX-ATLAS-CAFE.png' }],
+      atlasMode: 'near',
     },
     { apiKey: 'K', loadImage: async (u) => (urls.push(u), null) }
   );
   const maps = urls.filter((u) => u.includes('/staticmap'));
   assert.equal(maps.length, 3, 'one basemap per map: overview + 2 days');
   assert.ok(!maps[0].includes('saturation'), 'color basemap, not grayscale');
-  assert.ok(urls.includes('/Images/SBUX-ATLAS-DT.png') && urls.includes('/Images/LICENSE-CAFE.png'), 'store icons requested once each');
+  assert.ok(urls.includes('/Images/SBUX-ATLAS-DT.png') && urls.includes('/Images/SBUX-ATLAS-CAFE.png'), 'Atlas icons requested');
+  assert.ok(!urls.some((u) => u.includes('LICENSE')), 'no licensed logos');
   const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
   assert.ok(w > h, 'landscape');
   // 24 rows on day 1 push its map to its own page: cover + day1 agenda + day1 map + day2.
@@ -115,10 +115,18 @@ test('Oklahoma embeds for headings when provided (body stays Helvetica)', async 
   const { readFileSync } = await import('node:fs');
   const b64 = (f: string) => readFileSync(new URL(`../../src/assets/fonts/${f}`, `file://${process.cwd()}/tests/tours/`)).toString('base64');
   const doc = await buildTourPdf(
-    { name: 'Font Tour', client: 'Starbucks', days: [], generatedLabel: 'x', contextStores: [], showAtlas: false, showLicensed: false },
+    { name: 'Font Tour', client: 'Starbucks', days: [], generatedLabel: 'x', contextStores: [], atlasMode: 'off' },
     { apiKey: 'K', loadImage: async () => null, headingFont: { regular: b64('Oklahoma-Regular.ttf'), bold: b64('Oklahoma-Bold.ttf') } }
   );
   const raw = new TextDecoder('latin1').decode(doc.output('arraybuffer'));
   assert.match(raw, /\/BaseFont \/Oklahoma/);
   assert.match(raw, /\/BaseFont \/Helvetica/);
+});
+
+test('distanceToPathsMeters: perpendicular distance to a segment, not just its vertices', () => {
+  // E-W segment along lat 33 from -84.2 to -84.0; a point 0.03 deg north of its middle.
+  const d = distanceToPathsMeters({ lat: 33.03, lng: -84.1 }, [[{ lat: 33, lng: -84.2 }, { lat: 33, lng: -84.0 }]]);
+  assert.ok(Math.abs(d - 3336) < 20, `${d}`); // 0.03 deg lat ≈ 3,336 m (< 3 mi)
+  const far = distanceToPathsMeters({ lat: 33.05, lng: -84.1 }, [[{ lat: 33, lng: -84.2 }, { lat: 33, lng: -84.0 }]]);
+  assert.ok(far > 4828, `${far}`); // ≈ 5.56 km (> 3 mi)
 });

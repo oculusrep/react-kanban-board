@@ -17,7 +17,7 @@ import {
 } from '../hooks/useTours';
 import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
-import { atlasIcon, fetchAtlasStores, fetchLicensedStores, licensedIcon } from '../lib/tourStores';
+import { atlasIcon, fetchAtlasStores, licensedIcon } from '../lib/tourStores';
 import {
   MAX_APPROACH_POINTS,
   buildDayRoutePoints,
@@ -245,7 +245,7 @@ function TourMapPageInner() {
   const [exporting, setExporting] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportAtlas, setExportAtlas] = useState(true);
-  const [exportLicensed, setExportLicensed] = useState(true);
+  const [exportAllAtlas, setExportAllAtlas] = useState(false);
   const exportRef = useRef<() => void>(() => {});
   const autoExportRef = useRef(new URLSearchParams(window.location.search).get('export') === '1');
   const siteSidebarRef = useRef<string | null>(null);
@@ -864,8 +864,9 @@ function TourMapPageInner() {
   // ---- PDF export ----
   // Built from what this page already computed (cached Directions results + the planned
   // schedule) — no Directions / Matrix calls. Network: one Static Maps basemap per map, the
-  // brand logos, store icon PNGs, and (if the checkboxes are on) the Atlas / licensed store lists.
-  const exportPdf = async (opts: { atlas: boolean; licensed: boolean } = { atlas: exportAtlas, licensed: exportLicensed }) => {
+  // brand logos, store icon PNGs, and (if enabled) the Atlas store list. Licensed stores are
+  // never drawn on PDF maps (a licensed STOP still appears, as a plain 'LS' pin).
+  const exportPdf = async (opts: { atlas: boolean; allAtlas: boolean } = { atlas: exportAtlas, allAtlas: exportAllAtlas }) => {
     if (!tour || exporting) return;
     setExportMenuOpen(false);
     if (
@@ -878,11 +879,10 @@ function TourMapPageInner() {
     setExporting(true);
     setError(null);
     try {
-      const [{ buildTourPdf, fetchImageAsDataUrl }, client, atlasStores, licensedStores] = await Promise.all([
+      const [{ buildTourPdf, fetchImageAsDataUrl }, client, atlasStores] = await Promise.all([
         import('../lib/tourPdf'),
         fetchClientName(tour.client_id),
         opts.atlas ? fetchAtlasStores().catch(() => []) : Promise.resolve([]),
-        opts.licensed ? fetchLicensedStores().catch(() => []) : Promise.resolve([]),
       ]);
       // Brand slots: Oculus logos from public/brand/; a Starbucks logo only if one is dropped in.
       const firstImage = async (urls: string[]) => {
@@ -941,7 +941,7 @@ function TourMapPageInner() {
             nextIsEnd: mapped && i === dr.ordered.length - 1 && !!dr.endCoord,
             coord: mapped ? { lat: s.lat!, lng: s.lng! } : null,
             approach: dr.points.filter((p) => p.via && p.stopId === s.id).map((p) => ({ lat: p.lat, lng: p.lng })),
-            iconUrl: storeIconFor(s),
+            iconUrl: s.stop_kind === 'atlas_store' ? storeIconFor(s) : null,
             glyph: s.stop_kind === 'custom' ? glyphFor(s.category_name) : null,
           };
         });
@@ -974,12 +974,12 @@ function TourMapPageInner() {
             : 'Typical drive times (no traffic forecast).',
         };
       });
-      const contextStores = [...atlasStores, ...licensedStores].map((st) => ({
-        kind: st.kind,
+      const contextStores = atlasStores.map((st) => ({
+        kind: 'atlas_store' as const,
         store_number: st.store_number,
         lat: st.lat,
         lng: st.lng,
-        iconUrl: st.kind === 'atlas_store' ? atlasIcon(st.store_type) : licensedIcon(st.store_type),
+        iconUrl: atlasIcon(st.store_type),
       }));
       const now = new Date();
       const doc = await buildTourPdf(
@@ -989,8 +989,7 @@ function TourMapPageInner() {
           days,
           generatedLabel: `${now.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} ET`,
           contextStores,
-          showAtlas: opts.atlas,
-          showLicensed: opts.licensed,
+          atlasMode: !opts.atlas ? 'off' : opts.allAtlas ? 'all' : 'near',
         },
         {
           apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
@@ -1054,14 +1053,14 @@ function TourMapPageInner() {
             <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 30, background: '#fff', border: `1px solid ${SLATE}`, borderRadius: 8, boxShadow: '0 4px 16px rgba(0,33,71,0.15)', padding: 10, minWidth: 220, display: 'grid', gap: 6, fontSize: 13, color: MIDNIGHT }}>
               <div style={{ fontSize: 11, color: STEEL }}>Show on the PDF maps:</div>
               <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input type="checkbox" checked={exportAtlas} onChange={(e) => setExportAtlas(e.target.checked)} /> Starbucks stores (Atlas)
+                <input type="checkbox" checked={exportAtlas} onChange={(e) => setExportAtlas(e.target.checked)} /> Starbucks stores within 3 mi of route
               </label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input type="checkbox" checked={exportLicensed} onChange={(e) => setExportLicensed(e.target.checked)} /> Licensed stores
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', paddingLeft: 18, opacity: exportAtlas ? 1 : 0.5 }}>
+                <input type="checkbox" disabled={!exportAtlas} checked={exportAllAtlas} onChange={(e) => setExportAllAtlas(e.target.checked)} /> All Atlas stores in frame
               </label>
               <button
                 type="button"
-                onClick={() => exportPdf({ atlas: exportAtlas, licensed: exportLicensed })}
+                onClick={() => exportPdf({ atlas: exportAtlas, allAtlas: exportAllAtlas })}
                 style={{ border: 'none', background: MIDNIGHT, color: '#fff', borderRadius: 6, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
               >
                 Export PDF
