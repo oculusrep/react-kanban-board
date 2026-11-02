@@ -240,6 +240,25 @@ https://supabase.com/docs/guides/auth/oauth-server/getting-started
 - The OAuth path was verified 2026-10-30 after the ES256 rotation: DCR 201, consent 200, `/oauth/token` 200, and ES256 tool calls 200 from Claude-User.
 - **Not verified:** the UI in a browser.
 
+## Where we left off (2026-11-02)
+
+Live in prod, all merged to main and deployed from main:
+- Pieces 3 (derived financials, ground leases) and 2 (multi-source listings, field precedence, lease terms, VA OM-link order).
+- ovis-mcp **v0.6.1**: `ovis_url` on `upsert_listing` results and `listing_activity` rows (main 69775d25).
+- `comp_field_change` logging, applied + blocked, plus the `__prov__` crash fix (migration `20261102112859`, main 5e0adb08).
+- Unmapped queue and the Census → Google geocoder fallback (main 29c37a49).
+
+Next, in order:
+1. **Piece 4: broker contacts.** Approved as proposed, not started. `comp_property_contact` ties a contact to the offering. Create a contact only when there's an email or phone; ambiguous matches go to Noree's task checklist. Merge to main, then deploy from main.
+2. **Geocode proxy** (branch `feature/geocode-proxy`, da5290e7, plan in docs/GEOCODE_PROXY_PLAN.md). Built but not merged; waiting on Mike's localhost test as an internal user, a portal user, the coach (expect 403) and anonymous (expect 401).
+   - To run it, start the function with `deno run --allow-net --allow-env supabase/functions/geocode/index.ts` (env from .env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SECRET_KEY, SUPABASE_ANON_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY, GOOGLE_GEOCODING_API_KEY).
+   - Start the app with `VITE_GEOCODE_FUNCTION_URL=http://localhost:8000 npx vite --port 5176`.
+   - Then merge, deploy `geocode` from main, and tell Mike it's live so he can delete the browser geocoding key.
+3. **Cleanup:**
+   - Remove stale OAuth client registrations.
+   - Mike revokes the "Claude Code logs" Supabase access token.
+   - If claude.ai still shows the old `upsert_listing` fields, start a new chat or disconnect and reconnect "OVIS (oAuth)". The server already serves all 28 fields plus `ovis_url`.
+
 ## Open items
 
 - Set a `GOOGLE_GEOCODING_API_KEY` secret (a server key, no referrer restriction) for rooftop-quality pins.
