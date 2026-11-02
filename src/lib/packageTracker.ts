@@ -154,6 +154,17 @@ export function paceOf(p: ProgressRow | null): Pace {
   return 'on_pace';
 }
 
+// The latest gate reached ("Gate 2 · Oct 14"), else the first unknown one, else "Before Gate 1".
+export function currentGate(p: ProgressRow): { label: string; unknown: boolean } | null {
+  const gates: [number, string | null, GateState][] = [
+    [3, p.gate3_at, p.gate3_state], [2, p.gate2_at, p.gate2_state], [1, p.gate1_at, p.gate1_state],
+  ];
+  for (const [n, at, st] of gates) if (st === 'reached') return { label: `Gate ${n} · ${shortDate(at)}`, unknown: false };
+  if (p.gate1_state === 'unknown') return { label: 'Gate 1 date unknown', unknown: true };
+  if (p.gate2_state === 'unknown') return { label: 'Gate 2 date unknown', unknown: true };
+  return { label: 'Before Gate 1', unknown: false };
+}
+
 export function isStale(p: ProgressRow | null): boolean {
   return !!p && !p.any_started && daysSince(p.started_at) >= PACKAGE_STALE_DAYS;
 }
