@@ -374,8 +374,9 @@ export default function TaskQueuePage() {
   });
 
   return (
-    // pb / pr keep content clear of the floating Quick Note / Intel launcher (48px, 24px inset, bottom right).
-    <div className="min-h-screen px-4 pb-28 pt-4 sm:pl-6 sm:pr-24 2xl:pl-10" style={{ backgroundColor: BRAND.page }}>
+    // pb / pr keep content clear of the floating launchers: Quick Note (48px, 24px inset) with Intel stacked
+    // above it reach 132px up and 72px in from the bottom-right corner.
+    <div className="min-h-screen px-4 pb-36 pt-4 sm:pl-6 sm:pr-24 2xl:pl-10" style={{ backgroundColor: BRAND.page }}>
       <div className="mx-auto max-w-[1680px]">
         {/* Title + controls */}
         <div className="mb-3 flex flex-wrap items-end justify-between gap-4">
