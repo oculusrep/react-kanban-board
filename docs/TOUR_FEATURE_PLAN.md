@@ -381,6 +381,14 @@ Migration `20261102091623_tour_stop_kinds.sql` (applied to prod + recorded 2026-
 - **Size**: ~0.75 MB for Jared's tour (store icons downscaled to 96px, images aliased once, compressed streams).
   Cost unchanged: 1 Static Maps request per map image, no routing calls.
 
+- **Pin declutter (PDF only, `src/lib/pinDeclutter.ts`, 2026-11-02):** after projecting to page points,
+  same-day site pins within ~2 mm merge into one pill labeled "3·4"; other markers closer than 1.2× combined
+  radius form clusters that fan out on a ring (12 rotations scored: inside frame, off the route, no overlap;
+  ring widens until nothing overlaps) with a thin dark leader to a day-colored dot at the true spot. Atlas logos
+  yield last: kept, nudged up to ~1.6 logo widths, or hidden. A `[tourPdf]` console.debug line per map reports
+  merged / fanned / nudged / hidden counts. Jared: page 1 merged 2·3 and 4·5, fanned the Augusta 13/A/B/14
+  cluster; page 3 (Day 1 map) merged 2·3 and 4·5.
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding
