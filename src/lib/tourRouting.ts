@@ -541,3 +541,96 @@ export function computeLiveSchedule(args: {
     tailSeconds: hasEnd ? legs[n] ?? 0 : 0,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Stop kinds (site submit / Atlas store / licensed store / custom)
+// ---------------------------------------------------------------------------
+
+export type StopKind = 'site_submit' | 'atlas_store' | 'licensed_store' | 'custom';
+
+export const STOP_STATUS: Record<StopKind, string> = {
+  site_submit: 'New store opportunity',
+  atlas_store: 'Existing store',
+  licensed_store: 'Licensed store',
+  custom: '',
+};
+
+export interface StopKindSource {
+  stop_kind?: StopKind | null;
+  display_label?: string | null;
+  stop_name?: string | null;
+  address?: string | null;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  store_number?: string | null;
+  site_submit?: (StopCoordSource & {
+    site_submit_name?: string | null;
+    property?: (NonNullable<StopCoordSource['property']> & { property_name?: string | null; address?: string | null; city?: string | null }) | null;
+  }) | null;
+}
+
+export interface StopInfo {
+  kind: StopKind;
+  coord: LatLng | null;
+  name: string; // display_label → kind default
+  subtext: string | null;
+  defaultName: string; // what a blank label falls back to
+  city: string | null;
+  address: string | null; // street, city
+  status: string;
+}
+
+// One place that knows how each kind is named, located and labeled. Store and custom stops
+// carry their own snapshotted coordinates; site submits use resolveStopCoord.
+export function stopInfo(src: StopKindSource): StopInfo {
+  const kind: StopKind = src.stop_kind ?? 'site_submit';
+  const label = src.display_label?.trim() || null;
+  const t = (s: string | null | undefined) => s?.trim() || null;
+  if (kind === 'site_submit') {
+    const p = src.site_submit?.property ?? null;
+    const auto = stopDisplayName({ site_submit_name: src.site_submit?.site_submit_name, property: p });
+    const city = t(p?.city);
+    return {
+      kind,
+      coord: resolveStopCoord(src.site_submit),
+      name: label ?? auto.name,
+      subtext: stopDisplayName({ display_label: label, site_submit_name: src.site_submit?.site_submit_name, property: p }).subtext,
+      defaultName: auto.name,
+      city,
+      address: [t(p?.address), city].filter(Boolean).join(', ') || null,
+      status: STOP_STATUS.site_submit,
+    };
+  }
+  const coord = src.latitude != null && src.longitude != null ? { lat: src.latitude, lng: src.longitude } : null;
+  const city = t(src.city);
+  const storeName = t(src.stop_name);
+  const defaultName =
+    kind === 'atlas_store'
+      ? [`Starbucks #${src.store_number ?? '?'}`, city].filter(Boolean).join(' · ')
+      : kind === 'licensed_store'
+      ? [storeName ?? `Licensed #${src.store_number ?? '?'}`, city].filter(Boolean).join(' · ')
+      : storeName ?? 'Custom stop';
+  const name = label ?? defaultName;
+  // Atlas data has no street address; its store name is usually the location ("US Hwy 82 @ I-75").
+  const street = t(src.address) ?? (kind === 'atlas_store' ? storeName : null);
+  return {
+    kind,
+    coord,
+    name,
+    subtext: kind === 'atlas_store' && storeName && storeName !== name ? storeName : null,
+    defaultName,
+    city,
+    address: [street, city].filter(Boolean).join(', ') || null,
+    status: STOP_STATUS[kind],
+  };
+}
+
+/** Site numbers: site-submit stops only, continuous across the tour in route order
+ *  (days in order, then position). Stores and custom stops are unnumbered. */
+export function siteNumbers(stopsInRouteOrder: { id: string; stop_kind?: StopKind | null }[]): Map<string, number> {
+  const m = new Map<string, number>();
+  let n = 0;
+  for (const s of stopsInRouteOrder) if ((s.stop_kind ?? 'site_submit') === 'site_submit') m.set(s.id, ++n);
+  return m;
+}

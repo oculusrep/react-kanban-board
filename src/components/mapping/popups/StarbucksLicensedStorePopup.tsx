@@ -1,5 +1,6 @@
 import React from 'react';
 import type { StarbucksLicensedStore } from '../layers/StarbucksLicensedStoreLayer';
+import AddToTourButton from '../../tours/AddToTourButton';
 
 interface StarbucksLicensedStorePopupProps {
   store: StarbucksLicensedStore;
@@ -42,12 +43,13 @@ const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = 
         width: 280,
         fontFamily: 'system-ui, sans-serif',
         fontSize: 13,
-        overflow: 'hidden',
+        // Not overflow:hidden — the Add to tour dropdown must be able to extend past the card.
       }}
     >
       {/* Header */}
       <div
         style={{
+          borderRadius: '8px 8px 0 0',
           background: STARBUCKS_GREEN,
           color: 'white',
           padding: '10px 12px',
@@ -101,6 +103,26 @@ const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = 
         {isVerified && (
           <div style={{ fontSize: 10, color: STARBUCKS_GREEN, marginTop: 6, textAlign: 'right', fontWeight: 600 }}>
             ✓ Verified location
+          </div>
+        )}
+
+        {lat != null && lng != null && (
+          <div style={{ marginTop: 8 }}>
+            <AddToTourButton
+              siteSubmitId={null}
+              clientId={null}
+              store={{
+                kind: 'licensed_store',
+                store_number: store.store_number,
+                store_name: store.store_name ?? null,
+                address: [store.address, store.suite].filter(Boolean).join(', ') || null,
+                city: store.city ?? null,
+                market: store.market_name ?? null,
+                lat,
+                lng,
+                store_type: store.store_type ?? null,
+              }}
+            />
           </div>
         )}
       </div>

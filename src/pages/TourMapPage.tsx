@@ -5,6 +5,7 @@ import { Loader } from '@googlemaps/js-api-loader';
 import {
   fetchTour,
   fetchTourDays,
+  fetchClientName,
   fetchTourStopsForMap,
   notifyTourStopsChanged,
   onTourStopsChanged,
@@ -16,12 +17,14 @@ import {
 } from '../hooks/useTours';
 import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
+import { atlasIcon, fetchAtlasStores, licensedIcon } from '../lib/tourStores';
 import {
   MAX_APPROACH_POINTS,
   buildDayRoutePoints,
   computeDaySchedule,
   computeLiveSchedule,
   dayColor,
+  siteNumbers,
   departureFor,
   etClockMinutes,
   formatTime12,
@@ -44,6 +47,9 @@ import {
   LeavingNowButton,
   NoLocationTag,
   OpenSiteLink,
+  ItineraryLine,
+  customGlyph,
+  CUSTOM_STOP_COLOR,
   StampedDeparture,
   TourStopCard,
   useIsNarrow,
@@ -95,7 +101,14 @@ const arrowIcons = (color: string, opacity: number): google.maps.IconSequence[] 
 
 interface NumberedStop extends TourStopGeo {
   number: number; // 1-based position within the day, counting stops without coordinates
+  siteNo: number | null; // tour-wide site number (site submits only); stores/custom are unnumbered
 }
+
+// "#7 Locust Grove · 4545 US 23" for site submits, the name alone otherwise.
+const stopRef = (s: NumberedStop) => (s.siteNo != null ? `#${s.siteNo} ${s.display_name}` : s.display_name);
+// Icon for a store stop (same PNGs as the main map layers).
+const storeIconFor = (s: { stop_kind: string; store_type: string | null }) =>
+  s.stop_kind === 'atlas_store' ? atlasIcon(s.store_type) : s.stop_kind === 'licensed_store' ? licensedIcon(s.store_type) : null;
 
 interface DayRender {
   day: TourDay;
@@ -229,6 +242,12 @@ function TourMapPageInner() {
   const [savingApproach, setSavingApproach] = useState(false);
   const [focusStopId, setFocusStopId] = useState<string | null>(null);
   const [siteSidebarId, setSiteSidebarId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportAtlas, setExportAtlas] = useState(true);
+  const [exportAllAtlas, setExportAllAtlas] = useState(false);
+  const exportRef = useRef<() => void>(() => {});
+  const autoExportRef = useRef(new URLSearchParams(window.location.search).get('export') === '1');
   const siteSidebarRef = useRef<string | null>(null);
   const openSiteRef = useRef<(siteSubmitId: string, stopId: string) => void>(() => {});
   const stopPosRef = useRef(new Map<string, { lat: number; lng: number }>());
@@ -358,6 +377,24 @@ function TourMapPageInner() {
     redraw();
   };
 
+  // Stop pin by kind: numbered day-color pin (site submit), store logo (Atlas / licensed),
+  // gray glyph pin (custom).
+  const makeStopMarker = (map: google.maps.Map, s: NumberedStop | TourStopGeo, color: string, title: string) => {
+    const pos = { lat: s.lat!, lng: s.lng! };
+    const icon = storeIconFor(s);
+    if (icon) {
+      const { AdvancedMarkerElement } = google.maps.marker;
+      const img = document.createElement('img');
+      img.src = icon;
+      img.alt = '';
+      img.style.cssText = `width:30px;height:30px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px ${color},0 1px 4px rgba(0,0,0,.4);transform:translateY(50%);`;
+      return new AdvancedMarkerElement({ map, position: pos, content: img, title, zIndex: 19 });
+    }
+    if (s.stop_kind === 'custom') return makeMarker(map, pos, customGlyph(s.category_name), CUSTOM_STOP_COLOR, title);
+    const no = 'siteNo' in s ? s.siteNo : null;
+    return makeMarker(map, pos, no != null ? String(no) : '•', color, title);
+  };
+
   const makeMarker = (map: google.maps.Map, pos: google.maps.LatLngLiteral, label: string, color: string, title: string) => {
     const { AdvancedMarkerElement } = google.maps.marker;
     const pin = document.createElement('div');
@@ -425,18 +462,20 @@ function TourMapPageInner() {
 
       const renders: DayRender[] = [];
       const stopSched: StopSchedule = {};
+      // Site # runs across the whole tour: days in order, then position (site submits only).
+      const siteNo = siteNumbers(days.flatMap((d) => byDay(d.id)));
 
       for (let di = 0; di < days.length; di++) {
         const day = days[di];
         const color = dayColor(di);
         const issues: string[] = [];
-        const dayStops: NumberedStop[] = byDay(day.id).map((s, i) => ({ ...s, number: i + 1 }));
+        const dayStops: NumberedStop[] = byDay(day.id).map((s, i) => ({ ...s, number: i + 1, siteNo: siteNo.get(s.id) ?? null }));
         const ordered = dayStops.filter((s) => s.lat != null && s.lng != null);
 
         const unmapped = dayStops.filter((s) => s.lat == null || s.lng == null);
         if (unmapped.length > 0) {
           issues.push(
-            `Stop${unmapped.length === 1 ? '' : 's'} ${unmapped.map((s) => `#${s.number}`).join(', ')} ha${unmapped.length === 1 ? 's' : 've'} no map location — not on the map or in the route.`
+            `Stop${unmapped.length === 1 ? '' : 's'} ${unmapped.map((s) => (s.siteNo != null ? `#${s.siteNo}` : `“${s.display_name}”`)).join(', ')} ha${unmapped.length === 1 ? 's' : 've'} no map location — not on the map or in the route.`
           );
         }
 
@@ -606,10 +645,10 @@ function TourMapPageInner() {
         }
         dr.ordered.forEach((s) => {
           const pos = { lat: s.lat!, lng: s.lng! };
-          const marker = makeMarker(map, pos, String(s.number), dr.color, `Day ${dr.day.day_number} · ${s.number}. ${s.display_name}`);
+          const marker = makeStopMarker(map, s, dr.color, `Day ${dr.day.day_number} · ${stopRef(s)}`);
           marker.addListener('click', () => {
             markerClickAtRef.current = Date.now();
-            if (siteSidebarRef.current) openSiteRef.current(s.site_submit_id, s.id);
+            if (siteSidebarRef.current && s.site_submit_id) openSiteRef.current(s.site_submit_id, s.id);
             else toggleFocus(s.id);
           });
           overlaysRef.current.markers.push(marker);
@@ -620,7 +659,7 @@ function TourMapPageInner() {
           .forEach((p) => {
             const stop = dr.stops.find((s) => s.id === p.stopId);
             overlaysRef.current.markers.push(
-              makeApproachMarker(map, { lat: p.lat, lng: p.lng }, dr.color, `Approach into #${stop?.number ?? '?'} ${stop?.display_name ?? ''}`)
+              makeApproachMarker(map, { lat: p.lat, lng: p.lng }, dr.color, `Approach into ${stop ? stopRef(stop) : '?'}`)
             );
           });
         if (dr.startCoord) {
@@ -637,10 +676,10 @@ function TourMapPageInner() {
         .filter((s) => s.lat != null && s.lng != null)
         .forEach((s) => {
           const pos = { lat: s.lat!, lng: s.lng! };
-          const marker = makeMarker(map, pos, '•', SLATE, `Unscheduled · ${s.display_name}`);
+          const marker = s.stop_kind === 'site_submit' ? makeMarker(map, pos, '•', SLATE, `Unscheduled · ${s.display_name}`) : makeStopMarker(map, s, SLATE, `Unscheduled · ${s.display_name}`);
           marker.addListener('click', () => {
             markerClickAtRef.current = Date.now();
-            if (siteSidebarRef.current) openSiteRef.current(s.site_submit_id, s.id);
+            if (siteSidebarRef.current && s.site_submit_id) openSiteRef.current(s.site_submit_id, s.id);
           });
           overlaysRef.current.markers.push(marker);
           extend(pos);
@@ -687,6 +726,7 @@ function TourMapPageInner() {
     const { stop, points } = pending;
     let r: { ok: boolean; error?: string };
     if (scope === 'site') {
+      if (!stop.site_submit_id) return; // only site submits carry a site default
       r = await setSiteApproach(stop.site_submit_id, points);
       // A tour override would keep hiding the new site approach on this tour — drop it.
       if (r.ok && stop.approach_override != null) r = await setStopApproachOverride(stop.id, null);
@@ -741,6 +781,7 @@ function TourMapPageInner() {
   };
   const clearSiteApproach = async (s: NumberedStop) => {
     if (!window.confirm(`Delete the saved approach for “${s.display_name}”? This affects every tour that visits this site.`)) return;
+    if (!s.site_submit_id) return;
     const r = await setSiteApproach(s.site_submit_id, null);
     if (!r.ok) setError(`Couldn’t clear the approach: ${r.error}`);
     redraw();
@@ -820,6 +861,163 @@ function TourMapPageInner() {
   });
   const daySummaries: Record<string, DayTotals> = Object.fromEntries(dayRenders.map((dr) => [dr.day.id, dayTotalsFor(dr)]));
 
+  // ---- PDF export ----
+  // Built from what this page already computed (cached Directions results + the planned
+  // schedule) — no Directions / Matrix calls. Network: one Static Maps basemap per map, the
+  // brand logos, store icon PNGs, and (if enabled) the Atlas store list. Licensed stores are
+  // never drawn on PDF maps (a licensed STOP still appears, as a plain 'LS' pin).
+  const exportPdf = async (opts: { atlas: boolean; allAtlas: boolean } = { atlas: exportAtlas, allAtlas: exportAllAtlas }) => {
+    if (!tour || exporting) return;
+    setExportMenuOpen(false);
+    if (
+      unscheduledCount > 0 &&
+      !window.confirm(
+        `${unscheduledCount} unscheduled stop${unscheduledCount === 1 ? '' : 's'} won’t be in the PDF (only stops placed on a day are exported). Export anyway?`
+      )
+    )
+      return;
+    setExporting(true);
+    setError(null);
+    try {
+      const [{ buildTourPdf, fetchImageAsDataUrl }, client, atlasStores] = await Promise.all([
+        import('../lib/tourPdf'),
+        fetchClientName(tour.client_id),
+        opts.atlas ? fetchAtlasStores().catch(() => []) : Promise.resolve([]),
+      ]);
+      // Brand slots: Oculus logos from public/brand/; a Starbucks logo only if one is dropped in.
+      const firstImage = async (urls: string[]) => {
+        for (const u of urls) {
+          const img = await fetchImageAsDataUrl(u);
+          if (img) return img;
+        }
+        return null;
+      };
+      // SVG logos are rasterized to PNG in a canvas at export time (jsPDF's own SVG path needs
+      // canvg and renders clip paths poorly): band logo 1200px wide (~10x its 115pt width), mark 256px.
+      const [bandLogo, footerMark, clientLogo, headingFont] = await Promise.all([
+        fetchImageAsDataUrl('/brand/oculus-horizontal-white.svg', 1200),
+        fetchImageAsDataUrl('/brand/oculus-mark.svg', 256),
+        firstImage(['/brand/starbucks-logo.png', '/brand/starbucks-logo.svg', '/brand/starbucks-logo.jpg']),
+        import('../lib/tourPdfFonts').then((m) => m.loadOklahoma()),
+      ]);
+
+      const ll = (p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() });
+      const glyphFor = (cat: string | null) => ({ Lunch: 'L', Coffee: 'C', Hotel: 'H', Meeting: 'M' } as Record<string, string>)[cat ?? ''] ?? '*';
+      const days = dayRenders.map((dr) => {
+        const sched = dr.schedule; // planned itinerary (not the live re-projection)
+        const timed = !!sched?.hasStart;
+        const startMin = parseTimeToMinutes(dr.day.start_time);
+        const idxOf = new Map(dr.ordered.map((s, i) => [s.id, i]));
+        const stops = dr.stops.map((s) => {
+          const i = idxOf.get(s.id);
+          const mapped = i != null;
+          let driveNextMin: number | null = null;
+          let arriveNextMin: number | null = null;
+          if (mapped && sched) {
+            const cur = sched.stops[i];
+            if (i < sched.stops.length - 1) {
+              driveNextMin = sched.stops[i + 1].arrivalMin - cur.departMin;
+              arriveNextMin = timed ? sched.stops[i + 1].arrivalMin : null;
+            } else if (dr.endCoord) {
+              driveNextMin = sched.finishMin - cur.departMin;
+              arriveNextMin = timed ? sched.finishMin : null;
+            }
+          }
+          return {
+            siteNo: s.siteNo,
+            kind: s.stop_kind,
+            name: s.display_name,
+            address: s.address ?? null,
+            market: s.market ?? null,
+            city: s.city ?? null,
+            status: s.status,
+            notes: s.notes ?? null,
+            projectedOpening: s.projected_opening ?? null,
+            minutes: s.effective_duration_minutes,
+            arriveMin: mapped && timed ? sched!.stops[i].arrivalMin : null,
+            departMin: mapped && timed ? sched!.stops[i].departMin : null,
+            driveNextMin,
+            arriveNextMin,
+            nextIsEnd: mapped && i === dr.ordered.length - 1 && !!dr.endCoord,
+            coord: mapped ? { lat: s.lat!, lng: s.lng! } : null,
+            approach: dr.points.filter((p) => p.via && p.stopId === s.id).map((p) => ({ lat: p.lat, lng: p.lng })),
+            iconUrl: s.stop_kind === 'atlas_store' ? storeIconFor(s) : null,
+            glyph: s.stop_kind === 'custom' ? glyphFor(s.category_name) : null,
+          };
+        });
+        const paths = dr.chunks
+          .filter((c) => c.result)
+          .map((c) => c.result!.routes[0]?.legs.flatMap((l) => l.steps.flatMap((st) => (st.path ?? []).map(ll))) ?? []);
+        return {
+          dayNumber: dr.day.day_number,
+          date: dr.day.day_date,
+          color: dr.color,
+          startAddress: dr.day.start_location_address,
+          startCoord: dr.startCoord,
+          startTimeMin: startMin,
+          driveFromStartMin: sched && dr.startCoord && sched.stops.length ? sched.stops[0].arrivalMin - (startMin ?? 0) : null,
+          endAddress: dr.day.end_location_address,
+          endCoord: dr.endCoord,
+          endTimeMin: parseTimeToMinutes(dr.day.end_time),
+          stops,
+          paths,
+          totals: {
+            driveMin: sched ? sched.totalDriveMin : null,
+            stopMin: sched ? sched.totalStopMin : dr.stops.reduce((n, s) => n + s.effective_duration_minutes, 0),
+            finishMin: timed ? sched!.finishMin : null,
+            overEnd: overEnd(dr.day, sched),
+          },
+          note: !sched
+            ? null
+            : dr.traffic === 'live'
+            ? `Traffic-aware drive times - each leg timed from its own departure (day starts ${formatTime12(dr.day.start_time)}).`
+            : 'Typical drive times (no traffic forecast).',
+        };
+      });
+      const contextStores = atlasStores.map((st) => ({
+        kind: 'atlas_store' as const,
+        store_number: st.store_number,
+        lat: st.lat,
+        lng: st.lng,
+        iconUrl: atlasIcon(st.store_type),
+      }));
+      const now = new Date();
+      const doc = await buildTourPdf(
+        {
+          name: tour.tour_name,
+          client,
+          days,
+          generatedLabel: `${now.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} ET`,
+          contextStores,
+          atlasMode: !opts.atlas ? 'off' : opts.allAtlas ? 'all' : 'near',
+        },
+        {
+          apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+          // Store icons are drawn ~10pt: 96px is plenty. Basemaps load as-is.
+          loadImage: (u) => fetchImageAsDataUrl(u, u.startsWith('/Images/') ? 96 : undefined),
+          brand: { bandLogo, footerMark, clientLogo },
+          headingFont,
+        }
+      );
+      doc.save(`${tour.tour_name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Tour'} - Tour.pdf`);
+    } catch (e: any) {
+      setError(`PDF export failed: ${e?.message ?? e}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+  exportRef.current = exportPdf;
+
+  // From the Tours list (?export=1): export once the first draw has finished.
+  useEffect(() => {
+    if (!autoExportRef.current || busy || !tour) return;
+    autoExportRef.current = false;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('export');
+    window.history.replaceState(window.history.state, '', url.toString());
+    exportRef.current();
+  }, [busy, tour]);
+
   const btn = (bg: string, fg: string, border: string) => ({
     border: `1px solid ${border}`,
     color: fg,
@@ -841,10 +1039,39 @@ function TourMapPageInner() {
           <Link to={`/tours/${tour.id}`} style={{ color: STEEL, fontSize: 13, textDecoration: 'none' }}>edit details</Link>
         )}
         {!narrow && <span style={{ fontSize: 12, color: SLATE }}>Drag a route into a stop to set its approach.</span>}
+        <span style={{ marginLeft: 'auto', position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => setExportMenuOpen((o) => !o)}
+            disabled={!tour || busy || exporting}
+            title={busy ? 'Waiting for routes…' : 'Download a printable PDF of this tour'}
+            style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: busy || exporting ? 'wait' : 'pointer', opacity: !tour || busy ? 0.6 : 1 }}
+          >
+            {exporting ? 'Exporting…' : 'Export PDF ▾'}
+          </button>
+          {exportMenuOpen && (
+            <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 30, background: '#fff', border: `1px solid ${SLATE}`, borderRadius: 8, boxShadow: '0 4px 16px rgba(0,33,71,0.15)', padding: 10, minWidth: 220, display: 'grid', gap: 6, fontSize: 13, color: MIDNIGHT }}>
+              <div style={{ fontSize: 11, color: STEEL }}>Show on the PDF maps:</div>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input type="checkbox" checked={exportAtlas} onChange={(e) => setExportAtlas(e.target.checked)} /> Starbucks stores within 3 mi of route
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', paddingLeft: 18, opacity: exportAtlas ? 1 : 0.5 }}>
+                <input type="checkbox" disabled={!exportAtlas} checked={exportAllAtlas} onChange={(e) => setExportAllAtlas(e.target.checked)} /> All Atlas stores in frame
+              </label>
+              <button
+                type="button"
+                onClick={() => exportPdf({ atlas: exportAtlas, allAtlas: exportAllAtlas })}
+                style={{ border: 'none', background: MIDNIGHT, color: '#fff', borderRadius: 6, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
+              >
+                Export PDF
+              </button>
+            </div>
+          )}
+        </span>
         <button
           type="button"
           onClick={() => setReorderOpen(true)}
-          style={{ marginLeft: 'auto', border: `1px solid ${MIDNIGHT}`, color: '#fff', background: MIDNIGHT, borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
+          style={{ border: `1px solid ${MIDNIGHT}`, color: '#fff', background: MIDNIGHT, borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
         >
           Reorder stops
         </button>
@@ -915,15 +1142,17 @@ function TourMapPageInner() {
               {pending ? (
                 <>
                   <div style={{ fontSize: 13, color: MIDNIGHT, marginBottom: 8 }}>
-                    New approach into <b>#{pending.stop.number} {pending.stop.display_name}</b>{' '}
+                    New approach into <b>{stopRef(pending.stop)}</b>{' '}
                     <span style={{ color: STEEL }}>
                       ({pending.points.length === 0 ? 'no pass-through points — saves as “no approach”' : `${pending.points.length} pass-through point${pending.points.length === 1 ? '' : 's'}`})
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button type="button" disabled={savingApproach} onClick={() => saveApproach('site')} style={btn(MIDNIGHT, '#fff', MIDNIGHT)}>
-                      Save approach for this site
-                    </button>
+                    {pending.stop.site_submit_id && (
+                      <button type="button" disabled={savingApproach} onClick={() => saveApproach('site')} style={btn(MIDNIGHT, '#fff', MIDNIGHT)}>
+                        Save approach for this site
+                      </button>
+                    )}
                     <button type="button" disabled={savingApproach} onClick={() => saveApproach('tour')} style={btn('#fff', MIDNIGHT, MIDNIGHT)}>
                       Use for this tour only
                     </button>
@@ -1050,7 +1279,7 @@ function TourMapPageInner() {
                           cardRefs.current[s.id] = el;
                         }}
                         onClick={() => {
-                          if (siteSidebarId) openSite(s.site_submit_id, s.id);
+                          if (siteSidebarId && s.site_submit_id) openSite(s.site_submit_id, s.id);
                           else if (mapped) toggleFocus(s.id);
                         }}
                         style={{ cursor: mapped || siteSidebarId ? 'pointer' : 'default' }}
@@ -1059,8 +1288,17 @@ function TourMapPageInner() {
                           done={done}
                           highlight={focusStopId === s.id}
                           number={s.number}
-                          color={mapped ? dr.color : TERRACOTTA}
-                          title={<OpenSiteLink text={s.display_name} onOpen={() => openSite(s.site_submit_id, s.id)} />}
+                          color={!mapped ? TERRACOTTA : s.stop_kind === 'custom' ? CUSTOM_STOP_COLOR : dr.color}
+                          badgeLabel={s.siteNo ?? (s.stop_kind === 'custom' ? customGlyph(s.category_name) : '•')}
+                          badgeIcon={storeIconFor(s)}
+                          badgeTitle={s.siteNo != null ? `Site #${s.siteNo}` : s.status || 'Custom stop'}
+                          title={
+                            s.site_submit_id ? (
+                              <OpenSiteLink text={s.display_name} onOpen={() => openSite(s.site_submit_id!, s.id)} />
+                            ) : (
+                              s.display_name
+                            )
+                          }
                           meta={
                             <>
                               {!done && <ArriveText arrivalMin={timing?.arrivalMin} />}
@@ -1088,10 +1326,13 @@ function TourMapPageInner() {
                           }
                           subtext={s.display_subtext}
                           footer={
-                            // Phone: full-width (36px) button, current stop only.
-                            narrow && s.id === dr.currentStopId ? (
-                              <LeavingNowButton block busy={stampingId === s.id} onStamp={(iso) => stampStop(s, iso)} />
-                            ) : undefined
+                            <>
+                              <ItineraryLine market={s.market} city={s.city} status={s.status} projectedOpening={s.projected_opening} />
+                              {/* Phone: full-width (36px) button, current stop only. */}
+                              {narrow && s.id === dr.currentStopId && (
+                                <LeavingNowButton block busy={stampingId === s.id} onStamp={(iso) => stampStop(s, iso)} />
+                              )}
+                            </>
                           }
                         />
                         <DriveConnector minutes={timing?.minsToNext} label={timing?.nextIsEnd ? 'to end' : undefined} color={dr.color} />

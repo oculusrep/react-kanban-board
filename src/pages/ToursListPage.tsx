@@ -115,6 +115,14 @@ export function ToursListPage() {
                 >
                   Map
                 </Link>
+                {/* Opens the map, which exports once its routes are ready (uses the session route cache). */}
+                <Link
+                  to={`/tours/${t.id}/map?export=1`}
+                  title="Open the map and download a printable PDF once routes are ready"
+                  style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
+                >
+                  Export PDF
+                </Link>
               </div>
             </div>
           ))}

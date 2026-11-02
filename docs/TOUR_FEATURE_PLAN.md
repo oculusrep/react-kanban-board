@@ -312,6 +312,75 @@ No migration. On `/tours/:id/map`:
   redraws the map and silently reloads an open Reorder panel; Add to tour / remove inside the sidebar
   already fire it.
 
+## Phase 5 (MVP) — Tour PDF export (branch `feature/tour-routing`)
+
+No migration. New dependency: `jspdf` 4.2.1 (3.x had open advisories; lazy-loaded with
+`src/lib/tourPdf.ts` only when Export is clicked).
+
+- **Buttons:** "Export PDF" in the tour map header; "Export PDF" on each Tours list row opens
+  `/tours/:id/map?export=1`, which exports once the first draw finishes and strips the param.
+- **Content (Letter portrait):** cover with Oculus band, tour name, client, date range, day/stop count
+  and an overview map of all days (per-day dash patterns + legend). One section per day: date + start/end
+  line, day map, then # / Stop / Address / Arrive / Min / Category / Drive to next, with A (start) and B (end)
+  rows, stop notes in italics, totals (drive, stops, finish), a past-planned-end warning and the traffic
+  note. The day map shrinks (283pt → min 190pt) when that keeps the whole day on one page.
+- **Schedule source:** the PLANNED schedule (`dr.schedule`), not a live re-projection. Fields: stop
+  display name, property address (`;` → ` / `), times, minutes, category, notes. Nothing from deals/emails.
+- **Unscheduled stops:** omitted; a confirm warns before export when any exist.
+- **No routing calls:** route lines come from the map page's cached `DirectionsResult` step paths; drive and
+  arrival times from the already-computed schedule.
+- **Static map images:** `src/lib/staticMapProjection.ts` picks center + integer zoom for the points
+  (Web Mercator, 256px tiles) and requests ONLY a grayscale basemap from the Maps Static API (640px wide,
+  scale=2, POI/transit off) — no paths/markers in the URL, so no 16k URL cap and no 1-character label
+  limit. Routes (white casing + dark line), white numbered pins, black A/B squares and hollow approach rings
+  are drawn as PDF vectors with the same projection (checked against a Google-placed marker: within 1px).
+  If a basemap fails, the vectors are drawn on blank paper with a note.
+- **Cost:** 1 Static Maps request per map image = 1 (overview) + 1 per day. Jared's 2-day tour: 3 requests.
+  Static Maps bills ~$2 / 1,000 after the monthly free allowance, so effectively free. The Maps Static API
+  is enabled on the project and added to the browser key's API restrictions (2026-10-30).
+- **Tests:** `tests/tours/tourPdf.test.ts` (fit/projection, simplification, URL has no paths/markers,
+  WinAnsi text mapping, builder smoke test: page count + one basemap per map).
+
+## Phase 5.1 — Itinerary upgrade: stop kinds, site numbers, branded landscape PDF (branch `feature/tour-routing`)
+
+Migration `20261102091623_tour_stop_kinds.sql` (applied to prod + recorded 2026-11-02; rolled-back test first).
+- **Stop kinds** (`tour_stop.stop_kind`): `site_submit` (all pre-existing rows), `atlas_store`, `licensed_store`,
+  `custom`. `site_submit_id` is nullable; a CHECK per kind enforces what each needs. Store stops SNAPSHOT
+  name/address/city/market/lat/lng from the layer tables at add time — deliberately no FK (store tables are
+  reloaded on import). One store per tour (partial unique index). New text fields: `projected_opening`,
+  `market` (stores/custom: stored; site submits: NULL = automatic, text = override). Categories Lunch / Coffee /
+  Hotel / Meeting seeded.
+- **Market** = `tour_stop_markets(tour_id)` RPC (SECURITY INVOKER, EXECUTE to authenticated only; anon HTTP call
+  verified refused): override → `starbucks_target_area.market_name` within 2 mi → nearest Atlas store's market
+  within 10 mi → blank.
+- **Site #**: site submits only, continuous across the tour (days in order, then position) — `siteNumbers()`.
+  Map pins, schedule cards, Reorder panel and PDF all use it. Stores/custom are unnumbered with their own icons
+  (Atlas / licensed PNGs from `public/Images/`, custom = gray pin with a category glyph).
+- **Status** (auto): New store opportunity / Existing store / Licensed store / blank (custom).
+- **UI**: "Add to tour" on the Atlas (`StarbucksPopup`) and Licensed popups — lists every active tour across
+  clients (a store has no client; "+ New tour" hidden). "+ Custom stop" in the Reorder panel (type → category,
+  name, address geocoded with the day-address geocoder, minutes) → Unscheduled. Reorder cards: Market override
+  (placeholder shows the automatic market) + Projected opening inputs. Map cards: compact
+  Market · City · Status · Opens line. Site-only features (↗ sidebar, site default approach) are hidden for
+  other kinds.
+- **PDF** (Letter landscape, full color): cover (navy #011742 band, Oculus white logo, gold #B38535 rule, tour name
+  in Oklahoma, "Prepared for <client>", dates, overview map); per day: Oklahoma header with gold underline,
+  agenda table (navy header row): Site # | Location | Market | City | Status | Notes | Projected Opening | Min |
+  Start | End | Drive to next | Arrive next, A/B rows, gold totals line, traffic note; day map shares the last
+  agenda page only when it keeps the same zoom, else gets its own page. Maps: standard color Static Maps
+  basemap (JPEG; business POIs hidden), routes in day colors, teardrop pins like the tour map, A green / B red,
+  Atlas stores within 3 mi of THAT map's route (plus Atlas stops) drawn with their logo — Export menu: "Starbucks stores within 3 mi of route" (default on) and "All Atlas stores in frame" (default off); legend. Licensed stores are never drawn on PDF maps (2026-11-02): no licensed layer/checkbox/legend; a licensed STOP appears as a gray 'LS' pin (legend: Other stop) and stays in the agenda as "Licensed store".
+  Footer on every page: gold rule, Oculus mark, "Oculus Real Estate Partners · oculusrep.com", generated date,
+  Page X of Y. Starbucks logo top-right only if `public/brand/starbucks-logo.*` exists (none today).
+- **Brand assets**: `public/brand/*.svg` (Oculus logos) are rasterized to PNG in a canvas at export (band logo
+  1200px, mark 256px) — jsPDF's SVG path needs canvg and handles clip paths poorly. Oklahoma Regular/Bold
+  (`src/assets/fonts/`, from the brand package; OS/2 fsType 0 = embeddable) load via `?url` only on export and
+  are embedded for headings; body text is Helvetica. Note: as Vite assets the .ttf files are publicly
+  downloadable from the app's domain (no license text was included in the package; copyright Brother
+  Industries 1993–98).
+- **Size**: ~0.75 MB for Jared's tour (store icons downscaled to 96px, images aliased once, compressed streams).
+  Cost unchanged: 1 Static Maps request per map image, no routing calls.
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding

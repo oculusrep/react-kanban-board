@@ -26,13 +26,16 @@ interface UseToursResult {
   }) => Promise<{ tour: Tour | null; error?: string }>;
 }
 
-export function useTours(clientId: string | null | undefined): UseToursResult {
+// opts.allClients: list every active tour across clients (newest first, with client_name) —
+// used where the object has no client of its own (Atlas / licensed store popups).
+export function useTours(clientId: string | null | undefined, opts: { allClients?: boolean } = {}): UseToursResult {
+  const allClients = !!opts.allClients;
   const [tours, setTours] = useState<TourWithStopCount[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!clientId) {
+    if (!clientId && !allClients) {
       setTours([]);
       return;
     }
@@ -40,10 +43,9 @@ export function useTours(clientId: string | null | undefined): UseToursResult {
     setError(null);
     try {
       // Fetch tours + a lightweight stop count via the embedded aggregate.
-      const { data, error: err } = await supabase
-        .from('tour')
-        .select('*, tour_stop(count)')
-        .eq('client_id', clientId)
+      let q = supabase.from('tour').select('*, tour_stop(count), client:client_id ( client_name )');
+      q = allClients ? q.eq('is_archived', false) : q.eq('client_id', clientId!);
+      const { data, error: err } = await q
         .order('is_archived', { ascending: true })
         .order('created_at', { ascending: false });
 
@@ -52,6 +54,7 @@ export function useTours(clientId: string | null | undefined): UseToursResult {
       const mapped: TourWithStopCount[] = (data || []).map((row: any) => ({
         ...row,
         stop_count: row.tour_stop?.[0]?.count ?? 0,
+        client_name: row.client?.client_name ?? null,
       }));
       setTours(mapped);
     } catch (e: any) {
@@ -59,7 +62,7 @@ export function useTours(clientId: string | null | undefined): UseToursResult {
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, allClients]);
 
   useEffect(() => {
     refresh();
@@ -137,6 +140,70 @@ export async function addSiteSubmitToTour(
 // Delete a stop, then renumber what's left in its day (or the unscheduled bucket) 0..n-1
 // through the atomic placement RPC. The renumber is cosmetic — order is by position, so a
 // failed renumber leaves a gap, not a wrong order — but it's reported as an error.
+async function nextUnscheduledPosition(tourId: string): Promise<{ position?: number; error?: string }> {
+  const { data, error: err } = await supabase
+    .from('tour_stop')
+    .select('position')
+    .eq('tour_id', tourId)
+    .is('tour_day_id', null)
+    .order('position', { ascending: false })
+    .limit(1);
+  if (err) return { error: err.message };
+  return { position: (data?.[0]?.position ?? -1) + 1 };
+}
+
+// Add an Atlas or licensed store (from the main map popups) to Unscheduled. The store's
+// name/city/market/coordinates are SNAPSHOTTED onto the stop — no FK to the store tables.
+export async function addStoreToTour(
+  tourId: string,
+  store: import('../lib/tourStores').TourStoreRef
+): Promise<{ ok: boolean; error?: string; alreadyStaged?: boolean }> {
+  const pos = await nextUnscheduledPosition(tourId);
+  if (pos.error) return { ok: false, error: pos.error };
+  const { error: insErr } = await supabase.from('tour_stop').insert({
+    tour_id: tourId,
+    stop_kind: store.kind,
+    store_number: store.store_number,
+    stop_name: store.store_name,
+    address: store.address,
+    city: store.city,
+    market: store.market,
+    latitude: store.lat,
+    longitude: store.lng,
+    position: pos.position,
+  });
+  if (insErr) {
+    if (insErr.code === '23505') return { ok: false, alreadyStaged: true };
+    return { ok: false, error: insErr.message };
+  }
+  notifyTourStopsChanged(tourId);
+  return { ok: true };
+}
+
+// Custom stop (lunch / coffee / hotel / meeting / other) → Unscheduled.
+export async function addCustomStop(
+  tourId: string,
+  input: { name: string; address: string | null; city: string | null; lat: number; lng: number; categoryId: string | null; minutes: number | null }
+): Promise<{ ok: boolean; error?: string }> {
+  const pos = await nextUnscheduledPosition(tourId);
+  if (pos.error) return { ok: false, error: pos.error };
+  const { error: insErr } = await supabase.from('tour_stop').insert({
+    tour_id: tourId,
+    stop_kind: 'custom',
+    stop_name: input.name,
+    address: input.address,
+    city: input.city,
+    latitude: input.lat,
+    longitude: input.lng,
+    category_id: input.categoryId,
+    stop_duration_minutes: input.minutes,
+    position: pos.position,
+  });
+  if (insErr) return { ok: false, error: insErr.message };
+  notifyTourStopsChanged(tourId);
+  return { ok: true };
+}
+
 export async function removeTourStop(stopId: string): Promise<{ ok: boolean; error?: string }> {
   const { data: gone, error: err } = await supabase
     .from('tour_stop')
@@ -174,6 +241,17 @@ export interface SiteSubmitTourMembership {
   approach_waypoints_override: unknown;
   actual_departure_at: string | null;
 }
+// Which tours already contain this Atlas / licensed store (same shape as the site submit case).
+export async function fetchStoreTourStops(kind: 'atlas_store' | 'licensed_store', storeNumber: string): Promise<SiteSubmitTourMembership[]> {
+  const { data, error: err } = await supabase
+    .from('tour_stop')
+    .select('id, tour_id, notes, display_label, approach_waypoints_override, actual_departure_at')
+    .eq('stop_kind', kind)
+    .eq('store_number', storeNumber);
+  if (err) throw err;
+  return (data ?? []) as SiteSubmitTourMembership[];
+}
+
 export async function fetchSiteSubmitTourStops(siteSubmitId: string): Promise<SiteSubmitTourMembership[]> {
   const { data, error: err } = await supabase
     .from('tour_stop')
@@ -216,7 +294,9 @@ export async function deleteTour(tourId: string): Promise<{ ok: boolean; error?:
 
 export async function updateTourStop(
   stopId: string,
-  fields: Partial<Pick<TourStop, 'category_id' | 'notes' | 'stop_duration_minutes' | 'display_label'>>
+  fields: Partial<
+    Pick<TourStop, 'category_id' | 'notes' | 'stop_duration_minutes' | 'display_label' | 'market' | 'projected_opening'>
+  >
 ): Promise<{ ok: boolean; error?: string }> {
   const { error: err } = await supabase.from('tour_stop').update(fields).eq('id', stopId);
   return err ? { ok: false, error: err.message } : { ok: true };
@@ -366,56 +446,90 @@ export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSu
 
 // Stops with resolved lat/lng + effective duration, for the map/route view.
 export async function fetchTourStopsForMap(tourId: string): Promise<import('../lib/tourTypes').TourStopGeo[]> {
-  const { resolveStopCoord, stopDisplayName, effectiveApproach, parseApproach } = await import('../lib/tourRouting');
-  const { data, error: err } = await supabase
-    .from('tour_stop')
-    .select(
-      `id, tour_day_id, position, site_submit_id, category_id, stop_duration_minutes, display_label,
-       approach_waypoints_override, actual_departure_at,
-       category:category_id ( name, default_stop_duration_minutes ),
-       site_submit:site_submit_id (
-         id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
-         verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
-         property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
-       )`
-    )
-    .eq('tour_id', tourId)
-    .order('position', { ascending: true });
+  const { stopInfo, effectiveApproach, parseApproach } = await import('../lib/tourRouting');
+  const { fetchStoreTypes } = await import('../lib/tourStores');
+  const [{ data, error: err }, markets] = await Promise.all([
+    supabase
+      .from('tour_stop')
+      .select(
+        `id, tour_day_id, position, stop_kind, site_submit_id, store_number, stop_name, address, city,
+         latitude, longitude, market, projected_opening,
+         category_id, stop_duration_minutes, display_label,
+         approach_waypoints_override, actual_departure_at, notes,
+         category:category_id ( name, default_stop_duration_minutes ),
+         site_submit:site_submit_id (
+           id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
+           verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
+           property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
+         )`
+      )
+      .eq('tour_id', tourId)
+      .order('position', { ascending: true }),
+    fetchTourStopMarkets(tourId),
+  ]);
 
   if (err) throw err;
+  const rows = (data || []) as any[];
+  const storeTypes = await fetchStoreTypes(
+    rows.filter((r) => r.stop_kind === 'atlas_store').map((r) => r.store_number),
+    rows.filter((r) => r.stop_kind === 'licensed_store').map((r) => r.store_number)
+  ).catch(() => new Map<string, string | null>());
 
-  return (data || []).map((row: any) => {
-    const coord = resolveStopCoord(row.site_submit);
+  return rows.map((row: any) => {
+    const info = stopInfo(row);
     const effective =
       row.stop_duration_minutes != null
         ? row.stop_duration_minutes
         : row.category?.default_stop_duration_minutes ?? 5;
     const approach = effectiveApproach(row.approach_waypoints_override, row.site_submit?.approach_waypoints);
-    const label = stopDisplayName({
-      display_label: row.display_label,
-      site_submit_name: row.site_submit?.site_submit_name,
-      property: row.site_submit?.property,
-    });
     return {
       id: row.id,
       tour_day_id: row.tour_day_id,
       position: row.position,
-      site_submit_id: row.site_submit_id,
+      stop_kind: info.kind,
+      store_number: row.store_number ?? null,
+      store_type: row.store_number ? storeTypes.get(`${info.kind}:${row.store_number}`) ?? null : null,
+      site_submit_id: row.site_submit_id ?? null,
       site_submit_name: row.site_submit?.site_submit_name ?? null,
-      display_name: label.name,
-      display_subtext: label.subtext,
+      display_name: info.name,
+      display_subtext: info.subtext,
       category_id: row.category_id,
       category_name: row.category?.name ?? null,
       effective_duration_minutes: effective,
-      lat: coord?.lat ?? null,
-      lng: coord?.lng ?? null,
+      lat: info.coord?.lat ?? null,
+      lng: info.coord?.lng ?? null,
       approach: approach.points,
       approach_source: approach.source,
       approach_override: parseApproach(row.approach_waypoints_override),
       site_has_approach: (parseApproach(row.site_submit?.approach_waypoints)?.length ?? 0) > 0,
       actual_departure_at: row.actual_departure_at ?? null,
+      notes: row.notes ?? null,
+      address: info.address,
+      city: info.city,
+      market: markets.get(row.id) ?? row.market ?? null,
+      market_override: row.market ?? null,
+      status: info.status,
+      projected_opening: row.projected_opening ?? null,
     };
   });
+}
+
+// Resolved market per stop: tour_stop.market → target area within 2 mi → nearest Atlas store
+// within 10 mi (tour_stop_markets RPC). Empty map on failure — markets are display-only.
+export async function fetchTourStopMarkets(tourId: string): Promise<Map<string, string | null>> {
+  const { data, error: err } = await supabase.rpc('tour_stop_markets', { p_tour_id: tourId });
+  if (err) {
+    console.warn('tour_stop_markets failed', err.message);
+    return new Map();
+  }
+  return new Map(((data ?? []) as { stop_id: string; market: string | null }[]).map((r) => [r.stop_id, r.market]));
+}
+
+// Client display name for the tour PDF cover.
+export async function fetchClientName(clientId: string | null | undefined): Promise<string | null> {
+  if (!clientId) return null;
+  const { data } = await supabase.from('client').select('client_name').eq('id', clientId).maybeSingle();
+  return (data as { client_name?: string | null } | null)?.client_name ?? null;
 }
 
 export async function fetchTourStopCategories(): Promise<TourStopCategory[]> {
