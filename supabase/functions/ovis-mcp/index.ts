@@ -100,7 +100,7 @@ const LISTING_TOOLS = [
   {
     name: 'upsert_listing',
     description:
-      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map (Census, then Google as fallback; geocode_source says which placed it). If neither places it, the listing is still saved and goes to the Unmapped queue in OVIS for a manual pin. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).',
+      'Record an NNN investment listing (single-tenant net-lease property for sale) in the OVIS comp database. Matches an existing comp by APN, else by normalized address + city + state. New property → created as pending review and geocoded onto the map (Census, then Google as fallback; geocode_source says which placed it). If neither places it, the listing is still saved and goes to the Unmapped queue in OVIS for a manual pin. Existing offering → last_seen bumped; a different price or cap is recorded as a price_change / cap_change event (returned as changed/old/new). A comp Mike rejected is never re-proposed (skipped: "rejected"); a comp closed in the last 90 days is not relisted off a stale post (skipped: "recently_closed"). A NEW offering (is_new = true) automatically gets a diligence task in Noree\'s Inbox (returned as va_task_id) — do NOT also call create_va_task for it. Updates never create tasks. If va_task_error is returned, the listing was saved but the task was not; call create_va_task to retry. Leave create_va_task at its default (true) for normal intake; set it to false ONLY for bulk backfills of listings that should not each get a task (the result then says va_task_skipped: true).\n\nSOURCES & PRECEDENCE: call once per source you saw the listing on (source + source_url each time); every source is kept, none replaces another. When sources disagree the higher-ranked one wins: manual in OVIS > OM > Showcase > Crexi / LoopNet / CoStar > aggregators (BuyNNN, Net Lease World, InvestmentGrade, broker sites). A lower-ranked source only fills empty fields (fields_kept_higher_source lists what it could not change). A different price/cap from another live source is kept as a tagged event and flags the listing for review (price_conflict) instead of replacing the ask.\n\nSTATED VALUES ONLY: pass exactly what the source states and leave the rest null. Never compute NOI, cap, price or a lease expiration yourself; OVIS derives the missing one of price/cap/NOI and an expiration from term_left, marked as derived.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -121,7 +121,16 @@ const LISTING_TOOLS = [
         broker_name: { type: ['string', 'null'] },
         brokerage: { type: ['string', 'null'] },
         source: { type: ['string', 'null'], description: 'Where it was found, e.g. "Crexi", "LoopNet", "broker email".' },
-        source_url: { type: ['string', 'null'] },
+        source_url: { type: ['string', 'null'], description: 'The listing page on that source. One call per source; each is kept.' },
+        broker_email: { type: ['string', 'null'], description: 'Listing broker email, if stated.' },
+        broker_phone: { type: ['string', 'null'], description: 'Listing broker phone, if stated.' },
+        current_rent: { type: ['number', 'null'], description: 'Current ANNUAL base rent in dollars, if stated (not monthly; not NOI unless the listing calls it rent).' },
+        lease_start: { type: ['string', 'null'], format: 'date', description: 'Lease commencement YYYY-MM-DD, if stated.' },
+        lease_expiration: { type: ['string', 'null'], format: 'date', description: 'Lease expiration YYYY-MM-DD, if stated. If only "N years left" is given, use term_left instead.' },
+        bumps: { type: ['string', 'null'], description: 'Rent increases as listed, e.g. "10% every 5 years", "1.5% annually", "flat".' },
+        options: { type: ['string', 'null'], description: 'Renewal options as listed, e.g. "4 x 5-year".' },
+        building_sf: { type: ['number', 'null'], description: 'Building square feet, if stated.' },
+        lot_acres: { type: ['number', 'null'], description: 'Lot size in ACRES, if stated (convert from SF only if the listing gives SF: acres = SF / 43,560).' },
         create_va_task: { type: 'boolean', default: true, description: 'Default true: a NEW listing gets its diligence task. false only for bulk backfills; the listing is saved but no task is created (va_task_skipped: true). Updates never create tasks either way.' },
       },
       required: ['tenant', 'address', 'city'],
@@ -372,6 +381,38 @@ async function geocode(oneLine: string): Promise<GeoAttempt> {
   return { ok: false, status: 'no_match', detail };
 }
 
+const WORD_NUM: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+
+/** "14 years", "9 yrs 4 mos", "~12.5 years remaining" → years (decimal). Null if no figure. */
+export function parseTermYears(text: string | null): number | null {
+  if (!text) return null;
+  const y = text.match(/(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\b/i);
+  const m = text.match(/(\d+)\s*(?:months?|mos?)\b/i);
+  if (!y && !m) return null;
+  const years = (y ? Number(y[1]) : 0) + (m ? Number(m[1]) / 12 : 0);
+  return years > 0 && years < 100 ? Math.round(years * 100) / 100 : null;
+}
+
+/** "10% every 5 years" / "1.5% annually" → { pct, frequency } (frequency per lease_comp's CHECK). */
+export function parseBumps(text: string | null): { pct: number | null; frequency: 'annual' | 'every_5_years' | 'other' | null } {
+  if (!text || /^\s*(flat|none|no (rent )?(increases|bumps))\s*$/i.test(text)) return { pct: null, frequency: null };
+  const p = text.match(/(\d+(?:\.\d+)?)\s*%/);
+  const pct = p ? Number(p[1]) : null;
+  const frequency =
+    /\b(annual(ly)?|yearly|per year|each year|every year|\/\s*yr)\b/i.test(text) ? 'annual'
+    : /every\s*(5|five)\s*(years?|yrs?)|\b5[-\s]?(years?|yrs?)\b/i.test(text) ? 'every_5_years'
+    : pct !== null ? 'other' : null;
+  return { pct, frequency };
+}
+
+/** "4 x 5-year", "Three (3) five-year options", "2 x 5 yr" → { count, termYears }. */
+export function parseOptions(text: string | null): { count: number | null; termYears: number | null } {
+  if (!text) return { count: null, termYears: null };
+  const t = text.toLowerCase().replace(/\((\d+)\)/g, ' ').replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b/g, (w) => String(WORD_NUM[w]));
+  const m = t.match(/(\d+)\s*(?:x|×|\*)?\s*[-\s]*(\d+(?:\.\d+)?)\s*[-\s]?(?:year|yr)/);
+  return m ? { count: Number(m[1]), termYears: Number(m[2]) } : { count: null, termYears: null };
+}
+
 async function toolUpsertListing(args: any, caller: Caller) {
   const address = str(args?.address);
   const city = str(args?.city);
@@ -381,6 +422,10 @@ async function toolUpsertListing(args: any, caller: Caller) {
   // A fraction (0.0625) was meant as a percent (6.25).
   if (capRate !== null && capRate > 0 && capRate < 1) capRate = Math.round(capRate * 10000) / 100;
   const state = (str(args?.state) ?? 'GA').toUpperCase();
+  const bumpsText = str(args?.bumps);
+  const bumps = parseBumps(bumpsText);
+  const optionsText = str(args?.options);
+  const options = parseOptions(optionsText);
 
   const supabase = getService();
   const { data, error } = await supabase.rpc('upsert_comp_listing', {
@@ -403,6 +448,21 @@ async function toolUpsertListing(args: any, caller: Caller) {
     p_broker_name: str(args?.broker_name),
     p_brokerage: str(args?.brokerage),
     p_acting_auth_id: actingAuthId(caller),
+    // Stated values only; the RPC derives gaps (price/cap/NOI, expiration from term_left).
+    p_broker_email: str(args?.broker_email),
+    p_broker_phone: str(args?.broker_phone),
+    p_current_rent: num(args?.current_rent, 'current_rent'),
+    p_lease_start: isoDate(args?.lease_start, 'lease_start'),
+    p_lease_expiration: isoDate(args?.lease_expiration, 'lease_expiration'),
+    p_term_years_left: parseTermYears(str(args?.term_left)),
+    p_bumps_text: bumpsText,
+    p_escalation_pct: bumps.pct,
+    p_bump_frequency: bumps.frequency,
+    p_options_text: optionsText,
+    p_option_count: options.count,
+    p_option_term_years: options.termYears,
+    p_building_sf: num(args?.building_sf, 'building_sf'),
+    p_lot_acres: num(args?.lot_acres, 'lot_acres'),
   });
   if (error) throw new ToolError(`upsert_listing failed: ${error.message}`);
   const result = data as Record<string, unknown>;

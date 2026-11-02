@@ -61,6 +61,44 @@ export interface ListingFacts {
   source_url: string | null;
   broker_name: string | null;
   brokerage: string | null;
+  // Multi-source listings (2026-11-02): sources disagree on price/cap → flagged for review.
+  price_conflict: boolean;
+  price_conflict_note: string | null;
+  source_count: number;
+  broker_email: string | null;
+  broker_phone: string | null;
+}
+
+/** One place a listing was seen (comp_listing_source). Every source is kept. */
+export type SourceKind = 'manual' | 'om' | 'showcase' | 'crexi' | 'loopnet' | 'costar' | 'aggregator';
+export interface ListingSource {
+  id: string;
+  source_kind: SourceKind;
+  source_label: string | null;
+  url: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
+  manual: 'Manual', om: 'OM', showcase: 'Showcase', crexi: 'Crexi', loopnet: 'LoopNet', costar: 'CoStar', aggregator: 'Aggregator',
+};
+// Noree's OM-link order: CoStar → Crexi → LoopNet → others; Showcase last (data only).
+const SOURCE_ORDER: Record<SourceKind, number> = { costar: 1, crexi: 2, loopnet: 3, om: 4, aggregator: 5, manual: 6, showcase: 9 };
+
+export async function fetchListingSources(listingId: string): Promise<ListingSource[]> {
+  const { data, error } = await supabase.from('comp_listing_source')
+    .select('id, source_kind, source_label, url, first_seen_at, last_seen_at')
+    .eq('operating_memorandum_id', listingId);
+  if (error) throw error;
+  return ((data ?? []) as ListingSource[]).sort((a, b) =>
+    SOURCE_ORDER[a.source_kind] - SOURCE_ORDER[b.source_kind] || a.first_seen_at.localeCompare(b.first_seen_at));
+}
+
+/** Clear the price/cap conflict flag once someone has looked (both events stay in the history). */
+export async function resolvePriceConflict(listingId: string): Promise<void> {
+  const { error } = await supabase.from('operating_memorandum')
+    .update({ price_conflict: false }).eq('id', listingId);
+  if (error) throw error;
 }
 
 export interface ListingEvent {
@@ -73,6 +111,9 @@ export interface ListingEvent {
   noi: number | null;
   /** Figures computed from the other two (price × cap = NOI), e.g. { noi: 'derived' }. Missing key = stated. */
   field_basis?: Record<string, 'derived'>;
+  source_kind?: SourceKind | null;
+  conflict?: boolean;   // a different source's figure while another was live
+  outranked?: boolean;  // conflicting figure from a lower-ranked source: kept, never the current ask
   sale_comp_id: string | null;
   source_type: string | null;
   source_url: string | null;

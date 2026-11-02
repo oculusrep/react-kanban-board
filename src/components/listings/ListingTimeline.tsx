@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { EVENT_LABEL, ListingEvent, fetchListingEvents, fmtDateET, fmtMoney, fmtPct } from '../../lib/compListings';
+import { EVENT_LABEL, ListingEvent, SOURCE_KIND_LABEL, fetchListingEvents, fmtDateET, fmtMoney, fmtPct } from '../../lib/compListings';
 import UserByIdDisplay from '../shared/UserByIdDisplay';
 
 // Price/status history of one offering, newest first (spec §8.5). Each ask row shows its
@@ -88,7 +88,13 @@ export function ListingTimeline({ listingId, refreshKey = 0 }: { listingId: stri
                 {fmtMoney(e.price)}{e.field_basis?.price && <CalcBadge />}
                 {e.cap_rate != null && <> @ {fmtPct(e.cap_rate)}{e.field_basis?.cap_rate && <CalcBadge />}</>}
                 {e.noi != null && <span className="text-gray-500"> · NOI {fmtMoney(e.noi)}{e.field_basis?.noi && <CalcBadge />}</span>}
-                {d && <span className={`ml-2 text-xs ${d.startsWith('▼') ? 'text-[#A27B5C]' : 'text-[#4A6B94]'}`}>{d}</span>}
+                {d && !e.outranked && <span className={`ml-2 text-xs ${d.startsWith('▼') ? 'text-[#A27B5C]' : 'text-[#4A6B94]'}`}>{d}</span>}
+                {e.source_kind && <span className="ml-2 text-[10px] uppercase text-[#8FA9C8]">{SOURCE_KIND_LABEL[e.source_kind]}</span>}
+                {e.conflict && (
+                  <span title={e.note ?? 'Sources disagree'} className="ml-1 text-[10px] uppercase px-1 rounded border border-[#A27B5C] text-[#A27B5C]">
+                    {e.outranked ? 'conflict · outranked' : 'conflict'}
+                  </span>
+                )}
               </div>
             )}
             {e.source_url && (

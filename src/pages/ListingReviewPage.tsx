@@ -10,7 +10,7 @@ import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideo
 // operating_memorandum + comp_listing_event); this page reads comp_listing_facts.
 // Spec: docs/NNN_LISTING_INTAKE_SPEC_v2.md §6 / §8.
 
-type TabKey = 'pending' | 'active' | 'relisted' | 'possibly_off' | 'closed' | 'unmapped' | 'rejected' | 'all';
+type TabKey = 'pending' | 'active' | 'relisted' | 'possibly_off' | 'conflicts' | 'closed' | 'unmapped' | 'rejected' | 'all';
 
 const DAY = 86_400_000;
 
@@ -25,6 +25,8 @@ const TABS: { key: TabKey; label: string; test: (l: ListingFacts) => boolean }[]
       && new Date(l.property_created_at).getTime() < new Date(l.first_seen_at).getTime() - 60_000,
   },
   { key: 'possibly_off', label: 'Possibly off market', test: (l) => l.possibly_off_market && l.review_status !== 'rejected' },
+  // Sources disagree on price/cap (multi-source listings); cleared with "Mark resolved".
+  { key: 'conflicts', label: 'Price conflicts', test: (l) => l.price_conflict && l.review_status !== 'rejected' },
   {
     key: 'closed', label: 'Under contract / off market / sold',
     test: (l) => l.listing_status !== 'active' && l.review_status !== 'rejected',
@@ -233,6 +235,7 @@ export default function ListingReviewPage() {
                   <td className="px-3 py-2 whitespace-nowrap">
                     {LISTING_STATUS_LABEL[l.listing_status]}
                     {l.possibly_off_market && <span className="ml-1 text-[#A27B5C]" title="Not seen by the sweep for 21+ days">⏸</span>}
+                    {l.price_conflict && <span className="ml-1 text-[10px] px-1 rounded border border-[#A27B5C] text-[#A27B5C] uppercase" title={l.price_conflict_note ?? 'Sources disagree on price/cap'}>conflict</span>}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{fmtDateET(l.first_seen_at)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{fmtDateET(l.last_seen_at)}</td>

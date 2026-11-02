@@ -98,6 +98,50 @@ In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the
 - **UI:** derived figures show a "calc" badge in the listing timeline and the Leases tab.
 - **Backfill (2026-10-31):** 30 listing events got a derived NOI (none needed cap or price). 16 `bts_nnn` leases got rent from NOI; 6 ground leases followed on 2026-11-02.
 
+## Sources, field precedence and lease terms (2026-11-02, ovis-mcp v0.5.0, migration `20261102100402_comp_listing_sources_precedence.sql`)
+
+- **Every source is kept.** `comp_listing_source` has one row per offering × source URL, with kind, label, url and first/last seen.
+  Each `upsert_listing` call adds or refreshes its own row and never replaces another source's URL.
+  - The listing panel lists them all.
+  - Noree's task lists OM links in the order CoStar → Crexi → LoopNet → others, with **Showcase last, marked data only**: don't request the OM
+    from Showcase brokers (it triggers broker drip emails).
+  - A new source on a listing whose task is still open is appended to that task.
+- **Source kind** (`comp_source_kind(source, url)`) is decided by the URL domain first, then the source text: `costar`, `crexi`, `loopnet`,
+  `showcase`, `om` (a PDF / "offering memorandum"), else `aggregator`. The MCP can never claim `manual`.
+- **Precedence** (`comp_source_rank`), highest first:
+
+  | Rank | Source |
+  |---|---|
+  | 1 | Manual, entered in OVIS |
+  | 2 | OM |
+  | 3 | Showcase |
+  | 4 | Crexi / LoopNet / CoStar |
+  | 5 | Aggregators and anything unrecognised |
+  | 99 | Derived |
+
+  `comp_merge_fields` applies it to the comp property (zip, APN, building SF, lot acres), the listing (broker name / brokerage / email / phone,
+  list date, term and lease type as listed) and the lease (lease type, guarantor, rent, start, expiration, bumps, options):
+  - A lower rank fills only empty fields. The result's `fields_kept_higher_source` lists what it couldn't change.
+  - An equal or higher rank may update a field. Every change is logged in `comp_field_change` with the old and new value and the old and new source.
+  - Null or blank never overwrites a value.
+  - Each value's source is stored in `field_source` beside `field_basis` (stated vs derived).
+  - **A person editing a tracked field in OVIS** makes it `manual` (via the `comp_mark_manual_fields` trigger), and the sweep can't overwrite it after that.
+  - **Legacy values** with no `field_source` count as manual.
+    - The 2026-11-02 backfill tagged only the fields the sweep itself writes, with each listing's source.
+    - Every sweep row was stamped with Mike's auth id, so a hand edit of one of those specific fields before that date reads as sweep data.
+- **Price/cap conflicts.** A different figure from another source that is still live (seen in the last 14 days):
+  - is kept as its own event, tagged `source_kind` and `conflict`;
+  - **flags the listing** (`price_conflict` + note), which shows on `/listings/review` → **Price conflicts** and adds a checklist line on Noree's task.
+  - If the conflicting source ranks lower, its event is `outranked`: kept in the history, but never the current ask.
+  - **Mark resolved** in the listing panel clears the flag; both events stay.
+- **Lease terms land on `lease_comp`:**
+  - `current_rent` → annual base rent (stated, which beats rent derived from NOI);
+  - `lease_start` / `lease_expiration`;
+  - `bumps` → `rent_bumps_text` plus parsed `escalation_pct` / `rent_bump_frequency`;
+  - `options` → `option_periods` plus parsed count and term.
+
+  `term_left` → `lease_expiration_date` = list date (or today) + N years, **marked derived**, so it loses to any stated expiration.
+
 ## Upsert semantics
 
 On a repeat sighting, `last_seen` is set to now and any non-null incoming field (price, cap rate, tenant,

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import {
   ListingFacts, VERIFICATION_OPTIONS, VerificationMethod,
   fetchListingFact, setReviewStatus, recordEvent, recordClose, markStillListed,
+  fetchListingSources, resolvePriceConflict, ListingSource, SOURCE_KIND_LABEL,
   fmtMoney, fmtPct, fmtDateET, todayET,
 } from '../../lib/compListings';
 import { GUARANTOR_TYPE_OPTIONS, LISTING_STATUS_LABEL } from '../../lib/compTypes';
@@ -128,12 +129,14 @@ export function ListingPanel({ listingId, onChanged, onOpenComp }: ListingPanelP
   const [form, setForm] = useState<Form>(null);
   const [historyKey, setHistoryKey] = useState(0);
   const [sharedAddress, setSharedAddress] = useState(0);
+  const [sources, setSources] = useState<ListingSource[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const f = await fetchListingFact(listingId);
+      const [f, srcs] = await Promise.all([fetchListingFact(listingId), fetchListingSources(listingId)]);
       setL(f);
+      setSources(srcs);
       if (f?.address_norm) {
         const { count } = await supabase.from('comp_property')
           .select('id', { count: 'exact', head: true }).eq('address_norm', f.address_norm);
@@ -204,6 +207,18 @@ export function ListingPanel({ listingId, onChanged, onOpenComp }: ListingPanelP
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
         {error && <div className="text-sm text-red-700 border border-red-300 rounded p-2">{error}</div>}
 
+        {l.price_conflict && (
+          <div className="text-sm border border-[#A27B5C] rounded p-2 space-y-2">
+            <div className="text-[#A27B5C]">
+              <b>Sources disagree on price/cap.</b> {l.price_conflict_note}. Both figures are in the pricing history,
+              tagged by source; the higher-ranked source is the current ask.
+            </div>
+            <button className={btnSecondary} disabled={busy} onClick={() => run(() => resolvePriceConflict(l.listing_id))}>
+              Mark resolved
+            </button>
+          </div>
+        )}
+
         {(l.lat == null || l.possibly_off_market || sharedAddress > 0) && (
           <div className="space-y-2">
             {l.lat == null && (
@@ -240,10 +255,31 @@ export function ListingPanel({ listingId, onChanged, onOpenComp }: ListingPanelP
           <Stat label="Lease type (as listed)" value={l.listed_lease_type ?? '—'} />
           <Stat label="Term left (as listed)" value={l.listed_term_remaining ?? '—'} />
           <Stat label="Guarantor" value={guarantor ? `${guarantor}${l.guarantor_name ? ` — ${l.guarantor_name}` : ''}` : 'Unconfirmed'} />
-          <Stat label="Broker" value={[l.broker_name, l.brokerage].filter(Boolean).join(', ') || '—'} />
-          <Stat label="Source" value={l.source_url
+          <Stat label="Broker" value={<>
+            {[l.broker_name, l.brokerage].filter(Boolean).join(', ') || '—'}
+            {(l.broker_email || l.broker_phone) && (
+              <div className="text-xs text-[#4A6B94]">
+                {l.broker_email && <a href={`mailto:${l.broker_email}`} className="underline">{l.broker_email}</a>}
+                {l.broker_email && l.broker_phone && ' · '}
+                {l.broker_phone}
+              </div>
+            )}
+          </>} />
+          <Stat label={`Sources (${sources.length || (l.source_url ? 1 : 0)})`} value={sources.length ? (
+            <ul className="space-y-0.5">
+              {sources.map((s) => (
+                <li key={s.id} className="text-sm">
+                  {s.url
+                    ? <a href={s.url} target="_blank" rel="noreferrer" className="text-[#4A6B94] underline">{s.source_label || SOURCE_KIND_LABEL[s.source_kind]}</a>
+                    : <span>{s.source_label || SOURCE_KIND_LABEL[s.source_kind]}</span>}
+                  {s.source_kind === 'showcase' && <span className="ml-1 text-[10px] text-[#A27B5C]" title="Don't request the OM from Showcase brokers (drip emails)">data only</span>}
+                  <span className="ml-1 text-[11px] text-gray-400">last {fmtDateET(s.last_seen_at)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (l.source_url
             ? <a href={l.source_url} target="_blank" rel="noreferrer" className="text-[#4A6B94] underline">{l.source_type ?? 'link'}</a>
-            : (l.source_type ?? '—')} />
+            : (l.source_type ?? '—'))} />
           <Stat label="First / last seen" value={`${fmtDateET(l.first_seen_at)} / ${fmtDateET(l.last_seen_at)}`} />
         </div>
 
