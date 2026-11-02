@@ -82,7 +82,7 @@ function packageTags(p: ProgressRow | null): CardTag[] {
   if (pace === 'late') tags.push({ label: `${gate ? gate.label : 'Package'} · ${PACE_LABEL.late}`, tone: 'urgent' });
   else if (pace === 'behind') tags.push({ label: `${gate ? gate.label : 'Package'} · ${PACE_LABEL.behind}`, tone: 'watch' });
   else if (gate) tags.push({ label: gate.label, tone: gate.unknown ? 'unknown' : 'quiet' });
-  tags.push(p.tour_ready ? { label: 'Tour-ready', tone: 'solid' } : { label: `Tour ${p.tour_ready_done} of 3`, tone: 'quiet' });
+  tags.push(p.tour_ready ? { label: 'Tour-ready', tone: 'solid' } : { label: `Tour-ready ${p.tour_ready_done}/3`, tone: 'quiet' });
   return tags;
 }
 
@@ -98,11 +98,13 @@ function tagFor(t: QueueTask): CardTag | null {
 
 function StatTile({ label, value, hint, accent, dashed }: { label: string; value: number | string; hint?: string; accent?: boolean; dashed?: boolean }) {
   return (
-    <div className="rounded-lg bg-white px-5 py-4"
+    <div className="flex items-center gap-3 rounded-lg bg-white px-3 py-1.5"
          style={{ border: `1px ${dashed ? 'dashed' : 'solid'} ${accent ? BRAND.terracotta : BRAND.slate}` }}>
-      <div className="text-xs font-medium uppercase tracking-wide" style={{ color: BRAND.steel }}>{label}</div>
-      <div className="mt-1 text-4xl font-semibold tabular-nums leading-none" style={{ color: accent ? BRAND.terracotta : BRAND.navy }}>{value}</div>
-      {hint && <div className="mt-1.5 text-xs" style={{ color: BRAND.slate }}>{hint}</div>}
+      <div className="text-4xl font-semibold tabular-nums leading-none" style={{ color: accent ? BRAND.terracotta : BRAND.navy }}>{value}</div>
+      <div className="min-w-0 leading-tight">
+        <div className="text-xs font-medium uppercase tracking-wide" style={{ color: BRAND.steel }}>{label}</div>
+        {hint && <div className="truncate text-xs" style={{ color: BRAND.slate }}>{hint}</div>}
+      </div>
     </div>
   );
 }
@@ -112,13 +114,13 @@ function RailSection({ title, count, children, defaultOpen, accent }: { title: s
   return (
     <section className="rounded-lg bg-white" style={{ border: `1px solid ${accent && count ? BRAND.terracotta : BRAND.slate}` }}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
-              className="flex w-full items-center justify-between px-4 py-3 text-left">
+              className="flex w-full items-center justify-between px-3 py-2 text-left">
         <span className="text-sm font-semibold" style={{ color: BRAND.navy }}>{title}</span>
         <span className="flex items-center gap-2 text-sm" style={{ color: BRAND.steel }}>
           <span className="tabular-nums">{count}</span>{open ? '▴' : '▾'}
         </span>
       </button>
-      {open && <div className="px-4 pb-4">{children}</div>}
+      {open && <div className="px-3 pb-2.5">{children}</div>}
     </section>
   );
 }
@@ -143,6 +145,9 @@ export default function TaskQueuePage() {
   const [filter, setFilterState] = useState<Filter>(readFilter);
   const [sidebar, setSidebar] = useState<{ siteSubmitId: string | null; dealId: string | null } | null>(null);
   const [chatTaskId, setChatTaskId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set()); // Up next cards opened inline
+  const toggleExpanded = (key: string) =>
+    setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const chatOpenRef = useRef<string | null>(null);
   chatOpenRef.current = chatTaskId;
 
@@ -312,7 +317,7 @@ export default function TaskQueuePage() {
     <Draggable key={c.key} draggableId={c.key} index={index} isDragDisabled={!canReorder}>
       {(drag) => (
         <div ref={drag.innerRef} {...drag.draggableProps} style={drag.draggableProps.style}
-             className={variant === 'large' ? (isWide ? 'min-w-0 flex-1 basis-0' : 'mb-3') : 'mb-2'}>
+             className={variant === 'large' ? (isWide ? 'min-w-0 flex-1 basis-0' : 'mb-2') : 'mb-1.5'}>
           {c.kind === 'package' ? (
             <PackageQueueCard
               position={position}
@@ -329,6 +334,8 @@ export default function TaskQueuePage() {
               canReorder={canReorder}
               dragHandle={drag.dragHandleProps}
               variant={variant}
+              expanded={expanded.has(c.key)}
+              onToggle={() => toggleExpanded(c.key)}
               onOpen={c.site_submit_id || c.deal_id ? () => openSidebar(c) : null}
               onCheck={(t) => setStatus(t, 'completed')}
               onStart={(t) => setStatus(t, 'in_progress')}
@@ -347,6 +354,8 @@ export default function TaskQueuePage() {
               canReorder={canReorder}
               dragHandle={drag.dragHandleProps}
               variant={variant}
+              expanded={expanded.has(c.key)}
+              onToggle={() => toggleExpanded(c.key)}
               onCheck={() => setStatus(c.task, 'completed')}
               onStart={() => setStatus(c.task, 'in_progress')}
               onOpen={c.task.site_submit_id || c.task.deal_id ? () => openSidebar(c.task) : null}
@@ -365,10 +374,11 @@ export default function TaskQueuePage() {
   });
 
   return (
-    <div className="min-h-screen px-4 py-5 sm:px-6 2xl:px-10" style={{ backgroundColor: BRAND.page }}>
+    // pb / pr keep content clear of the floating Quick Note / Intel launcher (48px, 24px inset, bottom right).
+    <div className="min-h-screen px-4 pb-28 pt-4 sm:pl-6 sm:pr-24 2xl:pl-10" style={{ backgroundColor: BRAND.page }}>
       <div className="mx-auto max-w-[1680px]">
         {/* Title + controls */}
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold" style={{ color: BRAND.navy }}>
               {ownerId === userTableId ? 'My Tasks' : `${ownerName}’s Tasks`}
@@ -381,8 +391,8 @@ export default function TaskQueuePage() {
             <div className="inline-flex rounded-md bg-white p-0.5" style={{ border: `1px solid ${BRAND.slate}` }} role="group" aria-label="Filter tasks">
               {(['all', 'package'] as Filter[]).map((f) => (
                 <button key={f} type="button" onClick={() => setFilter(f)} aria-pressed={filter === f}
-                        className="rounded px-3 py-1.5 text-sm font-medium"
-                        style={filter === f ? { backgroundColor: BRAND.navy, color: '#FFFFFF' } : { color: BRAND.steel }}>
+                        className="rounded px-3 py-1 text-sm font-medium"
+                        style={filter === f ? { color: BRAND.navy, boxShadow: `inset 0 0 0 1px ${BRAND.navy}` } : { color: BRAND.steel }}>
                   {f === 'all' ? 'All tasks' : 'Package tasks only'}
                 </button>
               ))}
@@ -398,7 +408,7 @@ export default function TaskQueuePage() {
         </div>
 
         {/* Header strip — always the whole queue, not the filtered view */}
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4 2xl:gap-4">
+        <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4 2xl:gap-3">
           <StatTile label="Open tasks" value={tasks.length} hint={`${tasks.filter((t) => t.package_slide_id).length} package`} />
           <StatTile label="Done this week" value={doneWeek ?? '–'} hint="since Monday" />
           <StatTile label="Waiting on Mike" value={waiting.length} hint="slides handed off" accent={waiting.length > 0} />
@@ -411,7 +421,7 @@ export default function TaskQueuePage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
           {/* Lanes */}
           <div className="min-w-0">
             {loading && tasks.length === 0 ? (
@@ -422,11 +432,11 @@ export default function TaskQueuePage() {
               </div>
             ) : (
               <DragDropContext onDragEnd={onDragEnd}>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: BRAND.steel }}>Now</h2>
+                <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: BRAND.steel }}>Now</h2>
                 <Droppable droppableId="now" direction={isWide ? 'horizontal' : 'vertical'}>
                   {(drop, snap) => (
                     <div ref={drop.innerRef} {...drop.droppableProps}
-                         className={`rounded-xl p-2 ${isWide ? 'flex items-stretch gap-4' : ''}`}
+                         className={`rounded-xl p-1 ${isWide ? 'flex items-stretch gap-3' : ''}`}
                          style={dropStyle(snap.isDraggingOver, 120)}>
                       {nowLane.map((t, i) => renderCard(t, i + 1, 'large', i))}
                       {drop.placeholder}
@@ -434,12 +444,12 @@ export default function TaskQueuePage() {
                   )}
                 </Droppable>
 
-                <h2 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider" style={{ color: BRAND.steel }}>
+                <h2 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wider" style={{ color: BRAND.steel }}>
                   Up next{nextLane.length ? ` · ${nextLane.length}` : ''}
                 </h2>
                 <Droppable droppableId="next">
                   {(drop, snap) => (
-                    <div ref={drop.innerRef} {...drop.droppableProps} className="rounded-xl p-2"
+                    <div ref={drop.innerRef} {...drop.droppableProps} className="rounded-xl p-1"
                          style={dropStyle(snap.isDraggingOver, 64)}>
                       {nextLane.map((t, i) => renderCard(t, NOW_COUNT + i + 1, 'compact', i))}
                       {drop.placeholder}
@@ -454,7 +464,7 @@ export default function TaskQueuePage() {
           </div>
 
           {/* Side rail */}
-          <aside className="space-y-4">
+          <aside className="space-y-3">
             <RailSection title="Waiting on Mike" count={waiting.length} defaultOpen accent>
               {waiting.length === 0 ? (
                 <div className="text-sm" style={{ color: BRAND.slate }}>Nothing handed off right now.</div>

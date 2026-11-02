@@ -12,7 +12,13 @@ Shipped 2026-11-02. Redesign of the Package Tracker Phase 3 queue (spec §7 in
   stages, coloured by pace) and tour tag. Inside is a checklist of the owner's open slide tasks in template order
   (`deal_package_slide.position`), with the first actionable one highlighted, and that package's held slides greyed
   with the input they need. Ordinary tasks stay individual cards in the same ranked list.
-- **Now:** the top 3 cards, large. **Up next:** the rest, compact, with large drag handles. A drag ranks cards.
+- **Now:** the top 3 cards, always expanded. **Up next:** one compact row per card (rank, name, city, progress bar,
+  done count, next actionable slide, tags, unread dot) that expands inline on click. A drag (grip only) ranks cards.
+- **Controls (2026-11-02 polish):** an empty checkbox on each slide / task completes it (shows checked only while
+  saving). Start and Chat are icon buttons with tooltips; Chat carries the unread dot. Nothing is filled dark unless
+  it is actually done (a checked box, the Tour-ready tag). The tour tag reads "Tour-ready N/3" until reached.
+- **Launcher clearance:** the page has bottom and right padding so the floating Quick Note / Intel button
+  (48px, 24px inset) doesn't cover cards.
 - **Card ranking: no migration.** A card ranks at its best-ranked task (the queue is read sorted by `queue_rank`).
   On drop, the cards are flattened back to tasks (a package's tasks together, in template order) and the full
   queue is saved through `set_task_queue_order`. A slide task released later (`queue_rank` null) joins its card
@@ -22,7 +28,7 @@ Shipped 2026-11-02. Redesign of the Package Tracker Phase 3 queue (spec §7 in
   package cards among the slots they already hold, so hidden cards keep their positions.
 - **Rail:** Waiting on Mike (her slides with `status = 'waiting_on_mike'`, set by `sync_slide_from_task` when she
   checks off an approve / finish slide) and Held (collapsed, grouped by missing input).
-- **Ordinary task card:** site / deal name, slide (or task subject), city, owner, a tag, an unread dot on Chat, Done and Start.
+- **Ordinary task card:** site / deal name, slide (or task subject), city, owner, a tag, checkbox, Start and Chat icons.
   Tag: due / due today / overdue.
 - Names and cities come from one batched `site_submit` / `deal` read after the lanes render. `site_submit` RLS
   scans the whole table on every query, so never read it per card.
