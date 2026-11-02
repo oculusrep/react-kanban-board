@@ -18,7 +18,7 @@ Shipped 2026-11-02. Redesign of the Package Tracker Phase 3 queue (spec §7 in
   saving). Start and Chat are icon buttons with tooltips; Chat carries the unread dot. Nothing is filled dark unless
   it is actually done (a checked box, the Tour-ready tag). The tour tag reads "Tour-ready N/3" until reached.
 - **Launcher clearance:** the page has bottom and right padding so the floating Quick Note / Intel button
-  (48px, 24px inset) doesn't cover cards.
+  and the Intel button stacked above it (together 132px up, 72px in from the corner) don't cover cards.
 - **Card ranking: no migration.** A card ranks at its best-ranked task (the queue is read sorted by `queue_rank`).
   On drop, the cards are flattened back to tasks (a package's tasks together, in template order) and the full
   queue is saved through `set_task_queue_order`. A slide task released later (`queue_rank` null) joins its card
