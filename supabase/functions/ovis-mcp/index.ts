@@ -48,7 +48,7 @@ import {
 } from './voice_triage.ts';
 import { supabaseStore } from './voice_triage_store.ts';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.5.0' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.6.0' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26'];
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
