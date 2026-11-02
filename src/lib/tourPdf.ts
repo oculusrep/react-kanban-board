@@ -14,6 +14,7 @@
 import { jsPDF } from 'jspdf';
 import { fitFrame, frameBounds, projector, simplifyPx, staticMapUrl, type Frame, type LatLng } from './staticMapProjection';
 import { formatClock12, formatDriveMinutes, type StopKind } from './tourRouting';
+import { declutterLogos, declutterPins, type DeclutterItem } from './pinDeclutter';
 
 export interface PdfStopRow {
   siteNo: number | null; // site submits only
@@ -277,9 +278,7 @@ export async function buildTourPdf(tour: PdfTour, opts: PdfOptions): Promise<jsP
   doc.text(pdfText(sub), M, y);
 
   drawMap(doc, coverImg, coverFrame, M, coverTop, CW, (ctx) => {
-    drawContextStores(doc, ctx, coverFrame, tour, icons, days);
-    days.forEach((d) => drawRoute(doc, ctx, d.paths, d.color));
-    days.forEach((d) => drawDayMarkers(doc, ctx, d, icons, 0.85));
+    drawMapLayer(doc, ctx, coverFrame, tour, icons, days, 0.85, 'overview');
   });
   drawLegend(doc, M, coverTop + coverFrame.height * (CW / 640) + 13, tour, icons, days);
 
@@ -300,9 +299,7 @@ export async function buildTourPdf(tour: PdfTour, opts: PdfOptions): Promise<jsP
       yy = M + 26;
     }
     drawMap(doc, dayImgs[i], L.frame, M, yy, CW, (ctx) => {
-      drawContextStores(doc, ctx, L.frame, tour, icons, [d]);
-      drawRoute(doc, ctx, d.paths, d.color);
-      drawDayMarkers(doc, ctx, d, icons, 1);
+      drawMapLayer(doc, ctx, L.frame, tour, icons, [d], 1, `Day ${d.dayNumber} map`);
     });
     drawLegend(doc, M, yy + L.frame.height * (CW / 640) + 13, tour, icons, [d]);
   });
@@ -622,73 +619,197 @@ export function distanceToPathsMeters(p: LatLng, paths: LatLng[][]): number {
 
 // Atlas stores for this map: within 3 mi of ITS route (atlasMode 'near') or every one in the
 // frame ('all'), minus the ones that are stops on these days (those are drawn larger, as stops).
-function drawContextStores(doc: jsPDF, ctx: MapCtx, frame: Frame, tour: PdfTour, icons: Map<string, string | null>, days: PdfDay[]) {
-  if (tour.atlasMode === 'off') return;
+function contextStoresFor(ctx: MapCtx, frame: Frame, tour: PdfTour, days: PdfDay[]): PdfStore[] {
+  if (tour.atlasMode === 'off') return [];
   const routePaths = days.flatMap((d) => d.paths);
   const b = frameBounds(frame);
   const key = (p: LatLng) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
   const stopKeys = new Set<string>();
   days.forEach((d) => d.stops.forEach((s) => s.iconUrl && s.coord && stopKeys.add(key(s.coord))));
-  for (const st of tour.contextStores) {
-    if (st.lat < b.south || st.lat > b.north || st.lng < b.west || st.lng > b.east) continue;
-    if (stopKeys.has(key(st))) continue;
-    if (tour.atlasMode === 'near' && distanceToPathsMeters(st, routePaths) > NEAR_ROUTE_METERS) continue;
-    const img = icons.get(st.iconUrl);
-    const p = ctx.toPt(st);
-    if (!img || !inside(ctx, p, 6)) continue;
-    const s = 7;
-    doc.addImage(img, 'PNG', p.x - s / 2, p.y - s / 2, s, s, aliasOf(img), 'FAST');
+  return tour.contextStores.filter((st) => {
+    if (st.lat < b.south || st.lat > b.north || st.lng < b.west || st.lng > b.east) return false;
+    if (stopKeys.has(key(st))) return false;
+    if (tour.atlasMode === 'near' && distanceToPathsMeters(st, routePaths) > NEAR_ROUTE_METERS) return false;
+    return inside(ctx, ctx.toPt(st), 6);
+  });
+}
+
+// What a marker is, for drawing after layout.
+type MarkerMeta =
+  | { kind: 'pin'; label: string; color: string; point: { x: number; y: number }; mergeable: boolean }
+  | { kind: 'logo'; img: string; color: string; point: { x: number; y: number } };
+
+/**
+ * Everything drawn on one map, in order: Atlas logos (decluttered against the stop markers),
+ * routes, approach dots, then stop / A / B markers after declutter — near-identical same-day
+ * site pins merge into one "3·4" pin; other overlaps fan out on a ring with a leader line to a
+ * dot at the true spot.
+ */
+function drawMapLayer(
+  doc: jsPDF,
+  ctx: MapCtx,
+  frame: Frame,
+  tour: PdfTour,
+  icons: Map<string, string | null>,
+  days: PdfDay[],
+  scale: number,
+  mapName: string
+) {
+  const r = 7.2 * scale; // pin head radius
+  const headOffset = r * 1.55; // head center sits this far above the pin point
+  const meta = new Map<string, MarkerMeta>();
+  const items: DeclutterItem[] = [];
+  const addPin = (id: string, pt: { x: number; y: number }, label: string, color: string, mergeable: boolean) => {
+    meta.set(id, { kind: 'pin', label, color, point: pt, mergeable });
+    items.push({ id, anchor: { x: pt.x, y: pt.y - headOffset }, r: r + 1, label, mergeKey: mergeable ? `site:${color}` : null });
+  };
+  days.forEach((d, di) => {
+    if (d.startCoord) addPin(`A${di}`, ctx.toPt(d.startCoord), 'A', START_GREEN, false);
+    if (d.endCoord) addPin(`B${di}`, ctx.toPt(d.endCoord), 'B', END_RED, false);
+    d.stops.forEach((s, si) => {
+      if (!s.coord) return;
+      const pt = ctx.toPt(s.coord);
+      const id = `s${di}-${si}`;
+      const img = s.iconUrl ? icons.get(s.iconUrl) : null;
+      if (img) {
+        const lr = 8.5 * scale;
+        meta.set(id, { kind: 'logo', img, color: d.color, point: pt });
+        items.push({ id, anchor: pt, r: lr + 1, mergeKey: null });
+      } else if (s.kind === 'custom' || s.kind === 'licensed_store') {
+        addPin(id, pt, s.kind === 'licensed_store' ? 'LS' : s.glyph ?? '*', CUSTOM_GRAY, false);
+      } else {
+        addPin(id, pt, s.siteNo != null ? String(s.siteNo) : '', d.color, true);
+      }
+    });
+  });
+
+  // Route points (every ~5pt) as obstacles so fanned badges avoid sitting on the line.
+  const obstacles = days.flatMap((d) => d.paths.flatMap((p) => simplifyPx(p.map(ctx.toPt), 5)));
+  const box = { x0: ctx.x, y0: ctx.y, x1: ctx.x + ctx.w, y1: ctx.y + ctx.h };
+  const placed = declutterPins(items, {
+    frame: box,
+    obstacles,
+    radiusFor: (label, baseR) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.6 * scale);
+      return Math.max(baseR, doc.getTextWidth(label) / 2 + 3.5 * scale);
+    },
+  });
+
+  // Atlas logos yield to markers: kept, nudged, or hidden.
+  const ctxStores = contextStoresFor(ctx, frame, tour, days);
+  const S = 7;
+  const logos = declutterLogos(
+    ctxStores.map((st, i) => ({ id: `c${i}`, at: ctx.toPt(st), s: S })),
+    placed,
+    box
+  );
+  logos.forEach((L, i) => {
+    const img = icons.get(ctxStores[i].iconUrl);
+    if (img && L.draw) doc.addImage(img, 'PNG', L.draw.x - S / 2, L.draw.y - S / 2, S, S, aliasOf(img), 'FAST');
+  });
+
+  days.forEach((d) => drawRoute(doc, ctx, d.paths, d.color));
+
+  days.forEach((d) => {
+    doc.setLineWidth(0.9);
+    doc.setDrawColor(d.color);
+    doc.setFillColor('#FFFFFF');
+    d.stops.forEach((s) =>
+      s.approach.forEach((a) => {
+        const p = ctx.toPt(a);
+        doc.circle(p.x, p.y, 2.3, 'FD');
+      })
+    );
+  });
+
+  // Leaders under the markers: thin dark line from the badge to a dot at the true spot.
+  placed
+    .filter((m) => m.displaced)
+    .forEach((m) => {
+      const first = meta.get(m.ids[0])!;
+      const pts = m.ids.map((id) => meta.get(id)!.point);
+      const truePt = { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length };
+      doc.setDrawColor('#1F2937');
+      doc.setLineWidth(0.6);
+      doc.line(m.at.x, m.at.y, truePt.x, truePt.y);
+      doc.setFillColor(first.color);
+      doc.setDrawColor('#FFFFFF');
+      doc.setLineWidth(0.6);
+      doc.circle(truePt.x, truePt.y, 1.9, 'FD');
+    });
+
+  placed.forEach((m) => {
+    const first = meta.get(m.ids[0])!;
+    if (first.kind === 'logo') {
+      const lr = 8.5 * scale;
+      const c = m.at;
+      doc.setFillColor('#FFFFFF');
+      doc.setDrawColor(first.color);
+      doc.setLineWidth(1.6);
+      doc.circle(c.x, c.y, lr, 'FD');
+      doc.addImage(first.img, 'PNG', c.x - lr * 0.82, c.y - lr * 0.82, lr * 1.64, lr * 1.64, aliasOf(first.img), 'FAST');
+      return;
+    }
+    const label = m.label ?? first.label;
+    if (m.displaced) {
+      badge(doc, m.at, label, first.color, scale, m.r - 1);
+    } else {
+      // Undisplaced: a teardrop whose point is the true spot (mean of merged points).
+      const pts = m.ids.map((id) => meta.get(id)!.point);
+      const at = { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length };
+      pin(doc, at, label, first.color, scale, m.r - 1);
+    }
+  });
+
+  const merged = placed.filter((m) => m.merged).length;
+  const displaced = placed.filter((m) => m.displaced).length;
+  const nudged = logos.filter((l) => l.nudged).length;
+  const hidden = logos.filter((l) => !l.draw).length;
+  if (merged || displaced || nudged || hidden) {
+    const page = doc.getCurrentPageInfo().pageNumber;
+    console.debug(
+      `[tourPdf] page ${page} (${mapName}): merged ${merged} pin(s) [${placed.filter((m) => m.merged).map((m) => m.label).join(', ')}], ` +
+        `fanned ${displaced} marker(s), Atlas logos nudged ${nudged} / hidden ${hidden}`
+    );
   }
 }
 
-function drawDayMarkers(doc: jsPDF, ctx: MapCtx, d: PdfDay, icons: Map<string, string | null>, scale: number) {
-  doc.setLineWidth(0.9);
-  doc.setDrawColor(d.color);
-  doc.setFillColor('#FFFFFF');
-  d.stops.forEach((s) =>
-    s.approach.forEach((a) => {
-      const p = ctx.toPt(a);
-      doc.circle(p.x, p.y, 2.3, 'FD');
-    })
-  );
-  if (d.startCoord) pin(doc, ctx.toPt(d.startCoord), 'A', START_GREEN, scale);
-  if (d.endCoord) pin(doc, ctx.toPt(d.endCoord), 'B', END_RED, scale);
-  d.stops
-    .filter((s) => s.coord)
-    .forEach((s) => {
-      const p = ctx.toPt(s.coord!);
-      const img = s.iconUrl ? icons.get(s.iconUrl) : null;
-      if (img) {
-        const r = 8.5 * scale;
-        doc.setFillColor('#FFFFFF');
-        doc.setDrawColor(d.color);
-        doc.setLineWidth(1.6);
-        doc.circle(p.x, p.y, r, 'FD');
-        doc.addImage(img, 'PNG', p.x - r * 0.82, p.y - r * 0.82, r * 1.64, r * 1.64, aliasOf(img), 'FAST');
-      } else if (s.kind === 'custom' || s.kind === 'licensed_store') {
-        pin(doc, p, s.kind === 'licensed_store' ? 'LS' : s.glyph ?? '*', CUSTOM_GRAY, scale);
-      } else {
-        pin(doc, p, s.siteNo != null ? String(s.siteNo) : '', d.color, scale);
-      }
-    });
-}
-
 // Teardrop pin (matches the tour map): colored head with a white border and a white label,
-// point at the location.
-function pin(doc: jsPDF, p: { x: number; y: number }, label: string, color: string, scale: number) {
+// point at the location. headR widens the head into a pill for merged labels ("3·4").
+function pin(doc: jsPDF, p: { x: number; y: number }, label: string, color: string, scale: number, headR?: number) {
   const r = 7.2 * scale;
   const cy = p.y - r * 1.55;
+  const halfW = Math.max(r, headR ?? r);
   doc.setLineDashPattern([], 0);
   doc.setFillColor(color);
   doc.setDrawColor('#FFFFFF');
   doc.setLineWidth(1.1);
   doc.triangle(p.x - r * 0.62, cy + r * 0.62, p.x + r * 0.62, cy + r * 0.62, p.x, p.y, 'FD');
-  doc.circle(p.x, cy, r, 'FD');
+  if (halfW > r + 0.1) doc.roundedRect(p.x - halfW, cy - r, 2 * halfW, 2 * r, r, r, 'FD');
+  else doc.circle(p.x, cy, r, 'FD');
   doc.rect(p.x - r * 0.45, cy + r * 0.2, r * 0.9, r * 0.6, 'F'); // hide the head/point seam
+  pinLabel(doc, p.x, cy, label, scale);
+}
+
+// Displaced marker: the pin head alone (circle or pill), centered on `c`.
+function badge(doc: jsPDF, c: { x: number; y: number }, label: string, color: string, scale: number, headR?: number) {
+  const r = 7.2 * scale;
+  const halfW = Math.max(r, headR ?? r);
+  doc.setLineDashPattern([], 0);
+  doc.setFillColor(color);
+  doc.setDrawColor('#FFFFFF');
+  doc.setLineWidth(1.1);
+  if (halfW > r + 0.1) doc.roundedRect(c.x - halfW, c.y - r, 2 * halfW, 2 * r, r, r, 'FD');
+  else doc.circle(c.x, c.y, r, 'FD');
+  pinLabel(doc, c.x, c.y, label, scale);
+}
+
+function pinLabel(doc: jsPDF, x: number, y: number, label: string, scale: number) {
   doc.setTextColor('#FFFFFF');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize((label.length > 1 ? 6.6 : 7.6) * scale);
-  doc.text(label, p.x, cy, { align: 'center', baseline: 'middle' });
+  doc.text(pdfText(label), x, y, { align: 'center', baseline: 'middle' });
 }
 
 function drawLegend(doc: jsPDF, x: number, y: number, tour: PdfTour, icons: Map<string, string | null>, days: PdfDay[]) {
