@@ -62,6 +62,16 @@ export function projector(frame: Frame): (p: LatLng) => { x: number; y: number }
   return (p) => ({ x: worldX(p.lng) * k - cx + frame.width / 2, y: worldY(p.lat) * k - cy + frame.height / 2 });
 }
 
+/** The lat/lng box an image frame covers (for picking which stores to overlay). */
+export function frameBounds(frame: Frame): { south: number; west: number; north: number; east: number } {
+  const k = 2 ** frame.zoom;
+  const cx = worldX(frame.center.lng) * k;
+  const cy = worldY(frame.center.lat) * k;
+  const nw = worldToLatLng((cx - frame.width / 2) / k, (cy - frame.height / 2) / k);
+  const se = worldToLatLng((cx + frame.width / 2) / k, (cy + frame.height / 2) / k);
+  return { south: se.lat, west: nw.lng, north: nw.lat, east: se.lng };
+}
+
 /** Drop points closer than `minPx` to the last kept one (keeps first + last). */
 export function simplifyPx(pts: { x: number; y: number }[], minPx = 1.2): { x: number; y: number }[] {
   if (pts.length <= 2) return pts;
@@ -74,26 +84,19 @@ export function simplifyPx(pts: { x: number; y: number }[], minPx = 1.2): { x: n
   return out;
 }
 
-// Light grayscale basemap: prints clean in B&W and lets dark route lines stand out.
-const STYLES = [
-  'feature:all|saturation:-100',
-  'feature:all|element:geometry|lightness:35',
-  'feature:road|element:labels|lightness:10',
-  'feature:poi|visibility:off',
-  'feature:transit|visibility:off',
-  'feature:administrative.land_parcel|visibility:off',
-];
+// Standard color Google basemap; only business POIs are hidden to keep pins readable.
+export const COLOR_STYLES = ['feature:poi.business|visibility:off'];
 
-export function staticMapUrl(frame: Frame, apiKey: string, scale: 1 | 2 = 2): string {
+export function staticMapUrl(frame: Frame, apiKey: string, scale: 1 | 2 = 2, styles: string[] = COLOR_STYLES): string {
   const q = new URLSearchParams({
     center: `${frame.center.lat.toFixed(6)},${frame.center.lng.toFixed(6)}`,
     zoom: String(frame.zoom),
     size: `${Math.round(frame.width)}x${Math.round(frame.height)}`,
     scale: String(scale),
     maptype: 'roadmap',
-    format: 'png',
+    format: 'jpg', // photo-like basemap: ~5x smaller PDFs than PNG
     key: apiKey,
   });
-  for (const s of STYLES) q.append('style', s);
+  for (const s of styles) q.append('style', s);
   return `https://maps.googleapis.com/maps/api/staticmap?${q.toString()}`;
 }

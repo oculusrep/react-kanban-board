@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fitFrame, projector, simplifyPx, staticMapUrl } from '../../src/lib/staticMapProjection';
-import { buildTourPdf, formatDayDate, pdfText, type PdfDay } from '../../src/lib/tourPdf';
+import { buildTourPdf, formatDayDate, pdfText, type PdfDay, type PdfStopRow } from '../../src/lib/tourPdf';
 
 const pts = [
   { lat: 33.3459, lng: -84.1091 },
@@ -50,8 +50,29 @@ test('pdfText maps typography to WinAnsi and drops the rest', () => {
   assert.equal(formatDayDate('2026-11-04'), 'Wed, Nov 4, 2026');
 });
 
-test('buildTourPdf: cover + one page per day, survives a failed basemap', async () => {
-  const day = (n: number, count: number): PdfDay => ({
+test('buildTourPdf: landscape cover + per-day agenda/map, survives failed images', async () => {
+  const row = (i: number, kind: PdfStopRow['kind'] = 'site_submit'): PdfStopRow => ({
+    siteNo: kind === 'site_submit' ? i + 1 : null,
+    kind,
+    name: `Stop ${i + 1} · Main St`,
+    address: '100 Main St;GA 42, Griffin',
+    market: 'Atlanta-Sandy Springs-Roswell, GA',
+    city: 'Griffin',
+    status: kind === 'site_submit' ? 'New store opportunity' : 'Existing store',
+    notes: i === 2 ? 'Meet landlord at the back entrance; bring the site plan.' : null,
+    projectedOpening: i === 0 ? 'Q3/Q4 FY28' : null,
+    minutes: 15,
+    arriveMin: 560 + i * 30,
+    departMin: 575 + i * 30,
+    driveNextMin: 15,
+    arriveNextMin: 590 + i * 30,
+    nextIsEnd: false,
+    coord: i === 5 ? null : pts[i % 3],
+    approach: i === 1 ? [{ lat: 33.3, lng: -84.2 }] : [],
+    iconUrl: kind === 'atlas_store' ? '/Images/SBUX-ATLAS-DT.png' : null,
+    glyph: kind === 'custom' ? 'L' : null,
+  });
+  const day = (n: number, rows: PdfStopRow[]): PdfDay => ({
     dayNumber: n,
     date: n === 1 ? '2026-11-04' : null,
     color: '#002147',
@@ -59,33 +80,45 @@ test('buildTourPdf: cover + one page per day, survives a failed basemap', async 
     startCoord: { lat: 33.4473, lng: -84.1469 },
     startTimeMin: 540,
     driveFromStartMin: 14,
-    endAddress: null,
-    endCoord: null,
+    endAddress: 'Hotel, Augusta GA',
+    endCoord: { lat: 33.47, lng: -82.01 },
     endTimeMin: 1020,
-    stops: Array.from({ length: count }, (_, i) => ({
-      number: i + 1,
-      name: `Stop ${i + 1} · Main St`,
-      address: '100 Main St, Griffin',
-      arriveMin: 560 + i * 30,
-      minutes: 15,
-      category: 'Scheduled Stop',
-      driveNextMin: i < count - 1 ? 15 : null,
-      nextIsEnd: false,
-      notes: i === 2 ? 'Meet landlord at the back entrance; bring the site plan.' : null,
-      coord: i === 5 ? null : pts[i % 3],
-      approach: i === 1 ? [{ lat: 33.3, lng: -84.2 }] : [],
-    })),
+    stops: rows,
     paths: [pts],
-    totals: { driveMin: 80, stopMin: count * 15, finishMin: 900, overEnd: false },
+    totals: { driveMin: 80, stopMin: rows.length * 15, finishMin: 900, overEnd: true },
     note: 'Typical drive times (no traffic forecast).',
   });
   const urls: string[] = [];
   const doc = await buildTourPdf(
-    { name: 'Jared Tour', client: 'Starbucks', days: [day(1, 30), day(2, 3)], generatedLabel: 'Oct 30, 2026 ET' },
+    {
+      name: 'Jared Tour',
+      client: 'Starbucks',
+      days: [day(1, Array.from({ length: 24 }, (_, i) => row(i))), day(2, [row(0, 'atlas_store'), row(1, 'custom'), row(2)])],
+      generatedLabel: 'Nov 2, 2026 ET',
+      contextStores: [{ kind: 'licensed_store', store_number: '1', lat: 33.3, lng: -84.1, iconUrl: '/Images/LICENSE-CAFE.png' }],
+      showAtlas: true,
+      showLicensed: true,
+    },
     { apiKey: 'K', loadImage: async (u) => (urls.push(u), null) }
   );
-  assert.equal(urls.length, 3, 'one basemap per map: overview + 2 days');
-  // 30 stops overflow day 1 onto a continuation page.
+  const maps = urls.filter((u) => u.includes('/staticmap'));
+  assert.equal(maps.length, 3, 'one basemap per map: overview + 2 days');
+  assert.ok(!maps[0].includes('saturation'), 'color basemap, not grayscale');
+  assert.ok(urls.includes('/Images/SBUX-ATLAS-DT.png') && urls.includes('/Images/LICENSE-CAFE.png'), 'store icons requested once each');
+  const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
+  assert.ok(w > h, 'landscape');
+  // 24 rows on day 1 push its map to its own page: cover + day1 agenda + day1 map + day2.
   assert.ok(doc.getNumberOfPages() >= 4, `pages ${doc.getNumberOfPages()}`);
-  assert.ok(doc.output('arraybuffer').byteLength > 5000);
+});
+
+test('Oklahoma embeds for headings when provided (body stays Helvetica)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const b64 = (f: string) => readFileSync(new URL(`../../src/assets/fonts/${f}`, `file://${process.cwd()}/tests/tours/`)).toString('base64');
+  const doc = await buildTourPdf(
+    { name: 'Font Tour', client: 'Starbucks', days: [], generatedLabel: 'x', contextStores: [], showAtlas: false, showLicensed: false },
+    { apiKey: 'K', loadImage: async () => null, headingFont: { regular: b64('Oklahoma-Regular.ttf'), bold: b64('Oklahoma-Bold.ttf') } }
+  );
+  const raw = new TextDecoder('latin1').decode(doc.output('arraybuffer'));
+  assert.match(raw, /\/BaseFont \/Oklahoma/);
+  assert.match(raw, /\/BaseFont \/Helvetica/);
 });

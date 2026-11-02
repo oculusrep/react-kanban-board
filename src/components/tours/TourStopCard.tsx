@@ -68,13 +68,17 @@ interface TourStopCardProps {
   badgeProps?: HTMLAttributes<HTMLDivElement>;
   badgeTitle?: string;
   dragging?: boolean;
+  /** Replaces the number in the badge (site # / custom glyph). */
+  badgeLabel?: ReactNode;
+  /** Store logo shown in the badge instead of a colored circle (Atlas / licensed stops). */
+  badgeIcon?: string | null;
   /** Focused on the map (in/out legs highlighted). */
   highlight?: boolean;
   /** Live day: already visited (at/before the latest departure stamp). */
   done?: boolean;
 }
 
-export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging, highlight, done }: TourStopCardProps) {
+export function TourStopCard({ number, color, title, meta, subtext: sub, footer, aside, badgeProps, badgeTitle, dragging, highlight, done, badgeLabel, badgeIcon }: TourStopCardProps) {
   return (
     <div
       style={{
@@ -96,7 +100,9 @@ export function TourStopCard({ number, color, title, meta, subtext: sub, footer,
           width: 26,
           height: 26,
           borderRadius: '50%',
-          background: done ? slate : color,
+          background: badgeIcon ? '#FFFFFF' : done ? slate : color,
+          boxShadow: badgeIcon ? `0 0 0 2px ${done ? slate : color}` : undefined,
+          overflow: 'hidden',
           color: '#FFFFFF',
           fontSize: done ? 14 : 12,
           fontWeight: 700,
@@ -107,7 +113,7 @@ export function TourStopCard({ number, color, title, meta, subtext: sub, footer,
           cursor: badgeProps ? 'grab' : 'default',
         }}
       >
-        {done ? '✓' : number}
+        {done ? '✓' : badgeIcon ? <img src={badgeIcon} alt="" style={{ width: 26, height: 26, display: 'block' }} /> : badgeLabel ?? number}
       </div>
       <div style={{ flex: 1, minWidth: 0, opacity: done ? 0.6 : 1 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: midnight, lineHeight: 1.3 }}>{title}</div>
@@ -150,6 +156,22 @@ export function OpenSiteLink({ text, onOpen, color = midnight }: { text: ReactNo
         ↗
       </button>
     </span>
+  );
+}
+
+// Custom stop glyphs by category (card badges + map pins).
+const CUSTOM_GLYPH: Record<string, string> = { Lunch: '🍴', Coffee: '☕', Hotel: '🛏', Meeting: '👥' };
+export const CUSTOM_STOP_COLOR = '#6B7280';
+export const customGlyph = (category: string | null | undefined) => (category && CUSTOM_GLYPH[category]) || '★';
+
+// Compact itinerary line: Market · City · Status · Projected opening (blank parts dropped).
+export function ItineraryLine({ market, city, status, projectedOpening }: { market?: string | null; city?: string | null; status?: string | null; projectedOpening?: string | null }) {
+  const parts = [market, city, status, projectedOpening ? `Opens ${projectedOpening}` : null].filter((x) => x && String(x).trim());
+  if (parts.length === 0) return null;
+  return (
+    <div style={{ marginTop: 3, fontSize: 11, color: steel, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={parts.join(' · ')}>
+      {parts.join(' · ')}
+    </div>
   );
 }
 

@@ -11,6 +11,8 @@ import {
   deleteTourDay,
   persistStopPlacements,
   removeTourStop,
+  addCustomStop,
+  fetchTourStopMarkets,
   onTourStopsChanged,
   updateTour,
   updateTourStop,
@@ -19,7 +21,8 @@ import {
   resetDayDepartures,
 } from '../../hooks/useTours';
 import type { Tour, TourDay, TourStopCategory, TourStopWithSiteSubmit } from '../../lib/tourTypes';
-import { dayColor, effectiveApproach, liveAnchorIndex, todayET, formatClock12, formatTime12, resolveStopCoord, stopDisplayName, type StopTiming } from '../../lib/tourRouting';
+import { dayColor, effectiveApproach, liveAnchorIndex, todayET, formatClock12, formatTime12, siteNumbers, stopInfo, type StopTiming } from '../../lib/tourRouting';
+import { atlasIcon, licensedIcon } from '../../lib/tourStores';
 import {
   ApproachTag,
   ArriveText,
@@ -34,6 +37,8 @@ import {
   categoryPillStyle,
   type DayTotals,
   OpenSiteLink,
+  customGlyph,
+  CUSTOM_STOP_COLOR,
 } from './TourStopCard';
 import { geocodingService } from '../../services/geocodingService';
 
@@ -105,6 +110,10 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   const [nameDraft, setNameDraft] = useState('');
   const [geocoding, setGeocoding] = useState<string | null>(null); // `${dayId}:start|end`
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [markets, setMarkets] = useState<Map<string, string | null>>(new Map()); // resolved (auto or override)
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customDraft, setCustomDraft] = useState({ categoryId: '', name: '', address: '', minutes: '' });
+  const [customBusy, setCustomBusy] = useState(false);
   const [labelDraft, setLabelDraft] = useState('');
   const narrow = useIsNarrow();
   const cancelLabelRef = useRef(false); // Escape: blur without saving
@@ -114,12 +123,14 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const [t, d, s, c] = await Promise.all([
+      const [t, d, s, c, m] = await Promise.all([
         fetchTour(tourId),
         fetchTourDays(tourId),
         fetchTourStops(tourId),
         fetchTourStopCategories(),
+        fetchTourStopMarkets(tourId),
       ]);
+      setMarkets(m);
       setTour(t);
       setNameDraft(t?.tour_name ?? '');
       setDays(d);
@@ -166,6 +177,9 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
     Object.values(map).forEach((arr) => arr.sort((a, b) => a.position - b.position));
     return map;
   }, [days, stops]);
+
+  // Site # across the whole tour (days in order, then position); site submits only.
+  const siteNo = useMemo(() => siteNumbers(days.flatMap((d) => sections[dayDroppableId(d.id)] ?? [])), [days, sections]);
 
   // ---- tour header ----
   const patchTour = async (fields: Partial<Tour>) => {
@@ -324,6 +338,53 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
     } else onChanged?.();
   };
 
+  // Market override / projected opening: blank → null (market then falls back to automatic).
+  const handleTextField = async (stopId: string, field: 'market' | 'projected_opening', raw: string) => {
+    const value = raw.trim() || null;
+    const prev = stops.find((s) => s.id === stopId)?.[field] ?? null;
+    if (value === prev) return;
+    setStops((all) => all.map((s) => (s.id === stopId ? { ...s, [field]: value } : s)));
+    const res = await updateTourStop(stopId, { [field]: value });
+    if (!res.ok) setError(res.error ?? `Failed to save ${field === 'market' ? 'market' : 'projected opening'}`);
+    else {
+      if (field === 'market') setMarkets(await fetchTourStopMarkets(tourId));
+      onChanged?.();
+    }
+  };
+
+  // + Custom stop: geocode the address (same geocoder as day start/end), add to Unscheduled.
+  const handleAddCustom = async () => {
+    const name = customDraft.name.trim();
+    const address = customDraft.address.trim();
+    if (!name || !address) return;
+    setCustomBusy(true);
+    setError(null);
+    const geo = await geocodingService.geocodeAddress(address);
+    if ('error' in geo) {
+      setCustomBusy(false);
+      setError(`Couldn't locate "${address}" — a custom stop needs a findable address.`);
+      return;
+    }
+    const minutes = customDraft.minutes.trim() === '' ? null : Math.max(0, parseInt(customDraft.minutes, 10) || 0);
+    const res = await addCustomStop(tourId, {
+      name,
+      address: geo.formatted_address,
+      city: geo.city ?? null,
+      lat: geo.latitude,
+      lng: geo.longitude,
+      categoryId: customDraft.categoryId || null,
+      minutes,
+    });
+    setCustomBusy(false);
+    if (!res.ok) {
+      setError(res.error ?? 'Failed to add the custom stop');
+      return;
+    }
+    setCustomDraft({ categoryId: '', name: '', address: '', minutes: '' });
+    setCustomOpen(false);
+    onChanged?.();
+  };
+
   const handleNotesBlur = async (stopId: string, notes: string) => {
     const res = await updateTourStop(stopId, { notes: notes.trim() || null });
     if (!res.ok) setError(res.error ?? 'Failed to save notes');
@@ -370,12 +431,11 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
     color: string,
     live?: { dayDate: string; anchorIdx: number; currentStopId: string | null }
   ) => {
-    const { name, subtext } = stopDisplayName({
-      display_label: stop.display_label,
-      site_submit_name: stop.site_submit?.site_submit_name,
-      property: stop.site_submit?.property,
-    });
-    const mapped = !!resolveStopCoord(stop.site_submit);
+    const info = stopInfo(stop);
+    const { name, subtext } = info;
+    const mapped = !!info.coord;
+    const no = siteNo.get(stop.id) ?? null;
+    const storeIcon = stop.stop_kind === 'atlas_store' ? atlasIcon(null) : stop.stop_kind === 'licensed_store' ? licensedIcon(null) : null;
     const sched = mapped ? stopSchedule?.[stop.id] : undefined;
     const categoryName = stop.category_id ? categoryById[stop.category_id]?.name : null;
     const ssLink = (text: string, linkColor: string) =>
@@ -395,16 +455,18 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
             <TourStopCard
               done={!!live && index <= live.anchorIdx}
               number={index + 1}
-              color={mapped ? color : TERRACOTTA}
+              color={!mapped ? TERRACOTTA : stop.stop_kind === 'custom' ? CUSTOM_STOP_COLOR : color}
+              badgeLabel={no ?? (stop.stop_kind === 'custom' ? customGlyph(categoryName) : '•')}
+              badgeIcon={storeIcon}
               badgeProps={dp.dragHandleProps ?? undefined}
-              badgeTitle="Drag to reorder / move between days"
+              badgeTitle={`${no != null ? `Site #${no} — ` : info.status ? `${info.status} — ` : ''}drag to reorder / move between days`}
               dragging={snap.isDragging}
               title={
                 editingLabelId === stop.id ? (
                   <input
                     autoFocus
                     value={labelDraft}
-                    placeholder={stopDisplayName({ site_submit_name: stop.site_submit?.site_submit_name, property: stop.site_submit?.property }).name}
+                    placeholder={info.defaultName}
                     onChange={(e) => setLabelDraft(e.target.value)}
                     onBlur={() => commitLabel(stop.id)}
                     onKeyDown={(e) => {
@@ -465,6 +527,7 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                   )}
                   {!mapped && <NoLocationTag />}
                   <ApproachTag source={effectiveApproach(stop.approach_waypoints_override, stop.site_submit?.approach_waypoints).source} />
+                  {info.status && <span style={{ fontSize: 11, color: STEEL }}>{info.status}</span>}
                 </>
               }
               subtext={subtext ? (onOpenSite ? subtext : ssLink(subtext, '#9CA3AF')) : null}
@@ -479,6 +542,24 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                     onBlur={(e) => handleNotesBlur(stop.id, e.target.value)}
                     style={{ width: '100%', marginTop: 6, border: `1px solid ${TOUR_COLORS.cardBorder}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
                   />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <input
+                      key={`m-${stop.id}-${stop.market ?? ''}`}
+                      defaultValue={stop.market ?? ''}
+                      placeholder={markets.get(stop.id) ? `Market: ${markets.get(stop.id)} (auto)` : 'Market'}
+                      title="Market — blank uses the automatic market (target area → nearest Atlas store)"
+                      onBlur={(e) => handleTextField(stop.id, 'market', e.target.value)}
+                      style={{ flex: 3, minWidth: 0, border: `1px solid ${TOUR_COLORS.cardBorder}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                    />
+                    <input
+                      key={`p-${stop.id}-${stop.projected_opening ?? ''}`}
+                      defaultValue={stop.projected_opening ?? ''}
+                      placeholder="Projected opening"
+                      title="Projected opening, e.g. Q3/Q4 FY28"
+                      onBlur={(e) => handleTextField(stop.id, 'projected_opening', e.target.value)}
+                      style={{ flex: 2, minWidth: 0, border: `1px solid ${TOUR_COLORS.cardBorder}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+                    />
+                  </div>
                 </>
               }
               aside={
@@ -502,13 +583,13 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
   const renderSection = (opts: { id: string; title: React.ReactNode; subtitle?: React.ReactNode; color: string; totals?: DayTotals; day?: TourDay }) => {
     const list = sections[opts.id] ?? [];
     const isLive = !!opts.day?.day_date && opts.day.day_date === todayET();
-    const anchorIdx = liveAnchorIndex(list.map((s) => (resolveStopCoord(s.site_submit) ? s.actual_departure_at : null)));
+    const anchorIdx = liveAnchorIndex(list.map((s) => (stopInfo(s).coord ? s.actual_departure_at : null)));
     const live = isLive
       ? {
           dayDate: opts.day!.day_date!,
           anchorIdx,
           // Current stop = first mapped stop after the anchor (stop 1 if nothing stamped).
-          currentStopId: list.find((s, i) => i > anchorIdx && !!resolveStopCoord(s.site_submit))?.id ?? null,
+          currentStopId: list.find((s, i) => i > anchorIdx && !!stopInfo(s).coord)?.id ?? null,
         }
       : undefined;
     return (
@@ -588,10 +669,71 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: MIDNIGHT }}>Schedule — drag stops between days</div>
-        <button type="button" onClick={handleAddDay} style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-          + Add day
-        </button>
+        <span style={{ display: 'inline-flex', gap: 6 }}>
+          <button type="button" onClick={() => setCustomOpen((o) => !o)} style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+            + Custom stop
+          </button>
+          <button type="button" onClick={handleAddDay} style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+            + Add day
+          </button>
+        </span>
       </div>
+
+      {customOpen && (
+        <div style={{ border: `1px solid ${SLATE}`, borderRadius: 8, padding: 10, marginBottom: 12, background: '#FFFFFF', display: 'grid', gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: MIDNIGHT }}>New custom stop — lands in Unscheduled</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <select
+              value={customDraft.categoryId}
+              onChange={(e) => {
+                const c = categories.find((x) => x.id === e.target.value);
+                setCustomDraft((d) => ({ ...d, categoryId: e.target.value, minutes: c ? String(c.default_stop_duration_minutes ?? '') : d.minutes }));
+              }}
+              style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+            >
+              <option value="">Other</option>
+              {categories
+                .filter((c) => ['Lunch', 'Coffee', 'Hotel', 'Meeting'].includes(c.name))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+            </select>
+            <input
+              value={customDraft.name}
+              onChange={(e) => setCustomDraft((d) => ({ ...d, name: e.target.value }))}
+              placeholder="Name (e.g. Lunch at Bubba's)"
+              style={{ flex: '1 1 160px', border: `1px solid ${SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+            />
+            <input
+              value={customDraft.minutes}
+              onChange={(e) => setCustomDraft((d) => ({ ...d, minutes: e.target.value.replace(/[^0-9]/g, '') }))}
+              placeholder="min"
+              title="Minutes at this stop (blank = category default)"
+              style={{ width: 50, border: `1px solid ${SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+            />
+          </div>
+          <input
+            value={customDraft.address}
+            onChange={(e) => setCustomDraft((d) => ({ ...d, address: e.target.value }))}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddCustom()}
+            placeholder="Address"
+            style={{ border: `1px solid ${SLATE}`, borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              onClick={handleAddCustom}
+              disabled={customBusy || !customDraft.name.trim() || !customDraft.address.trim()}
+              style={{ border: 'none', background: MIDNIGHT, color: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+            >
+              {customBusy ? 'Locating…' : 'Add stop'}
+            </button>
+            <button type="button" onClick={() => setCustomOpen(false)} style={{ border: `1px solid ${SLATE}`, background: '#fff', color: MIDNIGHT, borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <DragDropContext onDragEnd={handleDragEnd}>
         {days.map((day, di) =>

@@ -341,6 +341,46 @@ No migration. New dependency: `jspdf` 4.2.1 (3.x had open advisories; lazy-loade
 - **Tests:** `tests/tours/tourPdf.test.ts` (fit/projection, simplification, URL has no paths/markers,
   WinAnsi text mapping, builder smoke test: page count + one basemap per map).
 
+## Phase 5.1 — Itinerary upgrade: stop kinds, site numbers, branded landscape PDF (branch `feature/tour-routing`)
+
+Migration `20261102091623_tour_stop_kinds.sql` (applied to prod + recorded 2026-11-02; rolled-back test first).
+- **Stop kinds** (`tour_stop.stop_kind`): `site_submit` (all pre-existing rows), `atlas_store`, `licensed_store`,
+  `custom`. `site_submit_id` is nullable; a CHECK per kind enforces what each needs. Store stops SNAPSHOT
+  name/address/city/market/lat/lng from the layer tables at add time — deliberately no FK (store tables are
+  reloaded on import). One store per tour (partial unique index). New text fields: `projected_opening`,
+  `market` (stores/custom: stored; site submits: NULL = automatic, text = override). Categories Lunch / Coffee /
+  Hotel / Meeting seeded.
+- **Market** = `tour_stop_markets(tour_id)` RPC (SECURITY INVOKER, EXECUTE to authenticated only; anon HTTP call
+  verified refused): override → `starbucks_target_area.market_name` within 2 mi → nearest Atlas store's market
+  within 10 mi → blank.
+- **Site #**: site submits only, continuous across the tour (days in order, then position) — `siteNumbers()`.
+  Map pins, schedule cards, Reorder panel and PDF all use it. Stores/custom are unnumbered with their own icons
+  (Atlas / licensed PNGs from `public/Images/`, custom = gray pin with a category glyph).
+- **Status** (auto): New store opportunity / Existing store / Licensed store / blank (custom).
+- **UI**: "Add to tour" on the Atlas (`StarbucksPopup`) and Licensed popups — lists every active tour across
+  clients (a store has no client; "+ New tour" hidden). "+ Custom stop" in the Reorder panel (type → category,
+  name, address geocoded with the day-address geocoder, minutes) → Unscheduled. Reorder cards: Market override
+  (placeholder shows the automatic market) + Projected opening inputs. Map cards: compact
+  Market · City · Status · Opens line. Site-only features (↗ sidebar, site default approach) are hidden for
+  other kinds.
+- **PDF** (Letter landscape, full color): cover (navy #011742 band, Oculus white logo, gold #B38535 rule, tour name
+  in Oklahoma, "Prepared for <client>", dates, overview map); per day: Oklahoma header with gold underline,
+  agenda table (navy header row): Site # | Location | Market | City | Status | Notes | Projected Opening | Min |
+  Start | End | Drive to next | Arrive next, A/B rows, gold totals line, traffic note; day map shares the last
+  agenda page only when it keeps the same zoom, else gets its own page. Maps: standard color Static Maps
+  basemap (JPEG; business POIs hidden), routes in day colors, teardrop pins like the tour map, A green / B red,
+  every Atlas / licensed store in frame drawn with its logo (export checkboxes, default on), legend.
+  Footer on every page: gold rule, Oculus mark, "Oculus Real Estate Partners · oculusrep.com", generated date,
+  Page X of Y. Starbucks logo top-right only if `public/brand/starbucks-logo.*` exists (none today).
+- **Brand assets**: `public/brand/*.svg` (Oculus logos) are rasterized to PNG in a canvas at export (band logo
+  1200px, mark 256px) — jsPDF's SVG path needs canvg and handles clip paths poorly. Oklahoma Regular/Bold
+  (`src/assets/fonts/`, from the brand package; OS/2 fsType 0 = embeddable) load via `?url` only on export and
+  are embedded for headings; body text is Helvetica. Note: as Vite assets the .ttf files are publicly
+  downloadable from the app's domain (no license text was included in the package; copyright Brother
+  Industries 1993–98).
+- **Size**: ~0.75 MB for Jared's tour (store icons downscaled to 96px, images aliased once, compressed streams).
+  Cost unchanged: 1 Static Maps request per map image, no routing calls.
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding

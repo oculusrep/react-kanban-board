@@ -3,10 +3,13 @@ import {
   useTours,
   addSiteSubmitToTour,
   removeTourStop,
+  addStoreToTour,
   fetchSiteSubmitTourStops,
+  fetchStoreTourStops,
   onTourStopsChanged,
   type SiteSubmitTourMembership,
 } from '../../hooks/useTours';
+import type { TourStoreRef } from '../../lib/tourStores';
 
 // ---------------------------------------------------------------------------
 // AddToTourButton — overlay-first, drop-in staging control.
@@ -21,6 +24,9 @@ import {
 // ---------------------------------------------------------------------------
 
 interface AddToTourButtonProps {
+  /** Stage an Atlas / licensed store instead of a site submit (main map store popups).
+   *  Lists every active tour across clients; "+ New tour" is hidden (a store has no client). */
+  store?: TourStoreRef | null;
   /** The site submit to stage. A tour stop always references a site submit, so this
    *  may be null (e.g. a deal with no linked site submit) — the button disables then. */
   siteSubmitId: string | null | undefined;
@@ -49,13 +55,14 @@ function stopWork(m: SiteSubmitTourMembership): string[] {
 }
 
 export function AddToTourButton({
+  store = null,
   siteSubmitId,
   clientId,
   label = 'Add to tour',
   noSiteSubmitReason = 'No linked site submit to add to a tour',
   onStaged,
 }: AddToTourButtonProps) {
-  const { tours, loading, createTour, refresh } = useTours(clientId);
+  const { tours, loading, createTour, refresh } = useTours(store ? null : clientId, { allClients: !!store });
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -68,17 +75,19 @@ export function AddToTourButton({
   const lastPointerRef = useRef<string>('mouse');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const storeKey = store ? `${store.kind}:${store.store_number}` : null;
   const loadMembers = useCallback(async () => {
-    if (!siteSubmitId) {
+    if (!siteSubmitId && !store) {
       setMembers([]);
       return;
     }
     try {
-      setMembers(await fetchSiteSubmitTourStops(siteSubmitId));
+      setMembers(store ? await fetchStoreTourStops(store.kind, store.store_number) : await fetchSiteSubmitTourStops(siteSubmitId!));
     } catch {
       /* keep the last known state; the menu still works */
     }
-  }, [siteSubmitId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteSubmitId, storeKey]);
 
   useEffect(() => {
     loadMembers();
@@ -105,10 +114,10 @@ export function AddToTourButton({
   }, [open]);
 
   const stage = async (tourId: string) => {
-    if (!siteSubmitId) return;
+    if (!siteSubmitId && !store) return;
     setBusy(true);
     setStatus(null);
-    const res = await addSiteSubmitToTour(tourId, siteSubmitId);
+    const res = store ? await addStoreToTour(tourId, store) : await addSiteSubmitToTour(tourId, siteSubmitId!);
     setBusy(false);
     if (res.ok) {
       setStatus('Added to tour');
@@ -169,7 +178,9 @@ export function AddToTourButton({
     }
   };
 
-  const disabledReason = !siteSubmitId
+  const disabledReason = store
+    ? null
+    : !siteSubmitId
     ? noSiteSubmitReason
     : !clientId
     ? "This record has no client, so it can't be added to a tour."
@@ -205,7 +216,7 @@ export function AddToTourButton({
           {loading && tours.length === 0 && <div style={itemMuted}>Loading tours…</div>}
 
           {!loading && tours.length === 0 && !creating && (
-            <div style={itemMuted}>No tours yet for this client.</div>
+            <div style={itemMuted}>{store ? 'No active tours.' : 'No tours yet for this client.'}</div>
           )}
 
           {!creating &&
@@ -266,6 +277,9 @@ export function AddToTourButton({
                     <span>
                       {t.tour_name}
                       {t.is_archived ? ' (archived)' : ''}
+                      {store && t.client_name && (
+                        <span style={{ display: 'block', color: SLATE, fontSize: 11, fontWeight: 400 }}>{t.client_name}</span>
+                      )}
                     </span>
                   </span>
                   {removing ? (
@@ -279,9 +293,9 @@ export function AddToTourButton({
               );
             })}
 
-          <div style={{ borderTop: `1px solid ${SLATE}`, margin: '4px 0' }} />
+          {!store && <div style={{ borderTop: `1px solid ${SLATE}`, margin: '4px 0' }} />}
 
-          {creating ? (
+          {store ? null : creating ? (
             <div style={{ padding: '6px 10px' }}>
               <input
                 autoFocus
