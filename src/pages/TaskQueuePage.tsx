@@ -25,6 +25,7 @@ import { fetchUnreadTaskIds } from '../lib/taskChat';
 // Noree (VA) lands here by default. Admins can open anyone's queue.
 
 const NOW_COUNT = 3;
+const UNDO_MS = 6000; // how long the "Marked done … Undo" toast stays
 const FILTER_KEY = 'ovis.taskQueue.filter';
 type Filter = 'all' | 'package';
 
@@ -148,6 +149,10 @@ export default function TaskQueuePage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); // Up next cards opened inline
   const toggleExpanded = (key: string) =>
     setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  // Toast after a check-off; Undo reopens the task and restores the queue order it had.
+  const [undo, setUndo] = useState<{ task: QueueTask; text: string; order: string[] } | null>(null);
+  const undoTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (undoTimer.current) window.clearTimeout(undoTimer.current); }, []);
   const chatOpenRef = useRef<string | null>(null);
   chatOpenRef.current = chatTaskId;
 
@@ -287,6 +292,53 @@ export default function TaskQueuePage() {
     }
   };
 
+  const complete = async (t: QueueTask) => {
+    const order = tasks.map((x) => x.id);
+    const site = placeOf(t)?.name ?? (t.slide ? pkgNames[t.slide.package_id] : null);
+    const text = [t.slide?.label ?? t.subject, site].filter(Boolean).join(' · ');
+    setBusy(t.id);
+    try {
+      await setQueueTaskStatus(t.id, 'completed');
+      if (chatTaskId === t.id) setChatTaskId(null);
+      if (undoTimer.current) window.clearTimeout(undoTimer.current);
+      setUndo({ task: t, text, order });
+      undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
+      await load();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not update the task');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Reopen = status back to open (sync_slide_from_task moves the slide back to in
+  // progress), then in_progress again if it had been started. Status and queue_rank
+  // writes never touch the board clock (supabase/tests/task_undo_clock_test.sql).
+  const undoComplete = async () => {
+    if (!undo || !ownerId) return;
+    const { task: t, order } = undo;
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    setUndo(null);
+    setBusy(t.id);
+    try {
+      await setQueueTaskStatus(t.id, 'open');
+      if (t.status === 'in_progress') await setQueueTaskStatus(t.id, 'in_progress');
+      if (canReorder) {
+        // Back to the order before the check-off; anything new since goes after.
+        const now = (await fetchQueue(ownerId)).map((x) => x.id);
+        const present = new Set(now);
+        const kept = order.filter((id) => present.has(id));
+        const keptSet = new Set(kept);
+        await saveQueueOrder([...kept, ...now.filter((id) => !keptSet.has(id))]);
+      }
+      await load();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not undo');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const heldByInput = useMemo(() => {
     const m = new Map<InputKey, HeldSlide[]>();
     for (const s of held) for (const k of s.missing_inputs) m.set(k, [...(m.get(k) ?? []), s]);
@@ -337,7 +389,7 @@ export default function TaskQueuePage() {
               expanded={expanded.has(c.key)}
               onToggle={() => toggleExpanded(c.key)}
               onOpen={c.site_submit_id || c.deal_id ? () => openSidebar(c) : null}
-              onCheck={(t) => setStatus(t, 'completed')}
+              onCheck={complete}
               onStart={(t) => setStatus(t, 'in_progress')}
               onChat={openChat}
             />
@@ -356,7 +408,7 @@ export default function TaskQueuePage() {
               variant={variant}
               expanded={expanded.has(c.key)}
               onToggle={() => toggleExpanded(c.key)}
-              onCheck={() => setStatus(c.task, 'completed')}
+              onCheck={() => complete(c.task)}
               onStart={() => setStatus(c.task, 'in_progress')}
               onOpen={c.task.site_submit_id || c.task.deal_id ? () => openSidebar(c.task) : null}
               onChat={() => openChat(c.task)}
@@ -531,6 +583,17 @@ export default function TaskQueuePage() {
         onClose={closeChat}
         onRead={onChatRead}
       />
+
+      {undo && (
+        <div role="status" aria-live="polite"
+             className="fixed bottom-6 left-1/2 z-[60] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-lg bg-white px-4 py-2 text-sm shadow-lg"
+             style={{ border: `1px solid ${BRAND.slate}`, color: BRAND.navy }}>
+          <span className="min-w-0 truncate">Marked done: {undo.text}</span>
+          <button type="button" onClick={undoComplete} className="shrink-0 font-semibold hover:underline" style={{ color: BRAND.steel }}>
+            Undo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
