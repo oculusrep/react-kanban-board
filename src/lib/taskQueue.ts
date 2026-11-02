@@ -5,7 +5,7 @@
 // task subject.
 
 import { supabase } from './supabaseClient';
-import { InputKey } from './packageTracker';
+import { InputKey, localDate } from './packageTracker';
 
 export interface QueueTask {
   id: string;
@@ -18,7 +18,7 @@ export interface QueueTask {
   deal_id: string | null;
   site_submit_id: string | null;
   package_slide_id: string | null;
-  slide: { label: string; handoff: 'none' | 'approve' | 'finish'; template_key: string } | null;
+  slide: { label: string; handoff: 'none' | 'approve' | 'finish'; template_key: string; package_id: string; done_by_gate: number | null } | null;
 }
 
 export interface HeldSlide {
@@ -50,7 +50,7 @@ export async function fetchQueueOwners(): Promise<QueueOwner[]> {
 export async function fetchQueue(ownerId: string): Promise<QueueTask[]> {
   const { data, error } = await supabase
     .from('task')
-    .select('id, subject, description, status, due_at, queue_rank, created_at, deal_id, site_submit_id, package_slide_id, slide:deal_package_slide!task_package_slide_id_fkey ( label, handoff, template_key )')
+    .select('id, subject, description, status, due_at, queue_rank, created_at, deal_id, site_submit_id, package_slide_id, slide:deal_package_slide!task_package_slide_id_fkey ( label, handoff, template_key, package_id, done_by_gate )')
     .eq('owner_id', ownerId)
     .in('status', ['open', 'in_progress'])
     .order('queue_rank', { ascending: true, nullsFirst: false })
@@ -110,4 +110,79 @@ export async function setQueueTaskStatus(id: string, status: 'open' | 'in_progre
     .update({ status, completed_at: status === 'completed' ? new Date().toISOString() : null })
     .eq('id', id);
   if (error) throw error;
+}
+
+// ─── Command center (2026-11-02) ────────────────────────────────────────────
+
+// Slides this owner has handed off and that now sit with Mike (approve / finish).
+export interface WaitingSlide {
+  id: string;
+  label: string;
+  package_id: string;
+  deal_id: string | null;
+  site_submit_id: string | null;
+  owner_done_at: string | null;
+}
+
+export async function fetchWaitingOnMike(ownerId: string): Promise<WaitingSlide[]> {
+  const { data, error } = await supabase
+    .from('deal_package_slide')
+    .select('id, label, package_id, owner_done_at, pkg:deal_package!inner ( deal_id, site_submit_id )')
+    .eq('owner_user_id', ownerId)
+    .eq('status', 'waiting_on_mike')
+    .order('owner_done_at', { ascending: true });
+  if (error) throw error;
+  return ((data as any[]) ?? []).map((s) => {
+    const pkg = one(s.pkg) as { deal_id: string | null; site_submit_id: string | null } | null;
+    return { id: s.id, label: s.label, package_id: s.package_id, owner_done_at: s.owner_done_at,
+             deal_id: pkg?.deal_id ?? null, site_submit_id: pkg?.site_submit_id ?? null };
+  });
+}
+
+// Monday 00:00 local (Eastern) of the current week, as an ISO instant.
+export function weekStartIso(now = new Date()): string {
+  const d = new Date(`${localDate(now)}T00:00:00`);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.toISOString();
+}
+
+export async function fetchDoneThisWeek(ownerId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('task')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', ownerId)
+    .eq('status', 'completed')
+    .gte('completed_at', weekStartIso());
+  if (error) throw error;
+  return count ?? 0;
+}
+
+// Site / deal name and city for the cards. One batched read per table (site_submit
+// RLS seq-scans per query, so never per card); loaded after the queue renders.
+export interface Place { name: string | null; city: string | null }
+
+export async function fetchPlaces(siteIds: string[], dealIds: string[]): Promise<{ sites: Record<string, Place>; deals: Record<string, Place> }> {
+  const sites: Record<string, Place> = {};
+  const deals: Record<string, Place> = {};
+  const [s, d] = await Promise.all([
+    siteIds.length
+      ? supabase.from('site_submit')
+          .select('id, site_submit_name, property:property!site_submit_property_id_fkey ( property_name, city )')
+          .in('id', siteIds)
+      : Promise.resolve({ data: [], error: null }),
+    dealIds.length
+      ? supabase.from('deal').select('id, deal_name, property:property_id ( property_name, city )').in('id', dealIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (s.error) throw s.error;
+  if (d.error) throw d.error;
+  for (const r of (s.data as any[]) ?? []) {
+    const p = one(r.property) as { property_name: string | null; city: string | null } | null;
+    sites[r.id] = { name: r.site_submit_name || p?.property_name || null, city: p?.city ?? null };
+  }
+  for (const r of (d.data as any[]) ?? []) {
+    const p = one(r.property) as { property_name: string | null; city: string | null } | null;
+    deals[r.id] = { name: r.deal_name || p?.property_name || null, city: p?.city ?? null };
+  }
+  return { sites, deals };
 }
