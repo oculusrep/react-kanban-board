@@ -18,7 +18,7 @@ export interface QueueTask {
   deal_id: string | null;
   site_submit_id: string | null;
   package_slide_id: string | null;
-  slide: { label: string; handoff: 'none' | 'approve' | 'finish'; template_key: string; package_id: string; done_by_gate: number | null } | null;
+  slide: { label: string; handoff: 'none' | 'approve' | 'finish'; template_key: string; package_id: string; done_by_gate: number | null; position: number } | null;
 }
 
 export interface HeldSlide {
@@ -28,6 +28,7 @@ export interface HeldSlide {
   deal_id: string | null;
   site_submit_id: string | null;
   missing_inputs: InputKey[];
+  position: number;
 }
 
 export interface QueueOwner { id: string; name: string; role: string | null }
@@ -50,7 +51,7 @@ export async function fetchQueueOwners(): Promise<QueueOwner[]> {
 export async function fetchQueue(ownerId: string): Promise<QueueTask[]> {
   const { data, error } = await supabase
     .from('task')
-    .select('id, subject, description, status, due_at, queue_rank, created_at, deal_id, site_submit_id, package_slide_id, slide:deal_package_slide!task_package_slide_id_fkey ( label, handoff, template_key, package_id, done_by_gate )')
+    .select('id, subject, description, status, due_at, queue_rank, created_at, deal_id, site_submit_id, package_slide_id, slide:deal_package_slide!task_package_slide_id_fkey ( label, handoff, template_key, package_id, done_by_gate, position )')
     .eq('owner_id', ownerId)
     .in('status', ['open', 'in_progress'])
     .order('queue_rank', { ascending: true, nullsFirst: false })

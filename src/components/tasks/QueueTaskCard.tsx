@@ -8,7 +8,7 @@ import type { QueueTask } from '../../lib/taskQueue';
 // "compact" in Up next. Palette is the deal board's: navy / steel / slate,
 // terracotta for attention. No green.
 
-export type TagTone = 'quiet' | 'watch' | 'urgent' | 'unknown';
+export type TagTone = 'quiet' | 'watch' | 'urgent' | 'unknown' | 'solid';
 export interface CardTag { label: string; tone: TagTone }
 
 const TAG_STYLE: Record<TagTone, CSSProperties> = {
@@ -16,6 +16,7 @@ const TAG_STYLE: Record<TagTone, CSSProperties> = {
   watch:   { border: `1px solid ${BRAND.terracotta}`, color: BRAND.terracotta },
   urgent:  { backgroundColor: BRAND.terracotta, color: '#FFFFFF', border: `1px solid ${BRAND.terracotta}` },
   unknown: { border: `1px dashed ${BRAND.slate}`, color: BRAND.slate },
+  solid:   { backgroundColor: BRAND.steel, color: '#FFFFFF', border: `1px solid ${BRAND.steel}` },
 };
 
 const HANDOFF_HINT: Record<string, string> = {
@@ -32,12 +33,12 @@ export function Tag({ tag }: { tag: CardTag }) {
   );
 }
 
-function UnreadDot({ on }: { on: boolean }) {
+export function UnreadDot({ on }: { on: boolean }) {
   if (!on) return null;
   return <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white" style={{ backgroundColor: BRAND.terracotta }} aria-label="Unread messages" />;
 }
 
-function ChatButton({ unread, onClick, large }: { unread: boolean; onClick: () => void; large?: boolean }) {
+export function ChatButton({ unread, onClick, large }: { unread: boolean; onClick: () => void; large?: boolean }) {
   return (
     <button type="button" onClick={onClick} title={unread ? 'Chat — new message' : 'Chat'}
             className={`relative inline-flex items-center gap-1.5 rounded ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-xs'}`}
@@ -51,7 +52,7 @@ function ChatButton({ unread, onClick, large }: { unread: boolean; onClick: () =
   );
 }
 
-function CheckOff({ disabled, onClick, large }: { disabled: boolean; onClick: () => void; large?: boolean }) {
+export function CheckOff({ disabled, onClick, large }: { disabled: boolean; onClick: () => void; large?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-label="Check off"
             className={`inline-flex items-center gap-1.5 rounded font-medium text-white disabled:opacity-50 ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-xs'}`}
@@ -64,7 +65,7 @@ function CheckOff({ disabled, onClick, large }: { disabled: boolean; onClick: ()
   );
 }
 
-function StartOrState({ task, disabled, onStart, large }: { task: QueueTask; disabled: boolean; onStart: () => void; large?: boolean }) {
+export function StartOrState({ task, disabled, onStart, large }: { task: QueueTask; disabled: boolean; onStart: () => void; large?: boolean }) {
   if (task.status === 'in_progress') {
     return <span className={`font-medium ${large ? 'text-sm' : 'text-xs'}`} style={{ color: BRAND.navy }}>● In progress</span>;
   }
@@ -77,7 +78,7 @@ function StartOrState({ task, disabled, onStart, large }: { task: QueueTask; dis
   );
 }
 
-function Grip({ handle, enabled, vertical }: { handle: DraggableProvidedDragHandleProps | null | undefined; enabled: boolean; vertical: boolean }) {
+export function Grip({ handle, enabled, vertical }: { handle: DraggableProvidedDragHandleProps | null | undefined; enabled: boolean; vertical: boolean }) {
   const dots = (
     <svg viewBox="0 0 12 20" className="h-5 w-3" fill="currentColor" aria-hidden>
       {[3, 10, 17].map((y) => [3, 9].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.6" />))}

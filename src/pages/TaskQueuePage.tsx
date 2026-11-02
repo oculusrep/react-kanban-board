@@ -3,10 +3,11 @@ import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea
 import { useAuth } from '../contexts/AuthContext';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import { CardTag, QueueTaskCard } from '../components/tasks/QueueTaskCard';
+import { PackageQueueCard } from '../components/tasks/PackageQueueCard';
 import { TaskChatPanel } from '../components/tasks/TaskChatPanel';
 import { supabase } from '../lib/supabaseClient';
 import {
-  BRAND, INPUT_LABEL, InputKey, PACE_LABEL, ProgressRow, fetchAllPackageProgress, localDate, paceOf, shortDate,
+  BRAND, INPUT_LABEL, InputKey, PACE_LABEL, ProgressRow, currentGate, fetchAllPackageProgress, localDate, paceOf, shortDate,
 } from '../lib/packageTracker';
 import {
   HeldSlide, Place, QueueOwner, QueueTask, WaitingSlide, fetchDoneThisWeek, fetchHeldSlides, fetchPackageNames,
@@ -43,16 +44,50 @@ function useIsWide(minPx = 1024): boolean {
   return wide;
 }
 
-// Gate + pace for package tasks; due date for everything else.
-function tagFor(t: QueueTask, progress: Map<string, ProgressRow>): CardTag | null {
-  if (t.slide) {
-    const pace = paceOf(progress.get(t.slide.package_id) ?? null);
-    const gate = t.slide.done_by_gate ? `Gate ${t.slide.done_by_gate}` : 'Package';
-    if (pace === 'late') return { label: `${gate} · ${PACE_LABEL.late}`, tone: 'urgent' };
-    if (pace === 'behind') return { label: `${gate} · ${PACE_LABEL.behind}`, tone: 'watch' };
-    if (pace === 'unknown') return { label: `${gate} · date unknown`, tone: 'unknown' };
-    return { label: gate, tone: 'quiet' };
+// A queue card: one package (its owner's open slide tasks, grouped) or one ordinary task.
+// Cards are ranked; a package card ranks at its best-ranked task (the queue is
+// already sorted by queue_rank), so newly released slide tasks join their card.
+type QueueCard =
+  | { kind: 'task'; key: string; task: QueueTask }
+  | { kind: 'package'; key: string; packageId: string; tasks: QueueTask[]; site_submit_id: string | null; deal_id: string | null };
+
+function buildCards(tasks: QueueTask[]): QueueCard[] {
+  const cards: QueueCard[] = [];
+  const byPkg = new Map<string, Extract<QueueCard, { kind: 'package' }>>();
+  for (const t of tasks) {
+    const pkg = t.slide?.package_id;
+    if (!pkg) { cards.push({ kind: 'task', key: `t:${t.id}`, task: t }); continue; }
+    let c = byPkg.get(pkg);
+    if (!c) {
+      c = { kind: 'package', key: `p:${pkg}`, packageId: pkg, tasks: [], site_submit_id: t.site_submit_id, deal_id: t.deal_id };
+      byPkg.set(pkg, c);
+      cards.push(c);
+    }
+    c.tasks.push(t);
   }
+  for (const c of byPkg.values()) c.tasks.sort((a, b) => (a.slide?.position ?? 0) - (b.slide?.position ?? 0));
+  return cards;
+}
+
+// Ranked cards → the task order set_task_queue_order stores (a package's tasks
+// contiguous, in template order).
+const flatten = (cards: QueueCard[]): QueueTask[] => cards.flatMap((c) => (c.kind === 'task' ? [c.task] : c.tasks));
+
+// Package card tags: current gate (LOI stages) coloured by pace, and tour readiness.
+function packageTags(p: ProgressRow | null): CardTag[] {
+  if (!p) return [];
+  const tags: CardTag[] = [];
+  const pace = paceOf(p);
+  const gate = ['Negotiating LOI', 'LOI'].includes(p.stage ?? '') ? currentGate(p) : null;
+  if (pace === 'late') tags.push({ label: `${gate ? gate.label : 'Package'} · ${PACE_LABEL.late}`, tone: 'urgent' });
+  else if (pace === 'behind') tags.push({ label: `${gate ? gate.label : 'Package'} · ${PACE_LABEL.behind}`, tone: 'watch' });
+  else if (gate) tags.push({ label: gate.label, tone: gate.unknown ? 'unknown' : 'quiet' });
+  tags.push(p.tour_ready ? { label: 'Tour-ready', tone: 'solid' } : { label: `Tour ${p.tour_ready_done} of 3`, tone: 'quiet' });
+  return tags;
+}
+
+// Due date for ordinary tasks.
+function tagFor(t: QueueTask): CardTag | null {
   if (!t.due_at) return null;
   const due = localDate(new Date(t.due_at));
   const today = localDate();
@@ -145,7 +180,8 @@ export default function TaskQueuePage() {
       setErr(null);
       setLoading(false);
       // Secondary reads after the lanes render: names, cities, unread dots.
-      const pkgIds = [...new Set([...h, ...w].map((s) => s.package_id))];
+      const pkgIds = [...new Set([...h, ...w, ...q.map((t) => t.slide).filter(Boolean) as { package_id: string }[]]
+        .map((s) => s.package_id))];
       const all = [...q, ...h, ...w];
       const siteIds = [...new Set(all.map((x) => x.site_submit_id).filter(Boolean) as string[])];
       const dealIds = [...new Set(all.filter((x) => !x.site_submit_id && x.deal_id).map((x) => x.deal_id as string))];
@@ -183,16 +219,23 @@ export default function TaskQueuePage() {
   const ownerName = owners.find((o) => o.id === ownerId)?.name ?? '';
   const nameById = useMemo(() => Object.fromEntries(owners.map((o) => [o.id, o.name])), [owners]);
 
-  const visible = useMemo(() => (filter === 'package' ? tasks.filter((t) => t.package_slide_id) : tasks), [tasks, filter]);
+  const cards = useMemo(() => buildCards(tasks), [tasks]);
+  const visible = useMemo(() => (filter === 'package' ? cards.filter((c) => c.kind === 'package') : cards), [cards, filter]);
   const nowLane = visible.slice(0, NOW_COUNT);
   const nextLane = visible.slice(NOW_COUNT);
+  const heldByPkg = useMemo(() => {
+    const m = new Map<string, HeldSlide[]>();
+    for (const s of held) m.set(s.package_id, [...(m.get(s.package_id) ?? []), s]);
+    return m;
+  }, [held]);
 
   const placeOf = (x: { site_submit_id: string | null; deal_id: string | null }): Place | null =>
     (x.site_submit_id && places.sites[x.site_submit_id]) || (x.deal_id && places.deals[x.deal_id]) || null;
 
-  // Now and Up next are one list split after NOW_COUNT; a drag in or between them
-  // is a reorder of that list. With the package filter on, the filtered tasks keep
-  // the slots they held in the full queue, so hidden tasks don't move.
+  // Now and Up next are one list of cards split after NOW_COUNT; a drag in or
+  // between them reorders the cards. With the package filter on, package cards
+  // keep the slots they held in the full list, so hidden cards don't move. The
+  // order is stored as task queue_rank (set_task_queue_order, the whole queue).
   const onDragEnd = async (r: DropResult) => {
     if (!r.destination) return;
     const { source, destination } = r;
@@ -200,21 +243,22 @@ export default function TaskQueuePage() {
     const lane = (id: string) => (id === 'now' ? nowLane : nextLane);
     const moved = lane(source.droppableId)[source.index];
     if (!moved) return;
-    const rest = visible.filter((t) => t.id !== moved.id);
-    const destArr = lane(destination.droppableId).filter((t) => t.id !== moved.id);
+    const rest = visible.filter((c) => c.key !== moved.key);
+    const destArr = lane(destination.droppableId).filter((c) => c.key !== moved.key);
     let at: number;
     if (destination.index < destArr.length) at = rest.indexOf(destArr[destination.index]);
     else if (destArr.length) at = rest.indexOf(destArr[destArr.length - 1]) + 1;
     else at = destination.droppableId === 'now' ? 0 : rest.length;
     const reordered = [...rest.slice(0, at), moved, ...rest.slice(at)];
 
-    let next: QueueTask[];
-    if (filter === 'all') next = reordered;
+    let nextCards: QueueCard[];
+    if (filter === 'all') nextCards = reordered;
     else {
-      const slots = new Set(visible.map((t) => t.id));
+      const slots = new Set(visible.map((c) => c.key));
       let i = 0;
-      next = tasks.map((t) => (slots.has(t.id) ? reordered[i++] : t));
+      nextCards = cards.map((c) => (slots.has(c.key) ? reordered[i++] : c));
     }
+    const next = flatten(nextCards);
     const before = tasks;
     setTasks(next);
     try {
@@ -263,28 +307,52 @@ export default function TaskQueuePage() {
   const slideSiteName = (s: { package_id: string; site_submit_id: string | null; deal_id: string | null }) =>
     placeOf(s)?.name ?? pkgNames[s.package_id] ?? 'package';
 
-  const renderCard = (t: QueueTask, position: number, variant: 'large' | 'compact', index: number) => (
-    <Draggable key={t.id} draggableId={t.id} index={index} isDragDisabled={!canReorder}>
+  const firstName = ownerName.split(' ')[0] || ownerName;
+  const renderCard = (c: QueueCard, position: number, variant: 'large' | 'compact', index: number) => (
+    <Draggable key={c.key} draggableId={c.key} index={index} isDragDisabled={!canReorder}>
       {(drag) => (
         <div ref={drag.innerRef} {...drag.draggableProps} style={drag.draggableProps.style}
              className={variant === 'large' ? (isWide ? 'min-w-0 flex-1 basis-0' : 'mb-3') : 'mb-2'}>
-          <QueueTaskCard
-            task={t}
-            position={position}
-            siteName={placeOf(t)?.name ?? null}
-            city={placeOf(t)?.city ?? null}
-            ownerName={ownerName.split(' ')[0] || ownerName}
-            tag={tagFor(t, progress)}
-            unread={unread.has(t.id)}
-            busy={busy === t.id}
-            canReorder={canReorder}
-            dragHandle={drag.dragHandleProps}
-            variant={variant}
-            onCheck={() => setStatus(t, 'completed')}
-            onStart={() => setStatus(t, 'in_progress')}
-            onOpen={t.site_submit_id || t.deal_id ? () => openSidebar(t) : null}
-            onChat={() => openChat(t)}
-          />
+          {c.kind === 'package' ? (
+            <PackageQueueCard
+              position={position}
+              name={placeOf(c)?.name ?? pkgNames[c.packageId] ?? (c.tasks[0].subject.split(' — ').slice(1).join(' — ') || 'Package')}
+              city={placeOf(c)?.city ?? null}
+              ownerName={firstName}
+              tasks={c.tasks}
+              held={heldByPkg.get(c.packageId) ?? []}
+              progress={progress.get(c.packageId) ?? null}
+              pace={progress.get(c.packageId) ? paceOf(progress.get(c.packageId)!) : null}
+              tags={packageTags(progress.get(c.packageId) ?? null)}
+              unread={unread}
+              busyTaskId={busy}
+              canReorder={canReorder}
+              dragHandle={drag.dragHandleProps}
+              variant={variant}
+              onOpen={c.site_submit_id || c.deal_id ? () => openSidebar(c) : null}
+              onCheck={(t) => setStatus(t, 'completed')}
+              onStart={(t) => setStatus(t, 'in_progress')}
+              onChat={openChat}
+            />
+          ) : (
+            <QueueTaskCard
+              task={c.task}
+              position={position}
+              siteName={placeOf(c.task)?.name ?? null}
+              city={placeOf(c.task)?.city ?? null}
+              ownerName={firstName}
+              tag={tagFor(c.task)}
+              unread={unread.has(c.task.id)}
+              busy={busy === c.task.id}
+              canReorder={canReorder}
+              dragHandle={drag.dragHandleProps}
+              variant={variant}
+              onCheck={() => setStatus(c.task, 'completed')}
+              onStart={() => setStatus(c.task, 'in_progress')}
+              onOpen={c.task.site_submit_id || c.task.deal_id ? () => openSidebar(c.task) : null}
+              onChat={() => openChat(c.task)}
+            />
+          )}
         </div>
       )}
     </Draggable>

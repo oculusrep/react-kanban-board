@@ -5,7 +5,7 @@ import usePackagesDashboard, { PackageRowView } from '../hooks/usePackagesDashbo
 import useTourPackageRows, { TourRowView } from '../hooks/useTourPackageRows';
 import { TourOption, fetchTourOptions } from '../lib/packageTours';
 import {
-  BRAND, GateState, INPUT_LABEL, PACE_LABEL, ProgressRow, STATUS_LABEL, SlideRow, paceStyle, shortDate, startPackageForCard,
+  BRAND, INPUT_LABEL, currentGate, PACE_LABEL, STATUS_LABEL, SlideRow, paceStyle, shortDate, startPackageForCard,
 } from '../lib/packageTracker';
 
 // Starbucks Packages dashboard (decisions 2026-10-22). Read-only except Start
@@ -22,16 +22,6 @@ import {
 
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-}
-
-function currentGate(p: ProgressRow): { label: string; unknown: boolean } | null {
-  const gates: [number, string | null, GateState][] = [
-    [3, p.gate3_at, p.gate3_state], [2, p.gate2_at, p.gate2_state], [1, p.gate1_at, p.gate1_state],
-  ];
-  for (const [n, at, st] of gates) if (st === 'reached') return { label: `Gate ${n} · ${shortDate(at)}`, unknown: false };
-  if (p.gate1_state === 'unknown') return { label: 'Gate 1 date unknown', unknown: true };
-  if (p.gate2_state === 'unknown') return { label: 'Gate 2 date unknown', unknown: true };
-  return { label: 'Before Gate 1', unknown: false };
 }
 
 const STAGE_SHORT: Record<string, string> = {

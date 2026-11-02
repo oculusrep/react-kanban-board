@@ -7,24 +7,30 @@ Shipped 2026-11-02. Redesign of the Package Tracker Phase 3 queue (spec §7 in
 
 - **Header strip:** Open tasks, Done this week (since Monday 00:00 Eastern), Waiting on Mike, Held.
   Always counts the whole queue; the filter doesn't change them.
-- **Now:** the top 3 queued tasks as large cards. **Up next:** the rest as compact cards with large drag handles.
-  The two lanes are one list split after 3, so a drag within or between them is a reorder saved through
-  `set_task_queue_order` (always sent as the full queue).
+- **Cards, not slides (2026-11-02, second pass).** Package tasks are grouped into one card per package
+  (site / deal). The card shows name, city, progress bar (done of applicable, pace-coloured), gate tag (LOI
+  stages, coloured by pace) and tour tag. Inside is a checklist of the owner's open slide tasks in template order
+  (`deal_package_slide.position`), with the first actionable one highlighted, and that package's held slides greyed
+  with the input they need. Ordinary tasks stay individual cards in the same ranked list.
+- **Now:** the top 3 cards, large. **Up next:** the rest, compact, with large drag handles. A drag ranks cards.
+- **Card ranking: no migration.** A card ranks at its best-ranked task (the queue is read sorted by `queue_rank`).
+  On drop, the cards are flattened back to tasks (a package's tasks together, in template order) and the full
+  queue is saved through `set_task_queue_order`. A slide task released later (`queue_rank` null) joins its card
+  without moving it. A brand-new package has no ranked tasks, so it starts at the end. There is no per-slide
+  ranking: template order is fixed inside a card.
 - **Filter:** All tasks / Package tasks only, remembered per browser. With the package filter on, a drag moves
-  the package tasks among the slots they already hold, so hidden tasks keep their positions.
+  package cards among the slots they already hold, so hidden cards keep their positions.
 - **Rail:** Waiting on Mike (her slides with `status = 'waiting_on_mike'`, set by `sync_slide_from_task` when she
   checks off an approve / finish slide) and Held (collapsed, grouped by missing input).
-- **Card:** site / deal name, slide (or task subject), city, owner, a tag, an unread dot on Chat, Done and Start.
-  - Package tasks: `Gate N` from the slide's `done_by_gate`, with the package's pace from `paceOf`:
-    late = solid terracotta, behind = terracotta outline, unknown = dashed.
-  - Other tasks: due / due today / overdue.
+- **Ordinary task card:** site / deal name, slide (or task subject), city, owner, a tag, an unread dot on Chat, Done and Start.
+  Tag: due / due today / overdue.
 - Names and cities come from one batched `site_submit` / `deal` read after the lanes render. `site_submit` RLS
   scans the whole table on every query, so never read it per card.
 
 ## Task chat
 
 One thread per task, opened in a side panel (`TaskChatPanel`, takes a task id, so it works in any slideout).
-Mike and Noree post. Each message shows who and when (Eastern). Chat shows a dot when there's a message from
+Chat stays per slide task, opened from the checklist row; the package card shows a dot if any slide has an unread message. Mike and Noree post. Each message shows who and when (Eastern). Chat shows a dot when there's a message from
 someone else newer than your last read.
 
 Storage: `task_comment` and `task_comment_read` (migration `20261102084217`).
