@@ -92,11 +92,11 @@ In OVIS, **NNN Listings** (`/listings/review`, also in both navbar menus) is the
   `comp_listing_event` does the calculation, so the MCP sweep, the UI and backfills share one implementation. Derived figures are marked in
   `field_basis` (e.g. `{"noi":"derived"}`); a missing key means stated. A caller's stated value is never overwritten.
   Events are append-only, so a later stated figure arrives as a new event.
-- **NOI → lease rent:** on a `bts_nnn` lease, the offering's latest NOI fills `lease_comp.annual_base_rent` when it's empty or
-  was itself derived, marked `{"annual_base_rent":"derived"}`. Ground, multi-tenant and untyped leases are left alone. Editing the
+- **NOI → lease rent:** on a `bts_nnn` or `ground_lease` lease (ground leases since 2026-11-02, migration `20261102100040`; NOI is the ground rent), the offering's latest NOI fills `lease_comp.annual_base_rent` when it's empty or
+  was itself derived, marked `{"annual_base_rent":"derived"}`. Multi-tenant and untyped leases are left alone. Editing the
   rent in the Leases tab makes it stated (the mark is dropped), and NOI never touches it again.
 - **UI:** derived figures show a "calc" badge in the listing timeline and the Leases tab.
-- **Backfill (2026-10-31):** 30 listing events got a derived NOI (none needed cap or price). 16 `bts_nnn` leases got rent from NOI.
+- **Backfill (2026-10-31):** 30 listing events got a derived NOI (none needed cap or price). 16 `bts_nnn` leases got rent from NOI; 6 ground leases followed on 2026-11-02.
 
 ## Upsert semantics
 
