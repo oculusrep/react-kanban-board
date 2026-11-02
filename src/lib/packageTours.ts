@@ -46,7 +46,13 @@ export async function fetchTourOptions(): Promise<TourOption[]> {
 export async function fetchTourStopSites(tourId: string): Promise<TourStopSite[]> {
   const [daysRes, stopsRes] = await Promise.all([
     supabase.from('tour_day').select('id, day_number').eq('tour_id', tourId),
-    supabase.from('tour_stop').select('id, site_submit_id, tour_day_id, position').eq('tour_id', tourId),
+    // Packages attach to site submits: skip store / custom stops (site_submit_id is null for those
+    // since 20261102091623_tour_stop_kinds — a null in the .in() below would break the read).
+    supabase
+      .from('tour_stop')
+      .select('id, site_submit_id, tour_day_id, position')
+      .eq('tour_id', tourId)
+      .not('site_submit_id', 'is', null),
   ]);
   if (daysRes.error) throw daysRes.error;
   if (stopsRes.error) throw stopsRes.error;
