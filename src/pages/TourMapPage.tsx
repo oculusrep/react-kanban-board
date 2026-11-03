@@ -9,7 +9,9 @@ import {
   fetchTourStopsForMap,
   notifyTourStopsChanged,
   onTourStopsChanged,
+  onSiteSubmitStageChanged,
   persistStopPlacements,
+  updateTourStop,
   resetDayDepartures,
   setSiteApproach,
   setStopApproachOverride,
@@ -48,6 +50,7 @@ import {
   NoLocationTag,
   OpenSiteLink,
   ItineraryLine,
+  StatusEditor,
   customGlyph,
   CUSTOM_STOP_COLOR,
   StampedDeparture,
@@ -259,6 +262,9 @@ function TourMapPageInner() {
   const redraw = () => setRefreshKey((k) => k + 1);
   // Stop added/removed from outside the map (e.g. a sidebar's Add to tour menu).
   useEffect(() => (tourId ? onTourStopsChanged(tourId, () => setRefreshKey((k) => k + 1)) : undefined), [tourId]);
+  // Stop Status follows the site submit's stage.
+  const tourSiteIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => onSiteSubmitStageChanged((id) => tourSiteIdsRef.current.has(id) && setRefreshKey((k) => k + 1)), []);
 
   // Load the reorder slideout lazily (keeps map bundle lean).
   useEffect(() => {
@@ -690,6 +696,7 @@ function TourMapPageInner() {
       setTour(t);
       setUnscheduledCount(byDay(null).length);
       setDayRenders(renders);
+      tourSiteIdsRef.current = new Set(renders.flatMap((r) => r.stops.map((x) => x.site_submit_id).filter((x): x is string => !!x)));
       setStopSchedule(stopSched);
       // Fit once on first load; later edits keep the user's pan/zoom.
       if (anyPoint && !fittedRef.current) {
@@ -769,6 +776,22 @@ function TourMapPageInner() {
     redraw(); // re-renders from cache: 0 Google calls
   };
 
+  // Status override from the schedule card: optimistic, then tell the panel to resync.
+  const saveStatusOverride = async (s: NumberedStop, value: string | null) => {
+    const patch = (ov: string | null) =>
+      setDayRenders((rs) =>
+        rs.map((r) => ({
+          ...r,
+          stops: r.stops.map((x) => (x.id === s.id ? { ...x, status_override: ov, status: ov ?? x.status_auto } : x)),
+        }))
+      );
+    patch(value);
+    const r = await updateTourStop(s.id, { status_override: value });
+    if (!r.ok) {
+      patch(s.status_override);
+      setError(`Couldn’t save the status: ${r.error}`);
+    } else if (tourId) notifyTourStopsChanged(tourId);
+  };
   const clearTourApproach = async (s: NumberedStop) => {
     const r = await setStopApproachOverride(s.id, null);
     if (!r.ok) setError(`Couldn’t clear the approach: ${r.error}`);
@@ -1327,7 +1350,21 @@ function TourMapPageInner() {
                           subtext={s.display_subtext}
                           footer={
                             <>
-                              <ItineraryLine market={s.market} city={s.city} status={s.status} projectedOpening={s.projected_opening} />
+                              <ItineraryLine
+                                market={s.market}
+                                city={s.city}
+                                status={s.status}
+                                projectedOpening={s.projected_opening}
+                                statusSlot={
+                                  <StatusEditor
+                                    stopId={s.id}
+                                    status={s.status}
+                                    autoStatus={s.status_auto}
+                                    override={s.status_override}
+                                    onSave={(v) => saveStatusOverride(s, v)}
+                                  />
+                                }
+                              />
                               {/* Phone: full-width (36px) button, current stop only. */}
                               {narrow && s.id === dr.currentStopId && (
                                 <LeavingNowButton block busy={stampingId === s.id} onStamp={(iso) => stampStop(s, iso)} />

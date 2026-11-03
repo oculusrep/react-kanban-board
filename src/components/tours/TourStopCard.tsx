@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 import { Car } from 'lucide-react';
+import { STATUS_SUGGESTIONS } from '../../lib/tourStopStatus';
 import { etClockMinutes, etHHMM, etWallTimeToDate, formatClock12, formatDriveMinutes, formatMinutesDuration } from '../../lib/tourRouting';
 
 // ---------------------------------------------------------------------------
@@ -165,13 +166,134 @@ export const CUSTOM_STOP_COLOR = '#6B7280';
 export const customGlyph = (category: string | null | undefined) => (category && CUSTOM_GLYPH[category]) || '★';
 
 // Compact itinerary line: Market · City · Status · Projected opening (blank parts dropped).
-export function ItineraryLine({ market, city, status, projectedOpening }: { market?: string | null; city?: string | null; status?: string | null; projectedOpening?: string | null }) {
-  const parts = [market, city, status, projectedOpening ? `Opens ${projectedOpening}` : null].filter((x) => x && String(x).trim());
+// `statusSlot` (e.g. a StatusEditor) renders in the status position instead of plain text.
+export function ItineraryLine({
+  market,
+  city,
+  status,
+  projectedOpening,
+  statusSlot,
+}: {
+  market?: string | null;
+  city?: string | null;
+  status?: string | null;
+  projectedOpening?: string | null;
+  statusSlot?: ReactNode;
+}) {
+  const clean = (x: string | null | undefined) => (x && x.trim() ? x : null);
+  // Market · City shrink with an ellipsis; Status and Opens never do (they're what changes).
+  const parts: { key: string; node: ReactNode; text: string; shrink: boolean }[] = [];
+  if (clean(market)) parts.push({ key: 'm', node: market, text: market!, shrink: true });
+  if (clean(city)) parts.push({ key: 'c', node: city, text: city!, shrink: true });
+  if (statusSlot) parts.push({ key: 's', node: statusSlot, text: status ?? '', shrink: false });
+  else if (clean(status)) parts.push({ key: 's', node: status, text: status!, shrink: false });
+  if (clean(projectedOpening)) parts.push({ key: 'o', node: `Opens ${projectedOpening}`, text: `Opens ${projectedOpening}`, shrink: false });
   if (parts.length === 0) return null;
   return (
-    <div style={{ marginTop: 3, fontSize: 11, color: steel, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={parts.join(' · ')}>
-      {parts.join(' · ')}
+    <div
+      style={{ marginTop: 3, fontSize: 11, color: steel, display: 'flex', alignItems: 'baseline', minWidth: 0, whiteSpace: 'nowrap' }}
+      title={parts.map((p) => p.text).filter(Boolean).join(' · ')}
+    >
+      {parts.map((p, i) => (
+        <span
+          key={p.key}
+          style={p.shrink ? { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } : { flexShrink: 0 }}
+        >
+          {i > 0 && '\u00a0·\u00a0'}
+          {p.node}
+        </span>
+      ))}
     </div>
+  );
+}
+
+// Inline status editor: shows the effective status; click to type any text or pick a
+// suggestion. Saving blank — or the automatic value itself — clears the override (null),
+// so the stop follows its site submit's stage again. Clicks never reach the card behind it.
+export function StatusEditor({
+  stopId,
+  status,
+  autoStatus,
+  override,
+  onSave,
+}: {
+  stopId: string;
+  status: string;
+  autoStatus: string;
+  override: string | null;
+  onSave: (override: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  const commit = (raw: string) => {
+    setEditing(false);
+    const v = raw.trim();
+    const next = !v || v === autoStatus ? null : v;
+    if (next !== (override ?? null)) onSave(next);
+  };
+  const listId = `tour-status-${stopId}`;
+  if (!editing) {
+    return (
+      <span onClick={stop} onMouseDown={stop} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(override ?? '');
+            setEditing(true);
+          }}
+          title={override ? `Status (set on this tour) — automatic would be "${autoStatus || 'blank'}". Click to edit.` : 'Status (automatic). Click to edit.'}
+          style={{
+            border: 'none',
+            background: 'none',
+            padding: 0,
+            font: 'inherit',
+            color: override ? midnight : steel,
+            fontWeight: override ? 600 : 400,
+            cursor: 'pointer',
+            textDecoration: 'underline dotted',
+            textDecorationColor: slate,
+            textUnderlineOffset: 2,
+          }}
+        >
+          {status || 'Set status'}
+        </button>
+        {override && (
+          <button
+            type="button"
+            onClick={() => onSave(null)}
+            title={`Clear — back to automatic (${autoStatus || 'blank'})`}
+            aria-label="Clear status override"
+            style={{ border: 'none', background: 'none', padding: 0, font: 'inherit', color: slate, cursor: 'pointer' }}
+          >
+            ↺
+          </button>
+        )}
+      </span>
+    );
+  }
+  return (
+    <span onClick={stop} onMouseDown={stop} onPointerDown={stop} onKeyDown={stop} style={{ display: 'inline-flex', alignItems: 'center' }}>
+      <input
+        autoFocus
+        list={listId}
+        value={draft}
+        maxLength={80}
+        placeholder={autoStatus ? `${autoStatus} (auto)` : 'Status'}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') setEditing(false);
+        }}
+        style={{ width: 170, border: `1px solid ${slate}`, borderRadius: 4, padding: '0 4px', fontSize: 11, color: midnight }}
+      />
+      <datalist id={listId}>
+        {STATUS_SUGGESTIONS.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+    </span>
   );
 }
 

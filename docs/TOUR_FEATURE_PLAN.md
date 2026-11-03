@@ -389,6 +389,30 @@ Migration `20261102091623_tour_stop_kinds.sql` (applied to prod + recorded 2026-
   merged / fanned / nudged / hidden counts. Jared: page 1 merged 2·3 and 4·5, fanned the Augusta 13/A/B/14
   cluster; page 3 (Day 1 map) merged 2·3 and 4·5.
 
+## Phase 5.2 — Accurate, editable stop Status (branch `feature/tour-routing`, 2026-11-03)
+
+- **Migration `20261102180309_tour_stop_status_override`** (applied + recorded 2026-11-03): nullable
+  `tour_stop.status_override text`, CHECK 1–80 chars after trim. No new relation, so no grants block;
+  existing `tour_stop` grants + RLS cover it.
+- **Effective status** = `status_override` → site-submit stops: the site submit's *current* stage mapped
+  to client-friendly text → store/custom stops: kind default (Existing store / Licensed store / blank).
+  The one config is `src/lib/tourStopStatus.ts` (`STAGE_STATUS`, `KIND_DEFAULT_STATUS`,
+  `STATUS_SUGGESTIONS`); `stopInfo()` returns `status`, `autoStatus`, `statusOverride`.
+- **Stage mapping (approved 2026-11-03):** Mike to Review / Ready to Submit / Pre-Submittal / Pursuing
+  Ownership → New store opportunity; Submitted-Reviewing / Tour / Monitor / Protected → Under review;
+  LOI → At LOI; At Lease/PSA → At lease/PSA; Under Contract / Contingent → Under contract; Executed Deal /
+  Booked → Deal executed; Closed - Under Construction → Under construction; Store Open → Existing store;
+  Pass / Use Declined → Passed; Lost / Killed → Not pursuing; Not Available / Use Conflict / Unassigned
+  Territory → Not available; no stage or an unknown stage → New store opportunity. A test fails if a live
+  stage name is missing from the map.
+- **UI:** `StatusEditor` (TourStopCard.tsx) on Reorder stops cards and the map schedule cards. Click the
+  status → free text with a datalist of quick picks; blank or the automatic value saves NULL; ↺ clears an
+  override. In the itinerary line, Status and Opens never truncate (Market · City take the ellipsis).
+- **Freshness:** stops load the stage via `submit_stage!site_submit_submit_stage_id_fkey(name)`; tour
+  views reload when a SiteSubmitSidebar broadcasts a `submit_stage_id` change
+  (`onSiteSubmitStageChanged`).
+- **PDF:** agenda Status column is the effective value (no PDF code change needed — it reads `status`).
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding

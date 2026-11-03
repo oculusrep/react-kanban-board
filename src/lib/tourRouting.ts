@@ -1,6 +1,8 @@
 // Pure helpers for tour route scheduling — coordinate resolution and time math.
 // No Google Maps or Supabase deps so this stays unit-testable.
 
+import { autoStopStatus, effectiveStopStatus } from './tourStopStatus';
+
 export interface LatLng {
   lat: number;
   lng: number;
@@ -548,12 +550,7 @@ export function computeLiveSchedule(args: {
 
 export type StopKind = 'site_submit' | 'atlas_store' | 'licensed_store' | 'custom';
 
-export const STOP_STATUS: Record<StopKind, string> = {
-  site_submit: 'New store opportunity',
-  atlas_store: 'Existing store',
-  licensed_store: 'Licensed store',
-  custom: '',
-};
+// Status text lives in tourStopStatus.ts (stage mapping + kind defaults + override rule).
 
 export interface StopKindSource {
   stop_kind?: StopKind | null;
@@ -564,8 +561,10 @@ export interface StopKindSource {
   latitude?: number | null;
   longitude?: number | null;
   store_number?: string | null;
+  status_override?: string | null;
   site_submit?: (StopCoordSource & {
     site_submit_name?: string | null;
+    submit_stage?: { name?: string | null } | null;
     property?: (NonNullable<StopCoordSource['property']> & { property_name?: string | null; address?: string | null; city?: string | null }) | null;
   }) | null;
 }
@@ -578,7 +577,15 @@ export interface StopInfo {
   defaultName: string; // what a blank label falls back to
   city: string | null;
   address: string | null; // street, city
-  status: string;
+  status: string; // effective: override → auto
+  autoStatus: string; // stage mapping (site submits) / kind default
+  statusOverride: string | null;
+}
+
+function statusOf(kind: StopKind, src: StopKindSource) {
+  const autoStatus = autoStopStatus(kind, src.site_submit?.submit_stage?.name);
+  const statusOverride = src.status_override?.trim() || null;
+  return { status: effectiveStopStatus(kind, src.site_submit?.submit_stage?.name, statusOverride), autoStatus, statusOverride };
 }
 
 // One place that knows how each kind is named, located and labeled. Store and custom stops
@@ -599,7 +606,7 @@ export function stopInfo(src: StopKindSource): StopInfo {
       defaultName: auto.name,
       city,
       address: [t(p?.address), city].filter(Boolean).join(', ') || null,
-      status: STOP_STATUS.site_submit,
+      ...statusOf(kind, src),
     };
   }
   const coord = src.latitude != null && src.longitude != null ? { lat: src.latitude, lng: src.longitude } : null;
@@ -622,7 +629,7 @@ export function stopInfo(src: StopKindSource): StopInfo {
     defaultName,
     city,
     address: [street, city].filter(Boolean).join(', ') || null,
-    status: STOP_STATUS[kind],
+    ...statusOf(kind, src),
   };
 }
 

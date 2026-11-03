@@ -65,6 +65,7 @@ export interface TourStop {
   longitude: number | null;
   market: string | null; // site submits: null = automatic (tour_stop_markets), text = override
   projected_opening: string | null;
+  status_override: string | null; // null = automatic (stage mapping / kind default)
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +78,7 @@ export interface TourStopWithSiteSubmit extends TourStop {
     submit_stage_id: string | null;
     property_id: string | null;
     approach_waypoints: ApproachPoint[] | null; // site default approach
+    submit_stage?: { name: string | null } | null;
     property: StopProperty | null;
   }) | null;
   category: TourStopCategory | null;
@@ -132,6 +134,8 @@ export interface TourStopGeo {
   city: string | null;
   market: string | null; // resolved (override → target area → nearest Atlas store)
   market_override: string | null; // tour_stop.market as stored
-  status: string; // New store opportunity / Existing store / Licensed store / ''
+  status: string; // effective: status_override → stage mapping / kind default (tourStopStatus.ts)
+  status_auto: string; // what a cleared override falls back to
+  status_override: string | null;
   projected_opening: string | null;
 }
