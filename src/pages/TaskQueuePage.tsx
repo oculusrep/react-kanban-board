@@ -5,6 +5,7 @@ import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import { CardTag, QueueTaskCard } from '../components/tasks/QueueTaskCard';
 import { PackageQueueCard } from '../components/tasks/PackageQueueCard';
 import { TaskChatPanel } from '../components/tasks/TaskChatPanel';
+import { PackageChatPanel } from '../components/tasks/PackageChatPanel';
 import { supabase } from '../lib/supabaseClient';
 import {
   BRAND, INPUT_LABEL, InputKey, PACE_LABEL, ProgressRow, currentGate, fetchAllPackageProgress, localDate, paceOf, shortDate,
@@ -14,19 +15,22 @@ import {
   fetchPlaces, fetchQueue, fetchQueueOwners, fetchWaitingOnMike, saveQueueOrder, setQueueTaskStatus,
 } from '../lib/taskQueue';
 import { fetchUnreadTaskIds } from '../lib/taskChat';
+import { GENERAL, fetchPackageUnread } from '../lib/packageChat';
 
 // Tasks command center (/tasks/queue; Package Tracker Phase 3, spec §7, redesigned
 // 2026-11-02). One ordered list of a person's open tasks — package slides and
 // everything else Mike assigns — shown as a "Now" lane (top 3) and "Up next".
 // Mike sets the order by drag and drop; the owner checks tasks off (a package
 // task's slide moves by trigger). The rail shows slides handed to Mike and slides
-// held until their inputs arrive. Each task has its own chat (task_comment), which
-// never touches the board clock or the deal / property chat.
+// held until their inputs arrive. Each package has one chat thread (package_comment,
+// messages tagged to a slide or General); ordinary tasks have their own (task_comment).
+// Neither touches the board clock or the deal / property chat.
 // Noree (VA) lands here by default. Admins can open anyone's queue.
 
 const NOW_COUNT = 3;
 const UNDO_MS = 6000; // how long the "Marked done … Undo" toast stays
 const FILTER_KEY = 'ovis.taskQueue.filter';
+const NO_UNREAD: Set<string> = new Set();
 type Filter = 'all' | 'package';
 
 function readFilter(): Filter {
@@ -139,7 +143,11 @@ export default function TaskQueuePage() {
   const [progress, setProgress] = useState<Map<string, ProgressRow>>(new Map());
   const [pkgNames, setPkgNames] = useState<Record<string, string>>({});
   const [places, setPlaces] = useState<{ sites: Record<string, Place>; deals: Record<string, Place> }>({ sites: {}, deals: {} });
-  const [unread, setUnread] = useState<Set<string>>(new Set());
+  const [unread, setUnread] = useState<Set<string>>(new Set());          // ordinary task ids
+  const [pkgUnread, setPkgUnread] = useState<Map<string, Set<string>>>(new Map()); // package → slide ids / GENERAL
+  const [pkgChat, setPkgChat] = useState<{ packageId: string; slideId: string | null } | null>(null);
+  const pkgChatRef = useRef(pkgChat);
+  pkgChatRef.current = pkgChat;
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -195,14 +203,16 @@ export default function TaskQueuePage() {
       const all = [...q, ...h, ...w];
       const siteIds = [...new Set(all.map((x) => x.site_submit_id).filter(Boolean) as string[])];
       const dealIds = [...new Set(all.filter((x) => !x.site_submit_id && x.deal_id).map((x) => x.deal_id as string))];
-      const [names, pl, un] = await Promise.all([
+      const [names, pl, un, pun] = await Promise.all([
         fetchPackageNames(pkgIds),
         fetchPlaces(siteIds, dealIds),
-        userTableId ? fetchUnreadTaskIds(q.map((t) => t.id), userTableId) : Promise.resolve(new Set<string>()),
+        userTableId ? fetchUnreadTaskIds(q.filter((t) => !t.slide).map((t) => t.id), userTableId) : Promise.resolve(new Set<string>()),
+        userTableId ? fetchPackageUnread(pkgIds, userTableId) : Promise.resolve(new Map<string, Set<string>>()),
       ]);
       setPkgNames(names);
       setPlaces(pl);
       setUnread(un);
+      setPkgUnread(pun);
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to load queue');
       setLoading(false);
@@ -220,6 +230,17 @@ export default function TaskQueuePage() {
         const row = payload.new as { task_id: string; author_id: string };
         if (row.author_id === userTableId || chatOpenRef.current === row.task_id) return;
         setUnread((prev) => new Set(prev).add(row.task_id));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'package_comment' }, (payload) => {
+        const row = payload.new as { package_id: string; slide_id: string | null; author_id: string };
+        if (row.author_id === userTableId) return;
+        const open = pkgChatRef.current;  // the panel marks what it shows as read
+        if (open?.packageId === row.package_id && (open.slideId === null || open.slideId === row.slide_id)) return;
+        setPkgUnread((prev) => {
+          const n = new Map(prev);
+          n.set(row.package_id, new Set(prev.get(row.package_id) ?? []).add(row.slide_id ?? GENERAL));
+          return n;
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -348,14 +369,38 @@ export default function TaskQueuePage() {
   const openSidebar = (x: { site_submit_id: string | null; deal_id: string | null }) => {
     if (!x.site_submit_id && !x.deal_id) return;
     setChatTaskId(null);
+    setPkgChat(null);
     setSidebar({ siteSubmitId: x.site_submit_id, dealId: x.deal_id });
   };
   const openChat = (t: QueueTask) => {
     setSidebar(null);
+    setPkgChat(null);
     setChatTaskId(t.id);
     setUnread((prev) => { const n = new Set(prev); n.delete(t.id); return n; });
   };
   const closeChat = useCallback(() => setChatTaskId(null), []);
+  const openPackageChat = (packageId: string, slideId: string | null) => {
+    setSidebar(null);
+    setChatTaskId(null);
+    setPkgChat({ packageId, slideId });
+  };
+  const closePackageChat = useCallback(() => setPkgChat(null), []);
+  const filterPackageChat = useCallback((slideId: string | null) =>
+    setPkgChat((cur) => (cur ? { ...cur, slideId } : cur)), []);
+  // Whole thread read clears the package; a slide view clears that slide.
+  const onPackageRead = useCallback((packageId: string, slideId: string | null) => {
+    setPkgUnread((prev) => {
+      const cur = prev.get(packageId);
+      if (!cur) return prev;
+      const n = new Map(prev);
+      if (slideId === null) n.delete(packageId);
+      else {
+        const k = new Set(cur); k.delete(slideId);
+        if (k.size) n.set(packageId, k); else n.delete(packageId);
+      }
+      return n;
+    });
+  }, []);
   const onChatRead = useCallback((id: string) => {
     setUnread((prev) => { if (!prev.has(id)) return prev; const n = new Set(prev); n.delete(id); return n; });
   }, []);
@@ -365,6 +410,10 @@ export default function TaskQueuePage() {
     placeOf(s)?.name ?? pkgNames[s.package_id] ?? 'package';
 
   const firstName = ownerName.split(' ')[0] || ownerName;
+  const packageName = (c: Extract<QueueCard, { kind: 'package' }>) =>
+    placeOf(c)?.name ?? pkgNames[c.packageId] ?? (c.tasks[0].subject.split(' — ').slice(1).join(' — ') || 'Package');
+  const chatPkgCard = pkgChat ? cards.find((c): c is Extract<QueueCard, { kind: 'package' }> =>
+    c.kind === 'package' && c.packageId === pkgChat.packageId) ?? null : null;
   const renderCard = (c: QueueCard, position: number, variant: 'large' | 'compact', index: number) => (
     <Draggable key={c.key} draggableId={c.key} index={index} isDragDisabled={!canReorder}>
       {(drag) => (
@@ -373,7 +422,7 @@ export default function TaskQueuePage() {
           {c.kind === 'package' ? (
             <PackageQueueCard
               position={position}
-              name={placeOf(c)?.name ?? pkgNames[c.packageId] ?? (c.tasks[0].subject.split(' — ').slice(1).join(' — ') || 'Package')}
+              name={packageName(c)}
               city={placeOf(c)?.city ?? null}
               ownerName={firstName}
               tasks={c.tasks}
@@ -381,7 +430,7 @@ export default function TaskQueuePage() {
               progress={progress.get(c.packageId) ?? null}
               pace={progress.get(c.packageId) ? paceOf(progress.get(c.packageId)!) : null}
               tags={packageTags(progress.get(c.packageId) ?? null)}
-              unread={unread}
+              unread={pkgUnread.get(c.packageId) ?? NO_UNREAD}
               busyTaskId={busy}
               canReorder={canReorder}
               dragHandle={drag.dragHandleProps}
@@ -391,7 +440,7 @@ export default function TaskQueuePage() {
               onOpen={c.site_submit_id || c.deal_id ? () => openSidebar(c) : null}
               onCheck={complete}
               onStart={(t) => setStatus(t, 'in_progress')}
-              onChat={openChat}
+              onChat={(slideId) => openPackageChat(c.packageId, slideId)}
             />
           ) : (
             <QueueTaskCard
@@ -582,6 +631,18 @@ export default function TaskQueuePage() {
         names={nameById}
         onClose={closeChat}
         onRead={onChatRead}
+      />
+
+      <PackageChatPanel
+        packageId={pkgChat?.packageId ?? null}
+        slideId={pkgChat?.slideId ?? null}
+        title={chatPkgCard ? packageName(chatPkgCard) : pkgChat ? pkgNames[pkgChat.packageId] : undefined}
+        subtitle={chatPkgCard ? placeOf(chatPkgCard)?.city ?? undefined : undefined}
+        currentUserId={userTableId}
+        names={nameById}
+        onClose={closePackageChat}
+        onFilter={filterPackageChat}
+        onRead={onPackageRead}
       />
 
       {undo && (

@@ -1,12 +1,14 @@
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import { BRAND, INPUT_LABEL, Pace, ProgressRow, paceStyle } from '../../lib/packageTracker';
 import type { HeldSlide, QueueTask } from '../../lib/taskQueue';
-import { CardTag, ChatButton, CheckBox, Chevron, Grip, OpenLink, StartButton, Tag, UnreadDot } from './QueueTaskCard';
+import { CardTag, ChatButton, CheckBox, Chevron, Grip, OpenLink, StartButton, Tag } from './QueueTaskCard';
 
 // One package (site / deal) on the command center: the owner's open slide tasks
 // as a checklist in template order, plus that package's held slides greyed with
 // the input they wait on. The card is what gets ranked; slides keep template order.
 // "large" (Now) is always expanded; "compact" (Up next) is one row that expands inline.
+// Chat is per package (package_comment): the card's icon opens the whole thread, a
+// slide row's icon (held rows too) opens it filtered to that slide.
 
 type Row = { kind: 'task'; position: number; task: QueueTask } | { kind: 'held'; position: number; slide: HeldSlide };
 
@@ -20,7 +22,7 @@ export interface PackageQueueCardProps {
   progress: ProgressRow | null;
   pace: Pace | null;
   tags: CardTag[];
-  unread: Set<string>;             // task ids with unread chat
+  unread: Set<string>;             // this package's unread chat keys: slide ids, or GENERAL
   busyTaskId: string | null;
   canReorder: boolean;
   dragHandle: DraggableProvidedDragHandleProps | null | undefined;
@@ -30,7 +32,7 @@ export interface PackageQueueCardProps {
   onOpen: (() => void) | null;
   onCheck: (t: QueueTask) => void;
   onStart: (t: QueueTask) => void;
-  onChat: (t: QueueTask) => void;
+  onChat: (slideId: string | null) => void;  // null = whole thread
 }
 
 function ProgressBar({ progress, pace, wide }: { progress: ProgressRow | null; pace: Pace | null; wide: boolean }) {
@@ -54,13 +56,15 @@ function ChecklistRow({ row, first, large, unread, busy, onCheck, onStart, onCha
   onCheck: () => void; onStart: () => void; onChat: () => void;
 }) {
   if (row.kind === 'held') {
+    // Greyed (not the chat icon: held slides can carry chat too).
     return (
-      <li className="flex items-center gap-2 rounded px-1.5 py-0.5" style={{ opacity: 0.6 }}>
-        <span className="h-4 w-4 shrink-0 rounded-sm" style={{ border: `1.5px dashed ${BRAND.slate}` }} aria-hidden />
-        <span className={`min-w-0 flex-1 truncate ${large ? 'text-sm' : 'text-xs'}`} style={{ color: BRAND.slate }}>{row.slide.label}</span>
-        <span className="whitespace-nowrap text-xs" style={{ color: BRAND.slate }}>
+      <li className="flex items-center gap-2 rounded px-1.5 py-0.5">
+        <span className="h-4 w-4 shrink-0 rounded-sm opacity-60" style={{ border: `1.5px dashed ${BRAND.slate}` }} aria-hidden />
+        <span className={`min-w-0 flex-1 truncate opacity-60 ${large ? 'text-sm' : 'text-xs'}`} style={{ color: BRAND.slate }}>{row.slide.label}</span>
+        <span className="whitespace-nowrap text-xs opacity-60" style={{ color: BRAND.slate }}>
           needs {row.slide.missing_inputs.map((k) => INPUT_LABEL[k]).join(', ')}
         </span>
+        <ChatButton unread={unread} onClick={onChat} />
       </li>
     );
   }
@@ -87,7 +91,7 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
     ...p.held.map((slide): Row => ({ kind: 'held', position: slide.position, slide })),
   ].sort((a, b) => a.position - b.position);
   const firstActionable = rows.find((r): r is Extract<Row, { kind: 'task' }> => r.kind === 'task');
-  const anyUnread = p.tasks.some((t) => p.unread.has(t.id));
+  const anyUnread = p.unread.size > 0;
   const border = p.tasks.some((t) => t.status === 'in_progress') ? BRAND.navy : BRAND.slate;
 
   const checklist = (
@@ -98,18 +102,16 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
           row={r}
           first={r === firstActionable}
           large={large}
-          unread={r.kind === 'task' && p.unread.has(r.task.id)}
+          unread={p.unread.has(r.kind === 'task' ? r.task.package_slide_id ?? '' : r.slide.id)}
           busy={r.kind === 'task' && p.busyTaskId === r.task.id}
           onCheck={() => r.kind === 'task' && p.onCheck(r.task)}
           onStart={() => r.kind === 'task' && p.onStart(r.task)}
-          onChat={() => r.kind === 'task' && p.onChat(r.task)}
+          onChat={() => p.onChat(r.kind === 'task' ? r.task.package_slide_id : r.slide.id)}
         />
       ))}
     </ul>
   );
-  const dot = anyUnread && (
-    <span className="relative inline-block h-2.5 w-2.5 shrink-0" title="New chat message on a slide"><UnreadDot on /></span>
-  );
+  const chat = <ChatButton unread={anyUnread} onClick={() => p.onChat(null)} label="Package chat" />;
 
   if (large) {
     return (
@@ -119,7 +121,7 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
           <div className="flex items-start justify-between gap-2">
             <span className="flex items-center gap-2">
               <span className="text-3xl font-light leading-none" style={{ color: BRAND.slate }}>{p.position}</span>
-              {dot}
+              {chat}
             </span>
             <span className="flex flex-wrap justify-end gap-1">{p.tags.map((t) => <Tag key={t.label} tag={t} />)}</span>
           </div>
@@ -155,7 +157,7 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
             {firstActionable ? <>Next: <span style={{ color: BRAND.navy }}>{firstActionable.task.slide?.label ?? firstActionable.task.subject}</span></> : null}
           </span>
           <span className="hidden shrink-0 gap-1 lg:flex">{p.tags.map((t) => <Tag key={t.label} tag={t} />)}</span>
-          {dot}
+          {chat}
           <Chevron open={p.expanded} />
         </div>
       </div>

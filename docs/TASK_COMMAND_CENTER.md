@@ -39,7 +39,27 @@ Shipped 2026-11-02. Redesign of the Package Tracker Phase 3 queue (spec §7 in
 - Names and cities come from one batched `site_submit` / `deal` read after the lanes render. `site_submit` RLS
   scans the whole table on every query, so never read it per card.
 
-## Task chat
+## Package chat (2026-11-03)
+
+Package slide tasks no longer have per-task chat. Each package has **one thread** (`package_comment`,
+migration `20261102125716`), each message tagged to one of the package's slides or "General" (`slide_id` null).
+
+- **Card chat icon** opens the whole thread; every message shows its slide label or "General". The composer's
+  "About" picker defaults to General and lists all the package's slides (every owner, so Mike's too).
+- **Slide row chat icon** (task rows and held rows, no task needed) opens the same thread filtered to that slide,
+  with the composer pre-tagged. The panel's "Show" picker switches between the whole thread and any slide.
+- **Unread:** `package_comment_read` per user per package. `slide_id` null = read the whole thread; a slide row =
+  read that slide's filtered view (so opening one slide doesn't clear another's dot). A message from someone else is
+  unread when it is newer than the whole-thread marker and, if tagged, newer than its slide's marker. The card's chat
+  icon carries a dot if anything in the package is unread; each slide row's icon carries one for that slide.
+- **Same rules as task chat:** no triggers, no deal / site columns, internal users only, portal and anon denied
+  (verified over HTTP with the publishable key: 42501). A composite FK keeps a tag inside its own package.
+- **Migration of old rows:** task_comment rows on package tasks (4 at apply time) and their read markers (5) were
+  copied with their slide tag, same id. The originals remain in `task_comment`; the page no longer reads them.
+- Test: `supabase/tests/package_comment_test.sql` (copied rows intact, clock / court_since unchanged, control
+  comment moves the clock, no deal / property chat rows, spoofing and cross-package tags denied, portal / anon denied).
+
+## Task chat (ordinary tasks)
 
 One thread per task, opened in a side panel (`TaskChatPanel`, takes a task id, so it works in any slideout).
 Chat stays per slide task, opened from the checklist row; the package card shows a dot if any slide has an unread message. Mike and Noree post. Each message shows who and when (Eastern). Chat shows a dot when there's a message from

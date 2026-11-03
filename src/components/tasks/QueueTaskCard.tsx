@@ -72,9 +72,9 @@ function IconButton({ title, onClick, disabled, children, attention }: {
   );
 }
 
-export function ChatButton({ unread, onClick }: { unread: boolean; onClick: () => void }) {
+export function ChatButton({ unread, onClick, label = 'Chat' }: { unread: boolean; onClick: () => void; label?: string }) {
   return (
-    <IconButton title={unread ? 'Chat — new message' : 'Chat'} onClick={onClick} attention={unread}>
+    <IconButton title={unread ? `${label} — new message` : label} onClick={onClick} attention={unread}>
       <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
         <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h9A2.5 2.5 0 0 1 17 5.5v6a2.5 2.5 0 0 1-2.5 2.5H9l-4 3v-3h0.5A2.5 2.5 0 0 1 3 11.5z" strokeLinejoin="round" />
       </svg>
