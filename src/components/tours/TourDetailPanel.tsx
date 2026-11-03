@@ -14,6 +14,7 @@ import {
   addCustomStop,
   fetchTourStopMarkets,
   onTourStopsChanged,
+  onSiteSubmitStageChanged,
   updateTour,
   updateTourStop,
   deleteTour,
@@ -39,6 +40,7 @@ import {
   OpenSiteLink,
   customGlyph,
   CUSTOM_STOP_COLOR,
+  StatusEditor,
 } from './TourStopCard';
 import { geocodingService } from '../../services/geocodingService';
 
@@ -149,6 +151,9 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
 
   // A stop added/removed elsewhere (AddToTourButton in a sidebar, or our own remove).
   useEffect(() => onTourStopsChanged(tourId, () => load(true)), [tourId, load]);
+  // Status follows the site submit's stage: reload when a stage on this tour changes.
+  const stopSiteIds = useMemo(() => new Set(stops.map((s) => s.site_submit_id).filter(Boolean)), [stops]);
+  useEffect(() => onSiteSubmitStageChanged((id) => stopSiteIds.has(id) && load(true)), [stopSiteIds, load]);
 
   const categoryById = useMemo(() => {
     const m: Record<string, TourStopCategory> = {};
@@ -352,6 +357,17 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
     }
   };
 
+  // Status override: null = automatic (site submit stage mapping / kind default).
+  const handleStatusOverride = async (stopId: string, value: string | null) => {
+    const prev = stops.find((s) => s.id === stopId)?.status_override ?? null;
+    setStops((all) => all.map((s) => (s.id === stopId ? { ...s, status_override: value } : s)));
+    const res = await updateTourStop(stopId, { status_override: value });
+    if (!res.ok) {
+      setStops((all) => all.map((s) => (s.id === stopId ? { ...s, status_override: prev } : s)));
+      setError(res.error ?? 'Failed to save status');
+    } else onChanged?.();
+  };
+
   // + Custom stop: geocode the address (same geocoder as day start/end), add to Unscheduled.
   const handleAddCustom = async () => {
     const name = customDraft.name.trim();
@@ -527,7 +543,15 @@ export function TourDetailPanel({ tourId, onChanged, onDeleted, stopSchedule, da
                   )}
                   {!mapped && <NoLocationTag />}
                   <ApproachTag source={effectiveApproach(stop.approach_waypoints_override, stop.site_submit?.approach_waypoints).source} />
-                  {info.status && <span style={{ fontSize: 11, color: STEEL }}>{info.status}</span>}
+                  <span style={{ fontSize: 11, color: STEEL }}>
+                    <StatusEditor
+                      stopId={stop.id}
+                      status={info.status}
+                      autoStatus={info.autoStatus}
+                      override={info.statusOverride}
+                      onSave={(v) => handleStatusOverride(stop.id, v)}
+                    />
+                  </span>
                 </>
               }
               subtext={subtext ? (onOpenSite ? subtext : ssLink(subtext, '#9CA3AF')) : null}

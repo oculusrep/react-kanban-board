@@ -278,6 +278,17 @@ export function onTourStopsChanged(tourId: string | null, fn: (tourId: string) =
   return () => window.removeEventListener(TOUR_STOPS_EVENT, h);
 }
 
+// A site submit's stage changed in any SiteSubmitSidebar (its 'ovis:site-submit-updated'
+// broadcast). Tour stop Status follows the stage, so tour views reload on this.
+export function onSiteSubmitStageChanged(fn: (siteSubmitId: string) => void): () => void {
+  const h = (e: Event) => {
+    const d = (e as CustomEvent).detail as { id?: string; updated?: Record<string, unknown> } | undefined;
+    if (d?.id && d.updated && 'submit_stage_id' in d.updated) fn(d.id);
+  };
+  window.addEventListener('ovis:site-submit-updated', h);
+  return () => window.removeEventListener('ovis:site-submit-updated', h);
+}
+
 export async function updateTour(
   tourId: string,
   fields: Partial<Pick<Tour, 'tour_name' | 'description' | 'tour_date' | 'is_archived'>>
@@ -295,7 +306,7 @@ export async function deleteTour(tourId: string): Promise<{ ok: boolean; error?:
 export async function updateTourStop(
   stopId: string,
   fields: Partial<
-    Pick<TourStop, 'category_id' | 'notes' | 'stop_duration_minutes' | 'display_label' | 'market' | 'projected_opening'>
+    Pick<TourStop, 'category_id' | 'notes' | 'stop_duration_minutes' | 'display_label' | 'market' | 'projected_opening' | 'status_override'>
   >
 ): Promise<{ ok: boolean; error?: string }> {
   const { error: err } = await supabase.from('tour_stop').update(fields).eq('id', stopId);
@@ -432,6 +443,7 @@ export async function fetchTourStops(tourId: string): Promise<TourStopWithSiteSu
       `*,
        site_submit:site_submit_id (
          id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
+         submit_stage:submit_stage!site_submit_submit_stage_id_fkey ( name ),
          verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
          property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
        ),
@@ -453,12 +465,13 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
       .from('tour_stop')
       .select(
         `id, tour_day_id, position, stop_kind, site_submit_id, store_number, stop_name, address, city,
-         latitude, longitude, market, projected_opening,
+         latitude, longitude, market, projected_opening, status_override,
          category_id, stop_duration_minutes, display_label,
          approach_waypoints_override, actual_departure_at, notes,
          category:category_id ( name, default_stop_duration_minutes ),
          site_submit:site_submit_id (
            id, site_submit_name, submit_stage_id, property_id, approach_waypoints,
+           submit_stage:submit_stage!site_submit_submit_stage_id_fkey ( name ),
            verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
            property:property_id ( property_name, address, city, latitude, longitude, verified_latitude, verified_longitude )
          )`
@@ -509,6 +522,8 @@ export async function fetchTourStopsForMap(tourId: string): Promise<import('../l
       market: markets.get(row.id) ?? row.market ?? null,
       market_override: row.market ?? null,
       status: info.status,
+      status_auto: info.autoStatus,
+      status_override: info.statusOverride,
       projected_opening: row.projected_opening ?? null,
     };
   });
