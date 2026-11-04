@@ -195,7 +195,7 @@ Total ~7-8 hrs across 1-2 sessions.
 
 ## Open questions (already answered, but flag for sign-off)
 
-- **Default scope = "Mine + my team's"** — single-user OVIS effectively means "all," which is fine. If you ever add multi-team workspaces, this guards privacy without UX cost.
+- **Default = all users, all time** (changed 2026-11-03). The original "Mine" default hid teammates' lookups — the shipped code filtered to `user_id = me`, with no team scope — so other users' cached demographics looked missing from the map. The scope and time-window choices persist per browser in localStorage (`ovis.cachedDemographics.scope` / `.timeRange`). RLS was never the issue: any authenticated user can read every successful row.
 - **Polygon pins at centroid + square icon** — keeps polygon entries findable on the map without a separate "Saved polygons" list. Centroid computed and stored at write time so the RPC doesn't have to compute it per query.
 - **30-day TTL** — survives a typical site-evaluation cycle without keeping stale data forever. Configurable per-environment if needed.
 - **Cache key includes `radii` and `drive_times` as a set** — `[1,3,5]` and `[3,5,1]` should hit the same cache row (use sorted arrays as the canonical form).
@@ -269,7 +269,7 @@ New files:
 - [`src/components/mapping/layers/CachedDemographicsLayer.tsx`](../src/components/mapping/layers/CachedDemographicsLayer.tsx) — bbox fetch on map idle, client-side dedupe by rounded `(lat, lng)`, renders one `google.maps.Marker` per deduped lookup. Click → `onPinClick(...)` carries the reconstituted `GeoenrichmentResult`.
 
 Modified:
-- [`src/components/mapping/layers/LayerManager.tsx`](../src/components/mapping/layers/LayerManager.tsx) — new `cached_demographics` entry in `DEFAULT_LAYERS` (icon: 📊). New state in the context: `cachedDemographicsTimeRange` (`'7d' | '30d' | 'all'`, default `'30d'`), `cachedDemographicsScope` (`'mine' | 'all'`, default `'mine'`), `cachedDemographicsModes` (`Set<'rings' | 'polygon'>`, default both).
+- [`src/components/mapping/layers/LayerManager.tsx`](../src/components/mapping/layers/LayerManager.tsx) — new `cached_demographics` entry in `DEFAULT_LAYERS` (icon: 📊). New state in the context: `cachedDemographicsTimeRange` (`'7d' | '30d' | 'all'`, default `'all'`), `cachedDemographicsScope` (`'mine' | 'all'`, default `'all'`; both persisted to localStorage), `cachedDemographicsModes` (`Set<'rings' | 'polygon'>`, default both).
 - [`src/components/mapping/LayerPanel.tsx`](../src/components/mapping/LayerPanel.tsx) — `<CachedDemographicsFilters>` pill UI renders below the layer toggle when the layer is on. Mirrors the existing `MunicipalProjectFilters` pattern.
 - [`src/pages/MappingPageNew.tsx`](../src/pages/MappingPageNew.tsx) — mounts the layer, holds the `demographicsPrefilled` state, wires the click handler into the existing slideout open path.
 
