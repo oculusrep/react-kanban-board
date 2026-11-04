@@ -39,6 +39,45 @@ Shipped 2026-11-02. Redesign of the Package Tracker Phase 3 queue (spec §7 in
 - Names and cities come from one batched `site_submit` / `deal` read after the lanes render. `site_submit` RLS
   scans the whole table on every query, so never read it per card.
 
+## Tour filter, Pause package, fully-held cards (2026-11-03)
+
+Migration `20261103144723_package_pause_and_held_rank.sql`; test `supabase/tests/package_pause_test.sql`
+(run wrapped in BEGIN/ROLLBACK — see its header). Neither feature touches the board clock.
+
+**Tour filter.** A dropdown beside All / Package-only, same tours and order as
+/reports/starbucks-packages (`fetchTourOptions`), stored in the URL as `?tour=`. Shows only
+package cards whose site (else deal) is a stop on that tour, in queue order, each labelled
+with its stop ("D1·3"). Dragging in a filtered view only swaps the slots the shown cards
+already hold, so hidden cards don't move.
+
+**Pause.** "Pause" on a package card, in the deal sidebar package section, and Resume on
+/reports/starbucks-packages (Pace column badge "Paused" / "Paused · <stage>").
+- `pause_package(id)`: the package's open / in-progress tasks go to task status **`paused`**
+  (`task.paused_prior_status` keeps which; `queue_rank` untouched). Every queue reads
+  `status IN ('open','in_progress')`, so they vanish everywhere without per-page filters.
+- `release_package_tasks` returns 0 while paused — nothing is released.
+- `v_deal_package_progress.behind_since` is NULL while paused; `paceOf` / `isStale` also
+  return no flag when `paused_at` is set.
+- `resume_package(id)`: tasks back to their prior status at their old rank (a slide
+  finished meanwhile → its task completes), then releases anything now due.
+- Guard trigger `task_hold_while_package_paused`: any write that would make a paused
+  package's task open / in progress (e.g. a slide reopened done → in progress, /tasks
+  "Reopen") parks it as `paused` instead. Completing / cancelling a paused task by hand is allowed.
+- Auto-pause: site_submit → Pass / Lost / Killed / Use Declined / Not Available, or deal
+  → Lost (reason `stage: <name>`). Never auto-resumes.
+- `task.status` readers audited 2026-11-03: all queues, lanes and counts read
+  open / in_progress (or open) only; no view, cron job or edge function reads it. /tasks
+  shows "Paused (package)" as a status filter and label and never counts it as overdue.
+
+**Fully-held cards.** A package whose slides for this owner are all held still gets a
+card in the queue: dashed and greyed, rankable, chat works, "Waiting on: Market Research /
+Site Story". Its rank lives in `package_queue_rank (owner_id, package_id)`. The queue
+order saves through `set_queue_order(owner, items)` with `t:<task>` / `p:<package>` items
+(position n → rank n×1000); a package's next released task starts at its card's rank.
+Held slides of paused packages are left out of the queue and the Held rail.
+Known gap: a package that has never been dragged has no card rank, so when its last open
+task is done and only held slides remain, its card sorts to the bottom until moved.
+
 ## Package chat (2026-11-03)
 
 Package slide tasks no longer have per-task chat. Each package has **one thread** (`package_comment`,

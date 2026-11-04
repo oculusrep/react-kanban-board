@@ -96,6 +96,9 @@ export interface ProgressRow {
   tour_ready_done: number;
   tour_ready: boolean;
   missing_inputs: InputKey[];
+  // 20261103144723: paused packages (behind_since is already NULL while paused)
+  paused_at: string | null;
+  pause_reason: string | null;   // 'manual', or 'stage: Pass' etc. for an auto-pause
 }
 
 export interface GateDateRow {
@@ -148,7 +151,7 @@ function daysSince(iso: string): number {
 }
 
 export function paceOf(p: ProgressRow | null): Pace {
-  if (!p) return 'on_pace';
+  if (!p || p.paused_at) return 'on_pace';   // paused: no pace / late flags
   if (p.behind_since) return daysSince(p.behind_since) >= PACKAGE_LATE_DAYS ? 'late' : 'behind';
   if (p.gates_unknown) return 'unknown';
   return 'on_pace';
@@ -166,7 +169,7 @@ export function currentGate(p: ProgressRow): { label: string; unknown: boolean }
 }
 
 export function isStale(p: ProgressRow | null): boolean {
-  return !!p && !p.any_started && daysSince(p.started_at) >= PACKAGE_STALE_DAYS;
+  return !!p && !p.paused_at && !p.any_started && daysSince(p.started_at) >= PACKAGE_STALE_DAYS;
 }
 
 // Bar colours (locked 2026-10-12): slate on pace, terracotta outline behind,
@@ -276,6 +279,27 @@ export async function startPackageForCard(siteSubmitId: string | null, dealId: s
   if (error) throw error;
   notifyPackageChanged(dealId);
   return data as string;
+}
+
+// Pause / resume (20261103144723). Pause parks the package's open tasks as 'paused'
+// (hidden from every queue, ranks kept) and stops releases; resume restores them and
+// releases anything now due. Neither touches the board clock.
+export async function pausePackage(packageId: string, dealId: string | null): Promise<void> {
+  const { error } = await supabase.rpc('pause_package', { p_package_id: packageId });
+  if (error) throw error;
+  notifyPackageChanged(dealId);
+}
+
+export async function resumePackage(packageId: string, dealId: string | null): Promise<void> {
+  const { error } = await supabase.rpc('resume_package', { p_package_id: packageId });
+  if (error) throw error;
+  notifyPackageChanged(dealId);
+}
+
+// "Paused" / "Paused · Pass" for a badge.
+export function pauseLabel(p: { pause_reason: string | null }): string {
+  const r = p.pause_reason ?? '';
+  return r.startsWith('stage: ') ? `Paused · ${r.slice(7)}` : 'Paused';
 }
 
 // Every package's progress row (one per package; the view is Starbucks-family only).

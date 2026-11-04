@@ -8,7 +8,7 @@ import {
   updateTask,
 } from '../../hooks/useTasks';
 import { supabase } from '../../lib/supabaseClient';
-import { TaskWithRelations } from '../../types/task';
+import { TaskWithRelations, taskStatusLabel } from '../../types/task';
 import { localDateString } from '../../types/taskBlock';
 import CategoryDropdown from './CategoryDropdown';
 import TaskLinksEditor from './TaskLinksEditor';
@@ -334,7 +334,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                   : { backgroundColor: COLORS.slate + '33', color: COLORS.steel }
               }
             >
-              {task?.status ?? '—'}
+              {taskStatusLabel(task?.status)}
             </span>
             {/* Status-change action sits in the header (not next to Save) so
                 an accidental click while saving edits won't complete a task. */}

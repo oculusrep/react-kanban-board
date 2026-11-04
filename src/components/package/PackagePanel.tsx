@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import useDealPackage from '../../hooks/useDealPackage';
 import {
   BRAND, GateState, INPUT_LABEL, InputKey, ManualInput, PACE_LABEL, ProgressRow, STATUS_LABEL,
-  SlideRow, SlideStatus, nextAction, paceOf, paceStyle, setPackageInput, setSlideDone, setSlideStatus, shortDate, startPackage,
+  SlideRow, SlideStatus, nextAction, paceOf, paceStyle, pauseLabel, pausePackage, resumePackage, setPackageInput, setSlideDone,
+  setSlideStatus, shortDate, startPackage,
 } from '../../lib/packageTracker';
 import GateDatesForm from './GateDatesForm';
 
@@ -131,6 +132,33 @@ export default function PackagePanel({ dealId, collapsible = false }: PackagePan
       ) : (
         <>
           <ProgressSummary progress={progress} />
+
+          {/* Pause / resume (the package and the site are untouched either way) */}
+          {progress && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {progress.paused_at ? (
+                <>
+                  <span className="px-1.5 py-0.5 rounded font-semibold" style={{ border: `1px solid ${BRAND.terracotta}`, color: BRAND.terracotta }}>
+                    {pauseLabel(progress)}
+                  </span>
+                  <span style={{ color: BRAND.steel }}>since {shortDate(progress.paused_at)} — tasks hidden from every queue, nothing released.</span>
+                  <button type="button" disabled={busy === 'pause'} onClick={() => run('pause', () => resumePackage(pkg.id, dealId))}
+                          className="px-2 py-0.5 rounded text-white disabled:opacity-60" style={{ backgroundColor: BRAND.navy }}>
+                    {busy === 'pause' ? 'Resuming…' : 'Resume'}
+                  </button>
+                </>
+              ) : (
+                <button type="button" disabled={busy === 'pause'}
+                        onClick={() => {
+                          if (!window.confirm('Pause this package? Its open tasks leave every queue and nothing is released until you resume. Slides and progress stay as they are.')) return;
+                          run('pause', () => pausePackage(pkg.id, dealId));
+                        }}
+                        className="underline disabled:opacity-60" style={{ color: BRAND.steel }}>
+                  {busy === 'pause' ? 'Pausing…' : 'Pause package'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Gates */}
           {progress && (

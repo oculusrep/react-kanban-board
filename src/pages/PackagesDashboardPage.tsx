@@ -5,7 +5,8 @@ import usePackagesDashboard, { PackageRowView } from '../hooks/usePackagesDashbo
 import useTourPackageRows, { TourRowView } from '../hooks/useTourPackageRows';
 import { TourOption, fetchTourOptions } from '../lib/packageTours';
 import {
-  BRAND, INPUT_LABEL, currentGate, PACE_LABEL, STATUS_LABEL, SlideRow, paceStyle, shortDate, startPackageForCard,
+  BRAND, INPUT_LABEL, currentGate, PACE_LABEL, STATUS_LABEL, SlideRow, paceStyle, pauseLabel, resumePackage, shortDate,
+  startPackageForCard,
 } from '../lib/packageTracker';
 
 // Starbucks Packages dashboard (decisions 2026-10-22). Read-only except Start
@@ -19,6 +20,9 @@ import {
 // not and in any stage. Closed stops (Pass, Lost / Killed, Use Declined, Not
 // Available) sit dimmed at the bottom, hidden by default, and stay out of the
 // header counts.
+//
+// Paused packages (2026-11-03) show a "Paused" badge (with the stage when it was an
+// auto-pause) in the Pace column and a Resume button; pace is suppressed while paused.
 
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -66,6 +70,20 @@ export default function PackagesDashboardPage() {
   const [startError, setStartError] = useState<string | null>(null);
 
   const notStarted = rows.filter((r) => !r.progress).length;
+
+  const [resuming, setResuming] = useState<string | null>(null);
+  const resume = async (r: PackageRowView) => {
+    if (!r.progress) return;
+    setResuming(r.card.id);
+    setStartError(null);
+    try {
+      await resumePackage(r.progress.package_id, r.progress.deal_id);  // announces → the hook re-reads
+    } catch (e: any) {
+      setStartError(`${r.card.name}: ${e?.message ?? 'could not resume'}`);
+    } finally {
+      setResuming(null);
+    }
+  };
 
   const start = async (r: PackageRowView) => {
     if (!window.confirm(`Start the slide package for ${r.card.name}? Noree gets tasks for the slides whose inputs are already in.`)) return;
@@ -168,6 +186,8 @@ export default function PackagesDashboardPage() {
                     stopLabel={'stopLabel' in r ? r.stopLabel : undefined}
                     closed={'closed' in r ? r.closed : false}
                     starting={starting === r.card.id}
+                    resuming={resuming === r.card.id}
+                    onResume={() => resume(r)}
                     expanded={expanded.has(r.card.id)}
                     onToggle={r.progress ? () => toggleExpand(r.card.id) : undefined}
                     onOpen={() => setSidebar({ siteSubmitId: r.card.siteSubmitId, dealId: r.card.dealId })}
@@ -240,9 +260,9 @@ function SlidesRow({ slides, names, onDone }: {
   );
 }
 
-function Row({ r, td, stopLabel, closed, starting, expanded, onToggle, onOpen, onStart }: {
-  r: PackageRowView; td: string; stopLabel?: string; closed: boolean; starting: boolean; expanded: boolean;
-  onToggle?: () => void; onOpen: () => void; onStart: () => void;
+function Row({ r, td, stopLabel, closed, starting, resuming, expanded, onToggle, onOpen, onStart, onResume }: {
+  r: PackageRowView; td: string; stopLabel?: string; closed: boolean; starting: boolean; resuming: boolean; expanded: boolean;
+  onToggle?: () => void; onOpen: () => void; onStart: () => void; onResume: () => void;
 }) {
   const p = r.progress;
   const pct = p && p.applicable > 0 ? Math.round((p.done / p.applicable) * 100) : 0;
@@ -327,7 +347,21 @@ function Row({ r, td, stopLabel, closed, starting, expanded, onToggle, onOpen, o
               : <span style={{ color: BRAND.slate }}>—</span>}
       </td>
       <td className={`${td} text-xs whitespace-nowrap`}>
-        {r.pace
+        {p?.paused_at ? (
+          <span className="flex items-center gap-1.5">
+            <span className="px-1.5 py-0.5 rounded font-semibold" title={`Paused ${shortDate(p.paused_at)}`}
+                  style={{ border: `1px solid ${BRAND.terracotta}`, color: BRAND.terracotta }}>{pauseLabel(p)}</span>
+            <button
+              type="button"
+              disabled={resuming}
+              onClick={(e) => { e.stopPropagation(); onResume(); }}
+              className="font-semibold px-2 py-0.5 rounded text-white disabled:opacity-60"
+              style={{ backgroundColor: BRAND.navy }}
+            >
+              {resuming ? 'Resuming…' : 'Resume'}
+            </button>
+          </span>
+        ) : r.pace
           ? <span style={{ color: r.pace === 'on_pace' ? BRAND.steel : BRAND.terracotta, fontWeight: r.pace === 'late' ? 600 : 400 }}>{PACE_LABEL[r.pace]}</span>
           : <span style={{ color: BRAND.slate }}>—</span>}
       </td>

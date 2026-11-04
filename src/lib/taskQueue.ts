@@ -62,6 +62,7 @@ export async function fetchQueue(ownerId: string): Promise<QueueTask[]> {
 
 // Package slides this owner will get once their inputs arrive: not done / N/A,
 // inputs missing, and no task yet (Start Package holds them; release creates them).
+// Paused packages are left out: nothing is released while paused, so they're not "up next".
 export async function fetchHeldSlides(ownerId: string): Promise<HeldSlide[]> {
   const { data, error } = await supabase
     .from('v_deal_package_slide')
@@ -73,11 +74,15 @@ export async function fetchHeldSlides(ownerId: string): Promise<HeldSlide[]> {
   if (error) throw error;
   const slides = (data as (HeldSlide & { status: string })[]) ?? [];
   if (!slides.length) return [];
-  const { data: tasks, error: tErr } = await supabase
-    .from('task').select('package_slide_id').in('package_slide_id', slides.map((s) => s.id));
+  const [{ data: tasks, error: tErr }, { data: paused, error: pErr }] = await Promise.all([
+    supabase.from('task').select('package_slide_id').in('package_slide_id', slides.map((s) => s.id)),
+    supabase.from('deal_package').select('id').in('id', [...new Set(slides.map((s) => s.package_id))]).not('paused_at', 'is', null),
+  ]);
   if (tErr) throw tErr;
+  if (pErr) throw pErr;
   const hasTask = new Set(((tasks as { package_slide_id: string }[]) ?? []).map((t) => t.package_slide_id));
-  return slides.filter((s) => !hasTask.has(s.id));
+  const isPaused = new Set(((paused as { id: string }[]) ?? []).map((x) => x.id));
+  return slides.filter((s) => !hasTask.has(s.id) && !isPaused.has(s.package_id));
 }
 
 // Names for held slides' packages (deal name; else the package's first task subject).
@@ -97,9 +102,19 @@ export async function fetchPackageNames(packageIds: string[]): Promise<Record<st
   return out;
 }
 
-// Drag order: the whole visible list, in its new order (one owner).
-export async function saveQueueOrder(taskIds: string[]): Promise<void> {
-  const { error } = await supabase.rpc('set_task_queue_order', { p_task_ids: taskIds });
+// Ranks of this owner's fully-held package cards (no tasks to carry a queue_rank).
+export async function fetchHeldCardRanks(ownerId: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from('package_queue_rank').select('package_id, queue_rank').eq('owner_id', ownerId);
+  if (error) throw error;
+  return new Map(((data as { package_id: string; queue_rank: number }[]) ?? []).map((r) => [r.package_id, r.queue_rank]));
+}
+
+// Queue order as one list (20261103144723): 't:<task id>' or 'p:<package id>'. Position
+// n → rank n*1000 on the task, or on the package's card (package_queue_rank), which is
+// where a newly released slide task of that package starts. Ranks only — no clock.
+export type QueueItem = `t:${string}` | `p:${string}`;
+export async function saveQueueOrder(ownerId: string, items: QueueItem[]): Promise<void> {
+  const { error } = await supabase.rpc('set_queue_order', { p_owner: ownerId, p_items: items });
   if (error) throw error;
 }
 

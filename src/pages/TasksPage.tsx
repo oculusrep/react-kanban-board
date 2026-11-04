@@ -12,6 +12,7 @@ import {
   TaskListFilters,
   TaskStatus,
   TaskWithRelations,
+  taskStatusLabel,
 } from '../types/task';
 import { useAuth } from '../contexts/AuthContext';
 import { useUsers } from '../hooks/useUsers';
@@ -41,6 +42,7 @@ const STATUS_OPTIONS: { value: TaskStatus | 'all'; label: string }[] = [
   { value: 'in_progress', label: 'In progress' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'paused', label: 'Paused (package)' },
 ];
 
 const ASSIGNABLE_ROLES = new Set(['broker_full', 'va', 'admin']);
@@ -137,7 +139,7 @@ const matchesPreset = (task: TaskWithRelations, preset: Preset, today: string): 
     case 'focus':
       return dueDate === null || dueDate <= today;
     case 'overdue':
-      return dueDate !== null && dueDate < today && task.status !== 'completed' && task.status !== 'cancelled';
+      return dueDate !== null && dueDate < today && !['completed', 'cancelled', 'paused'].includes(task.status);
     case 'today':
       return dueDate === today;
     case 'no_date':
@@ -559,7 +561,7 @@ export const TasksPage: React.FC = () => {
               )}
               {!loading &&
                 sortedTasks.map((task) => {
-                  const overdue = isOverdue(task.due_at) && task.status !== 'completed' && task.status !== 'cancelled';
+                  const overdue = isOverdue(task.due_at) && !['completed', 'cancelled', 'paused'].includes(task.status);
                   const completed = task.status === 'completed';
                   const selected = selectedIds.has(task.id);
                   return (
@@ -622,7 +624,7 @@ export const TasksPage: React.FC = () => {
                               : { backgroundColor: COLORS.slate + '33', color: COLORS.steel }
                           }
                         >
-                          {task.status}
+                          {taskStatusLabel(task.status)}
                         </span>
                       </td>
                       <td
