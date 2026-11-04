@@ -1,5 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import { CardTag, QueueTaskCard } from '../components/tasks/QueueTaskCard';
@@ -8,12 +9,14 @@ import { TaskChatPanel } from '../components/tasks/TaskChatPanel';
 import { PackageChatPanel } from '../components/tasks/PackageChatPanel';
 import { supabase } from '../lib/supabaseClient';
 import {
-  BRAND, INPUT_LABEL, InputKey, PACE_LABEL, ProgressRow, currentGate, fetchAllPackageProgress, localDate, paceOf, shortDate,
+  BRAND, INPUT_LABEL, InputKey, PACE_LABEL, ProgressRow, currentGate, fetchAllPackageProgress, localDate, paceOf,
+  pausePackage, resumePackage, shortDate,
 } from '../lib/packageTracker';
 import {
-  HeldSlide, Place, QueueOwner, QueueTask, WaitingSlide, fetchDoneThisWeek, fetchHeldSlides, fetchPackageNames,
-  fetchPlaces, fetchQueue, fetchQueueOwners, fetchWaitingOnMike, saveQueueOrder, setQueueTaskStatus,
+  HeldSlide, Place, QueueItem, QueueOwner, QueueTask, WaitingSlide, fetchDoneThisWeek, fetchHeldCardRanks, fetchHeldSlides,
+  fetchPackageNames, fetchPlaces, fetchQueue, fetchQueueOwners, fetchWaitingOnMike, saveQueueOrder, setQueueTaskStatus,
 } from '../lib/taskQueue';
+import { TourOption, fetchTourOptions, fetchTourStopSites } from '../lib/packageTours';
 import { fetchUnreadTaskIds } from '../lib/taskChat';
 import { GENERAL, fetchPackageUnread } from '../lib/packageChat';
 
@@ -26,9 +29,15 @@ import { GENERAL, fetchPackageUnread } from '../lib/packageChat';
 // messages tagged to a slide or General); ordinary tasks have their own (task_comment).
 // Neither touches the board clock or the deal / property chat.
 // Noree (VA) lands here by default. Admins can open anyone's queue.
+//
+// 2026-11-03: a package whose slides for this owner are all held still gets a card
+// (greyed, rankable, "Waiting on …"); its rank lives in package_queue_rank and the
+// whole order saves through set_queue_order. A tour filter (?tour=) narrows to the
+// tour's stops' package cards, each labelled with its stop. Pause parks a package:
+// its tasks go to status 'paused' and drop out of every queue until Resume.
 
 const NOW_COUNT = 3;
-const UNDO_MS = 6000; // how long the "Marked done … Undo" toast stays
+const UNDO_MS = 6000; // how long the "Marked done / Paused … Undo" toast stays
 const FILTER_KEY = 'ovis.taskQueue.filter';
 const NO_UNREAD: Set<string> = new Set();
 type Filter = 'all' | 'package';
@@ -52,31 +61,43 @@ function useIsWide(minPx = 1024): boolean {
 // A queue card: one package (its owner's open slide tasks, grouped) or one ordinary task.
 // Cards are ranked; a package card ranks at its best-ranked task (the queue is
 // already sorted by queue_rank), so newly released slide tasks join their card.
+// A package with only held slides for this owner ranks by package_queue_rank.
 type QueueCard =
-  | { kind: 'task'; key: string; task: QueueTask }
-  | { kind: 'package'; key: string; packageId: string; tasks: QueueTask[]; site_submit_id: string | null; deal_id: string | null };
+  | { kind: 'task'; key: string; task: QueueTask; rank: number | null }
+  | { kind: 'package'; key: string; packageId: string; tasks: QueueTask[]; site_submit_id: string | null; deal_id: string | null; rank: number | null };
+type PackageCard = Extract<QueueCard, { kind: 'package' }>;
 
-function buildCards(tasks: QueueTask[]): QueueCard[] {
+function buildCards(tasks: QueueTask[], held: HeldSlide[], heldRanks: Map<string, number>): QueueCard[] {
   const cards: QueueCard[] = [];
-  const byPkg = new Map<string, Extract<QueueCard, { kind: 'package' }>>();
+  const byPkg = new Map<string, PackageCard>();
   for (const t of tasks) {
     const pkg = t.slide?.package_id;
-    if (!pkg) { cards.push({ kind: 'task', key: `t:${t.id}`, task: t }); continue; }
+    if (!pkg) { cards.push({ kind: 'task', key: `t:${t.id}`, task: t, rank: t.queue_rank }); continue; }
     let c = byPkg.get(pkg);
     if (!c) {
-      c = { kind: 'package', key: `p:${pkg}`, packageId: pkg, tasks: [], site_submit_id: t.site_submit_id, deal_id: t.deal_id };
+      c = { kind: 'package', key: `p:${pkg}`, packageId: pkg, tasks: [], site_submit_id: t.site_submit_id, deal_id: t.deal_id, rank: t.queue_rank };
       byPkg.set(pkg, c);
       cards.push(c);
     }
     c.tasks.push(t);
   }
   for (const c of byPkg.values()) c.tasks.sort((a, b) => (a.slide?.position ?? 0) - (b.slide?.position ?? 0));
-  return cards;
+  for (const s of held) {
+    if (byPkg.has(s.package_id)) continue;
+    const c: PackageCard = { kind: 'package', key: `p:${s.package_id}`, packageId: s.package_id, tasks: [],
+      site_submit_id: s.site_submit_id, deal_id: s.deal_id, rank: heldRanks.get(s.package_id) ?? null };
+    byPkg.set(s.package_id, c);
+    cards.push(c);
+  }
+  // Stable: ties and unranked cards keep their order; unranked last.
+  const r = (c: QueueCard) => c.rank ?? Number.POSITIVE_INFINITY;
+  return cards.sort((a, b) => r(a) - r(b));
 }
 
-// Ranked cards → the task order set_task_queue_order stores (a package's tasks
-// contiguous, in template order).
-const flatten = (cards: QueueCard[]): QueueTask[] => cards.flatMap((c) => (c.kind === 'task' ? [c.task] : c.tasks));
+// Ranked cards → the list set_queue_order stores: each package card's own rank ('p:',
+// where its next released task starts), then its tasks in template order.
+const toItems = (cards: QueueCard[]): QueueItem[] => cards.flatMap((c): QueueItem[] =>
+  c.kind === 'task' ? [`t:${c.task.id}`] : [`p:${c.packageId}`, ...c.tasks.map((t): QueueItem => `t:${t.id}`)]);
 
 // Package card tags: current gate (LOI stages) coloured by pace, and tour readiness.
 function packageTags(p: ProgressRow | null): CardTag[] {
@@ -138,6 +159,7 @@ export default function TaskQueuePage() {
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<QueueTask[]>([]);
   const [held, setHeld] = useState<HeldSlide[]>([]);
+  const [heldRanks, setHeldRanks] = useState<Map<string, number>>(new Map());
   const [waiting, setWaiting] = useState<WaitingSlide[]>([]);
   const [doneWeek, setDoneWeek] = useState<number | null>(null);
   const [progress, setProgress] = useState<Map<string, ProgressRow>>(new Map());
@@ -157,8 +179,9 @@ export default function TaskQueuePage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); // Up next cards opened inline
   const toggleExpanded = (key: string) =>
     setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
-  // Toast after a check-off; Undo reopens the task and restores the queue order it had.
-  const [undo, setUndo] = useState<{ task: QueueTask; text: string; order: string[] } | null>(null);
+  // Toast after a check-off or a pause; Undo reopens the task (and restores the queue
+  // order it had) or resumes the package.
+  const [undo, setUndo] = useState<{ text: string; run: () => Promise<void> } | null>(null);
   const undoTimer = useRef<number | null>(null);
   useEffect(() => () => { if (undoTimer.current) window.clearTimeout(undoTimer.current); }, []);
   const chatOpenRef = useRef<string | null>(null);
@@ -167,6 +190,36 @@ export default function TaskQueuePage() {
   const setFilter = (f: Filter) => {
     setFilterState(f);
     try { localStorage.setItem(FILTER_KEY, f); } catch { /* per-viewer convenience only */ }
+  };
+
+  // Tour filter, in the URL (?tour=) like /reports/starbucks-packages, same tours and order.
+  const [params, setParams] = useSearchParams();
+  const tourId = params.get('tour');
+  const [tours, setTours] = useState<TourOption[]>([]);
+  const [tourStops, setTourStops] = useState<{ bySite: Map<string, string>; byDeal: Map<string, string> } | null>(null);
+  useEffect(() => { fetchTourOptions().then(setTours).catch(() => setTours([])); }, []);
+  useEffect(() => {
+    setTourStops(null);
+    if (!tourId) return;
+    let cancelled = false;
+    fetchTourStopSites(tourId)
+      .then((stops) => {
+        if (cancelled) return;
+        const bySite = new Map<string, string>();
+        const byDeal = new Map<string, string>();
+        for (const s of stops) {
+          if (!bySite.has(s.siteSubmitId)) bySite.set(s.siteSubmitId, s.stopLabel);
+          if (s.dealId && !byDeal.has(s.dealId)) byDeal.set(s.dealId, s.stopLabel);
+        }
+        setTourStops({ bySite, byDeal });
+      })
+      .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Could not load the tour'); });
+    return () => { cancelled = true; };
+  }, [tourId]);
+  const setTour = (id: string) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('tour', id); else next.delete('tour');
+    setParams(next, { replace: true });
   };
 
   // Default: your own queue. Admins open on the VA's (Noree's) queue — ordering
@@ -186,12 +239,13 @@ export default function TaskQueuePage() {
     if (!ownerId) return;
     setLoading(true);
     try {
-      const [q, h, w, dw, prog] = await Promise.all([
+      const [q, h, w, dw, prog, hr] = await Promise.all([
         fetchQueue(ownerId), fetchHeldSlides(ownerId), fetchWaitingOnMike(ownerId), fetchDoneThisWeek(ownerId),
-        fetchAllPackageProgress(),
+        fetchAllPackageProgress(), fetchHeldCardRanks(ownerId),
       ]);
       setTasks(q);
       setHeld(h);
+      setHeldRanks(hr);
       setWaiting(w);
       setDoneWeek(dw);
       setProgress(new Map(prog.map((p) => [p.package_id, p])));
@@ -250,8 +304,20 @@ export default function TaskQueuePage() {
   const ownerName = owners.find((o) => o.id === ownerId)?.name ?? '';
   const nameById = useMemo(() => Object.fromEntries(owners.map((o) => [o.id, o.name])), [owners]);
 
-  const cards = useMemo(() => buildCards(tasks), [tasks]);
-  const visible = useMemo(() => (filter === 'package' ? cards.filter((c) => c.kind === 'package') : cards), [cards, filter]);
+  const cards = useMemo(() => buildCards(tasks, held, heldRanks), [tasks, held, heldRanks]);
+  // The package card's stop on the selected tour ("D1·3"), matched by site, else deal.
+  const stopOf = (c: QueueCard): string | null => {
+    if (!tourStops || c.kind !== 'package') return null;
+    const site = c.site_submit_id ?? progress.get(c.packageId)?.site_submit_id ?? null;
+    const deal = c.deal_id ?? progress.get(c.packageId)?.deal_id ?? null;
+    return (site && tourStops.bySite.get(site)) || (deal && tourStops.byDeal.get(deal)) || null;
+  };
+  const visible = useMemo(() => {
+    if (tourId) return tourStops ? cards.filter((c) => stopOf(c) !== null) : [];
+    return filter === 'package' ? cards.filter((c) => c.kind === 'package') : cards;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, filter, tourId, tourStops, progress]);
+  const filtered = visible.length !== cards.length;
   const nowLane = visible.slice(0, NOW_COUNT);
   const nextLane = visible.slice(NOW_COUNT);
   const heldByPkg = useMemo(() => {
@@ -264,9 +330,9 @@ export default function TaskQueuePage() {
     (x.site_submit_id && places.sites[x.site_submit_id]) || (x.deal_id && places.deals[x.deal_id]) || null;
 
   // Now and Up next are one list of cards split after NOW_COUNT; a drag in or
-  // between them reorders the cards. With the package filter on, package cards
-  // keep the slots they held in the full list, so hidden cards don't move. The
-  // order is stored as task queue_rank (set_task_queue_order, the whole queue).
+  // between them reorders the cards. With a filter on (package-only or a tour), the
+  // shown cards keep the slots they held in the full list, so hidden cards don't
+  // move. The whole order is saved through set_queue_order (task and held-card ranks).
   const onDragEnd = async (r: DropResult) => {
     if (!r.destination) return;
     const { source, destination } = r;
@@ -283,20 +349,64 @@ export default function TaskQueuePage() {
     const reordered = [...rest.slice(0, at), moved, ...rest.slice(at)];
 
     let nextCards: QueueCard[];
-    if (filter === 'all') nextCards = reordered;
+    if (!filtered) nextCards = reordered;
     else {
       const slots = new Set(visible.map((c) => c.key));
       let i = 0;
       nextCards = cards.map((c) => (slots.has(c.key) ? reordered[i++] : c));
     }
-    const next = flatten(nextCards);
-    const before = tasks;
-    setTasks(next);
+    const items = toItems(nextCards);
+    const before = { tasks, heldRanks };
+    applyOrder(items);
     try {
-      await saveQueueOrder(next.map((t) => t.id));
+      if (ownerId) await saveQueueOrder(ownerId, items);
     } catch (e: any) {
-      setTasks(before);
+      setTasks(before.tasks);
+      setHeldRanks(before.heldRanks);
       setErr(e?.message ?? 'Could not save the order');
+    }
+  };
+
+  // Optimistic: the ranks set_queue_order is about to store.
+  const applyOrder = (items: QueueItem[]) => {
+    const rank = new Map(items.map((it, i) => [it, (i + 1) * 1000]));
+    const r = (t: QueueTask) => rank.get(`t:${t.id}`) ?? t.queue_rank ?? Number.POSITIVE_INFINITY;
+    setTasks((prev) => prev.map((t) => ({ ...t, queue_rank: rank.get(`t:${t.id}`) ?? t.queue_rank })).sort((a, b) => r(a) - r(b)));
+    setHeldRanks((prev) => {
+      const m = new Map(prev);
+      for (const [it, v] of rank) if (it.startsWith('p:')) m.set(it.slice(2), v);
+      return m;
+    });
+  };
+
+  const showToast = (text: string, run: () => Promise<void>) => {
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    setUndo({ text, run });
+    undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
+  };
+  const runUndo = async () => {
+    if (!undo) return;
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    const { run } = undo;
+    setUndo(null);
+    try { await run(); } catch (e: any) { setErr(e?.message ?? 'Could not undo'); }
+  };
+
+  // Pause hides the package's open tasks from every queue (status 'paused', ranks kept)
+  // and holds back releases; Resume restores both. Neither moves the board clock.
+  const pause = async (c: PackageCard) => {
+    const name = packageName(c);
+    if (!window.confirm(`Pause ${name}? Its open tasks leave every queue and nothing is released until it's resumed. Slides and progress stay as they are.`)) return;
+    const dealId = c.deal_id ?? progress.get(c.packageId)?.deal_id ?? null;
+    setBusy(c.key);
+    try {
+      await pausePackage(c.packageId, dealId);
+      showToast(`Paused: ${name}`, async () => { await resumePackage(c.packageId, dealId); await load(); });
+      await load();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not pause the package');
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -314,16 +424,14 @@ export default function TaskQueuePage() {
   };
 
   const complete = async (t: QueueTask) => {
-    const order = tasks.map((x) => x.id);
+    const order = toItems(cards);
     const site = placeOf(t)?.name ?? (t.slide ? pkgNames[t.slide.package_id] : null);
     const text = [t.slide?.label ?? t.subject, site].filter(Boolean).join(' · ');
     setBusy(t.id);
     try {
       await setQueueTaskStatus(t.id, 'completed');
       if (chatTaskId === t.id) setChatTaskId(null);
-      if (undoTimer.current) window.clearTimeout(undoTimer.current);
-      setUndo({ task: t, text, order });
-      undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
+      showToast(`Marked done: ${text}`, () => undoComplete(t, order));
       await load();
     } catch (e: any) {
       setErr(e?.message ?? 'Could not update the task');
@@ -335,22 +443,19 @@ export default function TaskQueuePage() {
   // Reopen = status back to open (sync_slide_from_task moves the slide back to in
   // progress), then in_progress again if it had been started. Status and queue_rank
   // writes never touch the board clock (supabase/tests/task_undo_clock_test.sql).
-  const undoComplete = async () => {
-    if (!undo || !ownerId) return;
-    const { task: t, order } = undo;
-    if (undoTimer.current) window.clearTimeout(undoTimer.current);
-    setUndo(null);
+  const undoComplete = async (t: QueueTask, order: QueueItem[]) => {
+    if (!ownerId) return;
     setBusy(t.id);
     try {
       await setQueueTaskStatus(t.id, 'open');
       if (t.status === 'in_progress') await setQueueTaskStatus(t.id, 'in_progress');
       if (canReorder) {
-        // Back to the order before the check-off; anything new since goes after.
-        const now = (await fetchQueue(ownerId)).map((x) => x.id);
-        const present = new Set(now);
-        const kept = order.filter((id) => present.has(id));
+        // Back to the order before the check-off; tasks new since go after.
+        const now = (await fetchQueue(ownerId)).map((x): QueueItem => `t:${x.id}`);
+        const present = new Set<QueueItem>(now);
+        const kept = order.filter((it) => it.startsWith('p:') || present.has(it));
         const keptSet = new Set(kept);
-        await saveQueueOrder([...kept, ...now.filter((id) => !keptSet.has(id))]);
+        await saveQueueOrder(ownerId, [...kept, ...now.filter((it) => !keptSet.has(it))]);
       }
       await load();
     } catch (e: any) {
@@ -410,9 +515,10 @@ export default function TaskQueuePage() {
     placeOf(s)?.name ?? pkgNames[s.package_id] ?? 'package';
 
   const firstName = ownerName.split(' ')[0] || ownerName;
-  const packageName = (c: Extract<QueueCard, { kind: 'package' }>) =>
-    placeOf(c)?.name ?? pkgNames[c.packageId] ?? (c.tasks[0].subject.split(' — ').slice(1).join(' — ') || 'Package');
-  const chatPkgCard = pkgChat ? cards.find((c): c is Extract<QueueCard, { kind: 'package' }> =>
+  function packageName(c: PackageCard): string {
+    return placeOf(c)?.name ?? pkgNames[c.packageId] ?? (c.tasks[0]?.subject.split(' — ').slice(1).join(' — ') || 'Package');
+  }
+  const chatPkgCard = pkgChat ? cards.find((c): c is PackageCard =>
     c.kind === 'package' && c.packageId === pkgChat.packageId) ?? null : null;
   const renderCard = (c: QueueCard, position: number, variant: 'large' | 'compact', index: number) => (
     <Draggable key={c.key} draggableId={c.key} index={index} isDragDisabled={!canReorder}>
@@ -431,6 +537,9 @@ export default function TaskQueuePage() {
               pace={progress.get(c.packageId) ? paceOf(progress.get(c.packageId)!) : null}
               tags={packageTags(progress.get(c.packageId) ?? null)}
               unread={pkgUnread.get(c.packageId) ?? NO_UNREAD}
+              stopLabel={stopOf(c)}
+              pausing={busy === c.key}
+              onPause={() => pause(c)}
               busyTaskId={busy}
               canReorder={canReorder}
               dragHandle={drag.dragHandleProps}
@@ -499,6 +608,14 @@ export default function TaskQueuePage() {
                 </button>
               ))}
             </div>
+            <select value={tourId ?? ''} onChange={(e) => setTour(e.target.value)}
+                    className="rounded-md bg-white px-2 py-1.5 text-sm"
+                    style={{ border: `1px solid ${tourId ? BRAND.navy : BRAND.slate}`, color: BRAND.navy }} aria-label="Tour">
+              <option value="">Any tour</option>
+              {tours.map((t) => (
+                <option key={t.id} value={t.id}>{t.tour_name}{t.is_archived ? ' (archived)' : ''}</option>
+              ))}
+            </select>
             {isAdmin && owners.length > 0 && (
               <select value={ownerId ?? ''} onChange={(e) => setOwnerId(e.target.value)}
                       className="rounded-md bg-white px-2 py-1.5 text-sm"
@@ -526,11 +643,13 @@ export default function TaskQueuePage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
           {/* Lanes */}
           <div className="min-w-0">
-            {loading && tasks.length === 0 ? (
+            {loading && cards.length === 0 ? (
               <div className="rounded-lg bg-white px-4 py-10 text-center text-sm" style={{ border: `1px solid ${BRAND.slate}`, color: BRAND.steel }}>Loading…</div>
             ) : visible.length === 0 ? (
               <div className="rounded-lg bg-white px-4 py-10 text-center text-sm" style={{ border: `1px solid ${BRAND.slate}`, color: BRAND.steel }}>
-                {filter === 'package' && tasks.length ? 'No package tasks in the queue.' : 'Nothing in the queue.'}
+                {tourId
+                  ? (tourStops ? 'No packages in the queue for this tour’s stops.' : 'Loading the tour…')
+                  : filter === 'package' && cards.length ? 'No package tasks in the queue.' : 'Nothing in the queue.'}
               </div>
             ) : (
               <DragDropContext onDragEnd={onDragEnd}>
@@ -649,8 +768,8 @@ export default function TaskQueuePage() {
         <div role="status" aria-live="polite"
              className="fixed bottom-6 left-1/2 z-[60] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-lg bg-white px-4 py-2 text-sm shadow-lg"
              style={{ border: `1px solid ${BRAND.slate}`, color: BRAND.navy }}>
-          <span className="min-w-0 truncate">Marked done: {undo.text}</span>
-          <button type="button" onClick={undoComplete} className="shrink-0 font-semibold hover:underline" style={{ color: BRAND.steel }}>
+          <span className="min-w-0 truncate">{undo.text}</span>
+          <button type="button" onClick={runUndo} className="shrink-0 font-semibold hover:underline" style={{ color: BRAND.steel }}>
             Undo
           </button>
         </div>

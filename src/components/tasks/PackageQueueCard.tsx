@@ -9,6 +9,8 @@ import { CardTag, ChatButton, CheckBox, Chevron, Grip, OpenLink, StartButton, Ta
 // "large" (Now) is always expanded; "compact" (Up next) is one row that expands inline.
 // Chat is per package (package_comment): the card's icon opens the whole thread, a
 // slide row's icon (held rows too) opens it filtered to that slide.
+// A package whose slides for this owner are all held is still a card (greyed, still
+// rankable, chat works) showing what it waits on. "Pause" parks the whole package.
 
 type Row = { kind: 'task'; position: number; task: QueueTask } | { kind: 'held'; position: number; slide: HeldSlide };
 
@@ -23,6 +25,9 @@ export interface PackageQueueCardProps {
   pace: Pace | null;
   tags: CardTag[];
   unread: Set<string>;             // this package's unread chat keys: slide ids, or GENERAL
+  stopLabel: string | null;        // "D1·3" when a tour filter is on
+  pausing: boolean;
+  onPause: () => void;
   busyTaskId: string | null;
   canReorder: boolean;
   dragHandle: DraggableProvidedDragHandleProps | null | undefined;
@@ -93,6 +98,25 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
   const firstActionable = rows.find((r): r is Extract<Row, { kind: 'task' }> => r.kind === 'task');
   const anyUnread = p.unread.size > 0;
   const border = p.tasks.some((t) => t.status === 'in_progress') ? BRAND.navy : BRAND.slate;
+  const allHeld = p.tasks.length === 0;
+  const waitingOn = [...new Set(p.held.flatMap((s) => s.missing_inputs))].map((k) => INPUT_LABEL[k]).join(' / ');
+  const cardStyle = { border: `1px ${allHeld ? 'dashed' : 'solid'} ${border}`, backgroundColor: allHeld ? BRAND.page : '#FFFFFF' };
+  const dim = allHeld ? 'opacity-60' : '';
+  const nameColor = allHeld ? BRAND.steel : BRAND.navy;
+  const stop = p.stopLabel ? (
+    <span className="shrink-0 rounded px-1.5 text-xs font-semibold" style={{ border: `1px solid ${BRAND.steel}`, color: BRAND.steel }}
+          title="Tour stop">{p.stopLabel}</span>
+  ) : null;
+  const pauseBtn = (
+    <button type="button" disabled={p.pausing} onClick={(e) => { e.stopPropagation(); p.onPause(); }}
+            className="text-xs underline disabled:opacity-50" style={{ color: BRAND.steel }}
+            title="Hide this package's tasks from every queue and hold releases until it's resumed">
+      {p.pausing ? 'Pausing…' : 'Pause'}
+    </button>
+  );
+  const counts = allHeld
+    ? <span style={{ color: BRAND.terracotta }}>Waiting on: {waitingOn}</span>
+    : <span>{p.tasks.length} open{p.held.length ? ` · ${p.held.length} held` : ''}</span>;
 
   const checklist = (
     <ul className="space-y-px">
@@ -115,29 +139,31 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
 
   if (large) {
     return (
-      <div className="flex h-full flex-col rounded-lg bg-white shadow-sm" style={{ border: `1px solid ${border}` }}>
+      <div className="flex h-full flex-col rounded-lg shadow-sm" style={cardStyle}>
         <Grip handle={p.dragHandle} enabled={p.canReorder} vertical={false} />
         <div className="flex flex-1 flex-col gap-1.5 px-3 pb-2.5">
           <div className="flex items-start justify-between gap-2">
             <span className="flex items-center gap-2">
               <span className="text-3xl font-light leading-none" style={{ color: BRAND.slate }}>{p.position}</span>
+              {stop}
               {chat}
             </span>
-            <span className="flex flex-wrap justify-end gap-1">{p.tags.map((t) => <Tag key={t.label} tag={t} />)}</span>
+            <span className={`flex flex-wrap justify-end gap-1 ${dim}`}>{p.tags.map((t) => <Tag key={t.label} tag={t} />)}</span>
           </div>
           <div className="min-w-0">
             <button type="button" disabled={!p.onOpen} onClick={() => p.onOpen?.()}
                     className="block min-w-0 max-w-full truncate text-left text-lg font-semibold enabled:hover:underline disabled:cursor-default"
-                    style={{ color: BRAND.navy }}>
+                    style={{ color: nameColor }}>
               {p.name}
             </button>
-            <div className="flex flex-wrap gap-x-3 text-sm" style={{ color: BRAND.steel }}>
+            <div className="flex flex-wrap items-center gap-x-3 text-sm" style={{ color: BRAND.steel }}>
               {p.city && <span>{p.city}</span>}
               <span>{p.ownerName}</span>
-              <span>{p.tasks.length} open{p.held.length ? ` · ${p.held.length} held` : ''}</span>
+              {counts}
+              <span className="ml-auto">{pauseBtn}</span>
             </div>
           </div>
-          <ProgressBar progress={p.progress} pace={p.pace} wide />
+          <div className={dim}><ProgressBar progress={p.progress} pace={p.pace} wide /></div>
           <div className="pt-1" style={{ borderTop: `1px solid ${BRAND.page}` }}>{checklist}</div>
         </div>
       </div>
@@ -145,18 +171,21 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
   }
 
   return (
-    <div className="rounded-lg bg-white" style={{ border: `1px solid ${border}` }}>
+    <div className="rounded-lg" style={cardStyle}>
       <div className="flex cursor-pointer items-stretch" onClick={p.onToggle} aria-expanded={p.expanded}>
         <Grip handle={p.dragHandle} enabled={p.canReorder} vertical />
         <div className="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-1.5">
           <span className="w-6 shrink-0 text-right text-sm" style={{ color: BRAND.slate }}>{p.position}</span>
-          <span className="min-w-0 max-w-[18rem] shrink truncate text-sm font-semibold" style={{ color: BRAND.navy }}>{p.name}</span>
+          {stop}
+          <span className="min-w-0 max-w-[18rem] shrink truncate text-sm font-semibold" style={{ color: nameColor }}>{p.name}</span>
           {p.city && <span className="hidden shrink-0 text-xs md:inline" style={{ color: BRAND.steel }}>{p.city}</span>}
-          <span className="hidden sm:flex"><ProgressBar progress={p.progress} pace={p.pace} wide={false} /></span>
+          <span className={`hidden sm:flex ${dim}`}><ProgressBar progress={p.progress} pace={p.pace} wide={false} /></span>
           <span className="min-w-0 flex-1 truncate text-xs" style={{ color: BRAND.steel }}>
-            {firstActionable ? <>Next: <span style={{ color: BRAND.navy }}>{firstActionable.task.slide?.label ?? firstActionable.task.subject}</span></> : null}
+            {firstActionable
+              ? <>Next: <span style={{ color: BRAND.navy }}>{firstActionable.task.slide?.label ?? firstActionable.task.subject}</span></>
+              : allHeld ? <span style={{ color: BRAND.terracotta }}>Waiting on: {waitingOn}</span> : null}
           </span>
-          <span className="hidden shrink-0 gap-1 lg:flex">{p.tags.map((t) => <Tag key={t.label} tag={t} />)}</span>
+          <span className={`hidden shrink-0 gap-1 lg:flex ${dim}`}>{p.tags.map((t) => <Tag key={t.label} tag={t} />)}</span>
           {chat}
           <Chevron open={p.expanded} />
         </div>
@@ -165,9 +194,10 @@ export function PackageQueueCard(p: PackageQueueCardProps) {
         <div className="pb-2 pl-9 pr-2.5" onClick={(e) => e.stopPropagation()}>
           <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-1.5 text-xs" style={{ color: BRAND.steel }}>
             <span>{p.ownerName}</span>
-            <span>{p.tasks.length} open{p.held.length ? ` · ${p.held.length} held` : ''}</span>
+            {counts}
             <span className="flex gap-1 lg:hidden">{p.tags.map((t) => <Tag key={t.label} tag={t} />)}</span>
             {p.onOpen && <OpenLink onOpen={p.onOpen} label="Open site" />}
+            {pauseBtn}
           </div>
           {checklist}
         </div>
