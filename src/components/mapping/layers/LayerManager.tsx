@@ -27,6 +27,28 @@ export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
 export type CachedDemographicsMode = 'rings' | 'polygon';
 
+// Cached Demographics filter persistence. Default is everyone's lookups,
+// all time — the layer exists so the team can reuse each other's runs.
+const CACHED_DEMOS_SCOPE_KEY = 'ovis.cachedDemographics.scope';
+const CACHED_DEMOS_RANGE_KEY = 'ovis.cachedDemographics.timeRange';
+
+function loadStoredChoice<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const v = window.localStorage.getItem(key);
+    return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStoredChoice(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // storage unavailable (private window, blocked site data) — non-fatal
+  }
+}
+
 // Which piece of data the Municipal Projects pins should render as an on-map
 // label. 'total_units' = raw number (e.g. "80"). 'units_label' = the same
 // computed string shown in the slideout / KML export (e.g. "+80 RC"). Session
@@ -313,9 +335,17 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     useState<string>('#FFFFFF'); // white halo — high contrast on any basemap
 
   const [cachedDemographicsTimeRange, setCachedDemographicsTimeRange] =
-    useState<CachedDemographicsTimeRange>('30d');
+    useState<CachedDemographicsTimeRange>(() =>
+      loadStoredChoice(CACHED_DEMOS_RANGE_KEY, ['7d', '30d', 'all'] as const, 'all'));
   const [cachedDemographicsScope, setCachedDemographicsScope] =
-    useState<CachedDemographicsScope>('mine');
+    useState<CachedDemographicsScope>(() =>
+      loadStoredChoice(CACHED_DEMOS_SCOPE_KEY, ['mine', 'all'] as const, 'all'));
+  useEffect(() => {
+    saveStoredChoice(CACHED_DEMOS_RANGE_KEY, cachedDemographicsTimeRange);
+  }, [cachedDemographicsTimeRange]);
+  useEffect(() => {
+    saveStoredChoice(CACHED_DEMOS_SCOPE_KEY, cachedDemographicsScope);
+  }, [cachedDemographicsScope]);
   const [cachedDemographicsModes, setCachedDemographicsModes] = useState<
     Set<CachedDemographicsMode>
   >(new Set(['rings', 'polygon']));
