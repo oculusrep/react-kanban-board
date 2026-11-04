@@ -55,6 +55,10 @@ export interface MunicipalProjectMapRow {
   geometry_computed_acres?: number | null;
   geometry_area_variance_pct?: number | null;
   geometry_needs_review?: boolean;
+  // Unit count needs a human look: no count, 0, or a placeholder that was
+  // removed. Set by a DB trigger / the approval carry-over; advisory only.
+  units_needs_review?: boolean;
+  units_review_reason?: string | null;
   // A fetched boundary nobody has looked at yet — drawn dashed until reviewed.
   geometry_unreviewed?: boolean;
   // Source / provenance (Phase B additions — populated by the market research agent

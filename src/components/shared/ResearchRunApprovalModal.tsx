@@ -104,6 +104,13 @@ interface StagingRow {
   notes: string | null;
   muni_name: string | null;
   muni_kind: string | null;
+  // Per-row unit-count review flag, set by a DB trigger when the count is
+  // missing (NULL), 0, exactly 25 (the threshold — historically always a
+  // placeholder) or described in the notes as a placeholder. Advisory: it never
+  // blocks approval, but the reviewer must see it — a fabricated count reads as
+  // a real one once committed. Carried onto the committed row.
+  units_needs_review: boolean;
+  units_review_reason: string | null;
 }
 // A committed municipal_project whose centroid is near a staged candidate —
 // the soft "possible duplicate" signal (see find_nearby_municipal_projects RPC).
@@ -483,6 +490,8 @@ export default function ResearchRunApprovalModal({
             notes: r.notes,
             muni_name: r.muni_name,
             muni_kind: r.muni_kind,
+            units_needs_review: !!r.units_needs_review,
+            units_review_reason: r.units_review_reason ?? null,
           }));
           setStaging(stagingNorm);
           setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id).map((s) => s.id)));
@@ -512,6 +521,7 @@ export default function ResearchRunApprovalModal({
               permit_application_date, source, discovery_source, discovery_source_raw,
               reject_reason, duplicate_of_staging_id, notes,
               not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
+              units_needs_review, units_review_reason,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -874,8 +884,21 @@ export default function ResearchRunApprovalModal({
   const isFlagged = (r: StagingRow) => {
     const f = rowFlags(r);
     // Low-precision rows count as "needs attention": the dup check couldn't run,
-    // so they must not be quietly filed under "clean & ready".
-    return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id));
+    // so they must not be quietly filed under "clean & ready". Same for a row
+    // whose unit count is missing or a placeholder — it must not read as clean.
+    return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id))
+      || (!f.matched && r.units_needs_review);
+  };
+
+  // The unit-count flag this row will carry onto the committed record, or null.
+  // Mirrors approve_research_staging_rows: an override of NULL / 0 falls back to
+  // the staged count (COALESCE), so only a typed positive count that differs from
+  // the staged one replaces the staged flag — and a positive count clears it.
+  const unitsFlagOnCommit = (r: StagingRow): string | null => {
+    const e = edits[r.id]?.total_housing_units;
+    const typed = e !== undefined ? (Number(e) || null) : null;
+    if (typed != null && typed > 0 && typed !== r.total_housing_units) return null;
+    return r.units_needs_review ? (r.units_review_reason || 'Unit count needs review') : null;
   };
 
   // Triage: split every row into the section it belongs to. In-sweep cluster
@@ -1209,11 +1232,26 @@ export default function ResearchRunApprovalModal({
       }));
       setSelected((prev) => { const n = new Set(prev); foldIds.forEach((id) => n.delete(id)); n.add(keepId); return n; });
       clearMergeFieldEdits([keepId, ...foldIds]);
+      void refreshUnitsFlag(keepId);
       setShowClean(true);
       if ((res.runs_closed ?? []).length > 0) onReviewed?.();
     } catch (e) {
       setError(toErrorMessage(e));
     }
+  };
+
+  // Merge/unmerge rewrite the keeper's unit count server-side, and the DB
+  // trigger recomputes its unit-count flag. Re-read it rather than guess.
+  const refreshUnitsFlag = async (id: string) => {
+    const { data } = await supabase
+      .from('municipal_project_staging')
+      .select('units_needs_review, units_review_reason')
+      .eq('id', id)
+      .maybeSingle();
+    if (!data) return;
+    setStaging((prev) => prev.map((r) => (r.id === id
+      ? { ...r, units_needs_review: !!data.units_needs_review, units_review_reason: data.units_review_reason ?? null }
+      : r)));
   };
 
   // Undo a merge (only while the surviving row is still pending).
@@ -1243,6 +1281,7 @@ export default function ResearchRunApprovalModal({
       }));
       setSelected((prev) => { const n = new Set(prev); restored.forEach((id) => n.add(id)); return n; });
       clearMergeFieldEdits([keepId, ...restored]);
+      void refreshUnitsFlag(keepId);
       if ((res.runs_reopened ?? []).length > 0) {
         setRun((prev) => (prev ? { ...prev, state: 'awaiting_review' } : prev));
       }
@@ -1283,6 +1322,26 @@ export default function ResearchRunApprovalModal({
       });
       if (ids.length === 0) {
         throw new Error('Nothing to approve — select at least one pending row.');
+      }
+
+      // Flag, don't block: a real development with an unknown count belongs in
+      // the pipeline. But the reviewer must see which rows commit without a
+      // sourced count before they do.
+      const unitFlagged = ids
+        .map((id) => staging.find((s) => s.id === id))
+        .filter((r): r is StagingRow => !!r && !r.matched_existing_id)
+        .map((r) => ({ name: r.project_name ?? '(unnamed)', reason: unitsFlagOnCommit(r) }))
+        .filter((x): x is { name: string; reason: string } => x.reason != null);
+      if (unitFlagged.length > 0) {
+        const list = unitFlagged.slice(0, 12).map((x) => `• ${x.name} — ${x.reason}`).join('\n');
+        const more = unitFlagged.length > 12 ? `\n…and ${unitFlagged.length - 12} more` : '';
+        const ok = window.confirm(
+          `${unitFlagged.length} of the ${ids.length} selected row${ids.length === 1 ? '' : 's'} ha${unitFlagged.length === 1 ? 's' : 've'} no sourced unit count:\n\n`
+          + `${list}${more}\n\n`
+          + 'They will commit flagged for review (visible on the project card). To clear a flag, cancel and enter the count in the row.\n\n'
+          + 'Approve anyway?',
+        );
+        if (!ok) return;
       }
 
       // Optionally save needs_review if user edited it
@@ -1443,7 +1502,7 @@ export default function ResearchRunApprovalModal({
     [
       r.muni_name,
       (edits[r.id]?.address ?? r.address) || 'no address',
-      r.total_housing_units != null ? `${r.total_housing_units} units` : null,
+      r.total_housing_units != null ? `${r.total_housing_units} units` : 'no unit count',
       r.sweep_chunk_index != null ? `chunk ${r.sweep_chunk_index}` : null,
     ].filter(Boolean).join(' · ');
 
@@ -1475,6 +1534,20 @@ export default function ResearchRunApprovalModal({
             ⚠ DUP ACROSS RUNS{r.duplicate_of_chunk_index != null ? ` · chunk ${r.duplicate_of_chunk_index}` : ''}
           </span>
         )}
+        {r.units_needs_review && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (() => {
+          const cleared = r.approval_state === 'pending' && unitsFlagOnCommit(r) == null;
+          return (
+            <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                  style={cleared
+                    ? { borderColor: '#8FA9C8', color: '#4A6B94' }
+                    : { borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                  title={cleared
+                    ? `Flag clears on commit — you entered a unit count. (Was: ${r.units_review_reason ?? 'unit count needs review'})`
+                    : `${r.units_review_reason ?? 'Unit count needs review'}. Approving is allowed — a real development with an unknown count still belongs in the pipeline — but it commits flagged. Enter a sourced count in the row to clear it.`}>
+              {cleared ? '✓ UNITS ENTERED' : '⚠ CHECK UNITS'}
+            </span>
+          );
+        })()}
         {r.approval_state === 'approved' && (
           <span className="px-1.5 py-0.5 rounded-full text-xs" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>APPROVED</span>
         )}
@@ -1701,6 +1774,15 @@ export default function ResearchRunApprovalModal({
         {r.approval_state === 'rejected' && r.reject_reason && (
           <div className="pl-6 text-xs mt-0.5" style={{ color: '#A27B5C' }}>
             Rejected: {r.reject_reason}
+          </div>
+        )}
+        {/* Unit-count flag, spelled out on the row: a missing or placeholder count
+            looks like any other number once committed. */}
+        {(r.approval_state === 'pending' || r.approval_state === 'approved') && r.units_needs_review
+          && !(r.approval_state === 'pending' && unitsFlagOnCommit(r) == null) && (
+          <div className="pl-6 text-xs mt-0.5" style={{ color: '#A27B5C' }}>
+            Units: {r.units_review_reason ?? 'needs review'}
+            {r.approval_state === 'pending' && ' — enter a sourced count to clear, or approve and it commits flagged.'}
           </div>
         )}
         {/* Conflicting record(s) always visible — that's the point of the row. */}

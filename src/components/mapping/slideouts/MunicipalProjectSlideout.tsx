@@ -39,6 +39,8 @@ interface Props {
     unplaced_reason?: string | null;
     geometry_unreviewed?: boolean;
     geometry_needs_review?: boolean;
+    units_needs_review?: boolean;
+    units_review_reason?: string | null;
   }) => void;
   onProjectDeleted?: (id: string) => void;
   // Phase 3: invoked when the user clicks "Draw polygon" — the parent activates terra-draw
@@ -284,12 +286,41 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setSavingUnits(true);
     setUnitsError('');
     try {
-      const { error } = await supabase
+      // The DB trigger clears an automatic unit-count flag when a real count is
+      // saved (and sets one if the count is cleared) — read the result back.
+      const { data, error } = await supabase
         .from('municipal_project')
         .update({ total_housing_units: next })
+        .eq('id', project.id)
+        .select('units_needs_review, units_review_reason')
+        .single();
+      if (error) throw error;
+      onProjectUpdated?.({
+        id: project.id,
+        total_housing_units: next,
+        units_needs_review: !!data?.units_needs_review,
+        units_review_reason: data?.units_review_reason ?? null,
+      });
+    } catch (e) {
+      setUnitsError(errMessage(e));
+    } finally {
+      setSavingUnits(false);
+    }
+  }
+
+  // "I've looked; the count is genuinely unknown." Clears the flag without
+  // inventing a number. Saving a count later re-evaluates it.
+  async function dismissUnitsFlag() {
+    if (!project) return;
+    setSavingUnits(true);
+    setUnitsError('');
+    try {
+      const { error } = await supabase
+        .from('municipal_project')
+        .update({ units_needs_review: false, units_review_reason: null })
         .eq('id', project.id);
       if (error) throw error;
-      onProjectUpdated?.({ id: project.id, total_housing_units: next });
+      onProjectUpdated?.({ id: project.id, units_needs_review: false, units_review_reason: null });
     } catch (e) {
       setUnitsError(errMessage(e));
     } finally {
@@ -727,6 +758,27 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
             {unitsError && (
               <div className="mt-1 text-xs" style={{ color: BRAND.terracotta }}>
                 {unitsError}
+              </div>
+            )}
+            {project.units_needs_review && (
+              <div
+                className="mt-2 rounded px-2 py-1.5 text-xs"
+                style={{ border: `1px solid ${BRAND.terracotta}`, backgroundColor: '#FFF7F0', color: BRAND.midnight }}
+              >
+                <div className="font-semibold" style={{ color: BRAND.terracotta }}>⚠ Unit count needs review</div>
+                <div className="mt-0.5" style={{ color: BRAND.steel }}>
+                  {project.units_review_reason ?? 'The unit count is missing or unconfirmed.'} Enter a sourced count above to
+                  clear this, or dismiss it if the count is genuinely unknown.
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissUnitsFlag}
+                  disabled={savingUnits}
+                  className="mt-1 underline disabled:opacity-40"
+                  style={{ color: BRAND.steel }}
+                >
+                  Dismiss — count is unknown
+                </button>
               </div>
             )}
             <div className="mt-2 flex items-center gap-2">
