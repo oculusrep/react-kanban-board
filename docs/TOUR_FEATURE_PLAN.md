@@ -413,6 +413,23 @@ Migration `20261102091623_tour_stop_kinds.sql` (applied to prod + recorded 2026-
   (`onSiteSubmitStageChanged`).
 - **PDF:** agenda Status column is the effective value (no PDF code change needed — it reads `status`).
 
+## Phase 5.3 — Open each day in Google Maps (branch `feature/tour-routing`, 2026-11-03)
+
+Per-day **Open in Google Maps** button in the tour map's schedule panel, plus a copy-link icon.
+
+- URL: `https://www.google.com/maps/dir/?api=1&origin=..&destination=..&waypoints=a|b|c&travelmode=driving`
+  ([Maps URLs docs](https://developers.google.com/maps/documentation/urls/get-started#directions-action)).
+  Every point is `lat,lng` (6 dp), URL-encoded — never an address.
+- Sequence: day start location (if set) → mapped stops in the tour's current order → day end location
+  (if set). With no start, stop 1 is the origin. Stops without coordinates are skipped (they already
+  show a "no location" tag). Approach (via) points are not sent — Maps URLs can't express pass-through.
+- Limit: 9 waypoints ⇒ 11 points per link. A longer day splits into **Leg 1 / Leg 2 / …**, each leg's
+  origin = the previous leg's destination. The split is by points (Google's actual limit), so a day with
+  a start location splits at 11 stops, one without at 12.
+- `target="_blank"` so iPhone hands off to the Google Maps app. Buttons/icons are ≥ 44px tap targets.
+- Code: `src/lib/tourGoogleMapsLinks.ts` (pure), `src/components/tours/GoogleMapsDayLinks.tsx`;
+  tests `tests/tours/googleMapsLinks.test.ts` (12- and 25-point splits).
+
 ## Cleanup list
 
 - **`anon` SELECT grant on `site_submit`** (pre-existing, found 2026-10-28 while adding

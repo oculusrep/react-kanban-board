@@ -19,6 +19,8 @@ import {
 } from '../hooks/useTours';
 import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
+import { GoogleMapsDayLinks } from '../components/tours/GoogleMapsDayLinks';
+import { dayPointSequence } from '../lib/tourGoogleMapsLinks';
 import { atlasIcon, fetchAtlasStores, licensedIcon } from '../lib/tourStores';
 import {
   MAX_APPROACH_POINTS,
@@ -1275,6 +1277,8 @@ function TourMapPageInner() {
                   {dr.endCoord && <div>■ End: {dr.day.end_location_address ?? 'set'}</div>}
                 </div>
               )}
+
+              <GoogleMapsDayLinks points={dayPointSequence(dr.startCoord, dr.ordered, dr.endCoord)} />
 
               {dr.chunks.length > 1 && (
                 <div style={{ fontSize: 11, color: SLATE, paddingLeft: 20, marginBottom: 4 }}>
