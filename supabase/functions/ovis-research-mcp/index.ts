@@ -152,7 +152,11 @@ const TOOLS = [
                 description: 'Any boundary/parcel detail STATED IN A SOURCE — prioritize tax parcel ID(s), then acreage, then bounding roads/features/frontage (e.g. "Parcel 045-123; ~42 acres; bounded by Cole Lake Rd (N) and creek (E)"). Used by the reviewer to manually draw the project polygon. Capture only what sources state; do NOT derive geometry.',
               },
               phase_label: { type: 'string', description: 'e.g. "Phase I" / "Phase 2" / "" — extract from notes if present.' },
-              total_housing_units: { type: 'integer', minimum: 0 },
+              total_housing_units: {
+                type: ['integer', 'null'],
+                minimum: 1,
+                description: 'Total units ONLY when a source states the count. If no source gives one, send null — never 0, and never 25 or any other placeholder or density estimate (put an estimate in notes, labelled as one). A null-count record is kept and flagged for the reviewer, not dropped, so there is no need to invent a number to get it staged.',
+              },
               single_family_lots: { type: ['integer', 'null'] },
               townhouse_units: { type: ['integer', 'null'] },
               duplex_units: { type: ['integer', 'null'] },
