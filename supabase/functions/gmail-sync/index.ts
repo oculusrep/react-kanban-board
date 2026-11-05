@@ -14,6 +14,7 @@
  */
 
 import { classifyTier1, buildTier1Stub, TIER1_MODE } from '../_shared/tier1.ts';
+import { authorizeCaller } from '../_shared/caller-auth.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import {
@@ -61,6 +62,14 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // This function had NO caller check until 2026-11-05: the gateway's verify_jwt was
+  // the only gate, and the publishable key that satisfies it ships in the browser
+  // bundle, so anyone could drive a mailbox sync (and the triage spend behind it).
+  // See docs/EMAIL_INGESTION_OUTAGE_2026-11-05.md.
+  // Internal users are allowed because GmailSettingsPage offers a manual "Sync now".
+  const caller = await authorizeCaller(req, { allowService: true, allowInternalUser: true }, corsHeaders);
+  if (caller instanceof Response) return caller;
 
   const startTime = Date.now();
   const results: SyncResult[] = [];

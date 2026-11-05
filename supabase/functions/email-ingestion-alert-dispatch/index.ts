@@ -18,6 +18,7 @@
  * that caused this function to exist.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizeCaller } from '../_shared/caller-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,6 +78,13 @@ const et = (ts: string | null) =>
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  // Infrastructure only -- pg_cron (X-Cron-Secret) and label-canary (service-role
+  // bearer). No browser calls this, so no internal_user path. It had no caller check
+  // at all until 2026-11-05, and `self_test` could be fired by anyone holding the
+  // publishable key. See docs/EMAIL_INGESTION_OUTAGE_2026-11-05.md.
+  const caller = await authorizeCaller(req, { allowService: true, allowInternalUser: false }, corsHeaders);
+  if (caller instanceof Response) return caller;
 
   // Self-test hook: forces the Resend-failure branch against a fixed invalid recipient.
   let selfTest = false;
