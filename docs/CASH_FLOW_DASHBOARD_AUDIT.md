@@ -73,11 +73,25 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
 
 - **House-net formula moves to one shared helper.** `CashflowDashboard.tsx` and
   `CashFlowForecastPage.tsx` both call it. No third copy.
-- **Referral fees: subtract only where `referral_fee_paid = false`.** Paid fees are already
-  reflected in the bank balance; never double-count.
+- **Referral fees: subtract only where `referral_fee_paid = false`** — in cash mode only (see
+  the mode switch below). Paid fees are already reflected in the bank balance; never double-count.
 - **Safe-to-draw counts only payments on deals with `probability >= 90`.** Everything below 90
   shows as a separate "possible upside" line, weighted by `deal.probability`. The threshold is a
   single config constant.
+
+### Added 2026-11-06 (second follow-up)
+
+- **The shared house-net helper takes a mode switch.**
+  - `mode='profit'` subtracts all referral fees. The existing pages use this, and their numbers
+    must not move.
+  - `mode='cash'` subtracts only referral fees where `referral_fee_paid = false`.
+- **Available cash now** = bank balance
+  − referral fees owed on payments already received
+  (`payment_received = true AND referral_fee_paid = false`)
+  − other committed outflows.
+  "Referral fees owed" shows as its own line: money sitting in the bank that isn't Oculus's.
+- **Parity check:** after the helper refactor, existing house-net and Mike's Net totals must
+  match pre-refactor values exactly.
 
 ## 3. Phased plan (no code yet)
 
@@ -91,11 +105,15 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
 
 ### Phase 2 — Forecast page: available cash + safe-to-draw
 - Extend `/admin/budget/forecast` with:
-  - **Available cash now:** sum of persisted Bank balances, showing their `as_of` time.
+  - **Available cash now:** sum of persisted Bank balances (with their `as_of` time), minus a
+    separate "Referral fees owed" line and other committed outflows (see Decisions).
   - **Monthly safe-to-draw timeline:** starting cash + expected house net by month
     (bucketed on `payment_date_estimated`) − budgeted operating expenses.
-- Inflows use the existing house-net/referral path via the shared helper; outside co-brokers
-  are already inside `referral_fee_usd`.
+- First step: extract the shared helper (`mode='profit'` / `'cash'`). Before switching the two
+  existing pages to it, record their house-net and Mike's Net totals; after the switch they must
+  match exactly.
+- Inflows use the shared helper in `mode='cash'`; outside co-brokers are already inside
+  `referral_fee_usd`.
 - Referral handling and probability weighting: resolved in Decisions (unpaid referrals only;
   ≥ 90 committed, < 90 as weighted "possible upside").
 - Dates in Eastern Time per CLAUDE.md.
