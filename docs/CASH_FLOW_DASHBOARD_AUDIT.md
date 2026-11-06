@@ -90,6 +90,23 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
   (`payment_received = true AND referral_fee_paid = false`)
   − other committed outflows.
   "Referral fees owed" shows as its own line: money sitting in the bank that isn't Oculus's.
+- **Available cash now — full definition** (supersedes the "other committed outflows"
+  placeholder above). Each line is shown separately:
+
+  ```
+    QBO bank balance (book balance)
+  − Referral fees owed        received payments (payment_received = true),
+                              referral_fee_paid = false
+  − Broker splits owed        received payments, payment_split.paid = false,
+                              EXCLUDING Mike's own split (his share exits via salary/draws)
+  − Next 30 days operating    budgeted operating expenses incl. payroll, from the existing
+                              budget used by /admin/budget/forecast.
+                              Do NOT also pull QBO Bills — single source.
+  − Planned owner draw        manual entry field
+  = Available cash now
+  ```
+
+  Uncashed checks are excluded: they are already reflected in the QBO book balance.
 - **Parity check:** after the helper refactor, existing house-net and Mike's Net totals must
   match pre-refactor values exactly.
 
@@ -105,8 +122,9 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
 
 ### Phase 2 — Forecast page: available cash + safe-to-draw
 - Extend `/admin/budget/forecast` with:
-  - **Available cash now:** sum of persisted Bank balances (with their `as_of` time), minus a
-    separate "Referral fees owed" line and other committed outflows (see Decisions).
+  - **Available cash now:** the five-line calculation in Decisions, every line shown
+    separately, with the bank balances' `as_of` time. The planned owner draw needs somewhere to
+    be stored (new table or column, with the CLAUDE.md grants block).
   - **Monthly safe-to-draw timeline:** starting cash + expected house net by month
     (bucketed on `payment_date_estimated`) − budgeted operating expenses.
 - First step: extract the shared helper (`mode='profit'` / `'cash'`). Before switching the two
