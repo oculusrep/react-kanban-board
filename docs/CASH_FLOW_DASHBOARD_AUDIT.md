@@ -69,6 +69,16 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
 - **New MCP tool needed:** `update_payment_date` — takes `payment_id`, or deal + installment
   number, and a new date; logs old and new values.
 
+### Added 2026-11-06 (follow-up)
+
+- **House-net formula moves to one shared helper.** `CashflowDashboard.tsx` and
+  `CashFlowForecastPage.tsx` both call it. No third copy.
+- **Referral fees: subtract only where `referral_fee_paid = false`.** Paid fees are already
+  reflected in the bank balance; never double-count.
+- **Safe-to-draw counts only payments on deals with `probability >= 90`.** Everything below 90
+  shows as a separate "possible upside" line, weighted by `deal.probability`. The threshold is a
+  single config constant.
+
 ## 3. Phased plan (no code yet)
 
 ### Phase 1 — Data foundations
@@ -86,9 +96,8 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
     (bucketed on `payment_date_estimated`) − budgeted operating expenses.
 - Inflows use the existing house-net/referral path via the shared helper; outside co-brokers
   are already inside `referral_fee_usd`.
-- Open question for the build: how to treat referral fees already paid out
-  (`referral_fee_paid`) on payments not yet received, and whether to weight by
-  `deal.probability`. Decide before coding the timeline.
+- Referral handling and probability weighting: resolved in Decisions (unpaid referrals only;
+  ≥ 90 committed, < 90 as weighted "possible upside").
 - Dates in Eastern Time per CLAUDE.md.
 
 ### Phase 3 — Claude / MCP access
