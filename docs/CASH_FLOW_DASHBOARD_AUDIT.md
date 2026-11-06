@@ -1,0 +1,100 @@
+# Cash Flow Dashboard — Data Audit, Decisions & Plan (2026-11-06)
+
+Audit of what OVIS already stores for a cash flow dashboard, the decisions taken from it, and
+a phased build plan. No code has been written yet. Counts below are from the live production
+database on 2026-11-06 (read-only queries).
+
+An existing forecast page already lives at `/admin/budget/forecast`
+(see [CASHFLOW_DASHBOARD_REFACTOR_2026_05_14.md](CASHFLOW_DASHBOARD_REFACTOR_2026_05_14.md)).
+The dashboard extends that page; it is not a new one.
+
+## 1. Audit
+
+### Where commission invoices live
+
+`payment` — one row per installment on a deal.
+
+| Group | Columns |
+|---|---|
+| Amounts | `payment_amount`, `agci`, `referral_fee_usd`, `referral_fee_percent_override`, `bor_fee_usd` |
+| Dates | `payment_invoice_date`, `payment_date_estimated`, `payment_date_auto_calculated`, `payment_date_source`, `payment_received_date`, `referral_fee_paid_date` |
+| Status | `invoice_sent`, `payment_received`, `referral_fee_paid`, `is_active`, `locked`, `deleted_at` |
+| QBO link | `qb_invoice_id`, `qb_invoice_number`, `qb_payment_id`, `qb_sync_status`, `qb_sync_pending`, `qb_last_sync` |
+| Other | `orep_invoice`, `payment_sequence`, `amount_override`, `updated_at` |
+
+Per-broker shares of a payment: `payment_split` (`split_broker_total`, `paid`, `paid_date`,
+`commission_split_id`). The deal-level template for those shares: `commission_split`.
+There is also an `invoice_aging` view.
+
+### Field-by-field
+
+| Field | Exists? | Location | Gap |
+|---|---|---|---|
+| Expected payout date | ✅ | `payment.payment_date_estimated` (per installment); `deal.target_close_date` | 4 of 82 open active payments have no estimated date |
+| Close probability | ✅ | `deal.probability` (also `deal.weighted_fee`) | Set on 807 deals; not checked for staleness |
+| Gross commission | ✅ | `deal.fee` / `calculated_fee` / `gci`; `payment.payment_amount` | Several overlapping columns; one must be picked as the source |
+| Co-broker split | ⚠️ partial | `commission_split` / `payment_split` | These cover internal brokers only (Mike/Arty/Greg). No column holds an outside co-broker split |
+| Referral fee | ✅ | `deal.referral_fee_usd` / `referral_fee_percent` / `referral_payee_client_id`; `payment.referral_fee_usd`, `referral_fee_paid` | None |
+| Net to Oculus | ✅ | `deal.oculus_net`, `deal.house_usd`; house net per payment is computed in code (below) | No stored per-payment net |
+| Last-updated timestamp | ✅ | `deal.updated_at`, `payment.updated_at`, `deal.last_stage_change_at` | None |
+| QuickBooks integration | ✅ | ~25 `quickbooks-*` edge functions; `qb_connection`, `qb_account`, `qb_expense`, `qb_commission_entry`, `qb_sync_log` | Invoices, expenses and the P&L report sync |
+| Bank balance | ❌ | `qb_account.current_balance` holds income/expense accounts only (246 rows, no Bank type) | `quickbooks-list-accounts` fetches Bank accounts from QBO for dropdowns but never saves them. No cash-on-hand data is stored |
+| MCP `update_deal`: payout date | ⚠️ | Write allowlist `DEAL_FIELDS` in [voice_triage.ts](../supabase/functions/ovis-mcp/voice_triage.ts) | Can write `target_close_date`, not `payment.payment_date_estimated`. Money fields are excluded on purpose |
+| MCP `update_deal`: probability | ✅ | `probability` (int) is in the same allowlist | None |
+
+### Existing house-net math
+
+The same formula appears in two places today:
+
+- [src/components/reports/CashflowDashboard.tsx](../src/components/reports/CashflowDashboard.tsx) (~line 188)
+- [src/pages/CashFlowForecastPage.tsx](../src/pages/CashFlowForecastPage.tsx) (~line 204)
+
+```
+gci      = payment_amount − referral_fee_usd
+houseNet = gci − agci            // agci = total internal broker splits (DB trigger)
+```
+
+## 2. Decisions (2026-11-06)
+
+- **Payout timing source** = `payment.payment_date_estimated` (not `deal.target_close_date`).
+- **Gross source for cash** = `payment.payment_amount`.
+- **Outside co-broker splits: hold.** No new field. They are entered as referral fees
+  (`referral_fee_usd`) and flow through the same path as any referral.
+- **Reuse the existing referral handling — do not re-implement it.** Cash-flow math uses
+  `referral_fee_usd`, `referral_fee_paid` and the house-net logic above. If the new code needs
+  that logic outside its current components, *extract* it into one shared helper that both
+  existing pages and the new code call. Don't write a third copy.
+- **Bank balance:** persist QBO Bank-type accounts from `quickbooks-list-accounts` (balance +
+  `as_of` timestamp) on each sync.
+- **New MCP tool needed:** `update_payment_date` — takes `payment_id`, or deal + installment
+  number, and a new date; logs old and new values.
+
+## 3. Phased plan (no code yet)
+
+### Phase 1 — Data foundations
+- Persist QBO Bank-type account balances with an `as_of` timestamp on each
+  `quickbooks-list-accounts` sync. Store them in `qb_account` or a new table; any new table gets
+  the REVOKE + GRANT block (CLAUDE.md), with authenticated SELECT only and service_role write.
+  Apply via psql + `schema_migrations` record.
+- List the 4 open active payments that have no `payment_date_estimated`, and have Mike fill
+  them in, so the timeline has no silent holes.
+
+### Phase 2 — Forecast page: available cash + safe-to-draw
+- Extend `/admin/budget/forecast` with:
+  - **Available cash now:** sum of persisted Bank balances, showing their `as_of` time.
+  - **Monthly safe-to-draw timeline:** starting cash + expected house net by month
+    (bucketed on `payment_date_estimated`) − budgeted operating expenses.
+- Inflows use the existing house-net/referral path via the shared helper; outside co-brokers
+  are already inside `referral_fee_usd`.
+- Open question for the build: how to treat referral fees already paid out
+  (`referral_fee_paid`) on payments not yet received, and whether to weight by
+  `deal.probability`. Decide before coding the timeline.
+- Dates in Eastern Time per CLAUDE.md.
+
+### Phase 3 — Claude / MCP access
+- `update_payment_date` tool on `ovis-mcp`: resolves `payment_id` or deal + installment,
+  writes `payment_date_estimated`, audits old → new (same `audited()` wrapper as `update_deal`).
+  It writes no money fields.
+- Read-only cash-flow tools for Claude (e.g. available cash, upcoming payments by month,
+  safe-to-draw), using the same helper as the page.
+- Merge to main before deploying the edge function.
