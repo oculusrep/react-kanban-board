@@ -11,5 +11,6 @@
   ],
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "wardrobe-photos" }],
   "ai": { "binding": "AI" },
+  "vars": { "TIMEZONE": "America/New_York" },
   "observability": { "enabled": true }
 }
