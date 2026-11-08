@@ -120,3 +120,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--steel); out
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* layout polish */
+.search select { flex: 0 0 auto; width: auto; max-width: 42%; }
+.actions + .photo-pick, .stats + .actions { margin-top: 12px; }
+#wore + * { margin-top: 0; }
+.actions:has(#wore) { margin-bottom: 16px; }
+.preview { max-height: 55vh; aspect-ratio: auto; min-height: 160px; }
+.preview img { max-height: 55vh; }

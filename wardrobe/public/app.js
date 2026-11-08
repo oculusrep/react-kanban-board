@@ -121,7 +121,7 @@ async function renderBrowse() {
   app.innerHTML = `
     <form class="search" id="search" role="search">
       <input type="search" id="q" placeholder="Search name, brand, color, notes…" value="${esc(browseState.query)}" enterkeyhint="search">
-      <select id="sort" aria-label="Sort" style="width:auto">
+      <select id="sort" aria-label="Sort">
         ${[['newest', 'Newest'], ['name', 'A–Z'], ['least_recently_worn', 'Least worn lately'], ['last_worn', 'Recently worn'], ['most_worn', 'Most worn'], ['price', 'Price']]
           .map(([v, l]) => `<option value="${v}" ${browseState.sort === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
