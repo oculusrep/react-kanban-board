@@ -1,2 +1,0 @@
-# Copy to .dev.vars for `npm run dev`. Never commit .dev.vars.
-WARDROBE_TOKEN=change-me-to-a-long-random-string
