@@ -70,6 +70,8 @@ export interface BoardDeal {
   id: string;            // card key (stable React key / selection id)
   dealId: string | null; // null = site_submit only ("no deal yet")
   name: string;          // site name: property → site_submit → deal_name
+  displayName: string;   // what the board card shows: same format as a tour stop (City · short street)
+  displaySubtext: string | null; // full site submit name, when it differs from displayName (as on a tour stop)
   city: string | null;
   clientId: string | null;
   clientName: string | null;

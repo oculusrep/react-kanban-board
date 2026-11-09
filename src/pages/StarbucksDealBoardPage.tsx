@@ -445,10 +445,10 @@ function TileBand({
             <div className="min-w-0 flex-1">
               <div className="truncate" style={{ fontWeight: 600, fontSize: px(16), color: PALETTE.text }}>
                 {d.urgent && <span title="Urgent" style={{ color: PALETTE.urgent, fontWeight: 700 }}>▲ </span>}
-                {d.name}
+                {d.displayName}
               </div>
               <div className="flex items-center gap-1 min-w-0" style={{ fontSize: px(11), color: PALETTE.textDim }}>
-                <span className="truncate">{d.city ?? '—'}{showToken ? ` · ${d.accountToken}` : ''} · {d.days}d</span>
+                <span className="truncate">{d.displaySubtext ?? d.city ?? '—'}{showToken ? ` · ${d.accountToken}` : ''} · {d.days}d</span>
                 {!d.dealId && <NoDealBadge px={px} />}
               </div>
             </div>
@@ -572,7 +572,7 @@ function Tile({ deal, dense, showToken, onOpen, onToggleStar }: { deal: BoardDea
         {leftBar}
         {deal.urgent && <span title="Urgent" style={{ color: PALETTE.urgent, fontSize: px(13), fontWeight: 700 }}>▲</span>}
         <span className="truncate flex-1 min-w-0" style={{ fontWeight: 600, fontSize: px(17), letterSpacing: '-0.01em', color: PALETTE.text }}>
-          {deal.name}
+          {deal.displayName}
         </span>
         {showToken && <span className="whitespace-nowrap" style={{ fontSize: px(10), color: PALETTE.textDim }}>{deal.accountToken}</span>}
         {noDeal}
@@ -598,10 +598,10 @@ function Tile({ deal, dense, showToken, onOpen, onToggleStar }: { deal: BoardDea
       <div className="pl-2 pr-4">
         <div className="flex items-baseline gap-1" style={{ fontWeight: 600, fontSize: px(20), letterSpacing: '-0.01em', color: PALETTE.text }}>
           {deal.urgent && <span title="Urgent" style={{ color: PALETTE.urgent, fontWeight: 700 }}>▲</span>}
-          <span className="truncate">{deal.name}</span>
+          <span className="truncate" title={deal.name}>{deal.displayName}</span>
         </div>
         <div className="flex items-center gap-2" style={{ fontSize: px(13), color: PALETTE.textDim }}>
-          <span className="truncate">{deal.city ?? '—'}</span>
+          <span className="truncate">{deal.displaySubtext ?? deal.city ?? '—'}</span>
           {showToken && <span style={{ fontSize: px(11) }}>· {deal.accountToken}</span>}
           {noDeal}
           {tagChip}
