@@ -10,6 +10,7 @@ import PropertyFilesTab from './property/PropertyFilesTab';
 import AutosaveIndicator from './AutosaveIndicator';
 import DemographicsModal from './shared/DemographicsModal';
 import OpenTasksPanel from './tasks/OpenTasksPanel';
+import { useBrokerLiteAccess } from '../hooks/useBrokerLiteAccess';
 import { useAutosave } from '../hooks/useAutosave';
 import { usePropertyGeoenrichment, isEnrichmentStale, formatEnrichmentDate } from '../hooks/usePropertyGeoenrichment';
 import { FileText, DollarSign, Building2, MapPin, Users, Grid3x3 } from 'lucide-react';
@@ -41,6 +42,7 @@ const formatNumber = (value: number | null | undefined) => {
 
 export default function PropertyDetailsSlideoutContent({ propertyId, onSiteSubmitClick }: PropertyDetailsSlideoutContentProps) {
 
+  const { canSeeAnySiteSubmits } = useBrokerLiteAccess();
   const [activeTab, setActiveTab] = useState<TabType>('property');
   const [property, setProperty] = useState<Property | null>(null);
   const [formData, setFormData] = useState<Partial<Property>>({});
@@ -146,13 +148,14 @@ export default function PropertyDetailsSlideoutContent({ propertyId, onSiteSubmi
     }
   };
 
-  const tabs = [
+  const allTabs = [
     { id: 'property' as TabType, label: 'PROPERTY', icon: Building2 },
     { id: 'units' as TabType, label: 'UNITS', icon: Grid3x3 },
     { id: 'submits' as TabType, label: 'SUBMITS', icon: FileText },
     { id: 'contacts' as TabType, label: 'CONTACTS', icon: Users },
     { id: 'files' as TabType, label: 'FILES', icon: FileText },
   ];
+  const tabs = allTabs.filter(tab => tab.id !== 'submits' || canSeeAnySiteSubmits);
 
   if (loading) {
     return (

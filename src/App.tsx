@@ -8,6 +8,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { QuickNoteLauncher } from "./components/quickNote/QuickNoteLauncher";
 import { KnowledgeCaptureLauncher } from "./components/knowledgeCapture/KnowledgeCaptureLauncher";
 import AdminRoute from "./components/AdminRoute";
+import { BrokerLiteRoute, SiteSubmitDetailRoute } from "./components/BrokerLiteRoute";
 import CoachRoute from "./components/CoachRoute";
 import GmailRoute from "./components/GmailRoute";
 import MunicipalRoute from "./components/MunicipalRoute";
@@ -173,12 +174,12 @@ function App() {
           {/* Coach-only route */}
           <Route path="coach-dashboard" element={<CoachDashboardPage />} />
           {/* All routes below are blocked for coach users */}
-          <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
-          <Route path="starbucks-board" element={<CoachRoute><StarbucksDealBoardPage /></CoachRoute>} />
+          <Route path="master-pipeline" element={<CoachRoute><BrokerLiteRoute permission="can_view_master_pipeline"><KanbanBoard /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="starbucks-board" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><StarbucksDealBoardPage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="triage" element={<CoachRoute><TriagePage /></CoachRoute>} />
-          <Route path="tasks" element={<CoachRoute><TasksDashboardPage /></CoachRoute>} />
-          <Route path="tasks/all" element={<CoachRoute><TasksPage /></CoachRoute>} />
-          <Route path="tasks/queue" element={<CoachRoute><TaskQueuePage /></CoachRoute>} />
+          <Route path="tasks" element={<CoachRoute><BrokerLiteRoute permission="can_view_tasks"><TasksDashboardPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tasks/all" element={<CoachRoute><BrokerLiteRoute permission="can_view_tasks"><TasksPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tasks/queue" element={<CoachRoute><BrokerLiteRoute permission="can_view_tasks"><TaskQueuePage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="listings/review" element={<CoachRoute><ListingReviewPage /></CoachRoute>} />
           {/* OAuth 2.1 consent (Supabase Auth OAuth server → OVIS MCP connector). Login form shows in place when signed out. */}
           <Route path="oauth/consent" element={<CoachRoute><OAuthConsentPage /></CoachRoute>} />
@@ -187,17 +188,17 @@ function App() {
           <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />
           <Route path="deal/new" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
-          <Route path="tours" element={<CoachRoute><ToursListPage /></CoachRoute>} />
-          <Route path="tours/:tourId" element={<CoachRoute><TourDetailPage /></CoachRoute>} />
-          <Route path="tours/:tourId/map" element={<CoachRoute><TourMapPage /></CoachRoute>} />
-          <Route path="assignment/new" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
-          <Route path="assignment/:assignmentId" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
+          <Route path="tours" element={<CoachRoute><BrokerLiteRoute permission="can_view_tours"><ToursListPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tours/:tourId" element={<CoachRoute><BrokerLiteRoute permission="can_view_tours"><TourDetailPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tours/:tourId/map" element={<CoachRoute><BrokerLiteRoute permission="can_view_tours"><TourMapPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="assignment/new" element={<CoachRoute><BrokerLiteRoute permission="can_view_assignments"><AssignmentDetailsPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="assignment/:assignmentId" element={<CoachRoute><BrokerLiteRoute permission="can_view_assignments"><AssignmentDetailsPage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="property/new" element={<CoachRoute><NewPropertyPage /></CoachRoute>} />
           <Route path="property/:propertyId" element={<CoachRoute><PropertyDetailsPage /></CoachRoute>} />
           <Route path="advanced-property-search" element={<CoachRoute><AdvancedPropertySearchPage /></CoachRoute>} />
           <Route path="contact/:contactId" element={<CoachRoute><ContactDetailsPage /></CoachRoute>} />
           <Route path="client/:clientId" element={<CoachRoute><ClientDetailsPage /></CoachRoute>} />
-          <Route path="site-submit/:siteSubmitId" element={<CoachRoute><SiteSubmitDetailsPage /></CoachRoute>} />
+          <Route path="site-submit/:siteSubmitId" element={<CoachRoute><SiteSubmitDetailRoute><SiteSubmitDetailsPage /></SiteSubmitDetailRoute></CoachRoute>} />
           <Route path="search-test" element={<CoachRoute><SearchTestPage /></CoachRoute>} />
           <Route path="search-debug" element={<CoachRoute><SearchDebugPage /></CoachRoute>} />
           <Route path="notes-debug" element={<CoachRoute><NotesDebugPage /></CoachRoute>} />
@@ -210,8 +211,8 @@ function App() {
           <Route path="reports/deal-compare" element={<CoachRoute><DealCompareReportPage /></CoachRoute>} />
           <Route path="reports/deal-compare-salesforce" element={<CoachRoute><DealCompareToSalesforceReportPage /></CoachRoute>} />
           <Route path="reports/property-data-quality" element={<CoachRoute><PropertyDataQualityReportPage /></CoachRoute>} />
-          <Route path="reports/assignments" element={<CoachRoute><AssignmentsReportPage /></CoachRoute>} />
-          <Route path="reports/site-submit-dashboard" element={<CoachRoute><SiteSubmitDashboardPage /></CoachRoute>} />
+          <Route path="reports/assignments" element={<CoachRoute><BrokerLiteRoute permission="can_view_assignments"><AssignmentsReportPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="reports/site-submit-dashboard" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><SiteSubmitDashboardPage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
           <Route path="reports/rob-report" element={<CoachRoute><RobReportPage /></CoachRoute>} />
           <Route path="reports/rob-report-2025" element={<CoachRoute><RobReport2025Page /></CoachRoute>} />
@@ -222,8 +223,8 @@ function App() {
           <Route path="reports/mike-is-owed" element={<CoachRoute><MikeIsOwedReportPage /></CoachRoute>} />
           <Route path="reports/unpaid-referral-fees" element={<CoachRoute><UnpaidReferralFeesReportPage /></CoachRoute>} />
           <Route path="reports/starbucks-target-areas" element={<CoachRoute><StarbucksTargetAreasReportPage /></CoachRoute>} />
-          <Route path="reports/starbucks-pipeline" element={<CoachRoute><StarbucksPipelineReportPage /></CoachRoute>} />
-          <Route path="reports/starbucks-packages" element={<CoachRoute><PackagesDashboardPage /></CoachRoute>} />
+          <Route path="reports/starbucks-pipeline" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><StarbucksPipelineReportPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="reports/starbucks-packages" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><PackagesDashboardPage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="reports/velocity-analytics" element={<CoachRoute><VelocityAnalyticsPage /></CoachRoute>} />
           <Route path="reports/historical-velocity" element={<CoachRoute><HistoricalVelocityPage /></CoachRoute>} />
           <Route path="reports/prospecting-scorecard" element={<CoachRoute><ProspectingScorecardPage /></CoachRoute>} />

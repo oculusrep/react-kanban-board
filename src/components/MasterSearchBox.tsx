@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMasterSearch, SearchResult } from '../hooks/useMasterSearch';
+import { useBrokerLiteAccess } from '../hooks/useBrokerLiteAccess';
 import AdvancedSearchModal from './AdvancedSearchModal';
 import { supabase } from '../lib/supabaseClient';
 
@@ -22,6 +23,7 @@ const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
   
   const { search, loading } = useMasterSearch();
+  const { canAccess, canSeeAnySiteSubmits } = useBrokerLiteAccess();
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -59,7 +61,17 @@ const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
     const timeoutId = setTimeout(async () => {
       console.log(`🚀 Executing search for: "${query}"`);
       try {
-        const searchResults = await search(query, { limit: 10 });
+        const searchResults = await search(query, {
+          limit: 10,
+          types: [
+            'deal',
+            'client',
+            'contact',
+            'property',
+            ...(canSeeAnySiteSubmits ? (['site_submit'] as const) : []),
+            ...(canAccess('can_view_assignments') ? (['assignment'] as const) : []),
+          ],
+        });
         console.log(`📊 MasterSearchBox received ${searchResults.length} results:`, searchResults);
         setResults(searchResults);
         setShowDropdown(searchResults.length > 0);

@@ -1,3 +1,4 @@
+import { LAYER_PERMISSION_CATEGORIES } from '../types/permissions';
 import React, { useState } from 'react';
 import { useUsers } from '../hooks/useUsers';
 import { useRoles } from '../hooks/useRoles';
@@ -357,7 +358,17 @@ export default function UserManagementPage() {
 
           {/* Matrix View */}
           {roleView === 'matrix' && (
-            <PermissionsMatrix roles={roles} loading={rolesLoading} onUpdateRole={updateRole} />
+            <div className="space-y-6">
+              <PermissionsMatrix roles={roles} loading={rolesLoading} onUpdateRole={updateRole} />
+              <PermissionsMatrix
+                roles={roles}
+                loading={rolesLoading}
+                onUpdateRole={updateRole}
+                title="Map Layer Permissions"
+                description="Fixed map layers each role can see. Custom layers are visible to their creator and anyone they are shared with."
+                includeCategories={LAYER_PERMISSION_CATEGORIES}
+              />
+            </div>
           )}
         </div>
       </div>

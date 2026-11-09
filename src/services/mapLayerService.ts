@@ -128,7 +128,48 @@ export interface UpdateShapeInput {
 // Service Class
 // ============================================================================
 
+export interface MapLayerUserShare {
+  id: string;
+  layer_id: string;
+  user_id: string;
+  shared_at: string;
+}
+
 class MapLayerService {
+  // --------------------------------------------------------------------------
+  // User-to-user sharing
+  // --------------------------------------------------------------------------
+
+  async getUserShares(layerId: string): Promise<MapLayerUserShare[]> {
+    const { data, error } = await supabase
+      .from('map_layer_user_share')
+      .select('id, layer_id, user_id, shared_at')
+      .eq('layer_id', layerId);
+    if (error) throw error;
+    return (data || []) as MapLayerUserShare[];
+  }
+
+  async getSharedLayerIdsForUser(userId: string): Promise<Set<string>> {
+    const { data, error } = await supabase
+      .from('map_layer_user_share')
+      .select('layer_id')
+      .eq('user_id', userId);
+    if (error) throw error;
+    return new Set((data || []).map((row: { layer_id: string }) => row.layer_id));
+  }
+
+  async shareToUser(layerId: string, userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('map_layer_user_share')
+      .insert({ layer_id: layerId, user_id: userId });
+    if (error) throw error;
+  }
+
+  async unshareFromUser(shareId: string): Promise<void> {
+    const { error } = await supabase.from('map_layer_user_share').delete().eq('id', shareId);
+    if (error) throw error;
+  }
+
   // --------------------------------------------------------------------------
   // Layer CRUD
   // --------------------------------------------------------------------------
