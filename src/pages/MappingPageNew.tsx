@@ -106,7 +106,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 }) => {
   const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
-  const { canAccess, seesAllSiteSubmits, canSeeAnySiteSubmits } = useBrokerLiteAccess();
+  const { canAccess, canSeeAnySiteSubmits } = useBrokerLiteAccess();
   const canManageLayers = userRole === 'admin' || hasPermission('can_manage_map_layers');
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
   const starbucksOpsAreaFilter = useStarbucksOpsAreaFilter();
@@ -3709,7 +3709,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setLayerLoading('properties', false);
               }}
               onPinClick={(property) => handlePinClick(property, 'property')}
-              onCreateSiteSubmit={!seesAllSiteSubmits ? undefined : (property) => {
+              onCreateSiteSubmit={!canSeeAnySiteSubmits ? undefined : (property) => {
                 // Set property coordinates and ID, then open site submit modal
                 const coords = property.verified_latitude && property.verified_longitude
                   ? { lat: property.verified_latitude, lng: property.verified_longitude }
@@ -4106,7 +4106,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               property={propertyContextMenu.property}
               onVerifyLocation={handleVerifyLocation}
               onDeleteProperty={handleDeleteProperty}
-              onCreateSiteSubmit={seesAllSiteSubmits ? handleCreateSiteSubmitFromContextMenu : undefined}
+              onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitFromContextMenu : undefined}
               onClose={handlePropertyContextMenuClose}
             />
 
@@ -4368,7 +4368,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           onDeleteProperty={handleDeleteProperty}
           onDeleteSiteSubmit={handleDeleteSiteSubmit}
           onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-          onCreateSiteSubmit={seesAllSiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
+          onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
           submitsRefreshTrigger={submitsRefreshTrigger}
           initialTab={pinDetailsInitialTab}
         />
@@ -4665,7 +4665,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         onEditContact={handleEditContact}
         onDeleteProperty={handleDeleteProperty}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-        onCreateSiteSubmit={seesAllSiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
+        onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
         submitsRefreshTrigger={submitsRefreshTrigger}
       />
 

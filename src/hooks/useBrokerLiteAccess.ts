@@ -27,19 +27,22 @@ export function useBrokerLiteAccess() {
   useEffect(() => {
     if (!restricted || seesAllSiteSubmits) return;
     let cancelled = false;
-    supabase
-      .from('site_submit')
-      .select('id')
-      .limit(1)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) console.error('Error checking site submit access:', error);
-        setHasVisibleSiteSubmits((data ?? []).length > 0);
-      });
+    // A broker on an account with no site submits yet still needs the tools to add one.
+    Promise.all([
+      supabase.from('site_submit').select('id').limit(1),
+      userTableId
+        ? supabase.from('client_broker').select('id').eq('user_id', userTableId).eq('is_active', true).limit(1)
+        : Promise.resolve({ data: [], error: null }),
+    ]).then(([submits, accounts]) => {
+      if (cancelled) return;
+      if (submits.error) console.error('Error checking site submit access:', submits.error);
+      if (accounts.error) console.error('Error checking broker accounts:', accounts.error);
+      setHasVisibleSiteSubmits((submits.data ?? []).length > 0 || (accounts.data ?? []).length > 0);
+    });
     return () => {
       cancelled = true;
     };
-  }, [restricted, seesAllSiteSubmits]);
+  }, [restricted, seesAllSiteSubmits, userTableId]);
 
   const canAccess = useCallback(
     (permission: keyof RolePermissions) => !restricted || hasPermission(permission),
