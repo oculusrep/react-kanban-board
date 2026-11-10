@@ -216,6 +216,48 @@ Replaces Phase 2's monthly safe-to-draw timeline and budget-driven opex for now.
 Plus the shared house-net helper (`profit` / `cash`); existing page totals must match
 pre-refactor exactly.
 
+### v1 revision (2026-11-10, second pass) — supersedes the v1 list above where they differ
+
+1. **Referral fees → QBO Check, not Bill.** `quickbooks-create-referral-entry` creates a
+   `Purchase` with `PaymentType = Check`, drawn on the BofA bank account, Referral Fee expense
+   line, payee = the referral partner (vendor). Book balance drops when the fee is marked paid
+   in OVIS; Mike matches the bank-feed debit to this check. The bank account comes from
+   `app_settings.qbo_referral_bank_account` (`{"id","name"}`); if it is unset the function
+   refuses rather than falling back to a Bill. `quickbooks-delete-referral-entry` deletes the
+   Purchase when "Paid" is unchecked.
+   **BOR pass-throughs are unchanged** (Bill + income JE) — they post to the BOR clearing
+   account, not the Referral Fee expense account. Change them separately if wanted.
+2. **Broker splits: no change.** They keep creating Bills (Greg) / JEs (Arty). Arty is paid via
+   payroll, Greg via ACH; Mike matches both.
+3. **Cash calendar subtracts OVIS-created broker-split Bills still open in QBO**, dated by the
+   payee's pay method (config per broker): Arty = next payroll date (semi-monthly, 15th and last
+   day of month — matches his draw Bills in QBO), Greg = today. Open/closed is read from QBO
+   (`Bill.Balance`) on refresh and stored on `qb_commission_entry`. Unpaid splits on received
+   payments (`payment_split.paid = false`, excl. Mike) are dated the same way.
+4. **No other open QBO Bills are included.** Recurring outflows go in `scheduled_payment`
+   (name; `day_of_month` or `date`; `amount` or "use QBO account balance"). Seeded: AMEX on the
+   12th using the QBO AMEX balance, linked automatically on the first refresh that finds a
+   Credit Card account named like AMEX / American Express; if none exists, a manual amount.
+   Planned owner draws are `scheduled_payment` rows of kind `draw`.
+5. **Outstanding-checks list dropped** for v1.
+6. **Account sync also saves Bank and Credit Card accounts** with balance and `fetched_at`
+   (`qb_balance_snapshot`). Both `quickbooks-sync-accounts` and the page's "Refresh now" write
+   it.
+7. **OVIS-created referral/BOR Bills for Mike to close manually.** Existing Bills are not
+   modified. Last known QBO status is from the 2026-08-07 expense sync, which predates all four,
+   so their status is unknown until QBO is reconnected; the page's refresh reads it.
+
+   | QBO Bill Id | Date | Amount | Deal |
+   |---|---|---|---|
+   | 8480 | 2026-09-15 | $5,601.85 | Farthsworth Flooring Marietta - BOR - Resolut (BOR) |
+   | 8500 | 2026-09-23 | $6,244.45 | Foxtail - CS Ventures - Lulah Hills - Edens |
+   | 8502 | 2026-09-23 | $6,324.48 | Hammer Nails - Aspen Station Alpharetta |
+   | 8527 | 2026-10-09 | $68,500.00 | NAI Red - Referral Fee - Watkinsville (BOR) |
+
+   Correction to the 2026-11-10 verification note: the **3 Bills open in QBO** as of Aug 7 are
+   Greg's broker-split Bills (QBO 8158, 8324, 8417), not referral Bills. They stay Bills and
+   show on the cash calendar as split payouts.
+
 ### Phase 3 — Claude / MCP access
 - `update_payment_date` tool on `ovis-mcp`: resolves `payment_id` or deal + installment,
   writes `payment_date_estimated`, audits old → new (same `audited()` wrapper as `update_deal`).
