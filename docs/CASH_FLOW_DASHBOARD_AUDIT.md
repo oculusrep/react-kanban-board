@@ -143,6 +143,32 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
   ≥ 90 committed, < 90 as weighted "possible upside").
 - Dates in Eastern Time per CLAUDE.md.
 
+#### "Needs attention" panel (same page)
+
+Grouped panel, count badge per group. Each row shows deal name, client, owning broker
+(Mike/Arty/Greg), amount, and days overdue/stale. Each row opens the deal in
+`DealDetailsSlideout` (overlay-first per CLAUDE.md, not `navigate('/deal/:id')`).
+Thresholds are config constants.
+
+| # | Group | Rule | Amount shown | Days shown |
+|---|---|---|---|---|
+| 1 | Missing fee | Open deal with no `fee` / `gci` set | — | — |
+| 2 | Missing payout date | Active (`is_active`), unreceived payment with no `payment_date_estimated` | `payment_amount` | — |
+| 3 | Past due | `payment_date_estimated` < today (ET) and `payment_received = false` | `payment_amount` | days past `payment_date_estimated` |
+| 4 | Stale | Open deal, `probability >= 50`, not updated in 30+ days | `fee` | days since last update |
+
+Config constants: `STALE_PROBABILITY_MIN = 50`, `STALE_DAYS = 30`.
+
+Definitions to settle at build time (current live data, 2026-11-10):
+- **Open deal** = stage not `Lost` and not `Closed Paid`. There is no separate "closed-dead"
+  stage; live stages are Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA,
+  Under Contract / Contingent, Booked, Executed Payable, Closed Paid, Lost.
+- **Owning broker** = `deal.owner_id`, mapped to Mike/Arty/Greg. Confirm that matches "who owns
+  this deal" before the build; the alternative is the largest `commission_split` share.
+- **"Not updated"** = `deal.updated_at`. That column may get bumped by triggers (e.g. payment
+  recalculation) without anyone touching the deal, which would hide staleness. Check what
+  updates it before relying on it; `last_stage_change_at` is the fallback.
+
 ### Phase 3 — Claude / MCP access
 - `update_payment_date` tool on `ovis-mcp`: resolves `payment_id` or deal + installment,
   writes `payment_date_estimated`, audits old → new (same `audited()` wrapper as `update_deal`).
