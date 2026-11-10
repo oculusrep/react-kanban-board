@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { CASH_CONFIG, buildCalendar, todayET } from '../../lib/cashCalendar';
 import { loadCashData } from './useCashData';
 import { buildCashEvents, fmt } from './cashEvents';
+import { owedUrgency } from './OwedOutPanel';
 
 /** app_settings key for the minimum cash Mike wants to keep in the bank (Finance Settings). */
 export const CASH_CUSHION_KEY = 'cash_cushion_usd';
@@ -14,6 +15,9 @@ interface CardState {
   asOf: string | null;
   lowest: { amount: number; date: string } | null;
   cushion: number;
+  owedCount: number;
+  owedTotal: number;
+  owedRed: number;
 }
 
 function formatET(ts: string) {
@@ -39,21 +43,20 @@ export function CashPositionCard() {
     let cancelled = false;
     (async () => {
       try {
-        const [data, cushionRow] = await Promise.all([
-          loadCashData(supabase),
-          supabase.from('app_settings').select('value').eq('key', CASH_CUSHION_KEY).maybeSingle(),
-        ]);
+        const data = await loadCashData(supabase);
         const today = todayET();
         const summary = buildCashEvents(data, today);
         const cal = buildCalendar(summary.startBalance, today, summary.events);
-        const raw = cushionRow.data?.value;
-        const cushion = Number(typeof raw === 'string' ? JSON.parse(raw) : raw) || 0;
+        const cushion = data.cushion;
         if (!cancelled) {
           setState({
             balance: data.balancesFetchedAt ? summary.startBalance : null,
             asOf: data.balancesFetchedAt,
             lowest: cal.lowest ? { amount: cal.lowest.balance, date: cal.lowest.date } : null,
             cushion,
+            owedCount: summary.owed.length,
+            owedTotal: summary.owed.reduce((t, o) => t + o.amount, 0),
+            owedRed: summary.owed.filter((o) => owedUrgency(o.daysHeld) === 'red').length,
           });
         }
       } catch (e: any) {
@@ -90,7 +93,7 @@ export function CashPositionCard() {
       {state && (
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide font-medium" style={{ color: '#4A6B94' }}>Bank balance</p>
+            <p className="text-xs uppercase tracking-wide font-medium" style={{ color: '#4A6B94' }}>Operating (book)</p>
             <p className="text-3xl font-bold" style={{ color: '#002147' }}>
               {state.balance !== null ? fmt(state.balance) : '—'}
             </p>
@@ -110,6 +113,17 @@ export function CashPositionCard() {
               {' · '}cushion {fmt(state.cushion)}
               {belowCushion && ' — below cushion'}
             </p>
+          </div>
+          <div className="sm:col-span-2 pt-3 border-t text-sm" style={{ borderColor: '#8FA9C8' }}>
+            <span className="text-xs uppercase tracking-wide font-medium" style={{ color: '#4A6B94' }}>Money owed out: </span>
+            {state.owedCount === 0 ? (
+              <span className="text-gray-500">nothing owed</span>
+            ) : (
+              <span style={{ color: state.owedRed > 0 ? red : '#002147' }}>
+                {state.owedCount} item{state.owedCount === 1 ? '' : 's'} · {fmt(state.owedTotal)}
+                {state.owedRed > 0 && ` · ${state.owedRed} over 30 days`}
+              </span>
+            )}
           </div>
         </div>
       )}

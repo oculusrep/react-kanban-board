@@ -84,6 +84,7 @@ import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import BudgetSetupPage from "./pages/BudgetSetupPage";
 import BudgetManagePage from "./pages/BudgetManagePage";
 import CashFlowForecastPage from "./pages/CashFlowForecastPage";
+import CashPlannerSummaryPage from "./pages/CashPlannerSummaryPage";
 import BrokerForecastDashboard from "./pages/BrokerForecastDashboard";
 import CFODashboardPage from "./pages/CFODashboardPage";
 import BookkeeperPage from "./pages/BookkeeperPage";
@@ -238,6 +239,7 @@ function App() {
           <Route path="admin/budget/setup" element={<AdminRoute><BudgetSetupPage /></AdminRoute>} />
           <Route path="admin/budget/manage" element={<AdminRoute><BudgetManagePage /></AdminRoute>} />
           <Route path="admin/budget/forecast" element={<AdminRoute><CashFlowForecastPage /></AdminRoute>} />
+          <Route path="admin/budget/planner" element={<AdminRoute><CashPlannerSummaryPage /></AdminRoute>} />
           <Route path="admin/broker-forecast" element={<AdminRoute><BrokerForecastDashboard /></AdminRoute>} />
           <Route path="admin/cfo" element={<AdminRoute><CFODashboardPage /></AdminRoute>} />
           <Route path="admin/bookkeeper" element={<AdminRoute><BookkeeperPage /></AdminRoute>} />

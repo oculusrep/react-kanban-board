@@ -12,6 +12,16 @@ export const BROKER_IDS = {
 export type PayMethod = 'payroll' | 'ach_today';
 
 export const CASH_CONFIG = {
+  /**
+   * The calendar runs on the Oculus Operating Account (QBO 256 — BofA checking, also the referral
+   * check account). Savings / personal accounts are shown for information only (Mike, 2026-11-10).
+   */
+  OPERATING_QB_ACCOUNT_ID: '256',
+  /** "Money owed out" urgency by days held since the client payment arrived. */
+  OWED_AMBER_DAYS: 15,
+  OWED_RED_DAYS: 30,
+  /** 12-month projection horizon (v1.5). */
+  PROJECTION_MONTHS: 12,
   /** Days shown on the calendar, starting today (ET). */
   CALENDAR_DAYS: 45,
   /** Commission payments count as expected cash only on deals at or above this probability. */
@@ -129,6 +139,8 @@ export interface CashEvent {
   warning?: string;
   /** Already entered in QBO (book balance includes it): shown greyed, not counted. */
   skipped?: boolean;
+  /** Deal probability for commission events (0–100). */
+  probability?: number;
 }
 
 export interface CalendarDay {

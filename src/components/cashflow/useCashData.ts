@@ -50,6 +50,7 @@ export interface DealLite {
   fee: number | null;
   gci: number | null;
   client: { client_name: string | null } | null;
+  referral_payee: { client_name: string | null } | null;
 }
 
 export interface PaymentRow {
@@ -63,6 +64,7 @@ export interface PaymentRow {
   payment_date_estimated: string | null;
   payment_received: boolean | null;
   payment_received_date: string | null;
+  referral_fee_planned_pay_date: string | null;
   deal: DealLite | null;
 }
 
@@ -72,6 +74,7 @@ export interface SplitRow {
   broker_id: string;
   split_broker_total: number | null;
   paid: boolean | null;
+  planned_pay_date: string | null;
 }
 
 export interface SplitBillRow {
@@ -82,6 +85,20 @@ export interface SplitBillRow {
   transaction_date: string | null;
   qb_open_balance: number | null;
   qb_balance_checked_at: string | null;
+  exclude_from_calendar: boolean;
+  exclude_reason: string | null;
+}
+
+export interface CreditFacility {
+  id: string;
+  name: string;
+  qb_account_id: string | null;
+  credit_limit: number | null;
+  available: number;
+  apr: number | null;
+  active: boolean;
+  notes: string | null;
+  updated_at: string | null;
 }
 
 export interface CashData {
@@ -99,6 +116,9 @@ export interface CashData {
   /** deal_id → broker names on its commission_split. */
   dealTeam: Map<string, string[]>;
   brokerNames: Map<string, string>;
+  credit: CreditFacility[];
+  /** app_settings.cash_cushion_usd (0 if unset). */
+  cushion: number;
 }
 
 const PAGE = 1000;
@@ -130,7 +150,7 @@ async function inChunks<T>(
 }
 
 const DEAL_SELECT =
-  "id, deal_name, stage_id, probability, fee, gci, client:client_id (client_name)";
+  "id, deal_name, stage_id, probability, fee, gci, client:client_id (client_name), referral_payee:referral_payee_client_id (client_name)";
 
 type Client = typeof supabase;
 
@@ -178,7 +198,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
         .from("payment")
         .select(
           `id, deal_id, payment_name, payment_amount, referral_fee_usd, referral_fee_paid, agci,
-                   payment_date_estimated, payment_received, payment_received_date,
+                   payment_date_estimated, payment_received, payment_received_date, referral_fee_planned_pay_date,
                    deal:deal_id (${DEAL_SELECT})`,
         )
         .eq("is_active", true)
@@ -192,7 +212,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
       (from, to) =>
         supabase
           .from("payment_split")
-          .select("id, payment_id, broker_id, split_broker_total, paid")
+          .select("id, payment_id, broker_id, split_broker_total, paid, planned_pay_date")
           .in("payment_id", chunk)
           .order("id")
           .range(from, to) as any,
@@ -204,7 +224,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
       supabase
         .from("qb_commission_entry")
         .select(
-          "id, payment_split_id, qb_entity_id, amount, transaction_date, qb_open_balance, qb_balance_checked_at",
+          "id, payment_split_id, qb_entity_id, amount, transaction_date, qb_open_balance, qb_balance_checked_at, exclude_from_calendar, exclude_reason",
         )
         .eq("qb_entity_type", "Bill")
         .eq("status", "created")
@@ -216,7 +236,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
   const billSplitRows = await inChunks(billSplitIds, async (chunk) => {
     const { data: rows, error: e } = await supabase
       .from("payment_split")
-      .select("id, payment_id, broker_id, split_broker_total, paid")
+      .select("id, payment_id, broker_id, split_broker_total, paid, planned_pay_date")
       .in("id", chunk);
     if (e) throw e;
     return (rows || []) as SplitRow[];
@@ -268,7 +288,21 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
     dealTeam.set(row.deal_id, list);
   }
 
+  const [{ data: credit, error: creditErr }, { data: cushionRow }] = await Promise.all([
+    supabase
+      .from("credit_facility")
+      .select("id, name, qb_account_id, credit_limit, available, apr, active, notes, updated_at")
+      .order("name"),
+    supabase.from("app_settings").select("value").eq("key", "cash_cushion_usd").maybeSingle(),
+  ]);
+  if (creditErr) throw creditErr;
+  const rawCushion = cushionRow?.value;
+  const cushion =
+    Number(typeof rawCushion === "string" ? JSON.parse(rawCushion) : rawCushion) || 0;
+
   return {
+    credit: (credit || []) as CreditFacility[],
+    cushion,
     balances,
     balancesFetchedAt,
     bankTxns,

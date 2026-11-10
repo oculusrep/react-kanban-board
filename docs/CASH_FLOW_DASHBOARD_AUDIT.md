@@ -582,3 +582,48 @@ So a scheduled payment Mike has already entered in QBO must not be subtracted ag
 Seeded 2026-11-10 (Mike-approved list): AMEX Business card moved day 12 → 3 (still = QBO card balance);
 AMEX LOC loan day 14 $11,523.77; Arty draws day 15 + last day $2,083.33; VA $495 on 11/20, 12/4, 12/18;
 Verizon day 12 $291.61; Apple day 1 $66.58. Owner draws and payroll not scheduled (no fixed amount/date).
+
+## v1 fixes + "Money owed out" (2026-11-10)
+
+Migration `20261110153752_cash_flow_v1_fixes_and_credit_facility.sql`.
+
+- **Operating account only.** Calendar start, "today" balance and dedupe use QBO 256 (Oculus Operating,
+  `CASH_CONFIG.OPERATING_QB_ACCOUNT_ID`). Savings and personal accounts are listed as information only.
+- **AMEX Business card** scheduled payment: fixed $7,000 on the 3rd.
+- **Cushion:** `app_settings.cash_cushion_usd` = 20000.
+- **Excluded Bills:** `qb_commission_entry.exclude_from_calendar` + `exclude_reason`. Set on Greg's 8440,
+  8443, 8444 (paid by the 8/19 bank expense, $6,871.65) and 8158 (paid by 5/4 expense 8183, line "SportClips
+  Roswell Payment 1 of 2", $3,889.35). They're counted under "Not counted" on the calendar.
+- **Planned pay dates:** `payment.referral_fee_planned_pay_date`, `payment_split.planned_pay_date`. Null means
+  the default (today for referrals; pay-method date for splits). A future referral date shows on the calendar
+  as "Deferred referral – <deal>". LVIV Croissants ($5,012.67) set to 2026-12-01: the first committed inflow
+  date (Central Bark, $4,415) after which the running balance stays above $0 ($1,981).
+- **Money owed out** (top of the Cash tab; count + total on the Finance hub card): unpaid referral fees and
+  Arty/Greg splits on payments received within the 90-day lookback, plus non-excluded open OVIS split Bills.
+  Payee, deal, amount, date the client paid, days held (green < 15, amber 15–30, red > 30, sorted by days
+  held), planned pay date. Mark paid calls the existing `usePaymentDisbursement` flow, which creates the QBO
+  entry. Open Bills are paid in QBO.
+
+## v1.5 — 12-month projection, owner take-home, planner summary (2026-11-10)
+
+- **`credit_facility`** (admin RLS + grants block). Seeded with AMEX Line of Credit, available $24,500; limit
+  and APR blank. Edited in "Credit lines" on the Cash tab.
+- **Projection** (`src/lib/cashProjection.ts`). Steps each day from the Operating book balance over this
+  month plus the next 11:
+  - If cash falls below the cushion, it draws on the LOC up to the amount available; anything beyond that
+    is a shortfall.
+  - At month end, cash above the cushion pays down the LOC first (draws repaid oldest first). The month's
+    largest inflow is recorded as what repaid the draw.
+  - The rest above the cushion is the **owner take-home**. It's assumed taken, so next month starts lower.
+  - Scenarios: *committed* (deals ≥ 90%) and *with pipeline* (plus lower-probability payments weighted by
+    probability).
+- **Cash tab panel:** chart, take-home table, LOC draws with what repays them.
+- **Planner summary** `/admin/budget/planner`: one page, print to PDF. Shows Operating today and after
+  entered items, LOC available, money owed out, the 12-month chart, the take-home table, LOC by month and
+  the top 5 inflows (deal name, date, amount, probability).
+- **Known limits:**
+  - Outflows are scheduled payments only: no payroll, taxes or VA beyond the dated rows.
+  - The LOC loan payment ($11,523.77/mo) is assumed to run all 12 months.
+  - Arty's draws may double-count against his commission splits, which are also netted out of inflows.
+    His draws are advances against commission; not modelled.
+- **Not built yet:** the MCP cash tool (Phase 3: `update_payment_date` + read tools).

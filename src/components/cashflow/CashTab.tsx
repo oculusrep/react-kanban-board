@@ -8,6 +8,9 @@ import { buildCashEvents, fmt } from './cashEvents';
 import { ScheduledPaymentsEditor } from './ScheduledPaymentsEditor';
 import { NeedsAttentionPanel } from './NeedsAttentionPanel';
 import { PastDueCleanup } from './PastDueCleanup';
+import { OwedOutPanel } from './OwedOutPanel';
+import { ProjectionPanel } from './ProjectionPanel';
+import { CreditFacilityEditor } from './CreditFacilityEditor';
 
 const KIND_LABEL: Record<CashEventKind, string> = {
   scheduled: 'Scheduled',
@@ -86,13 +89,21 @@ export default function CashTab() {
 
   return (
     <div className="space-y-6">
+      <OwedOutPanel
+        owed={summary.owed}
+        operatingBalance={data.balancesFetchedAt ? summary.balanceToday : null}
+        today={today}
+        onOpenDeal={setSlideoutDealId}
+        onChanged={reload}
+      />
+
       {/* Balances */}
       <div className="bg-white rounded-lg shadow border-l-4" style={{ borderColor: '#002147' }}>
         <div className="px-6 py-5 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
             <div className="flex flex-wrap gap-x-8 gap-y-3">
               <div>
-                <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>Bank balance today</p>
+                <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>Operating balance today</p>
                 <p className="text-4xl font-bold mt-1" style={{ color: '#002147' }}>
                   {data.balancesFetchedAt ? fmt(summary.balanceToday) : '—'}
                 </p>
@@ -120,9 +131,12 @@ export default function CashTab() {
                 ? `As of ${formatET(data.balancesFetchedAt)}`
                 : 'No QBO balances saved yet. Reconnect QuickBooks, then Refresh now.'}
             </p>
-            {summary.bankAccounts.length > 1 && (
-              <ul className="mt-2 text-xs text-gray-600 space-y-0.5">
-                {summary.bankAccounts.map((b) => <li key={b.name}>{b.name}: {fmt(b.balance)}</li>)}
+            {summary.bankAccounts.length > 0 && (
+              <p className="mt-2 text-xs text-gray-600">Calendar account: {summary.bankAccounts.map((b) => b.name).join(', ')}</p>
+            )}
+            {summary.otherAccounts.length > 0 && (
+              <ul className="mt-1 text-xs text-gray-500 space-y-0.5">
+                {summary.otherAccounts.map((b) => <li key={b.name}>{b.name}: {fmt(b.balance)} (info only — not in the calendar)</li>)}
               </ul>
             )}
             {creditCards.length > 0 && (
@@ -234,13 +248,20 @@ export default function CashTab() {
             {nc.legacyReferral} referral fees and {nc.legacySplit} broker splits flagged unpaid on payments received more than{' '}
             {CASH_CONFIG.OWED_LOOKBACK_DAYS} days ago (legacy data; not treated as owed).
           </p>
+          {nc.excludedBills.count > 0 && (
+            <p>{nc.excludedBills.count} open QBO split Bills ({fmt(nc.excludedBills.total)}) excluded — already paid outside the Bill.</p>
+          )}
         </div>
       </div>
+
+      <ProjectionPanel data={data} today={today} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <NeedsAttentionPanel data={data} today={today} onOpenDeal={setSlideoutDealId} />
         <ScheduledPaymentsEditor rows={data.scheduled} accounts={data.balances} onChanged={reload} />
       </div>
+
+      <CreditFacilityEditor rows={data.credit} onChanged={reload} />
 
       <PastDueCleanup data={data} today={today} onOpenDeal={setSlideoutDealId} onChanged={reload} />
 
