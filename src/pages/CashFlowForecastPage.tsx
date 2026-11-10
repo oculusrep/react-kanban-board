@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { computeHouseNet } from "../lib/houseNet";
 import { useAuth } from "../contexts/AuthContext";
 import CashflowDashboard from "../components/reports/CashflowDashboard";
+import CashTab from "../components/cashflow/CashTab";
 import {
   ArrowLeft,
   RefreshCw,
@@ -101,14 +102,15 @@ interface MonthlyForecast {
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 
-type TabKey = 'forecast' | 'splits';
+type TabKey = 'forecast' | 'splits' | 'cash';
 
 export default function CashFlowForecastPage() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const activeTab: TabKey = searchParams.get('tab') === 'splits' ? 'splits' : 'forecast';
+  const tabParam = searchParams.get('tab');
+  const activeTab: TabKey = tabParam === 'splits' || tabParam === 'cash' ? tabParam : 'forecast';
   const setActiveTab = (key: TabKey) => {
     const next = new URLSearchParams(searchParams);
     if (key === 'forecast') next.delete('tab');
@@ -544,10 +546,23 @@ export default function CashFlowForecastPage() {
             >
               Broker Splits
             </button>
+            <button
+              onClick={() => setActiveTab('cash')}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
+                activeTab === 'cash'
+                  ? 'border-blue-600 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              style={activeTab === 'cash' ? { borderColor: '#002147', color: '#002147' } : undefined}
+            >
+              Cash (45 days)
+            </button>
           </nav>
         </div>
 
-        {activeTab === 'splits' ? (
+        {activeTab === 'cash' ? (
+          <CashTab />
+        ) : activeTab === 'splits' ? (
           <CashflowDashboard embedded />
         ) : (
         <>
