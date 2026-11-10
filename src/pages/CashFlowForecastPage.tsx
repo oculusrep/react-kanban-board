@@ -438,6 +438,34 @@ export default function CashFlowForecastPage() {
     });
   };
 
+  // Cash tab: dark "mission control" shell, scoped to this tab only (see components/cashflow/cf.css).
+  if (activeTab === 'cash') {
+    const tabs: { key: TabKey; label: string }[] = [
+      { key: 'cash', label: 'Cash (45 days)' },
+      { key: 'profit', label: 'Profit Forecast' },
+      { key: 'splits', label: 'Broker Splits' },
+    ];
+    return (
+      <div className="cf cf-page">
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/admin/budget')} className="cf-btn" aria-label="Back to budget">
+            <ArrowLeft className="h-3 w-3" />
+          </button>
+          <h1>Cash &amp; Profit Forecast</h1>
+          <span className="cf-sub">Operating cash, money owed out, 45-day calendar, 12-month take-home</span>
+        </div>
+        <nav className="cf-tabs" aria-label="Tabs">
+          {tabs.map((t) => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)} className={`cf-tab ${activeTab === t.key ? 'on' : ''}`}>
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <CashTab />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -529,11 +557,11 @@ export default function CashFlowForecastPage() {
             <button
               onClick={() => setActiveTab('cash')}
               className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
-                activeTab === 'cash'
+                (activeTab as TabKey) === 'cash'
                   ? 'border-blue-600 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
-              style={activeTab === 'cash' ? { borderColor: '#002147', color: '#002147' } : undefined}
+              style={(activeTab as TabKey) === 'cash' ? { borderColor: '#002147', color: '#002147' } : undefined}
             >
               Cash (45 days)
             </button>
@@ -562,7 +590,7 @@ export default function CashFlowForecastPage() {
           </nav>
         </div>
 
-        {activeTab === 'cash' ? (
+        {(activeTab as TabKey) === 'cash' ? (
           <CashTab />
         ) : activeTab === 'splits' ? (
           <CashflowDashboard embedded />

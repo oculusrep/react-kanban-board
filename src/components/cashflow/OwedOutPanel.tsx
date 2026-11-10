@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { CASH_CONFIG } from '../../lib/cashCalendar';
 import { usePaymentDisbursement } from '../../hooks/usePaymentDisbursement';
 import { OwedItem, fmt } from './cashEvents';
+import { Money, money } from './cfTheme';
 
 interface Props {
   owed: OwedItem[];
@@ -13,13 +14,7 @@ interface Props {
   onChanged: () => void;
 }
 
-const URGENCY = {
-  green: { color: '#15803D', label: 'OK' },
-  amber: { color: '#B45309', label: 'Due soon' },
-  red: { color: '#B91C1C', label: 'Overdue' },
-} as const;
-
-export function owedUrgency(days: number | null): keyof typeof URGENCY {
+export function owedUrgency(days: number | null): 'green' | 'amber' | 'red' {
   if (days === null) return 'amber';
   if (days > CASH_CONFIG.OWED_RED_DAYS) return 'red';
   if (days >= CASH_CONFIG.OWED_AMBER_DAYS) return 'amber';
@@ -71,81 +66,62 @@ export function OwedOutPanel({ owed, operatingBalance, today, onOpenDeal, onChan
   };
 
   return (
-    <div className="bg-white rounded-lg shadow border-l-4" style={{ borderColor: total > 0 ? '#A27B5C' : '#8FA9C8' }}>
-      <div className="px-4 py-3 border-b" style={{ borderColor: '#8FA9C8' }}>
-        <h3 className="font-semibold" style={{ color: '#002147' }}>Money owed out</h3>
-        <p className="text-sm" style={{ color: '#4A6B94' }}>
-          <span className="font-semibold" style={{ color: '#002147' }}>{fmt(total)} owed</span>
-          {pct !== null && <> — {pct}% of cash in the bank (Operating {fmt(operatingBalance!)})</>}
-        </p>
-        <p className="text-xs text-gray-500">
-          Referral fees and Arty/Greg splits on client payments already received (last {CASH_CONFIG.OWED_LOOKBACK_DAYS} days),
-          plus OVIS split Bills still open in QBO. Green &lt; {CASH_CONFIG.OWED_AMBER_DAYS} days held, amber{' '}
-          {CASH_CONFIG.OWED_AMBER_DAYS}–{CASH_CONFIG.OWED_RED_DAYS}, red &gt; {CASH_CONFIG.OWED_RED_DAYS}.
-        </p>
+    <div className="cf-panel">
+      <div className="cf-ph">
+        <span className="cf-title">Money owed out</span>
+        <span className="cf-note">
+          <Money v={total} tone={total > 0 ? 'warn' : 'plain'} /> owed
+          {pct !== null && <> — <span className="cf-num cf-strong">{pct}%</span> of cash in the bank (Operating <span className="cf-num">{money(operatingBalance!)}</span>)</>}
+        </span>
       </div>
-      {err && <div className="mx-4 mt-3 p-2 text-sm rounded bg-red-50 text-red-700">{err}</div>}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead style={{ backgroundColor: '#F8FAFC' }}>
-            <tr className="text-xs uppercase tracking-wide" style={{ color: '#4A6B94' }}>
-              <th className="px-3 py-2 text-left">Payee</th>
-              <th className="px-3 py-2 text-left">Deal</th>
-              <th className="px-3 py-2 text-right">Amount</th>
-              <th className="px-3 py-2 text-left">Client paid</th>
-              <th className="px-3 py-2 text-right">Days held</th>
-              <th className="px-3 py-2 text-left">Planned pay date</th>
-              <th className="px-3 py-2"></th>
+      {err && <div className="cf-msg err m-1.5">{err}</div>}
+      <div className="cf-scroll" style={{ maxHeight: 240 }}>
+        <table className="cf-table">
+          <thead>
+            <tr>
+              <th>Payee</th>
+              <th>Deal</th>
+              <th className="r">Amount</th>
+              <th>Client paid</th>
+              <th className="r">Held</th>
+              <th>Planned pay</th>
+              <th></th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {owed.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-4 text-gray-500">Nothing owed out.</td></tr>
+              <tr><td colSpan={7} className="cf-muted">Nothing owed out.</td></tr>
             )}
             {owed.map((o) => {
-              const u = URGENCY[owedUrgency(o.daysHeld)];
+              const u = owedUrgency(o.daysHeld);
+              const cls = u === 'red' ? 'cf-neg' : u === 'amber' ? 'cf-warn' : 'cf-pos';
               return (
-                <tr key={o.key} className={busy === o.key ? 'opacity-50' : ''}>
-                  <td className="px-3 py-2">
-                    <div style={{ color: '#002147' }}>{o.payee}</div>
-                    <div className="text-xs text-gray-500">{TYPE_LABEL[o.type]}{o.qbBillId ? ` ${o.qbBillId}` : ''}</div>
+                <tr key={o.key} className={busy === o.key ? 'dim' : ''}>
+                  <td>
+                    <div className="cf-strong">{o.payee}</div>
+                    <div className="cf-faint">{TYPE_LABEL[o.type]}{o.qbBillId ? ` ${o.qbBillId}` : ''}</div>
                   </td>
-                  <td className="px-3 py-2">
-                    {o.dealId ? (
-                      <button onClick={() => onOpenDeal(o.dealId!)} className="text-left hover:underline" style={{ color: '#002147' }}>{o.deal}</button>
-                    ) : o.deal}
+                  <td>
+                    {o.dealId ? <button onClick={() => onOpenDeal(o.dealId!)} className="cf-link">{o.deal}</button> : o.deal}
                   </td>
-                  <td className="px-3 py-2 text-right font-medium" style={{ color: '#4A6B94' }}>{fmt(o.amount)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{o.receivedDate || '—'}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold" style={{ border: `1px solid ${u.color}`, color: u.color }}>
-                      {o.daysHeld ?? '?'}d
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
+                  <td className="r"><Money v={o.amount} cents /></td>
+                  <td className="cf-num">{o.receivedDate || '—'}</td>
+                  <td className={`r cf-num ${cls}`}>{o.daysHeld ?? '?'}d</td>
+                  <td>
                     <input
                       type="date"
                       min={today}
                       value={o.plannedDate ?? ''}
                       disabled={busy === o.key}
                       onChange={(e) => setPlanned(o, e.target.value)}
-                      className="border rounded px-2 py-1 text-sm"
-                      style={{ borderColor: '#8FA9C8' }}
                     />
-                    {!o.plannedDate && <div className="text-xs text-gray-400">Default: {o.effectiveDate === today ? 'today' : o.effectiveDate}</div>}
+                    {!o.plannedDate && <div className="cf-faint">default {o.effectiveDate === today ? 'today' : o.effectiveDate}</div>}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                  <td className="r">
                     {o.type === 'split_bill' ? (
-                      <span className="text-xs text-gray-500">Pay the Bill in QBO</span>
+                      <span className="cf-faint">pay in QBO</span>
                     ) : (
-                      <button
-                        disabled={busy === o.key}
-                        onClick={() => markPaid(o)}
-                        className="px-2 py-1 rounded text-xs font-medium text-white"
-                        style={{ backgroundColor: '#002147' }}
-                      >
-                        Mark paid
-                      </button>
+                      <button disabled={busy === o.key} onClick={() => markPaid(o)} className="cf-btn">Mark paid</button>
                     )}
                   </td>
                 </tr>
@@ -153,6 +129,10 @@ export function OwedOutPanel({ owed, operatingBalance, today, onOpenDeal, onChan
             })}
           </tbody>
         </table>
+      </div>
+      <div className="cf-pb cf-faint">
+        Referral fees and Arty/Greg splits on client payments received in the last {CASH_CONFIG.OWED_LOOKBACK_DAYS} days, plus open
+        OVIS split Bills. Held: <span className="cf-pos">&lt;{CASH_CONFIG.OWED_AMBER_DAYS}d</span> · <span className="cf-warn">{CASH_CONFIG.OWED_AMBER_DAYS}–{CASH_CONFIG.OWED_RED_DAYS}d</span> · <span className="cf-neg">&gt;{CASH_CONFIG.OWED_RED_DAYS}d</span>.
       </div>
     </div>
   );

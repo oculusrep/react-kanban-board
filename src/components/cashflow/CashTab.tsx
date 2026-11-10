@@ -1,23 +1,25 @@
 import { Fragment, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import DealDetailsSlideout from '../DealDetailsSlideout';
 import { CASH_CONFIG, CashEventKind, buildCalendar, todayET } from '../../lib/cashCalendar';
 import { useCashData } from './useCashData';
-import { buildCashEvents, fmt } from './cashEvents';
+import { buildCashEvents } from './cashEvents';
 import { ScheduledPaymentsEditor } from './ScheduledPaymentsEditor';
 import { NeedsAttentionPanel } from './NeedsAttentionPanel';
 import { PastDueCleanup } from './PastDueCleanup';
-import { OwedOutPanel } from './OwedOutPanel';
+import { OwedOutPanel, owedUrgency } from './OwedOutPanel';
 import { ProjectionPanel } from './ProjectionPanel';
 import { CreditFacilityEditor } from './CreditFacilityEditor';
+import { CF, Money, money, useCfFonts } from './cfTheme';
 
 const KIND_LABEL: Record<CashEventKind, string> = {
   scheduled: 'Scheduled',
   draw: 'Draw',
-  referral_owed: 'Referral owed',
+  referral_owed: 'Referral',
   split_owed: 'Split owed',
-  split_bill: 'Open QBO Bill',
+  split_bill: 'QBO Bill',
   commission: 'Commission',
 };
 
@@ -28,6 +30,11 @@ function formatDay(d: string) {
   });
 }
 
+function shortDay(d: string) {
+  const [y, m, day] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 function formatET(ts: string) {
   return new Date(ts).toLocaleString('en-US', {
     timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
@@ -35,9 +42,11 @@ function formatET(ts: string) {
 }
 
 /**
- * Cash tab on /admin/budget/forecast (?tab=cash). v1 per docs/CASH_FLOW_DASHBOARD_AUDIT.md.
+ * Cash tab on /admin/budget/forecast (?tab=cash). Dark "mission control" layout (cf.css).
+ * Logic per docs/CASH_FLOW_DASHBOARD_AUDIT.md.
  */
 export default function CashTab() {
+  useCfFonts();
   const { data, loading, error, reload } = useCashData();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -65,10 +74,9 @@ export default function CashTab() {
       setRefreshMsg({ ok: false, text: msg });
       return;
     }
-    const linked = res.balances?.amexLinked ? ` AMEX linked to ${res.balances.amexLinked}.` : '';
     setRefreshMsg({
       ok: true,
-      text: `Saved ${res.balances?.saved ?? 0} QBO balances; checked ${res.bills?.checked ?? 0} OVIS Bills (${res.bills?.open ?? 0} open).${linked}`,
+      text: `Saved ${res.balances?.saved ?? 0} QBO balances and ${res.balances?.transactions ?? 0} register lines; checked ${res.bills?.checked ?? 0} OVIS Bills (${res.bills?.open ?? 0} open).`,
     });
     reload();
   };
@@ -80,188 +88,209 @@ export default function CashTab() {
       return n;
     });
 
-  if (loading && !data) return <div className="p-6 text-sm text-gray-500">Loading cash data…</div>;
-  if (error) return <div className="p-4 rounded bg-red-50 text-red-700 text-sm">{error}</div>;
+  if (loading && !data) return <div className="cf cf-muted p-2">Loading cash data…</div>;
+  if (error) return <div className="cf p-2"><div className="cf-msg err">{error}</div></div>;
   if (!data || !summary || !calendar) return null;
 
+  const hasBal = !!data.balancesFetchedAt;
+  const cushion = data.cushion;
+  const owedTotal = summary.owed.reduce((t, o) => t + o.amount, 0);
+  const owedRed = summary.owed.filter((o) => owedUrgency(o.daysHeld) === 'red').length;
+  const locAvailable = data.credit.filter((c) => c.active).reduce((t, c) => t + (Number(c.available) || 0), 0);
+  const low = calendar.lowest;
+  const firstBelow = calendar.days.find((d) => d.balance < cushion);
   const creditCards = data.balances.filter((b) => b.account_type === 'Credit Card');
   const nc = summary.notCounted;
+  const chartRows = calendar.days.map((d) => ({ label: shortDay(d.date), balance: Math.round(d.balance) }));
+
+  const kpis: { label: string; value: React.ReactNode; sub: React.ReactNode; tone?: 'ok' | 'warn' | 'bad' }[] = [
+    {
+      label: 'Operating balance',
+      value: hasBal ? <Money v={summary.balanceToday} /> : '—',
+      sub: 'QBO register through today',
+    },
+    {
+      label: 'Book balance',
+      value: hasBal ? <Money v={summary.startBalance} /> : '—',
+      sub: `After ${summary.futureTxns.length} entered future item${summary.futureTxns.length === 1 ? '' : 's'}`,
+    },
+    {
+      label: 'Owed out',
+      value: <Money v={owedTotal} tone={owedRed ? 'bad' : 'plain'} />,
+      sub: `${summary.owed.length} item${summary.owed.length === 1 ? '' : 's'}${owedRed ? ` · ${owedRed} >${CASH_CONFIG.OWED_RED_DAYS}d` : ''}`,
+      tone: owedRed ? 'bad' : summary.owed.length ? 'warn' : undefined,
+    },
+    {
+      label: `${CASH_CONFIG.CALENDAR_DAYS}-day low`,
+      value: low && hasBal ? <Money v={low.balance} tone={low.balance < cushion ? 'bad' : 'plain'} /> : '—',
+      sub: low ? shortDay(low.date) : '',
+      tone: low && low.balance < cushion ? 'bad' : 'ok',
+    },
+    {
+      label: 'Credit available',
+      value: <Money v={locAvailable} />,
+      sub: data.credit.filter((c) => c.active).map((c) => c.name).join(', ') || 'No credit lines',
+    },
+    {
+      label: 'Cushion status',
+      value: firstBelow ? <span className="cf-neg">BELOW</span> : <span className="cf-pos">CLEAR</span>,
+      sub: firstBelow
+        ? `Under ${money(cushion)} from ${shortDay(firstBelow.date)}`
+        : `Stays ≥ ${money(cushion)} for ${CASH_CONFIG.CALENDAR_DAYS} days`,
+      tone: firstBelow ? 'bad' : 'ok',
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <OwedOutPanel
-        owed={summary.owed}
-        operatingBalance={data.balancesFetchedAt ? summary.balanceToday : null}
-        today={today}
-        onOpenDeal={setSlideoutDealId}
-        onChanged={reload}
-      />
-
-      {/* Balances */}
-      <div className="bg-white rounded-lg shadow border-l-4" style={{ borderColor: '#002147' }}>
-        <div className="px-6 py-5 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap gap-x-8 gap-y-3">
-              <div>
-                <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>Operating balance today</p>
-                <p className="text-4xl font-bold mt-1" style={{ color: '#002147' }}>
-                  {data.balancesFetchedAt ? fmt(summary.balanceToday) : '—'}
-                </p>
-                <p className="text-xs text-gray-500">QBO register through today</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>After entered future transactions</p>
-                <p className="text-4xl font-bold mt-1" style={{ color: '#002147' }}>
-                  {data.balancesFetchedAt ? fmt(summary.startBalance) : '—'}
-                </p>
-                <p className="text-xs text-gray-500">QBO book balance — the calendar starts here</p>
-              </div>
-            </div>
-            {summary.futureTxns.length > 0 && (
-              <ul className="mt-2 text-xs text-gray-600 space-y-0.5">
-                {summary.futureTxns.map((t, i) => (
-                  <li key={i}>
-                    {formatDay(t.txn_date)} · {t.payee || t.txn_type || 'QBO entry'}{t.memo ? ` (${t.memo})` : ''}: {fmt(Number(t.amount))}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="text-xs text-gray-500 mt-1">
-              {data.balancesFetchedAt
-                ? `As of ${formatET(data.balancesFetchedAt)}`
-                : 'No QBO balances saved yet. Reconnect QuickBooks, then Refresh now.'}
-            </p>
-            {summary.bankAccounts.length > 0 && (
-              <p className="mt-2 text-xs text-gray-600">Calendar account: {summary.bankAccounts.map((b) => b.name).join(', ')}</p>
-            )}
-            {summary.otherAccounts.length > 0 && (
-              <ul className="mt-1 text-xs text-gray-500 space-y-0.5">
-                {summary.otherAccounts.map((b) => <li key={b.name}>{b.name}: {fmt(b.balance)} (info only — not in the calendar)</li>)}
-              </ul>
-            )}
-            {creditCards.length > 0 && (
-              <ul className="mt-2 text-xs text-gray-600 space-y-0.5">
-                {creditCards.map((c) => (
-                  <li key={c.qb_account_id}>{c.fully_qualified_name || c.name} (card owed): {fmt(Math.abs(Number(c.current_balance)))}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="md:text-right">
-            <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>
-              Lowest point, next {CASH_CONFIG.CALENDAR_DAYS} days
-            </p>
-            <p className="text-3xl font-bold mt-1" style={{ color: calendar.lowest && calendar.lowest.balance < 0 ? '#A27B5C' : '#002147' }}>
-              {calendar.lowest ? fmt(calendar.lowest.balance) : '—'}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">{calendar.lowest ? `on ${formatDay(calendar.lowest.date)}` : ''}</p>
-            <button
-              onClick={refreshNow}
-              disabled={refreshing}
-              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium text-white disabled:opacity-60"
-              style={{ backgroundColor: '#002147' }}
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing…' : 'Refresh now'}
-            </button>
-          </div>
+    <div className="cf space-y-1.5">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="cf-note">
+          {hasBal ? <>QBO as of <span className="cf-num cf-strong">{formatET(data.balancesFetchedAt!)}</span></> : 'No QBO balances yet — reconnect QuickBooks, then Refresh.'}
+          {summary.bankAccounts.length > 0 && <> · Calendar account: {summary.bankAccounts.map((b) => b.name).join(', ')}</>}
+          {summary.otherAccounts.map((b) => (
+            <span key={b.name} className="cf-faint"> · {b.name} <span className="cf-num">{money(b.balance)}</span> (info)</span>
+          ))}
+          {creditCards.filter((c) => Number(c.current_balance)).map((c) => (
+            <span key={c.qb_account_id} className="cf-faint"> · {c.fully_qualified_name || c.name} owed <span className="cf-num">{money(Math.abs(Number(c.current_balance)))}</span></span>
+          ))}
         </div>
-        {refreshMsg && (
-          <div className={`mx-6 mb-4 p-2 text-sm rounded ${refreshMsg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>
-            {refreshMsg.text}
+        <button onClick={refreshNow} disabled={refreshing} className="cf-btn">
+          <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing' : 'Refresh QBO'}
+        </button>
+      </div>
+      {refreshMsg && <div className={`cf-msg ${refreshMsg.ok ? 'ok' : 'err'}`}>{refreshMsg.text}</div>}
+
+      {/* KPI strip */}
+      <div className="cf-kpis">
+        {kpis.map((k) => (
+          <div key={k.label} className={`cf-kpi ${k.tone || ''}`}>
+            <div className="cf-label">{k.label}</div>
+            <div className="v">{k.value}</div>
+            <div className="s">{k.sub}</div>
           </div>
-        )}
+        ))}
       </div>
 
-      {/* Calendar */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-4 py-3 border-b" style={{ borderColor: '#8FA9C8' }}>
-          <h3 className="font-semibold" style={{ color: '#002147' }}>{CASH_CONFIG.CALENDAR_DAYS}-day cash calendar</h3>
-          <p className="text-xs text-gray-500">
-            Start = QBO book balance (after entered future transactions). Scheduled payments already entered in
-            QBO (same payee, ±{CASH_CONFIG.DEDUPE_DAYS} days, ±${CASH_CONFIG.DEDUPE_DOLLARS}) are shown greyed and not
-            counted. Out: scheduled payments, draws, referral fees and broker splits owed, open
-            broker-split Bills. In: commissions on deals ≥ {CASH_CONFIG.COMMITTED_PROBABILITY_MIN}% probability, net of
-            referral and other brokers' splits, on their estimated date. Click a day for detail.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead style={{ backgroundColor: '#F8FAFC' }}>
-              <tr className="text-xs uppercase tracking-wide" style={{ color: '#4A6B94' }}>
-                <th className="px-3 py-2 text-left">Day</th>
-                <th className="px-3 py-2 text-right">In</th>
-                <th className="px-3 py-2 text-right">Out</th>
-                <th className="px-3 py-2 text-right">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {calendar.days.map((d) => {
-                const isLowest = calendar.lowest?.date === d.date;
-                const has = d.events.length > 0;
-                const skippedCount = d.events.filter((e) => e.skipped).length;
-                return (
-                  <Fragment key={d.date}>
-                    <tr
-                      onClick={() => has && toggle(d.date)}
-                      className={`border-t ${has ? 'cursor-pointer hover:bg-gray-50' : 'text-gray-400'}`}
-                      style={isLowest ? { outline: '2px solid #A27B5C', outlineOffset: '-2px' } : undefined}
-                    >
-                      <td className="px-3 py-1.5 whitespace-nowrap">
-                        {formatDay(d.date)}
-                        {isLowest && <span className="ml-2 text-xs font-semibold" style={{ color: '#A27B5C' }}>lowest</span>}
-                        {has && <span className="ml-2 text-xs text-gray-400">{d.events.length}</span>}
-                        {skippedCount > 0 && <span className="ml-2 text-xs text-gray-400">({skippedCount} already in QBO)</span>}
-                      </td>
-                      <td className="px-3 py-1.5 text-right" style={{ color: d.inflow ? '#4A6B94' : undefined }}>{d.inflow ? fmt(d.inflow) : ''}</td>
-                      <td className="px-3 py-1.5 text-right">{d.outflow ? fmt(d.outflow) : ''}</td>
-                      <td className="px-3 py-1.5 text-right font-medium" style={{ color: d.balance < 0 ? '#A27B5C' : '#002147' }}>{fmt(d.balance)}</td>
-                    </tr>
-                    {expanded.has(d.date) && d.events.map((e, i) => (
-                      <tr key={i} className={`text-xs ${e.skipped ? 'text-gray-400' : ''}`} style={{ backgroundColor: '#F8FAFC' }}>
-                        <td className="pl-8 pr-3 py-1" colSpan={3}>
-                          <span className="inline-block w-24 text-gray-500">{e.skipped ? 'Already in QBO' : KIND_LABEL[e.kind]}</span>
-                          {e.skipped ? (
-                            <span>{e.label}</span>
-                          ) : e.dealId ? (
-                            <button onClick={() => setSlideoutDealId(e.dealId!)} className="hover:underline text-left" style={{ color: '#002147' }}>{e.label}</button>
-                          ) : (
-                            <span style={{ color: '#002147' }}>{e.label}</span>
-                          )}
-                          {e.detail && <span className="ml-2 text-gray-500">{e.detail}</span>}
-                          {e.warning && <span className="ml-2" style={{ color: '#A27B5C' }}>⚠ {e.warning}</span>}
+      <div className="cf-grid grid-cols-1 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        {/* 45-day calendar */}
+        <div className="cf-panel flex flex-col">
+          <div className="cf-ph">
+            <span className="cf-title">{CASH_CONFIG.CALENDAR_DAYS}-day cash calendar</span>
+            <span className="cf-note">from book balance · click a day for detail</span>
+          </div>
+          <div style={{ height: 150 }} className="px-1 pt-1">
+            <ResponsiveContainer>
+              <LineChart data={chartRows} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={CF.grid} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 9, fill: CF.muted }} tickLine={false} axisLine={{ stroke: CF.border }} interval={6} />
+                <YAxis tickFormatter={(v) => `${v < 0 ? '−' : ''}${Math.round(Math.abs(v) / 1000)}k`} tick={{ fontSize: 9, fill: CF.muted, fontFamily: 'IBM Plex Mono, monospace' }} tickLine={false} axisLine={false} width={40} />
+                <Tooltip
+                  contentStyle={{ background: CF.panel, border: `1px solid ${CF.border}`, borderRadius: 2, fontSize: 11 }}
+                  labelStyle={{ color: CF.muted }}
+                  itemStyle={{ color: CF.text, fontFamily: 'IBM Plex Mono, monospace' }}
+                  formatter={(v) => [money(Number(v)), 'Balance']}
+                />
+                <ReferenceLine y={cushion} stroke={CF.amber} strokeDasharray="4 3" strokeWidth={1} />
+                <ReferenceLine y={0} stroke={CF.faint} strokeWidth={1} />
+                <ReferenceLine x={chartRows[0]?.label} stroke={CF.cyan} strokeWidth={1} label={{ value: 'TODAY', fontSize: 8, fill: CF.cyan, position: 'insideTopRight' }} />
+                <Line type="stepAfter" dataKey="balance" stroke={CF.text} strokeWidth={1.25} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="cf-scroll" style={{ maxHeight: 520 }}>
+            <table className="cf-table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th className="r">In</th>
+                  <th className="r">Out</th>
+                  <th className="r">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calendar.days.map((d) => {
+                  const isLowest = low?.date === d.date;
+                  const has = d.events.length > 0;
+                  const skipped = d.events.filter((e) => e.skipped).length;
+                  return (
+                    <Fragment key={d.date}>
+                      <tr
+                        onClick={() => has && toggle(d.date)}
+                        className={`${has ? 'cursor-pointer' : 'dim'} ${isLowest ? 'mark' : ''}`}
+                      >
+                        <td className="whitespace-nowrap">
+                          <span className={has ? 'cf-strong' : ''}>{formatDay(d.date)}</span>
+                          {has && <span className="cf-faint ml-1.5">{expanded.has(d.date) ? '▾' : '▸'}{d.events.length}</span>}
+                          {skipped > 0 && <span className="cf-faint ml-1.5">{skipped} in QBO</span>}
+                          {isLowest && <span className="cf-label cf-neg ml-1.5">low</span>}
                         </td>
-                        <td className={`px-3 py-1 text-right ${e.skipped ? 'line-through' : ''}`} style={{ color: e.skipped ? undefined : e.amount >= 0 ? '#4A6B94' : undefined }}>{fmt(e.amount)}</td>
+                        <td className="r">{d.inflow ? <Money v={d.inflow} tone="in" /> : ''}</td>
+                        <td className="r">{d.outflow ? <Money v={d.outflow} /> : ''}</td>
+                        <td className="r">
+                          <Money v={d.balance} tone={d.balance < cushion ? 'bad' : 'plain'} />
+                        </td>
                       </tr>
-                    ))}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                      {expanded.has(d.date) && d.events.map((e, i) => (
+                        <tr key={i} className={`sub ${e.skipped ? 'dim' : ''}`}>
+                          <td colSpan={3} className="pl-6">
+                            <span className="cf-label inline-block w-20">{e.skipped ? 'In QBO' : KIND_LABEL[e.kind]}</span>
+                            {e.dealId && !e.skipped ? (
+                              <button onClick={() => setSlideoutDealId(e.dealId!)} className="cf-link">{e.label}</button>
+                            ) : (
+                              <span style={e.skipped ? { textDecoration: 'line-through' } : undefined}>{e.label}</span>
+                            )}
+                            {e.detail && <span className="cf-faint ml-1.5">{e.detail}</span>}
+                            {e.warning && <span className="cf-warn ml-1.5">{e.warning}</span>}
+                          </td>
+                          <td className="r">
+                            {e.skipped ? (
+                              <span className="cf-num" style={{ textDecoration: 'line-through' }}>{money(e.amount)}</span>
+                            ) : (
+                              <Money v={e.amount} tone="in" />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="cf-pb cf-note space-y-0.5" style={{ borderTop: `1px solid ${CF.border}` }}>
+            <div className="cf-label">Not counted</div>
+            <div><span className="cf-num">{nc.pastDueCommitted.count}</span> past-due payments on ≥{CASH_CONFIG.COMMITTED_PROBABILITY_MIN}% deals (<span className="cf-num">{money(nc.pastDueCommitted.total)}</span> net) — fix in Past-due cleanup</div>
+            <div><span className="cf-num">{nc.belowThreshold.count}</span> payments in the window below {CASH_CONFIG.COMMITTED_PROBABILITY_MIN}% (<span className="cf-num">{money(nc.belowThreshold.total)}</span> upside)</div>
+            <div><span className="cf-num">{nc.legacyReferral}</span> referral fees / <span className="cf-num">{nc.legacySplit}</span> splits flagged unpaid on payments received &gt;{CASH_CONFIG.OWED_LOOKBACK_DAYS}d ago (legacy)</div>
+            {nc.excludedBills.count > 0 && (
+              <div><span className="cf-num">{nc.excludedBills.count}</span> open QBO split Bills (<span className="cf-num">{money(nc.excludedBills.total)}</span>) excluded — paid outside the Bill</div>
+            )}
+            <div className="cf-faint">
+              Scheduled payments already entered in QBO (same payee, ±{CASH_CONFIG.DEDUPE_DAYS}d, ±${CASH_CONFIG.DEDUPE_DOLLARS}) are struck through and not counted.
+            </div>
+          </div>
         </div>
-        <div className="px-4 py-3 border-t text-xs text-gray-600 space-y-1" style={{ borderColor: '#8FA9C8' }}>
-          <p className="font-semibold" style={{ color: '#4A6B94' }}>Not counted</p>
-          <p>{nc.pastDueCommitted.count} past-due payments on ≥{CASH_CONFIG.COMMITTED_PROBABILITY_MIN}% deals ({fmt(nc.pastDueCommitted.total)} net) — give them real dates in Past-due cleanup.</p>
-          <p>{nc.belowThreshold.count} payments due in the window on deals below {CASH_CONFIG.COMMITTED_PROBABILITY_MIN}% ({fmt(nc.belowThreshold.total)} net possible upside).</p>
-          <p>
-            {nc.legacyReferral} referral fees and {nc.legacySplit} broker splits flagged unpaid on payments received more than{' '}
-            {CASH_CONFIG.OWED_LOOKBACK_DAYS} days ago (legacy data; not treated as owed).
-          </p>
-          {nc.excludedBills.count > 0 && (
-            <p>{nc.excludedBills.count} open QBO split Bills ({fmt(nc.excludedBills.total)}) excluded — already paid outside the Bill.</p>
-          )}
+
+        {/* Right column */}
+        <div className="cf-grid content-start">
+          <OwedOutPanel
+            owed={summary.owed}
+            operatingBalance={hasBal ? summary.balanceToday : null}
+            today={today}
+            onOpenDeal={setSlideoutDealId}
+            onChanged={reload}
+          />
+          <ProjectionPanel data={data} today={today} />
         </div>
       </div>
 
-      <ProjectionPanel data={data} today={today} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <NeedsAttentionPanel data={data} today={today} onOpenDeal={setSlideoutDealId} />
+      <div className="cf-grid grid-cols-1 lg:grid-cols-3">
         <ScheduledPaymentsEditor rows={data.scheduled} accounts={data.balances} onChanged={reload} />
+        <NeedsAttentionPanel data={data} today={today} onOpenDeal={setSlideoutDealId} />
+        <CreditFacilityEditor rows={data.credit} onChanged={reload} />
       </div>
-
-      <CreditFacilityEditor rows={data.credit} onChanged={reload} />
 
       <PastDueCleanup data={data} today={today} onOpenDeal={setSlideoutDealId} onChanged={reload} />
 

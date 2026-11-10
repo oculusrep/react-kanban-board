@@ -627,3 +627,23 @@ Migration `20261110153752_cash_flow_v1_fixes_and_credit_facility.sql`.
   - Arty's draws may double-count against his commission splits, which are also netted out of inflows.
     His draws are advances against commission; not modelled.
 - **Not built yet:** the MCP cash tool (Phase 3: `update_payment_date` + read tools).
+
+## Visual redesign — "mission control" (2026-11-10)
+
+The Cash tab and the Finance hub Cash Position card use a dark, dense theme scoped under the `.cf` class
+(`src/components/cashflow/cf.css`, helpers in `cfTheme.tsx`). The rest of OVIS is unchanged. On
+`/admin/budget/forecast` only the Cash tab renders the dark page shell; Profit Forecast and Broker Splits
+keep the light layout. The planner summary stays light for printing.
+
+- **Palette:** bg #0B0F14, panels #11161D, 1px borders #1E2630, radius ≤ 4px, no shadows.
+- **Color carries meaning only:** green = inflow / above cushion, amber = warning, red = below cushion,
+  overdue or negative, cyan = interactive. Everything else is grayscale.
+- **Type:** IBM Plex Mono with tabular-nums for figures; IBM Plex Sans for labels. Labels are small
+  uppercase and letter-spaced. Fonts load from Google Fonts only when a `.cf` view mounts.
+- **Layout:**
+  - Top: KPI strip (Operating, Book, Owed out, 45-day low, Credit available, Cushion status).
+  - Middle: the 45-day calendar (step chart, cushion dashed, today marker) beside Money owed out and the
+    12-month projection.
+  - Bottom: Scheduled payments, Needs attention and Credit lines in a row, then Past-due cleanup.
+- **Tables:** compact, sticky headers, hover highlight only, money right-aligned; negatives use a true
+  minus sign ("−") and are red.

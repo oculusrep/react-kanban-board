@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { daysBetween } from '../../lib/cashCalendar';
 import { CashData, STAGE } from './useCashData';
-import { fmt } from './cashEvents';
+import { Money, money } from './cfTheme';
 
 interface Props {
   data: CashData;
@@ -57,8 +57,8 @@ export function PastDueCleanup({ data, today, onOpenDeal, onChanged }: Props) {
   const header = (key: SortKey, label: string, right = false) => (
     <th
       onClick={() => setSort((s) => ({ key, asc: s.key === key ? !s.asc : key === 'deal' || key === 'team' }))}
-      className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide cursor-pointer select-none whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}
-      style={{ color: sort.key === key ? '#002147' : '#4A6B94' }}
+      className={`cursor-pointer select-none ${right ? 'r' : ''}`}
+      style={sort.key === key ? { color: 'var(--cf-cyan)' } : undefined}
     >
       {label}{sort.key === key ? (sort.asc ? ' ▲' : ' ▼') : ''}
     </th>
@@ -67,57 +67,46 @@ export function PastDueCleanup({ data, today, onOpenDeal, onChanged }: Props) {
   const total = rows.reduce((t, r) => t + r.amount, 0);
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="px-4 py-3 border-b" style={{ borderColor: '#8FA9C8' }}>
-        <h3 className="font-semibold" style={{ color: '#002147' }}>Past-due cleanup</h3>
-        <p className="text-xs text-gray-500">
-          {rows.length} unreceived payments with an estimated date before today ({fmt(total)}). Set a realistic date —
-          it saves when you pick it.
-        </p>
+    <div className="cf-panel">
+      <div className="cf-ph">
+        <span className="cf-title">Past-due cleanup</span>
+        <span className="cf-note">
+          <span className="cf-num">{rows.length}</span> unreceived payments dated before today (<span className="cf-num">{money(total)}</span>) — pick a realistic date, it saves on change
+        </span>
       </div>
-      {err && <div className="mx-4 mt-3 p-2 text-sm rounded bg-red-50 text-red-700">{err}</div>}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead style={{ backgroundColor: '#F8FAFC' }}>
+      {err && <div className="cf-msg err m-1.5">{err}</div>}
+      <div className="cf-scroll" style={{ maxHeight: 420 }}>
+        <table className="cf-table">
+          <thead>
             <tr>
               {header('deal', 'Deal')}
               {header('team', 'Deal team')}
-              {header('probability', 'Prob.', true)}
+              {header('probability', 'Prob', true)}
               {header('amount', 'Amount', true)}
               {header('date', 'Estimated')}
               {header('days', 'Overdue', true)}
-              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: '#4A6B94' }}>New date</th>
+              <th>New date</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className={saved.has(r.id) ? 'bg-green-50' : ''}>
-                <td className="px-3 py-2">
-                  <button onClick={() => r.dealId && onOpenDeal(r.dealId)} className="text-left hover:underline" style={{ color: '#002147' }}>
-                    {r.deal}
-                  </button>
-                  <div className="text-xs text-gray-500">{r.payment}{r.client && ` · ${r.client}`}</div>
+              <tr key={r.id}>
+                <td>
+                  <button onClick={() => r.dealId && onOpenDeal(r.dealId)} className="cf-link">{r.deal}</button>
+                  <div className="cf-faint">{r.payment}{r.client && ` · ${r.client}`}</div>
                 </td>
-                <td className="px-3 py-2 text-xs">{r.team || <span style={{ color: '#A27B5C' }}>No team</span>}</td>
-                <td className="px-3 py-2 text-right">{r.probability}%</td>
-                <td className="px-3 py-2 text-right" style={{ color: '#4A6B94' }}>{fmt(r.amount)}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.date}</td>
-                <td className="px-3 py-2 text-right" style={{ color: '#A27B5C' }}>{r.days}d</td>
-                <td className="px-3 py-2">
-                  <input
-                    type="date"
-                    min={today}
-                    disabled={saving === r.id}
-                    className="border rounded px-2 py-1 text-sm"
-                    style={{ borderColor: '#8FA9C8' }}
-                    onChange={(e) => saveDate(r.id, e.target.value)}
-                  />
+                <td>{r.team || <span className="cf-warn">No team</span>}</td>
+                <td className="r cf-num">{r.probability}%</td>
+                <td className="r"><Money v={r.amount} /></td>
+                <td className="cf-num whitespace-nowrap">{r.date}</td>
+                <td className="r cf-num cf-neg">{r.days}d</td>
+                <td>
+                  <input type="date" min={today} disabled={saving === r.id} onChange={(e) => saveDate(r.id, e.target.value)} />
+                  {saved.has(r.id) && <span className="cf-pos ml-1">saved</span>}
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-4 text-sm text-gray-500">No past-due payments.</td></tr>
-            )}
+            {rows.length === 0 && <tr><td colSpan={7} className="cf-muted">No past-due payments.</td></tr>}
           </tbody>
         </table>
       </div>

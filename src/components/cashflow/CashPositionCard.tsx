@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Wallet } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { CASH_CONFIG, buildCalendar, todayET } from '../../lib/cashCalendar';
 import { loadCashData } from './useCashData';
-import { buildCashEvents, fmt } from './cashEvents';
+import { buildCashEvents } from './cashEvents';
+import { Money, money, useCfFonts } from './cfTheme';
 import { owedUrgency } from './OwedOutPanel';
 
 /** app_settings key for the minimum cash Mike wants to keep in the bank (Finance Settings). */
@@ -35,6 +36,7 @@ function formatDay(d: string) {
 
 /** Finance hub card: bank balance, 45-day low point, red when the low dips below the cushion. */
 export function CashPositionCard() {
+  useCfFonts();
   const navigate = useNavigate();
   const [state, setState] = useState<CardState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,64 +69,56 @@ export function CashPositionCard() {
   }, []);
 
   const belowCushion = !!state?.lowest && state.balance !== null && state.lowest.amount < state.cushion;
-  const red = '#B91C1C';
+
+  const cells: { label: string; value: React.ReactNode; sub: string; tone?: string }[] = state
+    ? [
+        {
+          label: 'Operating (book)',
+          value: state.balance !== null ? <Money v={state.balance} /> : '—',
+          sub: state.asOf ? `as of ${formatET(state.asOf)}` : 'no QBO balance — refresh on Cash tab',
+        },
+        {
+          label: `${CASH_CONFIG.CALENDAR_DAYS}-day low`,
+          value: state.lowest && state.balance !== null ? <Money v={state.lowest.amount} tone={belowCushion ? 'bad' : 'plain'} /> : '—',
+          sub: state.lowest ? formatDay(state.lowest.date) : '',
+          tone: belowCushion ? 'bad' : 'ok',
+        },
+        {
+          label: 'Cushion',
+          value: belowCushion ? <span className="cf-neg">BELOW</span> : <span className="cf-pos">CLEAR</span>,
+          sub: `target ${money(state.cushion)}`,
+          tone: belowCushion ? 'bad' : 'ok',
+        },
+        {
+          label: 'Owed out',
+          value: <Money v={state.owedTotal} tone={state.owedRed ? 'bad' : 'plain'} />,
+          sub: state.owedCount === 0 ? 'nothing owed' : `${state.owedCount} item${state.owedCount === 1 ? '' : 's'}${state.owedRed ? ` · ${state.owedRed} >30d` : ''}`,
+          tone: state.owedRed ? 'bad' : state.owedCount ? 'warn' : undefined,
+        },
+      ]
+    : [];
 
   return (
     <button
       onClick={() => navigate('/admin/budget/forecast?tab=cash')}
-      className="w-full text-left bg-white rounded-xl border-2 p-6 hover:shadow-lg transition-all group"
-      style={{ borderColor: belowCushion ? red : '#002147' }}
+      className="cf w-full text-left block"
+      style={{ border: '1px solid var(--cf-border)', borderRadius: 4, padding: 6 }}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Wallet className="h-8 w-8" style={{ color: '#002147' }} />
-          <div>
-            <h2 className="text-lg font-semibold" style={{ color: '#002147' }}>
-              Cash Position ({CASH_CONFIG.CALENDAR_DAYS} days)
-            </h2>
-            <p className="text-xs text-gray-500">QBO bank balance and where it bottoms out</p>
-          </div>
-        </div>
-        <ArrowRight className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: '#002147' }} />
+      <div className="flex items-center justify-between px-1 pb-1">
+        <span className="cf-title">Cash position · {CASH_CONFIG.CALENDAR_DAYS} days</span>
+        <span className="cf-btn">Open <ArrowRight className="h-3 w-3" /></span>
       </div>
-
-      {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
-      {!error && !state && <p className="mt-4 text-sm text-gray-500">Loading…</p>}
+      {error && <div className="cf-msg err">{error}</div>}
+      {!error && !state && <div className="cf-muted px-1">Loading…</div>}
       {state && (
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide font-medium" style={{ color: '#4A6B94' }}>Operating (book)</p>
-            <p className="text-3xl font-bold" style={{ color: '#002147' }}>
-              {state.balance !== null ? fmt(state.balance) : '—'}
-            </p>
-            <p className="text-xs text-gray-500">
-              {state.asOf ? `As of ${formatET(state.asOf)}` : 'No QBO balance yet — Refresh now on the Cash tab'}
-            </p>
-          </div>
-          <div className="sm:border-l sm:pl-4" style={{ borderColor: '#8FA9C8' }}>
-            <p className="text-xs uppercase tracking-wide font-medium" style={{ color: belowCushion ? red : '#4A6B94' }}>
-              {CASH_CONFIG.CALENDAR_DAYS}-day low point
-            </p>
-            <p className="text-3xl font-bold" style={{ color: belowCushion ? red : '#002147' }}>
-              {state.lowest && state.balance !== null ? fmt(state.lowest.amount) : '—'}
-            </p>
-            <p className="text-xs" style={{ color: belowCushion ? red : '#6B7280' }}>
-              {state.lowest && state.balance !== null ? `on ${formatDay(state.lowest.date)}` : ''}
-              {' · '}cushion {fmt(state.cushion)}
-              {belowCushion && ' — below cushion'}
-            </p>
-          </div>
-          <div className="sm:col-span-2 pt-3 border-t text-sm" style={{ borderColor: '#8FA9C8' }}>
-            <span className="text-xs uppercase tracking-wide font-medium" style={{ color: '#4A6B94' }}>Money owed out: </span>
-            {state.owedCount === 0 ? (
-              <span className="text-gray-500">nothing owed</span>
-            ) : (
-              <span style={{ color: state.owedRed > 0 ? red : '#002147' }}>
-                {state.owedCount} item{state.owedCount === 1 ? '' : 's'} · {fmt(state.owedTotal)}
-                {state.owedRed > 0 && ` · ${state.owedRed} over 30 days`}
-              </span>
-            )}
-          </div>
+        <div className="cf-kpis" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+          {cells.map((c) => (
+            <div key={c.label} className={`cf-kpi ${c.tone || ''}`}>
+              <div className="cf-label">{c.label}</div>
+              <div className="v">{c.value}</div>
+              <div className="s">{c.sub}</div>
+            </div>
+          ))}
         </div>
       )}
     </button>

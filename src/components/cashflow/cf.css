@@ -1,0 +1,96 @@
+/*
+ * "Mission control" dark theme for the Cash tab + Finance hub Cash Position card ONLY.
+ * Everything is scoped under .cf — nothing here touches the rest of OVIS.
+ * The planner summary print view does not use .cf (stays light for printing).
+ */
+.cf {
+  --cf-bg: #0B0F14;
+  --cf-panel: #11161D;
+  --cf-border: #1E2630;
+  --cf-row: #161C24;
+  --cf-hover: #18202B;
+  --cf-text: #D0D7DE;
+  --cf-strong: #E6EDF3;
+  --cf-muted: #7D8590;
+  --cf-faint: #4A5360;
+  --cf-green: #3FB950;
+  --cf-amber: #D29922;
+  --cf-red: #F85149;
+  --cf-cyan: #39C5CF;
+  background: var(--cf-bg);
+  color: var(--cf-text);
+  font-family: 'IBM Plex Sans', Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.35;
+  color-scheme: dark;
+}
+.cf-page { min-height: 100vh; padding: 10px 12px; }
+.cf-page h1 { color: var(--cf-strong); font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+.cf-page .cf-sub { color: var(--cf-muted); font-size: 11px; }
+.cf-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--cf-border); margin: 8px 0 10px; }
+.cf-tab { padding: 5px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--cf-muted);
+  border: 1px solid transparent; border-bottom: none; border-radius: 3px 3px 0 0; background: transparent; }
+.cf-tab:hover { color: var(--cf-text); }
+.cf-tab.on { color: var(--cf-cyan); border-color: var(--cf-border); background: var(--cf-panel); margin-bottom: -1px; }
+
+.cf-grid { display: grid; gap: 6px; }
+.cf-panel { background: var(--cf-panel); border: 1px solid var(--cf-border); border-radius: 3px; min-width: 0; }
+.cf-ph { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px;
+  border-bottom: 1px solid var(--cf-border); }
+.cf-pb { padding: 6px 8px; }
+.cf-title, .cf-label, .cf-table th {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--cf-muted); font-weight: 600;
+}
+.cf-title { color: var(--cf-text); }
+.cf-note { color: var(--cf-muted); font-size: 11px; }
+.cf-muted { color: var(--cf-muted); }
+.cf-faint { color: var(--cf-faint); }
+.cf-strong { color: var(--cf-strong); }
+
+.cf-num { font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cf-pos { color: var(--cf-green); }
+.cf-warn { color: var(--cf-amber); }
+.cf-neg { color: var(--cf-red); }
+.cf-accent { color: var(--cf-cyan); }
+
+/* KPI strip */
+.cf-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 1100px) { .cf-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .cf-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cf-kpi { background: var(--cf-panel); border: 1px solid var(--cf-border); border-radius: 3px; padding: 5px 8px; min-width: 0; }
+.cf-kpi .v { font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-size: 18px; color: var(--cf-strong); line-height: 1.2; white-space: nowrap; }
+.cf-kpi .s { font-size: 10px; color: var(--cf-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cf-kpi.bad { border-left: 2px solid var(--cf-red); }
+.cf-kpi.warn { border-left: 2px solid var(--cf-amber); }
+.cf-kpi.ok { border-left: 2px solid var(--cf-green); }
+
+/* Tables: compact, sticky header, hover only */
+.cf-scroll { overflow: auto; }
+.cf-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.cf-table th { position: sticky; top: 0; z-index: 1; background: var(--cf-panel); text-align: left; padding: 4px 8px;
+  border-bottom: 1px solid var(--cf-border); white-space: nowrap; }
+.cf-table td { padding: 3px 8px; border-bottom: 1px solid var(--cf-row); vertical-align: top; }
+.cf-table tbody tr:hover td { background: var(--cf-hover); }
+.cf-table .r { text-align: right; }
+.cf-table tr.sub td { color: var(--cf-muted); font-size: 11px; }
+.cf-table tr.dim td { color: var(--cf-faint); }
+.cf-table tr.total td { border-top: 1px solid var(--cf-border); color: var(--cf-strong); }
+.cf-table tr.mark td:first-child { box-shadow: inset 2px 0 0 var(--cf-red); }
+
+/* Controls: cyan is the only interactive color */
+.cf-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--cf-border); border-radius: 2px;
+  background: transparent; color: var(--cf-cyan); padding: 2px 8px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .08em; font-weight: 600; white-space: nowrap; }
+.cf-btn:hover:not(:disabled) { border-color: var(--cf-cyan); }
+.cf-btn:disabled { opacity: .45; }
+.cf-link { color: var(--cf-cyan); background: none; border: none; padding: 0; text-align: left; cursor: pointer; }
+.cf-link:hover { text-decoration: underline; }
+.cf-input, .cf select, .cf input[type="date"], .cf input[type="number"], .cf input[type="text"] {
+  background: var(--cf-bg); border: 1px solid var(--cf-border); color: var(--cf-text); border-radius: 2px;
+  padding: 1px 4px; font-size: 11px; font-family: inherit;
+}
+.cf input:focus, .cf select:focus { outline: 1px solid var(--cf-cyan); outline-offset: -1px; }
+.cf-msg { padding: 4px 8px; border: 1px solid var(--cf-border); border-radius: 2px; font-size: 11px; }
+.cf-msg.err { border-color: var(--cf-red); color: var(--cf-red); }
+.cf-msg.ok { border-color: var(--cf-green); color: var(--cf-green); }
