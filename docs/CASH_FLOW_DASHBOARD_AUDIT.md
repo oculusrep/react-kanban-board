@@ -107,6 +107,13 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
   ```
 
   Uncashed checks are excluded: they are already reflected in the QBO book balance.
+- **30-day opex is prorated by days** from the monthly budget, e.g. 20 days remaining this
+  month + 10 days of next month. Each month's share = days in window ÷ days in that month
+  (e.g. 20/30 of November, 10/31 of December). "Today" and day boundaries are Eastern Time.
+- **Planned owner draws are dated entries** (`date`, `amount`, `note`); multiple allowed.
+  - Available cash now subtracts draws dated within the next 30 days.
+  - The monthly safe-to-draw timeline places each draw in its dated month.
+  - Draws are never prorated.
 - **Parity check:** after the helper refactor, existing house-net and Mike's Net totals must
   match pre-refactor values exactly.
 
@@ -123,8 +130,8 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
 ### Phase 2 — Forecast page: available cash + safe-to-draw
 - Extend `/admin/budget/forecast` with:
   - **Available cash now:** the five-line calculation in Decisions, every line shown
-    separately, with the bank balances' `as_of` time. The planned owner draw needs somewhere to
-    be stored (new table or column, with the CLAUDE.md grants block).
+    separately, with the bank balances' `as_of` time. Planned owner draws need a new table of
+    dated entries (`date`, `amount`, `note`), with the CLAUDE.md grants block.
   - **Monthly safe-to-draw timeline:** starting cash + expected house net by month
     (bucketed on `payment_date_estimated`) − budgeted operating expenses.
 - First step: extract the shared helper (`mode='profit'` / `'cash'`). Before switching the two
