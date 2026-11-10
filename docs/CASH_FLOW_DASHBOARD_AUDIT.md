@@ -258,6 +258,44 @@ pre-refactor exactly.
    Greg's broker-split Bills (QBO 8158, 8324, 8417), not referral Bills. They stay Bills and
    show on the cash calendar as split payouts.
 
+### v1 as built (2026-11-10)
+
+Where it lives: `/admin/budget/forecast?tab=cash` — "Cash (45 days)" tab on the existing page.
+
+| Piece | Code / table |
+|---|---|
+| House-net helper (`profit` / `cash`) | [src/lib/houseNet.ts](../src/lib/houseNet.ts); both existing pages call it in `profit` mode |
+| Calendar logic + config constants | [src/lib/cashCalendar.ts](../src/lib/cashCalendar.ts) (`CASH_CONFIG`) |
+| Data load / events / UI | [src/components/cashflow/](../src/components/cashflow/) |
+| Balance snapshots | `qb_balance_snapshot`; written by `quickbooks-cash-refresh` (Refresh now) and `quickbooks-sync-accounts` |
+| OVIS Bill open balances | `qb_commission_entry.qb_open_balance` / `qb_balance_checked_at`; written by `quickbooks-cash-refresh` |
+| Scheduled payments + draws | `scheduled_payment` (`kind` = `bill` / `draw`); AMEX seeded on the 12th |
+| Referral → Check | `quickbooks-create-referral-entry` (Purchase); `quickbooks-delete-referral-entry` deletes Purchases |
+| Migrations | `20261110114012_cash_flow_v1`, `20261110114125_qb_commission_entry_allow_purchase` (both applied to prod + recorded) |
+
+Behaviour notes:
+- **Parity:** after the helper refactor, house net (338,592.90) and GCI (841,613.91) over the 59
+  open dated payments matched the pre-refactor formula exactly, 0 per-row mismatches. Mike's Net
+  reads `payment_split` directly and is untouched.
+- **Commission inflow** on the calendar = payment − unpaid referral − Arty/Greg splits
+  (`computeHouseNet(p,'cash').houseNet + Mike's split`). Mike's split stays in the bank until he
+  draws it, and his draws are scheduled payments.
+- **"Owed" lookback:** referral fees / broker splits owed only count on payments received in the
+  last `OWED_LOOKBACK_DAYS = 90`. Live data has 23 referral fees and 13 splits flagged unpaid on
+  payments received 2021–2025; the referral ones carry `referral_fee_usd` ≈ 50× the payment
+  (e.g. $1,280,639.50 on a $25,612.79 payment) — legacy data, flagged here, not fixed. The page
+  shows the excluded counts.
+- **Past-due commissions** (estimated date < today) are not placed on the calendar; the page
+  shows their count and total and points to Past-due cleanup.
+- **Unchecked Bills** (no QBO refresh yet) count as open, labelled "Not yet checked".
+- **Arty payroll** dates: semi-monthly, 15th and last day of month (`PAYROLL_DAYS_OF_MONTH`).
+  His $2,083.33 semi-monthly draw Bills are not OVIS-created, so add them as scheduled payments
+  if they should hit the calendar.
+- **Before the first referral is marked paid:** set `app_settings.qbo_referral_bank_account` to
+  the BofA account's QBO `{id, name}` (visible after the first Refresh now). Until then the
+  function refuses with "Referral check bank account not configured"; the OVIS paid flag still
+  saves and the UI shows the error.
+
 ### Phase 3 — Claude / MCP access
 - `update_payment_date` tool on `ovis-mcp`: resolves `payment_id` or deal + installment,
   writes `payment_date_estimated`, audits old → new (same `audited()` wrapper as `update_deal`).
