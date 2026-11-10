@@ -117,6 +117,30 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
 - **Parity check:** after the helper refactor, existing house-net and Mike's Net totals must
   match pre-refactor values exactly.
 
+### Added 2026-11-10 — outstanding checks and budget-driven outflows
+
+See §4 Verification for the findings behind these.
+
+- **Premise correction.** "Paid referral fees are already reflected in the bank balance" is
+  true only once the BofA check is recorded in QBO as a Bill Payment. Marking a referral (or a
+  Bill-type broker split) paid in OVIS creates an **unpaid Bill** — it does not touch the Bank
+  account. Until the Bill Payment exists, the fee is in neither "Referral fees owed" nor the
+  book balance, and **available cash is overstated** by that amount.
+- **Outstanding checks.** Any referral fee or broker split marked paid in OVIS stays on an
+  "Outstanding checks" list (payee, date, amount) until cleared. Show both:
+  - **QBO book balance**
+  - **Bank actual balance = QBO book balance + outstanding checks**
+  Clearing: use QBO cleared status if the API exposes it (unconfirmed — see §4); otherwise a
+  one-click "Cleared" in OVIS.
+- **Budget-driven outflows** (supersedes the prorated "Next 30 days operating" line above):
+  - Each budget line gets `pay_method` (`bank` | `amex`) and `due_day` (bank lines only).
+  - Bank-paid lines hit the calendar on `due_day`.
+  - AMEX-paid lines roll into the AMEX payment for their statement cycle. Config:
+    `AMEX_STATEMENT_CLOSE_DAY` (value needed from Mike), `AMEX_PAYMENT_DAY = 12`.
+  - Next AMEX payment = actual QBO AMEX liability balance. Future AMEX payments = sum of
+    budgeted amex lines for that cycle.
+  - An amex budget line is never counted separately on the calendar.
+
 ## 3. Phased plan (no code yet)
 
 ### Phase 1 — Data foundations
@@ -126,6 +150,12 @@ houseNet = gci − agci            // agci = total internal broker splits (DB tr
   Apply via psql + `schema_migrations` record.
 - List the 4 open active payments that have no `payment_date_estimated`, and have Mike fill
   them in, so the timeline has no silent holes.
+- Persist the QBO AMEX (Credit Card type) liability balance the same way as Bank.
+- Add `pay_method` / `due_day` per budget line. They describe the account, not the year, so
+  store them per `qb_account_id` (on `qb_account` or a small side table), not on each
+  `account_budget` year row. Mike tags the 63 lines in §4.
+- Outstanding checks: decide how QBO records the BofA checks (§4 open question 1), then run a
+  minimal TransactionList call with the `cleared` filter to see if cleared status is usable.
 
 ### Phase 2 — Forecast page: available cash + safe-to-draw
 - Extend `/admin/budget/forecast` with:
@@ -176,3 +206,129 @@ Definitions to settle at build time (current live data, 2026-11-10):
 - Read-only cash-flow tools for Claude (e.g. available cash, upcoming payments by month,
   safe-to-draw), using the same helper as the page.
 - Merge to main before deploying the edge function.
+
+## 4. Verification (2026-11-10)
+
+Code read on this branch; counts from the live database (read-only).
+
+### A. Referral payments / BofA bill-pay checks
+
+**1. What OVIS creates in QBO when a fee is marked paid**
+
+| OVIS action | Edge function | QBO entity | Debit | Credit | Bank book balance |
+|---|---|---|---|---|---|
+| Referral fee paid | `quickbooks-create-referral-entry` | **Bill** to the referral partner's vendor | `Commissions Paid Out:Referral Fee to Other Broker` (expense) | Accounts Payable | **Unchanged** |
+| BOR pass-through paid | same | **Bill** + Journal Entry (BOR fee → income) | `BOR - Pass-Through Clearing` | A/P; JE credits `BOR Referral Income` | **Unchanged** |
+| Broker split paid — Greg (Bennett Retail Group) | `quickbooks-create-commission-entry` | **Bill** | `Commissions Paid Out:Bennett Retail Group` | Accounts Payable | **Unchanged** |
+| Broker split paid — Arty (Santos) | `quickbooks-create-commission-entry` / `process-arty-commission` | **Journal Entry** | `Commissions Paid Out:Santos…` | `Santos Real Estate Commission Draw` | **Unchanged** (offsets prior draws; no check) |
+
+OVIS has no code that creates a Check, Purchase, Expense or Bill Payment — `_shared/quickbooks.ts`
+has `createBill` and `createJournalEntry` only. Live `qb_commission_entry`: 19 Bills + 17 JEs
+created, 3 Bills + 8 JEs voided.
+
+**2. Flag: cash is overstated.** Marking paid creates an unpaid Bill. The Bank account only
+drops when a Bill Payment is recorded in QBO (by hand via Pay Bills, or by matching the BofA
+bank-feed line to the Bill). Between "marked paid in OVIS" and that Bill Payment, the fee is
+gone from "Referral/Broker splits owed" (flag flipped) but still in the book balance.
+
+**3. Outstanding checks — proposal**
+- List = every referral fee / Bill-type broker split marked paid in OVIS whose check hasn't
+  cleared. Payee, paid date, amount, QBO Bill number.
+- **Bank actual = QBO book balance + outstanding checks**; show both.
+- Clearing: QBO entities appear to have no cleared/reconciled field; the TransactionList
+  *report* reportedly accepts a `cleared` filter (Reconciled / Cleared / Uncleared) but doesn't
+  return it as a column, so you'd query once per status. **Unconfirmed** — secondhand sources,
+  not Intuit docs; verify with a minimal call before building
+  ([Satva](https://satvasolutions.com/blog/reconciled-transactions-quickbooks-online-api),
+  [CData ClearTransaction](https://cdn.cdata.com/help/RQM/py/pg_sp-cleartransaction.htm)).
+  Fallback: one-click "Cleared" in OVIS.
+- `getBill` exists; a Bill's `Balance` = 0 means a Bill Payment has been recorded. That gives
+  "is it on the books yet", not "has it cleared the bank".
+
+**Open questions for Mike**
+1. How do the BofA bill-pay checks get into QBO — Pay Bills when the check is sent, or
+   bank-feed match when it clears? If it's at clearing, the book balance already *is* the bank
+   actual, and the gap is "marked paid in OVIS, Bill Payment not yet recorded" — the list
+   should be keyed on unpaid Bills (Balance > 0), not on clearing.
+2. Arty's split is a JE against his draw — no check is ever written. His cash leaves as draws.
+   Should Arty's unpaid splits be excluded from "Broker splits owed" (like Mike's), with his
+   draws budgeted as their own outflow instead?
+
+### B. Budget-driven outflows
+
+- Budget source: `account_budget` (one row per QBO account per year, `jan`…`dec`), joined to
+  `qb_account`. This is what `/admin/budget/forecast` reads.
+- **63 lines, all 2026, all `Expense` type.**
+- **No payroll line exists.** The "incl. payroll" in the available-cash definition has nothing
+  to read; payroll/owner salary needs a budget line or its own input.
+- **No 2027 budget rows yet.** From December, any 30-day window and the safe-to-draw timeline
+  run past the budget; they must show "no budget" rather than $0.
+- No account stores the AMEX liability today (`qb_account` holds Income/Expense types only).
+
+**Budget lines to tag** (Nov 2026 budget and 2026 annual, from `account_budget`):
+
+| Account | Nov 2026 | 2026 annual | pay_method | due_day |
+|---|---|---|---|---|
+| Accounting/Tax Prep | 0 | 3400 | | |
+| Accounting/Tax Prep:Quickbooks | 101 | 1212 | | |
+| ACH Transfer Fees - Greg Bennett | 10 | 120 | | |
+| Auto:Car Wash | 20 | 240 | | |
+| Auto:Gas | 200 | 2400 | | |
+| Auto:Parking | 42 | 504 | | |
+| Auto:Tolls | 12 | 144 | | |
+| Bank Charges | 0 | 0 | | |
+| Bank Charges:Bank Charges / Fees | 0 | 695 | | |
+| Bank Charges:Interest Expense | 640 | 7680 | | |
+| Commercial Conferences & Networking:ICSC - Vegas | 0 | 2230 | | |
+| Contract Labor:Belay - Bookkeeper | 0 | 1245 | | |
+| Contract Labor:Upwork | 0 | 0 | | |
+| Contract Labor:Upwork:Salesforce Development | 0 | 0 | | |
+| Contract Labor:Virtual Assistant | 990 | 11880 | | |
+| Dues & Subscriptions:Atlanta Biz Chronical | 0 | 212 | | |
+| Dues & Subscriptions:GSCCCA.org | 13.04 | 156.48 | | |
+| Dues & Subscriptions:Restaurant Trends | 0 | 7475 | | |
+| Insurance:E&O Insurance | 0 | 648 | | |
+| Massimo Coaching | 1650 | 16500 | | |
+| Meals and Entertainment | 210 | 2520 | | |
+| Office | 85 | 1020 | | |
+| Office:Cell Phones | 300 | 3600 | | |
+| Office:Internet Access | 90 | 1065 | | |
+| Office:Postage | 42 | 504 | | |
+| Professional Memberships:CCIM Membership Fees | 0 | 973 | | |
+| Professional Memberships:ICSC Membership Dues | 0 | 1650 | | |
+| Professional Memberships:Retail Brokers Network | 0 | 9500 | | |
+| Professional Memberships:Southeast Franchise Forum | 0 | 400 | | |
+| Rent:Rent - Office | 700 | 7700 | | |
+| Taxes & Licenses:Secretary of State Filings | 0 | 297 | | |
+| Technology | 0 | 22 | | |
+| Technology:Adobe Acrobat | 0 | 240 | | |
+| Technology:Anthropic - ClaudAi | 100 | 1200 | | |
+| Technology:Apple | 10 | 120 | | |
+| Technology:Calendly | 24 | 288 | | |
+| Technology:Canva | 0 | 120 | | |
+| Technology:CoStar | 1374 | 16488 | | |
+| Technology:Docusign | 0 | 0 | | |
+| Technology:Domains | 169 | 235 | | |
+| Technology:Dropbox | 0 | 1087 | | |
+| Technology:Express VPN | 13 | 156 | | |
+| Technology:GitHub | 5 | 60 | | |
+| Technology:Google Biz Apps | 101 | 1212 | | |
+| Technology:Google Voice | 13 | 156 | | |
+| Technology:Lastpass | 0 | 36 | | |
+| Technology:LinkedIn Sales Navigator | 0 | 780 | | |
+| Technology:Loom | 18 | 216 | | |
+| Technology:Mail Chimp | 58 | 696 | | |
+| Technology:Microsoft 365 | 0 | 130 | | |
+| Technology:Open AI | 0 | 1108 | | |
+| Technology:Placer AI | 0 | 5250 | | |
+| Technology:Reonomy | 0 | 4525 | | |
+| Technology:Sites USA | 0 | 5595 | | |
+| Technology:Spokeo | 10 | 120 | | |
+| Technology:Supabase | 25 | 300 | | |
+| Technology:Zoom | 34 | 408 | | |
+| Technology:Zoom Info | 0 | 6000 | | |
+| Travel | 0 | 0 | | |
+| Travel:Airfare | 0 | 2000 | | |
+| Travel:Lodging | 0 | 2000 | | |
+| Travel:Taxi & Ride Share | 0 | 400 | | |
+| Travel:Travel Meals | 0 | 1000 | | |
