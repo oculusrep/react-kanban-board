@@ -1,3 +1,4 @@
+import { useBrokerLiteAccess } from '../../hooks/useBrokerLiteAccess';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
@@ -187,6 +188,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
 }) => {
   const [contacts, setContacts] = useState<PropertyContactWithDetails[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const { canSeeAnySiteSubmits } = useBrokerLiteAccess();
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [propertyCoordinates, setPropertyCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
   const [loading, setLoading] = useState(false);
@@ -530,7 +532,8 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
 
 
             {/* Site Submits */}
-            <SidebarModule
+{canSeeAnySiteSubmits && (
+<SidebarModule
               title="Site Submits"
               count={siteSubmits.length}
               onAddNew={() => {
@@ -555,8 +558,9 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
                 />
               ))}
             </SidebarModule>
+)}
 
-            {/* Files */}
+{/* Files */}
             <FileManagerModule
               entityType="property"
               entityId={propertyId}

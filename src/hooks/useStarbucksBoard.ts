@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { stopDisplayName } from '../lib/tourRouting';
 import {
   Account,
   ACCOUNT_ALL,
@@ -91,7 +92,7 @@ interface RawDeal {
   deal_name: string | null;
   client: One<ClientRow>;
   stage: One<{ label: string | null; sort_order: number | null }>;
-  property?: One<{ property_name: string | null; city: string | null }>;
+  property?: One<{ property_name: string | null; address: string | null; city: string | null }>;
   state: One<StateRow>;
 }
 
@@ -101,7 +102,7 @@ interface RawSiteSubmit {
   site_submit_name: string | null;
   client: One<ClientRow>;
   submit_stage: One<{ name: string | null }>;
-  property: One<{ property_name: string | null; city: string | null }>;
+  property: One<{ property_name: string | null; address: string | null; city: string | null }>;
   deal: One<RawDeal>;
   site_state: One<StateRow>;
 }
@@ -110,7 +111,7 @@ interface CardInput {
   siteSubmitId: string | null;
   siteSubmitName: string | null;
   submitStage: string | null;
-  property: { property_name: string | null; city: string | null } | null;
+  property: { property_name: string | null; address: string | null; city: string | null } | null;
   client: ClientRow | null;
   deal: RawDeal | null;
   state: StateRow | null; // the card's deal_activity_state row, if any
@@ -152,6 +153,11 @@ function toBoardDeal(c: CardInput): BoardDeal | null {
     c.deal?.deal_name ||
     'Untitled site';
 
+  const { name: displayName, subtext: displaySubtext } = stopDisplayName({
+    site_submit_name: c.siteSubmitName || c.deal?.deal_name,
+    property: c.property,
+  });
+
   // No activity_state row → treat as "no history" (spec §3.3.1).
   // Court null = unclassified — do NOT default to 'none' (spec §5.1).
   const ballInCourt: BallInCourt | null = st?.ball_in_court ?? null;
@@ -168,6 +174,8 @@ function toBoardDeal(c: CardInput): BoardDeal | null {
     id: c.siteSubmitId ?? c.deal!.id,
     dealId: c.deal?.id ?? null,
     name,
+    displayName,
+    displaySubtext,
     city: c.property?.city ?? null,
     clientId,
     clientName,
@@ -272,7 +280,7 @@ const SITE_SUBMIT_SELECT = `
   site_submit_name,
   client:client!site_submit_client_id_fkey!inner ( id, client_name, in_starbucks_family ),
   submit_stage:submit_stage!site_submit_submit_stage_id_fkey ( name ),
-  property:property!site_submit_property_id_fkey ( property_name, city ),
+  property:property!site_submit_property_id_fkey ( property_name, address, city ),
   deal:deal!deal_site_submit_fk (
     id, deal_name,
     client:client_id ( id, client_name, in_starbucks_family ),
@@ -286,7 +294,7 @@ const ORPHAN_DEAL_SELECT = `
   id, deal_name,
   client:client_id!inner ( id, client_name, in_starbucks_family ),
   stage:stage_id ( label, sort_order ),
-  property:property_id ( property_name, city ),
+  property:property_id ( property_name, address, city ),
   state:deal_activity_state!deal_activity_state_deal_id_fkey ( ${STATE_COLS} )
 `;
 

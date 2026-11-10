@@ -10,6 +10,8 @@ import {
   UpdateShapeInput,
 } from '../services/mapLayerService';
 
+import { useBrokerLiteAccess } from './useBrokerLiteAccess';
+
 interface UseMapLayersOptions {
   includeShapes?: boolean;
   includeShares?: boolean;
@@ -30,6 +32,7 @@ export function useMapLayers(options: UseMapLayersOptions = {}) {
     autoFetch = true,
   } = options;
 
+  const { filterCustomLayers } = useBrokerLiteAccess();
   const [layers, setLayers] = useState<MapLayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,14 +49,14 @@ export function useMapLayers(options: UseMapLayersOptions = {}) {
         activeOnly,
       });
 
-      setLayers(data);
+      setLayers(await filterCustomLayers(data));
     } catch (err) {
       console.error('Error fetching layers:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch layers');
     } finally {
       setLoading(false);
     }
-  }, [includeShapes, includeShares, activeOnly]);
+  }, [includeShapes, includeShares, activeOnly, filterCustomLayers]);
 
   // Auto-fetch on mount
   useEffect(() => {

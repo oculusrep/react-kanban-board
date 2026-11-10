@@ -3,6 +3,7 @@ import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
+import { useBrokerLiteAccess } from '../hooks/useBrokerLiteAccess';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
@@ -105,6 +106,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 }) => {
   const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
+  const { canAccess, canSeeAnySiteSubmits } = useBrokerLiteAccess();
   const canManageLayers = userRole === 'admin' || hasPermission('can_manage_map_layers');
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
   const starbucksOpsAreaFilter = useStarbucksOpsAreaFilter();
@@ -2739,7 +2741,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
               <div className="flex items-center space-x-4">
                 {/* Restaurant Sales Layer Toggle */}
-                <div className="flex items-center space-x-2">
+{canAccess('can_view_layer_restaurants') && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Restaurant Sales:</label>
                   <button
                     onClick={() => toggleLayer('restaurants')}
@@ -2754,9 +2757,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     />
                   </button>
                 </div>
+)}
 
-                {/* Properties Layer Toggle */}
-                <div className="flex items-center space-x-2">
+{/* Properties Layer Toggle */}
+{canAccess('can_view_layer_properties') && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">All Properties:</label>
                   <button
                     onClick={() => toggleLayer('properties')}
@@ -2771,9 +2776,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     />
                   </button>
                 </div>
+)}
 
-                {/* Traffic Counts Layer Toggle */}
-                <div className="flex items-center space-x-2">
+{/* Traffic Counts Layer Toggle */}
+{canAccess('can_view_traffic_data') && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Traffic Counts:</label>
                   <button
                     onClick={() => toggleLayer('traffic_counts')}
@@ -2788,10 +2795,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     />
                   </button>
                 </div>
+)}
 
-
-                {/* Client Selector */}
-                <div className="flex items-center space-x-2">
+{/* Client Selector */}
+{canSeeAnySiteSubmits && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Client:</label>
                   <div className="w-64">
                     <ClientSelector
@@ -2824,8 +2832,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     </button>
                   )}
                 </div>
+)}
 
-                {/* Clear Session Pins Button (when available) */}
+{/* Clear Session Pins Button (when available) */}
                 {recentlyCreatedPropertyIds.size > 0 && (
                   <button
                     onClick={clearSessionPins}
@@ -3085,7 +3094,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               </button>
 
               {/* Merchants Button — opens floating drawer with category/brand filter */}
-              <button
+{canAccess('can_view_layer_merchants') && (
+<button
                 onClick={() => setShowMerchantsDrawer((v) => !v)}
                 className={`h-10 px-3 rounded shadow flex items-center space-x-1 text-sm font-medium ${
                   showMerchantsDrawer || layerState.merchants?.isVisible
@@ -3105,8 +3115,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   </span>
                 )}
               </button>
+)}
 
-              {/* Layers Button */}
+{/* Layers Button */}
               <div className="relative">
                 <button
                   onClick={() => setShowCustomLayersMenu(!showCustomLayersMenu)}
@@ -3231,7 +3242,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     )}
 
                     {/* Municipal Projects system layer */}
-                    <div className="p-2 border-b border-gray-200">
+{canAccess('can_view_layer_municipal_projects') && (
+<div className="p-2 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <button
@@ -3297,9 +3309,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </div>
                       )}
                     </div>
+)}
 
-                    {/* Comp Database system layer — comparable leases / sales / OMs */}
-                    <div className="p-2 border-b border-gray-200">
+{/* Comp Database system layer — comparable leases / sales / OMs */}
+{canAccess('can_view_layer_comp_database') && (
+<div className="p-2 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <button
@@ -3353,10 +3367,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </div>
                       )}
                     </div>
+)}
 
-                    {/* Cached Demographics system layer — pins for prior ESRI enrichment
+{/* Cached Demographics system layer — pins for prior ESRI enrichment
                         lookups. Click a pin to re-open the slideout without a new ESRI call. */}
-                    <div className="p-2 border-b border-gray-200">
+{canAccess('can_view_layer_cached_demographics') && (
+<div className="p-2 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <button
@@ -3445,8 +3461,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </div>
                       )}
                     </div>
+)}
 
-                    <div className="p-2 border-b border-gray-100">
+<div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
                         {canManageLayers && (
@@ -3679,7 +3696,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* When searching, show ONLY search results; otherwise show normal layer */}
             <PropertyLayer
               map={mapInstance}
-              isVisible={propertySearchResults.length > 0 ? true : (layerState.properties?.isVisible || false)}
+              isVisible={propertySearchResults.length > 0 ? true : (canAccess('can_view_layer_properties') && (layerState.properties?.isVisible || false))}
               loadingConfig={propertyLoadingConfig}
               customProperties={propertySearchResults.length > 0 ? propertySearchResults : undefined}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
@@ -3692,7 +3709,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setLayerLoading('properties', false);
               }}
               onPinClick={(property) => handlePinClick(property, 'property')}
-              onCreateSiteSubmit={(property) => {
+              onCreateSiteSubmit={!canSeeAnySiteSubmits ? undefined : (property) => {
                 // Set property coordinates and ID, then open site submit modal
                 const coords = property.verified_latitude && property.verified_longitude
                   ? { lat: property.verified_latitude, lng: property.verified_longitude }
@@ -3706,7 +3723,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Site Submit Layer - Connected to Layer Manager */}
             <SiteSubmitLayer
               map={mapInstance}
-              isVisible={layerState.site_submits?.isVisible || false}
+              isVisible={canSeeAnySiteSubmits && (layerState.site_submits?.isVisible || false)}
               loadingConfig={siteSubmitLoadingConfig}
               onSiteSubmitsLoaded={(count) => {
                 setLayerCount('site_submits', count);
@@ -3728,7 +3745,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Restaurant Layer - Connected to Layer Manager */}
             <RestaurantLayer
               map={mapInstance}
-              isVisible={layerState.restaurants?.isVisible || false}
+              isVisible={canAccess('can_view_layer_restaurants') && (layerState.restaurants?.isVisible || false)}
               selectedStoreNo={selectedPinType === 'restaurant' && selectedPinData ? selectedPinData.store_no : null}
               verifyingStoreNo={verifyingRestaurantStoreNo}
               onLocationVerified={canVerifyRestaurantLocations ? handleRestaurantLocationVerified : undefined}
@@ -3761,7 +3778,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Municipal Projects Layer — imported development tracking from cities */}
             <MunicipalProjectLayer
               map={mapInstance}
-              isVisible={layerState.municipal_projects?.isVisible || false}
+              isVisible={canAccess('can_view_layer_municipal_projects') && (layerState.municipal_projects?.isVisible || false)}
               selectedProjectId={selectedMunicipalProject?.id ?? null}
               verifyingProjectId={verifyingMunicipalProjectId}
               hidePolygonForProjectId={drawingMunicipalProjectId}
@@ -3818,7 +3835,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Merchant Brands Layer — branded retail/restaurant/service locations via merchant_location cache */}
             <MerchantLayer
               map={mapInstance}
-              isVisible={layerState.merchants?.isVisible || false}
+              isVisible={canAccess('can_view_layer_merchants') && (layerState.merchants?.isVisible || false)}
               selectedBrandIds={merchantSelectedBrandIds}
               showAllInViewport={merchantShowAllInViewport}
               verifyingLocationId={verifyingMerchantLocationId}
@@ -3838,7 +3855,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Comp Database — comparable leases / sales / OMs tied to locations */}
             <CompDatabaseLayer
               map={mapInstance}
-              isVisible={layerState.comp_database?.isVisible || false}
+              isVisible={canAccess('can_view_layer_comp_database') && (layerState.comp_database?.isVisible || false)}
               showPending={showPendingComps}
               selectedCompId={selectedComp?.id ?? null}
               verifyingCompId={verifyingCompId}
@@ -3887,7 +3904,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Traffic Count Layer - StreetLight SATC Integration */}
             <TrafficCountLayer
               map={mapInstance}
-              isVisible={layerState.traffic_counts?.isVisible || false}
+              isVisible={canAccess('can_view_traffic_data') && (layerState.traffic_counts?.isVisible || false)}
             />
 
             {closedBusinessResults.length > 0 && (
@@ -4064,7 +4081,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
             <CachedDemographicsLayer
               map={mapInstance}
-              isVisible={layerState.cached_demographics?.isVisible || false}
+              isVisible={canAccess('can_view_layer_cached_demographics') && (layerState.cached_demographics?.isVisible || false)}
               // While the demographics slideout is open at a point, hide every
               // other cached dot so only the open point's dot remains — the map
               // stays focused on what the user is studying. Cleared on close.
@@ -4089,7 +4106,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               property={propertyContextMenu.property}
               onVerifyLocation={handleVerifyLocation}
               onDeleteProperty={handleDeleteProperty}
-              onCreateSiteSubmit={handleCreateSiteSubmitFromContextMenu}
+              onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitFromContextMenu : undefined}
               onClose={handlePropertyContextMenuClose}
             />
 
@@ -4140,7 +4157,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
             {/* Site Submit Legend - Show when site submit layer is visible */}
             {/* Hidden when Street View is active or in presentation mode */}
-            {layerState.site_submits?.isVisible && !isStreetViewActive && !presentationMode && (
+            {canSeeAnySiteSubmits && layerState.site_submits?.isVisible && !isStreetViewActive && !presentationMode && (
               <SiteSubmitLegend
                 visibleStages={visibleStages}
                 onStageToggle={handleStageToggle}
@@ -4351,7 +4368,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           onDeleteProperty={handleDeleteProperty}
           onDeleteSiteSubmit={handleDeleteSiteSubmit}
           onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-          onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+          onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
           submitsRefreshTrigger={submitsRefreshTrigger}
           initialTab={pinDetailsInitialTab}
         />
@@ -4648,7 +4665,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         onEditContact={handleEditContact}
         onDeleteProperty={handleDeleteProperty}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-        onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+        onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
         submitsRefreshTrigger={submitsRefreshTrigger}
       />
 

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermissions } from "../hooks/usePermissions";
+import { useBrokerLiteAccess } from "../hooks/useBrokerLiteAccess";
 import MasterSearchBox from "./MasterSearchBox";
 import DedicatedSearchModal from "./DedicatedSearchModal";
 import { useRecentlyViewed, RecentItem } from "../hooks/useRecentlyViewed";
@@ -176,6 +177,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { user, signOut, userRole } = useAuth();
   const { hasPermission } = usePermissions();
+  const { canAccess } = useBrokerLiteAccess();
   // Same set as public.is_internal_user(); listing_staging RLS enforces it server-side.
   const isInternalRole = ['admin', 'broker_full', 'broker_lite', 'va'].includes(userRole ?? '');
   const { getRecentItems } = useRecentlyViewed();
@@ -467,7 +469,8 @@ export default function Navbar() {
                 <div className="py-1">
                   {/* The board renders fixed inset-0 over the nav, so this menu
                       is the only way back to it at desktop width. */}
-                  <button
+                  {canAccess('can_view_site_submits') && (
+<button
                     onClick={() => {
                       navigate('/starbucks-board');
                       setIsReportsMenuOpen(false);
@@ -476,7 +479,9 @@ export default function Navbar() {
                   >
                     📺 Starbucks Deal Board
                   </button>
-                  <button
+)}
+                  {canAccess('can_view_site_submits') && (
+<button
                     onClick={() => {
                       navigate('/reports/starbucks-pipeline');
                       setIsReportsMenuOpen(false);
@@ -485,7 +490,9 @@ export default function Navbar() {
                   >
                     📋 Starbucks Pipeline Report
                   </button>
-                  <button
+)}
+                  {canAccess('can_view_site_submits') && (
+<button
                     onClick={() => {
                       navigate('/reports/starbucks-packages');
                       setIsReportsMenuOpen(false);
@@ -494,7 +501,9 @@ export default function Navbar() {
                   >
                     🗂️ Starbucks Packages
                   </button>
-                  <button
+)}
+                  {canAccess('can_view_tasks') && (
+<button
                     onClick={() => {
                       navigate('/tasks/queue');
                       setIsReportsMenuOpen(false);
@@ -503,6 +512,7 @@ export default function Navbar() {
                   >
                     ☑️ Task Queue
                   </button>
+)}
                   <button
                     onClick={() => {
                       navigate('/reports');
@@ -696,18 +706,24 @@ export default function Navbar() {
             )}
           </div>
 
-          <Link to="/master-pipeline" className={linkClass("/master-pipeline")}>
+          {canAccess('can_view_master_pipeline') && (
+<Link to="/master-pipeline" className={linkClass("/master-pipeline")}>
             Master Pipeline
           </Link>
-          <Link to="/tasks" className={linkClass("/tasks")}>
+)}
+          {canAccess('can_view_tasks') && (
+<Link to="/tasks" className={linkClass("/tasks")}>
             Tasks
           </Link>
+)}
           <Link to="/mapping" className={linkClass("/mapping")}>
             🗺️ Map
           </Link>
-          <Link to="/tours" className={linkClass("/tours")}>
+          {canAccess('can_view_tours') && (
+<Link to="/tours" className={linkClass("/tours")}>
             Tours
           </Link>
+)}
 
           <DropdownMenu
             title="Properties"
@@ -730,7 +746,8 @@ export default function Navbar() {
             onRecentItemClick={handleRecentItemClick}
             key={`deals-${refreshTrigger}`}
           />
-          <DropdownMenu
+          {canAccess('can_view_assignments') && (
+<DropdownMenu
             title="Assignments"
             items={assignmentsItems}
             recentItems={getRecentItems('assignment')}
@@ -738,6 +755,7 @@ export default function Navbar() {
             onTitleClick={() => navigate('/reports/assignments')}
             key={`assignments-${refreshTrigger}`}
           />
+)}
           <DropdownMenu
             title="Clients"
             items={clientsItems}
@@ -745,7 +763,8 @@ export default function Navbar() {
             onRecentItemClick={handleRecentItemClick}
             key={`clients-${refreshTrigger}`}
           />
-          <DropdownMenu
+          {canAccess('can_view_site_submits') && (
+<DropdownMenu
             title="Site Submits"
             items={siteSubmitsItems}
             recentItems={getRecentItems('site_submit')}
@@ -753,6 +772,7 @@ export default function Navbar() {
             onTitleClick={() => navigate('/reports/site-submit-dashboard')}
             key={`siteSubmits-${refreshTrigger}`}
           />
+)}
         </div>
 
         {/* Desktop: Center search box */}
@@ -818,33 +838,40 @@ export default function Navbar() {
             <div className="mb-6">
               <div className="text-sm font-medium text-gray-500 uppercase mb-2">Navigation</div>
               <div className="space-y-1">
-                <button
+                {canAccess('can_view_master_pipeline') && (
+<button
                   onClick={() => navigate('/master-pipeline')}
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   Master Pipeline
                 </button>
-                <button
+)}
+                {canAccess('can_view_tasks') && (
+<button
                   onClick={() => navigate('/tasks')}
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   Tasks
                 </button>
+)}
                 <button
                   onClick={() => navigate('/mapping')}
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   🗺️ Map
                 </button>
-                <button
+                {canAccess('can_view_tours') && (
+<button
                   onClick={() => navigate('/tours')}
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   Tours
                 </button>
+)}
                 {/* The board renders fixed inset-0 over the nav, so close the
                     menu on the way out or its backdrop covers the board. */}
-                <button
+                {canAccess('can_view_site_submits') && (
+<button
                   onClick={() => {
                     navigate('/starbucks-board');
                     setIsMobileMenuOpen(false);
@@ -853,7 +880,9 @@ export default function Navbar() {
                 >
                   📺 Starbucks Deal Board
                 </button>
-                <button
+)}
+                {canAccess('can_view_site_submits') && (
+<button
                   onClick={() => {
                     navigate('/reports/starbucks-pipeline');
                     setIsMobileMenuOpen(false);
@@ -862,7 +891,9 @@ export default function Navbar() {
                 >
                   📋 Starbucks Pipeline Report
                 </button>
-                <button
+)}
+                {canAccess('can_view_site_submits') && (
+<button
                   onClick={() => {
                     navigate('/reports/starbucks-packages');
                     setIsMobileMenuOpen(false);
@@ -871,7 +902,9 @@ export default function Navbar() {
                 >
                   🗂️ Starbucks Packages
                 </button>
-                <button
+)}
+                {canAccess('can_view_tasks') && (
+<button
                   onClick={() => {
                     navigate('/tasks/queue');
                     setIsMobileMenuOpen(false);
@@ -880,6 +913,7 @@ export default function Navbar() {
                 >
                   ☑️ Task Queue
                 </button>
+)}
               </div>
             </div>
 
@@ -1040,7 +1074,8 @@ export default function Navbar() {
             </div>
 
             {/* Assignments Section */}
-            <div className="mb-2">
+{canAccess('can_view_assignments') && (
+<div className="mb-2">
               <button
                 onClick={() => setExpandedSections(prev => ({ ...prev, assignments: !prev.assignments }))}
                 className="w-full flex items-center justify-between px-4 py-2 rounded hover:bg-gray-100 text-gray-700 font-medium"
@@ -1078,8 +1113,9 @@ export default function Navbar() {
                 </div>
               )}
             </div>
+)}
 
-            {/* Clients Section */}
+{/* Clients Section */}
             <div className="mb-2">
               <button
                 onClick={() => setExpandedSections(prev => ({ ...prev, clients: !prev.clients }))}
@@ -1120,7 +1156,8 @@ export default function Navbar() {
             </div>
 
             {/* Site Submits Section */}
-            <div className="mb-6">
+{canAccess('can_view_site_submits') && (
+<div className="mb-6">
               <button
                 onClick={() => setExpandedSections(prev => ({ ...prev, siteSubmits: !prev.siteSubmits }))}
                 className="w-full flex items-center justify-between px-4 py-2 rounded hover:bg-gray-100 text-gray-700 font-medium"
@@ -1170,8 +1207,9 @@ export default function Navbar() {
                 </div>
               )}
             </div>
+)}
 
-            {/* Reports, Payments & Notes Section */}
+{/* Reports, Payments & Notes Section */}
             <div className="mb-6">
               <div className="text-sm font-medium text-gray-500 uppercase mb-2">Other</div>
               <div className="space-y-1">

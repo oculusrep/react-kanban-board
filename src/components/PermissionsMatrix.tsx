@@ -4,6 +4,7 @@ import {
   RolePermissions,
   PERMISSION_DEFINITIONS,
   PERMISSION_CATEGORIES,
+  LAYER_PERMISSION_CATEGORIES,
   PermissionCategory,
   getPermissionsByCategory,
 } from '../types/permissions';
@@ -13,6 +14,10 @@ type Role = Database['public']['Tables']['role']['Row'];
 interface PermissionsMatrixProps {
   roles: Role[];
   loading?: boolean;
+  title?: string;
+  description?: string;
+  /** Which permission categories this matrix shows. Defaults to all but the layer ones. */
+  includeCategories?: PermissionCategory[];
   onUpdateRole: (roleId: string, updates: {
     display_name?: string;
     description?: string;
@@ -21,8 +26,18 @@ interface PermissionsMatrixProps {
   }) => Promise<{ success: boolean; error?: string }>;
 }
 
-const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ roles, loading, onUpdateRole }) => {
+const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({
+  roles,
+  loading,
+  onUpdateRole,
+  title = 'Permissions Matrix',
+  description = 'Click any checkbox to toggle permissions for that role. Changes are saved automatically.',
+  includeCategories,
+}) => {
   const permissionsByCategory = getPermissionsByCategory();
+  const isShown = (category: PermissionCategory) =>
+    includeCategories ? includeCategories.includes(category) : !LAYER_PERMISSION_CATEGORIES.includes(category);
+  const definitions = PERMISSION_DEFINITIONS.filter(perm => isShown(perm.category));
   const [updating, setUpdating] = useState<string | null>(null); // Track which cell is updating
   const [error, setError] = useState<string | null>(null);
 
@@ -85,15 +100,15 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ roles, loading, o
       const currentPermissions = (role.permissions || {}) as RolePermissions;
 
       // Count how many permissions are currently enabled
-      const enabledCount = PERMISSION_DEFINITIONS.filter(
+      const enabledCount = definitions.filter(
         perm => currentPermissions[perm.key] === true
       ).length;
 
       // If all are enabled, disable all. Otherwise, enable all.
-      const shouldEnableAll = enabledCount < PERMISSION_DEFINITIONS.length;
+      const shouldEnableAll = enabledCount < definitions.length;
 
-      const updatedPermissions: RolePermissions = {};
-      PERMISSION_DEFINITIONS.forEach(perm => {
+      const updatedPermissions: RolePermissions = { ...currentPermissions };
+      definitions.forEach(perm => {
         updatedPermissions[perm.key] = shouldEnableAll;
       });
 
@@ -115,9 +130,9 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ roles, loading, o
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">Permissions Matrix</h2>
+        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Click any checkbox to toggle permissions for that role. Changes are saved automatically.
+          {description}
         </p>
         {error && (
           <div className="mt-2 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
@@ -135,10 +150,10 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ roles, loading, o
               </th>
               {activeRoles.map((role) => {
                 const currentPermissions = (role.permissions || {}) as RolePermissions;
-                const enabledCount = PERMISSION_DEFINITIONS.filter(
+                const enabledCount = definitions.filter(
                   perm => currentPermissions[perm.key] === true
                 ).length;
-                const allSelected = enabledCount === PERMISSION_DEFINITIONS.length;
+                const allSelected = enabledCount === definitions.length;
                 const someSelected = enabledCount > 0 && !allSelected;
                 const isUpdatingRole = updating === `${role.id}-select-all`;
 
@@ -217,7 +232,7 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ roles, loading, o
                       </button>
                     </div>
                     <div className="text-[10px] text-gray-500 mt-1">
-                      {enabledCount}/{PERMISSION_DEFINITIONS.length}
+                      {enabledCount}/{definitions.length}
                     </div>
                   </th>
                 );
@@ -225,7 +240,7 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ roles, loading, o
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {Object.entries(permissionsByCategory).map(([categoryKey, categoryPerms]) => {
+            {Object.entries(permissionsByCategory).filter(([categoryKey]) => isShown(categoryKey as PermissionCategory)).map(([categoryKey, categoryPerms]) => {
               const category = categoryKey as PermissionCategory;
               const categoryInfo = PERMISSION_CATEGORIES[category];
 
@@ -356,7 +371,7 @@ const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({ roles, loading, o
             </div>
           </div>
           <div>
-            {PERMISSION_DEFINITIONS.length} total permissions across {activeRoles.length} active role{activeRoles.length !== 1 ? 's' : ''}
+            {definitions.length} total permissions across {activeRoles.length} active role{activeRoles.length !== 1 ? 's' : ''}
           </div>
         </div>
       </div>

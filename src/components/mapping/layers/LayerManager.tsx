@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { mapLayerService, MapLayer } from '../../../services/mapLayerService';
+import { useBrokerLiteAccess } from '../../../hooks/useBrokerLiteAccess';
 import {
   loadLayerVisibility,
   saveLayerVisibility,
@@ -303,6 +304,7 @@ interface LayerManagerProviderProps {
 }
 
 export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ children }) => {
+  const { filterCustomLayers } = useBrokerLiteAccess();
   const [layers] = useState<LayerConfig[]>(DEFAULT_LAYERS);
   const [layerState, setLayerState] = useState<LayerState>({});
   const [isPanelOpen, setIsPanelOpen] = useState(true); // Default open for development
@@ -413,7 +415,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const fetchCustomLayers = useCallback(async () => {
     setCustomLayersLoading(true);
     try {
-      const layers = await mapLayerService.getLayers({ includeShapes: true });
+      const layers = await filterCustomLayers(await mapLayerService.getLayers({ includeShapes: true }));
       console.log('🗺️ Fetched custom layers:', layers.map(l => ({ name: l.name, shapes: l.shapes?.length })));
       setCustomLayers(layers);
       // Initialize visibility for each layer, restoring the user's last saved
@@ -433,7 +435,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     } finally {
       setCustomLayersLoading(false);
     }
-  }, []);
+  }, [filterCustomLayers]);
 
   // Fetch custom layers on mount
   useEffect(() => {
