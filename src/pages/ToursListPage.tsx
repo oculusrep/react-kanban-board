@@ -28,6 +28,29 @@ export function ToursListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [slideoutTourId, setSlideoutTourId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  // Copies the tour, its days and its stops (live-day departures are not copied),
+  // then opens the copy so it can be renamed / re-dated.
+  const duplicate = async (t: TourRow) => {
+    const name = window.prompt('Name for the copy:', `Copy of ${t.tour_name}`);
+    if (name === null) return;
+    setDuplicatingId(t.id);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase.rpc('duplicate_tour', {
+        p_tour_id: t.id,
+        p_tour_name: name.trim() || null,
+      });
+      if (err) throw err;
+      await load();
+      if (data) setSlideoutTourId(data as string);
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to duplicate tour');
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -108,6 +131,15 @@ export function ToursListPage() {
                   style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 12px', fontSize: 13, cursor: 'pointer' }}
                 >
                   Open
+                </button>
+                <button
+                  type="button"
+                  onClick={() => duplicate(t)}
+                  disabled={duplicatingId !== null}
+                  title="Copy this tour with its days and stops"
+                  style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 12px', fontSize: 13, cursor: duplicatingId ? 'wait' : 'pointer', opacity: duplicatingId && duplicatingId !== t.id ? 0.5 : 1 }}
+                >
+                  {duplicatingId === t.id ? 'Duplicating…' : 'Duplicate'}
                 </button>
                 <Link
                   to={`/tours/${t.id}/map`}
