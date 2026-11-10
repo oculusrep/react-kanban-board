@@ -19,6 +19,7 @@ interface Draft {
   source: 'amount' | 'qbo';
   amount: string;
   qb_account_id: string;
+  payees: string;
   active: boolean;
 }
 
@@ -31,6 +32,7 @@ const emptyDraft: Draft = {
   source: 'amount',
   amount: '',
   qb_account_id: '',
+  payees: '',
   active: true,
 };
 
@@ -45,6 +47,7 @@ function toDraft(r: ScheduledPayment): Draft {
     source: r.qb_account_id ? 'qbo' : 'amount',
     amount: r.amount === null ? '' : String(r.amount),
     qb_account_id: r.qb_account_id ?? '',
+    payees: (r.qb_payee_names || []).join(', '),
     active: r.active,
   };
 }
@@ -76,6 +79,10 @@ export function ScheduledPaymentsEditor({ rows, accounts, onChanged }: Props) {
       scheduled_date: draft.when === 'date' ? draft.scheduled_date : null,
       amount: draft.source === 'amount' ? amount : null,
       qb_account_id: draft.source === 'qbo' ? draft.qb_account_id : null,
+      qb_payee_names: (() => {
+        const list = draft.payees.split(',').map((x) => x.trim()).filter(Boolean);
+        return list.length ? list : null;
+      })(),
       active: draft.active,
       updated_at: new Date().toISOString(),
     };
@@ -173,6 +180,13 @@ export function ScheduledPaymentsEditor({ rows, accounts, onChanged }: Props) {
               Active
             </label>
           </div>
+          <label className="block">
+            <span className="text-xs text-gray-600">
+              QBO payee name(s), comma-separated — an occurrence already entered in QBO for this payee is not counted twice
+            </span>
+            <input className="mt-1 w-full border rounded px-2 py-1" value={draft.payees} placeholder="e.g. Santos Real Estate Partners LLC"
+              onChange={(e) => setDraft({ ...draft, payees: e.target.value })} />
+          </label>
           <div className="flex gap-2">
             <button disabled={saving} onClick={save} className="px-3 py-1.5 rounded text-white text-sm" style={{ backgroundColor: '#002147' }}>
               {saving ? 'Saving…' : 'Save'}
@@ -203,6 +217,7 @@ export function ScheduledPaymentsEditor({ rows, accounts, onChanged }: Props) {
                     : r.amount !== null
                       ? fmt(Number(r.amount))
                       : <span style={{ color: '#A27B5C' }}>no amount yet</span>}
+                  {r.qb_payee_names && r.qb_payee_names.length > 0 && ` · QBO payee: ${r.qb_payee_names.join(', ')}`}
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">

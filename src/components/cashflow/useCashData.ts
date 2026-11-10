@@ -24,8 +24,22 @@ export interface ScheduledPayment {
   scheduled_date: string | null;
   amount: number | null;
   qb_account_id: string | null;
+  /** QBO payee names an occurrence may match (dedupe against entered QBO transactions). */
+  qb_payee_names: string[] | null;
   active: boolean;
   notes: string | null;
+}
+
+/** A QBO bank-register line (GeneralLedger), captured with the balance snapshot. */
+export interface BankTxnRow {
+  qb_account_id: string;
+  txn_date: string;
+  txn_type: string | null;
+  qb_txn_id: string | null;
+  payee: string | null;
+  memo: string | null;
+  /** Signed: − out of the bank, + in. */
+  amount: number;
 }
 
 export interface DealLite {
@@ -73,6 +87,8 @@ export interface SplitBillRow {
 export interface CashData {
   balances: BalanceRow[];
   balancesFetchedAt: string | null;
+  /** Bank-register lines from the same QBO refresh as `balances` (empty if none yet). */
+  bankTxns: BankTxnRow[];
   scheduled: ScheduledPayment[];
   payments: PaymentRow[];
   splits: SplitRow[];
@@ -137,10 +153,24 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
   const { data: sched, error: schedErr } = await supabase
     .from("scheduled_payment")
     .select(
-      "id, name, kind, day_of_month, scheduled_date, amount, qb_account_id, active, notes",
+      "id, name, kind, day_of_month, scheduled_date, amount, qb_account_id, qb_payee_names, active, notes",
     )
     .order("name");
   if (schedErr) throw schedErr;
+
+  // Bank-register lines from the same refresh batch (same fetched_at) — keeps the
+  // "today vs. after future entries" split consistent with the balances shown.
+  const bankTxns = balancesFetchedAt
+    ? await fetchAll<BankTxnRow>(
+        (from, to) =>
+          supabase
+            .from("qb_bank_transaction")
+            .select("qb_account_id, txn_date, txn_type, qb_txn_id, payee, memo, amount")
+            .eq("fetched_at", balancesFetchedAt)
+            .order("txn_date")
+            .range(from, to) as any,
+      )
+    : [];
 
   const payments = await fetchAll<PaymentRow>(
     (from, to) =>
@@ -241,6 +271,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
   return {
     balances,
     balancesFetchedAt,
+    bankTxns,
     scheduled: (sched || []) as ScheduledPayment[],
     payments,
     splits,

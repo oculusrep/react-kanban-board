@@ -90,10 +90,31 @@ export default function CashTab() {
       <div className="bg-white rounded-lg shadow border-l-4" style={{ borderColor: '#002147' }}>
         <div className="px-6 py-5 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>QBO bank balance (book)</p>
-            <p className="text-4xl font-bold mt-1" style={{ color: '#002147' }}>
-              {data.balancesFetchedAt ? fmt(summary.startBalance) : '—'}
-            </p>
+            <div className="flex flex-wrap gap-x-8 gap-y-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>Bank balance today</p>
+                <p className="text-4xl font-bold mt-1" style={{ color: '#002147' }}>
+                  {data.balancesFetchedAt ? fmt(summary.balanceToday) : '—'}
+                </p>
+                <p className="text-xs text-gray-500">QBO register through today</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#4A6B94' }}>After entered future transactions</p>
+                <p className="text-4xl font-bold mt-1" style={{ color: '#002147' }}>
+                  {data.balancesFetchedAt ? fmt(summary.startBalance) : '—'}
+                </p>
+                <p className="text-xs text-gray-500">QBO book balance — the calendar starts here</p>
+              </div>
+            </div>
+            {summary.futureTxns.length > 0 && (
+              <ul className="mt-2 text-xs text-gray-600 space-y-0.5">
+                {summary.futureTxns.map((t, i) => (
+                  <li key={i}>
+                    {formatDay(t.txn_date)} · {t.payee || t.txn_type || 'QBO entry'}{t.memo ? ` (${t.memo})` : ''}: {fmt(Number(t.amount))}
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="text-xs text-gray-500 mt-1">
               {data.balancesFetchedAt
                 ? `As of ${formatET(data.balancesFetchedAt)}`
@@ -143,7 +164,9 @@ export default function CashTab() {
         <div className="px-4 py-3 border-b" style={{ borderColor: '#8FA9C8' }}>
           <h3 className="font-semibold" style={{ color: '#002147' }}>{CASH_CONFIG.CALENDAR_DAYS}-day cash calendar</h3>
           <p className="text-xs text-gray-500">
-            Start = QBO bank book balance. Out: scheduled payments, draws, referral fees and broker splits owed, open
+            Start = QBO book balance (after entered future transactions). Scheduled payments already entered in
+            QBO (same payee, ±{CASH_CONFIG.DEDUPE_DAYS} days, ±${CASH_CONFIG.DEDUPE_DOLLARS}) are shown greyed and not
+            counted. Out: scheduled payments, draws, referral fees and broker splits owed, open
             broker-split Bills. In: commissions on deals ≥ {CASH_CONFIG.COMMITTED_PROBABILITY_MIN}% probability, net of
             referral and other brokers' splits, on their estimated date. Click a day for detail.
           </p>
@@ -162,6 +185,7 @@ export default function CashTab() {
               {calendar.days.map((d) => {
                 const isLowest = calendar.lowest?.date === d.date;
                 const has = d.events.length > 0;
+                const skippedCount = d.events.filter((e) => e.skipped).length;
                 return (
                   <Fragment key={d.date}>
                     <tr
@@ -173,16 +197,19 @@ export default function CashTab() {
                         {formatDay(d.date)}
                         {isLowest && <span className="ml-2 text-xs font-semibold" style={{ color: '#A27B5C' }}>lowest</span>}
                         {has && <span className="ml-2 text-xs text-gray-400">{d.events.length}</span>}
+                        {skippedCount > 0 && <span className="ml-2 text-xs text-gray-400">({skippedCount} already in QBO)</span>}
                       </td>
                       <td className="px-3 py-1.5 text-right" style={{ color: d.inflow ? '#4A6B94' : undefined }}>{d.inflow ? fmt(d.inflow) : ''}</td>
                       <td className="px-3 py-1.5 text-right">{d.outflow ? fmt(d.outflow) : ''}</td>
                       <td className="px-3 py-1.5 text-right font-medium" style={{ color: d.balance < 0 ? '#A27B5C' : '#002147' }}>{fmt(d.balance)}</td>
                     </tr>
                     {expanded.has(d.date) && d.events.map((e, i) => (
-                      <tr key={i} className="text-xs" style={{ backgroundColor: '#F8FAFC' }}>
+                      <tr key={i} className={`text-xs ${e.skipped ? 'text-gray-400' : ''}`} style={{ backgroundColor: '#F8FAFC' }}>
                         <td className="pl-8 pr-3 py-1" colSpan={3}>
-                          <span className="inline-block w-24 text-gray-500">{KIND_LABEL[e.kind]}</span>
-                          {e.dealId ? (
+                          <span className="inline-block w-24 text-gray-500">{e.skipped ? 'Already in QBO' : KIND_LABEL[e.kind]}</span>
+                          {e.skipped ? (
+                            <span>{e.label}</span>
+                          ) : e.dealId ? (
                             <button onClick={() => setSlideoutDealId(e.dealId!)} className="hover:underline text-left" style={{ color: '#002147' }}>{e.label}</button>
                           ) : (
                             <span style={{ color: '#002147' }}>{e.label}</span>
@@ -190,7 +217,7 @@ export default function CashTab() {
                           {e.detail && <span className="ml-2 text-gray-500">{e.detail}</span>}
                           {e.warning && <span className="ml-2" style={{ color: '#A27B5C' }}>⚠ {e.warning}</span>}
                         </td>
-                        <td className="px-3 py-1 text-right" style={{ color: e.amount >= 0 ? '#4A6B94' : undefined }}>{fmt(e.amount)}</td>
+                        <td className={`px-3 py-1 text-right ${e.skipped ? 'line-through' : ''}`} style={{ color: e.skipped ? undefined : e.amount >= 0 ? '#4A6B94' : undefined }}>{fmt(e.amount)}</td>
                       </tr>
                     ))}
                   </Fragment>

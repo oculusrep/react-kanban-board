@@ -561,3 +561,24 @@ gone from "Referral/Broker splits owed" (flag flipped) but still in the book bal
   nobody to nudge. They need a fallback (e.g. `deal.owner_id`) or a "no team" flag.
 - 37 active, unreceived payments are past due, across 34 deals; the oldest estimated date is
   2026-04-22.
+
+## Scheduled-payment dedupe + "today vs. book" balance (2026-11-10)
+
+QBO `Account.CurrentBalance` (the calendar's start) already includes future-dated register entries.
+So a scheduled payment Mike has already entered in QBO must not be subtracted again.
+
+- **Capture.** Every balance snapshot (`snapshotCashBalances`, called by `quickbooks-cash-refresh` and
+  `quickbooks-sync-accounts`) also saves each Bank account's GeneralLedger lines from today−10 to
+  today+60 into `qb_bank_transaction`, stamped with the same `fetched_at`. Only the latest batch is kept.
+- **Rule.** A `scheduled_payment` occurrence is skipped when an unused bank line exists with the same
+  payee (any of `scheduled_payment.qb_payee_names`, case/punctuation-insensitive), money out, within
+  ±`DEDUPE_DAYS` (5) and ±`DEDUPE_DOLLARS` ($1). Each QBO line satisfies at most one occurrence.
+  Skipped occurrences show greyed and struck through as "Already in QBO" and are not counted.
+  No payee names → never deduped.
+- **Balances on the Cash tab.** "Bank balance today" = book balance − bank lines dated after today;
+  "After entered future transactions" = book balance (calendar start). Future lines are listed.
+- Migration: `20261110152457_cash_flow_qbo_dedupe.sql`.
+
+Seeded 2026-11-10 (Mike-approved list): AMEX Business card moved day 12 → 3 (still = QBO card balance);
+AMEX LOC loan day 14 $11,523.77; Arty draws day 15 + last day $2,083.33; VA $495 on 11/20, 12/4, 12/18;
+Verizon day 12 $291.61; Apple day 1 $66.58. Owner draws and payroll not scheduled (no fixed amount/date).

@@ -4,6 +4,8 @@
 // QBO API references:
 //  Account (CurrentBalance): https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/account
 //  Bill (Balance — 0 once paid): https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/bill
+//  GeneralLedger report (account filter, future dates allowed):
+//    https://developer.intuit.com/app/developer/qbo/docs/api/accounting/report-entities/generalledger
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { QBConnection, qbApiRequest } from './quickbooks.ts'
@@ -20,6 +22,91 @@ interface QBBalanceAccount {
 
 const AMEX_NAME = /amex|american express/i
 
+/** Register window captured per refresh, relative to today (ET). Covers the 45-day calendar ± dedupe slack. */
+const TXN_WINDOW_BACK_DAYS = 10
+const TXN_WINDOW_FORWARD_DAYS = 60
+
+function todayET(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+}
+
+function addDays(d: string, n: number): string {
+  const [y, m, day] = d.split('-').map(Number)
+  const x = new Date(Date.UTC(y, m - 1, day + n))
+  return x.toISOString().slice(0, 10)
+}
+
+interface GLRow {
+  type?: string
+  ColData?: { value?: string; id?: string }[]
+  Rows?: { Row?: GLRow[] }
+}
+
+function collectGLRows(rows: GLRow[] | undefined, out: GLRow[]) {
+  for (const r of rows || []) {
+    if (r.type === 'Data' && r.ColData) out.push(r)
+    if (r.Rows?.Row) collectGLRows(r.Rows.Row, out)
+  }
+}
+
+/**
+ * Snapshot each Bank account's register lines (GeneralLedger, incl. future-dated entries) for the
+ * calendar window. CurrentBalance already includes future-dated lines, so the app derives
+ * "bank balance today" = CurrentBalance − lines dated after today, and skips scheduled payments
+ * that already have a matching line.
+ */
+async function snapshotBankTransactions(
+  supabase: SupabaseClient,
+  connection: QBConnection,
+  bankAccountIds: string[],
+  fetchedAt: string
+): Promise<number> {
+  const today = todayET()
+  const rows: Record<string, unknown>[] = []
+  const columns = 'tx_date,txn_type,doc_num,name,memo,subt_nat_amount'
+  for (const id of bankAccountIds) {
+    const params = new URLSearchParams({
+      account: id,
+      start_date: addDays(today, -TXN_WINDOW_BACK_DAYS),
+      end_date: addDays(today, TXN_WINDOW_FORWARD_DAYS),
+      sort_by: 'tx_date',
+      columns,
+    })
+    const report = await qbApiRequest<{ Rows?: { Row?: GLRow[] } }>(
+      connection, 'GET', `reports/GeneralLedger?${params}`
+    )
+    const lines: GLRow[] = []
+    collectGLRows(report.Rows?.Row, lines)
+    for (const l of lines) {
+      const c = l.ColData!
+      const date = c[0]?.value || ''
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue // "Beginning Balance" etc.
+      const amount = Number(c[5]?.value)
+      if (!Number.isFinite(amount)) continue
+      rows.push({
+        qb_account_id: id,
+        txn_date: date,
+        txn_type: c[1]?.value || null,
+        qb_txn_id: c[1]?.id || null,
+        payee: c[3]?.value || null,
+        memo: c[4]?.value || null,
+        amount,
+        fetched_at: fetchedAt,
+      })
+    }
+  }
+  // Keep only the latest batch.
+  const { error: delErr } = await supabase.from('qb_bank_transaction').delete().lt('fetched_at', fetchedAt)
+  if (delErr) throw new Error(`Failed to clear bank transactions: ${delErr.message}`)
+  if (rows.length > 0) {
+    const { error } = await supabase.from('qb_bank_transaction').insert(rows)
+    if (error) throw new Error(`Failed to save bank transactions: ${error.message}`)
+  }
+  return rows.length
+}
+
 /**
  * Fetch all active Bank and Credit Card accounts with their current balance and append one
  * qb_balance_snapshot row per account. Also links the seeded "AMEX" scheduled payment to the
@@ -28,7 +115,7 @@ const AMEX_NAME = /amex|american express/i
 export async function snapshotCashBalances(
   supabase: SupabaseClient,
   connection: QBConnection
-): Promise<{ saved: number; fetchedAt: string; amexLinked: string | null }> {
+): Promise<{ saved: number; fetchedAt: string; amexLinked: string | null; transactions: number }> {
   const query = `SELECT * FROM Account WHERE Active = true AND AccountType IN ('Bank', 'Credit Card') MAXRESULTS 1000`
   const result = await qbApiRequest<{ QueryResponse: { Account?: QBBalanceAccount[] } }>(
     connection,
@@ -53,6 +140,13 @@ export async function snapshotCashBalances(
     if (error) throw new Error(`Failed to save balance snapshot: ${error.message}`)
   }
 
+  const transactions = await snapshotBankTransactions(
+    supabase,
+    connection,
+    accounts.filter((a) => a.AccountType === 'Bank').map((a) => a.Id),
+    fetchedAt
+  )
+
   // Link the seeded AMEX scheduled payment (no account, no manual amount yet).
   let amexLinked: string | null = null
   const amex = accounts.find(
@@ -69,7 +163,7 @@ export async function snapshotCashBalances(
     if (data && data.length > 0) amexLinked = amex.Name
   }
 
-  return { saved: accounts.length, fetchedAt, amexLinked }
+  return { saved: accounts.length, fetchedAt, amexLinked, transactions }
 }
 
 /**

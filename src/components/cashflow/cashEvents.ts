@@ -5,12 +5,18 @@ import {
   CashEvent,
   addDays,
   brokerPayoutDate,
+  daysBetween,
   monthlyOccurrences,
 } from '../../lib/cashCalendar';
-import { CashData, PaymentRow, STAGE } from './useCashData';
+import { BankTxnRow, CashData, PaymentRow, STAGE } from './useCashData';
 
 export interface CashSummary {
+  /** QBO book balance (CurrentBalance) — includes future-dated entries. Calendar starts here. */
   startBalance: number;
+  /** Book balance minus bank-register lines dated after today. */
+  balanceToday: number;
+  /** Bank-register lines dated after today (already in startBalance). */
+  futureTxns: BankTxnRow[];
   bankAccounts: { name: string; balance: number }[];
   events: CashEvent[];
   notCounted: {
@@ -40,6 +46,29 @@ export function buildCashEvents(data: CashData, today: string): CashSummary {
     .map((b) => ({ name: b.fully_qualified_name || b.name, balance: Number(b.current_balance) || 0 }));
   const startBalance = bankAccounts.reduce((t, b) => t + b.balance, 0);
   const balanceById = new Map(data.balances.map((b) => [b.qb_account_id, Number(b.current_balance) || 0]));
+  const bankIds = new Set(data.balances.filter((b) => b.account_type === 'Bank').map((b) => b.qb_account_id));
+  const bankTxns = data.bankTxns.filter((t) => bankIds.has(t.qb_account_id));
+  const futureTxns = bankTxns.filter((t) => t.txn_date > today);
+  const balanceToday = startBalance - futureTxns.reduce((t, x) => t + Number(x.amount), 0);
+
+  // Dedupe: each QBO bank line can satisfy at most one scheduled occurrence.
+  const usedTxn = new Set<BankTxnRow>();
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const findEntered = (payees: string[] | null, date: string, amount: number) => {
+    if (!payees || payees.length === 0) return null;
+    const names = new Set(payees.map(norm));
+    let best: BankTxnRow | null = null;
+    for (const t of bankTxns) {
+      if (usedTxn.has(t) || !t.payee || !names.has(norm(t.payee))) continue;
+      if (Number(t.amount) >= 0) continue; // only money out
+      if (Math.abs(Math.abs(Number(t.amount)) - amount) > CASH_CONFIG.DEDUPE_DOLLARS) continue;
+      const gap = Math.abs(daysBetween(t.txn_date, date));
+      if (gap > CASH_CONFIG.DEDUPE_DAYS) continue;
+      if (!best || gap < Math.abs(daysBetween(best.txn_date, date))) best = t;
+    }
+    if (best) usedTxn.add(best);
+    return best;
+  };
 
   // 1. Scheduled payments + planned draws
   for (const s of data.scheduled) {
@@ -66,13 +95,17 @@ export function buildCashEvents(data: CashData, today: string): CashSummary {
       warning = 'No amount — enter one or link a QBO account';
     }
     for (const date of dates) {
+      const entered = amount ? findEntered(s.qb_payee_names, date, amount) : null;
       events.push({
         date,
         kind: s.kind === 'draw' ? 'draw' : 'scheduled',
         label: s.name,
         amount: -(amount || 0),
-        detail,
-        warning,
+        detail: entered
+          ? `already in QBO — ${entered.payee} ${fmt2(-Number(entered.amount))} on ${entered.txn_date}`
+          : detail,
+        warning: entered ? undefined : warning,
+        skipped: !!entered,
       });
     }
   }
@@ -172,10 +205,16 @@ export function buildCashEvents(data: CashData, today: string): CashSummary {
 
   return {
     startBalance,
+    balanceToday,
+    futureTxns,
     bankAccounts,
     events,
     notCounted: { pastDueCommitted, belowThreshold, legacyReferral, legacySplit },
   };
+}
+
+function fmt2(n: number): string {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 export function fmt(n: number): string {

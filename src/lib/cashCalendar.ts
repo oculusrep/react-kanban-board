@@ -26,6 +26,12 @@ export const CASH_CONFIG = {
     [BROKER_IDS.arty]: 'payroll',
     [BROKER_IDS.greg]: 'ach_today',
   } as Record<string, PayMethod>,
+  /**
+   * A scheduled-payment occurrence is skipped when QBO already has a bank-register line for the
+   * same payee within this many days and this many dollars — the book balance already includes it.
+   */
+  DEDUPE_DAYS: 5,
+  DEDUPE_DOLLARS: 1,
   /** Payroll runs semi-monthly: the 15th and the last day of the month (Arty's draw Bills). */
   PAYROLL_DAYS_OF_MONTH: [15, 'last'] as (number | 'last')[],
 } as const;
@@ -121,6 +127,8 @@ export interface CashEvent {
   detail?: string;
   dealId?: string | null;
   warning?: string;
+  /** Already entered in QBO (book balance includes it): shown greyed, not counted. */
+  skipped?: boolean;
 }
 
 export interface CalendarDay {
@@ -146,8 +154,9 @@ export function buildCalendar(startBalance: number, today: string, events: CashE
   for (let i = 0; i < days; i++) {
     const date = addDays(today, i);
     const evs = (byDate.get(date) || []).sort((a, b) => a.amount - b.amount);
-    const inflow = evs.filter((e) => e.amount > 0).reduce((t, e) => t + e.amount, 0);
-    const outflow = evs.filter((e) => e.amount < 0).reduce((t, e) => t + e.amount, 0);
+    const counted = evs.filter((e) => !e.skipped);
+    const inflow = counted.filter((e) => e.amount > 0).reduce((t, e) => t + e.amount, 0);
+    const outflow = counted.filter((e) => e.amount < 0).reduce((t, e) => t + e.amount, 0);
     balance += inflow + outflow;
     const day = { date, events: evs, inflow, outflow, balance };
     out.push(day);
