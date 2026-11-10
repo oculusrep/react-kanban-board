@@ -141,6 +141,46 @@ See §4 Verification for the findings behind these.
     budgeted amex lines for that cycle.
   - An amex budget line is never counted separately on the calendar.
 
+### Added 2026-11-10 — deal team, review tracking, critical dates, nudges
+
+Supersedes the "owning broker" and "Stale" (probability ≥ 50, 30 days) definitions in the
+2026-11-06 Needs-attention plan.
+
+1. **Deal team** = all brokers on the deal's `commission_split`, every name shown per row.
+   (Not `deal.owner_id`. Note `deal_team` in the database is a role lookup table, not a
+   membership table.)
+2. **`deal.last_reviewed_at`** — new column.
+   - Set **only** by human edits to `probability`, `fee`, `payment_date_estimated`, critical
+     dates, or an explicit "Still on track" confirm.
+   - Automated writes (triggers, recalcs, syncs, behind-schedule pushes) never touch it. So it
+     is set by the app/edit path, not by a generic `BEFORE UPDATE` trigger on `deal`.
+   - Backfill = `last_stage_change_at`.
+3. **Critical dates drive payment dates** (proposal; findings in §4C):
+   - `payment_date_estimated` derives per installment from the deal's critical dates when they
+     are entered — Lease: installment 1 = Contingency Date Expiration (fallback Lease / PSA
+     Effective Date), installment 2 = Estimated Open Date (fallback Rent Commencement Date);
+     Purchase: installment 1 = closing date. When a mapped critical date is missing, the
+     existing velocity estimate stays.
+   - Source is recorded in `payment_date_source`: `critical_date` (value already documented,
+     never used), `auto` (velocity), `broker_override` (manual — wins over both, as today).
+   - **Stage gate:** moving At Lease/PSA → Under Contract / Contingent requires Contingency
+     Date Expiration and Estimated Open Date before save.
+4. **Nudge triggers** (replace the 30-day stale rule):
+   - Payment due within 30, 14, 7 days: one nudge per threshold, skipped if `last_reviewed_at`
+     is after the payment entered that window.
+   - Past due (estimated < today, not received): weekly nudge until the date is updated or the
+     payment is received.
+   - Contingency date passed without a stage change: flag + nudge.
+   - Recipients: deal-team members other than the current user. Each nudge is a **drafted
+     email for Mike to approve; never auto-sent.** Nudges sent are logged so a threshold fires
+     once.
+5. **Needs-attention groups:** Missing fee, Missing payout date, Past due, Due in 30 days
+   unconfirmed, Contingency passed. Row actions: Update (slideout), Still on track,
+   Nudge &lt;name&gt;.
+6. **Backlog first.** A one-time cleanup view lists all past-due payments (37 today) in one
+   sortable list with inline date edit. **Nudges stay disabled** (one config flag, default off)
+   until Mike turns them on.
+
 ## 3. Phased plan (no code yet)
 
 ### Phase 1 — Data foundations
@@ -175,29 +215,40 @@ See §4 Verification for the findings behind these.
 
 #### "Needs attention" panel (same page)
 
-Grouped panel, count badge per group. Each row shows deal name, client, owning broker
-(Mike/Arty/Greg), amount, and days overdue/stale. Each row opens the deal in
-`DealDetailsSlideout` (overlay-first per CLAUDE.md, not `navigate('/deal/:id')`).
-Thresholds are config constants.
+Supersedes the 2026-11-06 version (owning broker + 30-day stale rule). Grouped panel, count
+badge per group. Each row shows deal name, client, **deal team** (every broker on the deal's
+`commission_split`, all names), amount, and days overdue / until due. Thresholds are config
+constants.
 
-| # | Group | Rule | Amount shown | Days shown |
+| # | Group | Rule | Amount | Days |
 |---|---|---|---|---|
 | 1 | Missing fee | Open deal with no `fee` / `gci` set | — | — |
-| 2 | Missing payout date | Active (`is_active`), unreceived payment with no `payment_date_estimated` | `payment_amount` | — |
-| 3 | Past due | `payment_date_estimated` < today (ET) and `payment_received = false` | `payment_amount` | days past `payment_date_estimated` |
-| 4 | Stale | Open deal, `probability >= 50`, not updated in 30+ days | `fee` | days since last update |
+| 2 | Missing payout date | Active, unreceived payment with no `payment_date_estimated` | `payment_amount` | — |
+| 3 | Past due | `payment_date_estimated` < today (ET), `payment_received = false` | `payment_amount` | days past due |
+| 4 | Due in 30 days, unconfirmed | Due within `DUE_SOON_DAYS = 30` and `last_reviewed_at` is before the payment entered that window | `payment_amount` | days until due |
+| 5 | Contingency passed | Contingency Date Expiration < today and deal still in Under Contract / Contingent | `fee` | days since expiration |
 
-Config constants: `STALE_PROBABILITY_MIN = 50`, `STALE_DAYS = 30`.
+Row actions:
+- **Update** — opens `DealDetailsSlideout` (overlay-first per CLAUDE.md).
+- **Still on track** — sets `last_reviewed_at = now()`; nothing else changes.
+- **Nudge &lt;name&gt;** — one per deal-team member other than the current user; drafts an
+  email for Mike to approve (never auto-sends).
 
-Definitions to settle at build time (current live data, 2026-11-10):
-- **Open deal** = stage not `Lost` and not `Closed Paid`. There is no separate "closed-dead"
-  stage; live stages are Pre-Submittal, Submitted-Reviewing, Negotiating LOI, At Lease/PSA,
-  Under Contract / Contingent, Booked, Executed Payable, Closed Paid, Lost.
-- **Owning broker** = `deal.owner_id`, mapped to Mike/Arty/Greg. Confirm that matches "who owns
-  this deal" before the build; the alternative is the largest `commission_split` share.
-- **"Not updated"** = `deal.updated_at`. That column may get bumped by triggers (e.g. payment
-  recalculation) without anyone touching the deal, which would hide staleness. Check what
-  updates it before relying on it; `last_stage_change_at` is the fallback.
+**Open deal** = stage not `Lost` and not `Closed Paid` (there is no "closed-dead" stage).
+
+### Phase 2b — Review tracking, backlog cleanup, nudges
+1. Migration: `deal.last_reviewed_at` (backfill from `last_stage_change_at`); a nudge log table
+   (payment/deal, threshold, drafted_at, approved_at, recipient) with the CLAUDE.md grants block.
+2. Write `last_reviewed_at` from the human edit paths only (deal form, payment date edit,
+   critical-date edit, "Still on track").
+3. **Backlog cleanup view:** all past-due payments, sortable (date, amount, deal, team), inline
+   `payment_date_estimated` edit. Team clears it before nudges go on.
+4. Critical-date → payment-date derivation (§4C), as a change to the existing
+   `calculate_deal_payment_dates` pulled from the live definition — not a rebuild from the
+   old migration. Plus the At Lease/PSA → Under Contract stage gate in the UI.
+5. Nudge engine behind `NUDGES_ENABLED = false`: computes due nudges, drafts emails into an
+   approval queue for Mike. Nothing sends without his approval. Mike flips the flag after the
+   backlog is clear.
 
 ### Phase 3 — Claude / MCP access
 - `update_payment_date` tool on `ovis-mcp`: resolves `payment_id` or deal + installment,
@@ -332,3 +383,61 @@ gone from "Referral/Broker splits owed" (flag flipped) but still in the book bal
 | Travel:Lodging | 0 | 2000 | | |
 | Travel:Taxi & Ride Share | 0 | 400 | | |
 | Travel:Travel Meals | 0 | 1000 | | |
+
+### C. Critical dates and payment-date calculation
+
+**Critical-date fields today** — two different stores:
+
+- `deal` date columns, mirrored as 5 default "timeline-linked" rows in `critical_date`
+  (`deal_field_name` set): Closed Date, LOI X Date, Target Close Date, Booked Date, Effective
+  Date (Contract X).
+- `critical_date` rows (`subject`, `critical_date`) for everything else — created per deal as
+  blank templates, mostly unfilled (filled / rows):
+
+  | Subject | Filled | Rows |
+  |---|---|---|
+  | Lease / PSA Effective Date | 121 | 654 |
+  | Booked Date (non-linked copy) | 96 | 648 |
+  | Contingency Date Expiration | 44 | 644 |
+  | Rent Commencement Date | 29 | 660 |
+  | Delivery Date | 27 | 656 |
+  | Estimated Open Date | 23 | 658 |
+  | ~20 deal-specific subjects (inspection, permit, closing deadlines…) | 1–5 each | |
+
+  There is no "lease execution" subject; execution is `deal.contract_signed_date`
+  ("Effective Date (Contract X)") or the "Lease / PSA Effective Date" row.
+- `deal` also holds **durations**, not dates: `contingency_period_days`,
+  `rent_commencement_days`, `due_diligence_days`, `closing_deadline_days`, plus
+  `estimated_execution_date` and legacy `sf_contingency_date_est`.
+
+**How payment dates work today** (live function definitions; see
+[DEAL_FORECASTING_SYSTEM.md](DEAL_FORECASTING_SYSTEM.md)):
+
+- `calculate_payment_estimates` / `calculate_deal_payment_dates` compute from the stage anchor
+  (LOI date / LOI signed / `contract_signed_date`) + stage velocity + the duration columns:
+  Lease P1 = execution + contingency days; P2 = + rent commencement days (default 180).
+  Purchase P1 = execution + due diligence + closing deadline (default 30). Deals behind
+  schedule get pushed by `weeks_behind × 7`.
+- `payment_date_auto_calculated` always holds that computed value.
+- `payment_date_estimated` is overwritten only when `payment_date_source` is `auto` or null.
+- `track_payment_date_source` trigger sets `broker_override` whenever someone writes an
+  estimated date that differs from the auto value. After that, recalcs leave it alone.
+- Recalc fires on deal changes to stage, LOI/contract dates, the duration columns,
+  `estimated_execution_date`, or behind-schedule fields. **Critical-date rows do not trigger
+  a recalc and are not read by the calculation.** `critical_date` as a source is documented
+  but used by 0 payments (live: 239 `auto`, 60 `broker_override`).
+
+**Implications for the proposal**
+- The derivation must read `critical_date` rows by `subject` (free text) — subjects need to be
+  treated as a fixed key set for the mapped ones, or given a type column.
+- Contingency Date Expiration is filled on 44 deals and Estimated Open Date on 23, so most
+  payments stay on the velocity estimate until the stage gate starts collecting them.
+- Behind-schedule pushes move `auto` dates silently; that's an automated write, so it must not
+  touch `last_reviewed_at`, and a pushed date can enter a nudge window without anyone acting.
+
+### D. Deal team and backlog (live, 2026-11-10)
+
+- 75 open deals have **no `commission_split` rows**, so their deal team is empty: no names,
+  nobody to nudge. They need a fallback (e.g. `deal.owner_id`) or a "no team" flag.
+- 37 active, unreceived payments are past due, across 34 deals; the oldest estimated date is
+  2026-04-22.
