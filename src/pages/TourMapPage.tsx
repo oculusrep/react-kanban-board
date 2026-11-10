@@ -19,6 +19,8 @@ import {
 } from '../hooks/useTours';
 import type { Tour, TourDay, TourStopGeo } from '../lib/tourTypes';
 import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
+import { useGPSTracking } from '../hooks/useGPSTracking';
+import { createAccuracyCircleOptions, createGoogleBlueDotIcon } from '../components/mapping/utils/modernMarkers';
 import { GoogleMapsDayLinks } from '../components/tours/GoogleMapsDayLinks';
 import { dayPointSequence } from '../lib/tourGoogleMapsLinks';
 import { atlasIcon, fetchAtlasStores, licensedIcon } from '../lib/tourStores';
@@ -272,6 +274,82 @@ function TourMapPageInner() {
   useEffect(() => {
     import('../components/tours/TourDetailSlideout').then((m) => setSlideoutComp(() => m.default));
   }, []);
+
+  // ---- live GPS blue dot (same hook + dot as the main OVIS map) ----
+  // High accuracy: this is used while driving the tour, so we want the dot on the road.
+  // Follow pans the map with the dot; dragging the map turns it off (like Google Maps),
+  // the Follow button turns it back on and recenters.
+  const gps = useGPSTracking({ enableHighAccuracy: true, maximumAge: 5000, timeout: 15000, distanceFilter: 5 });
+  const [gpsFollow, setGpsFollow] = useState(true);
+  const gpsMarkerRef = useRef<google.maps.Marker | null>(null);
+  const gpsCircleRef = useRef<google.maps.Circle | null>(null);
+  const gpsFollowRef = useRef(gpsFollow);
+  gpsFollowRef.current = gpsFollow;
+  const gpsPosRef = useRef(gps.position);
+  gpsPosRef.current = gps.position;
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const pos = gps.position;
+    if (!mapReady || !map || !gps.isTracking || !pos) return;
+    const ll = { lat: pos.lat, lng: pos.lng };
+    if (!gpsMarkerRef.current) {
+      gpsMarkerRef.current = new google.maps.Marker({ position: ll, map, icon: createGoogleBlueDotIcon(24), title: 'You are here (live GPS)', zIndex: 1000, optimized: false, clickable: false });
+    } else {
+      gpsMarkerRef.current.setPosition(ll);
+      if (gpsMarkerRef.current.getMap() !== map) gpsMarkerRef.current.setMap(map); // map recreated (Places toggle)
+    }
+    if (!gpsCircleRef.current) {
+      gpsCircleRef.current = new google.maps.Circle(createAccuracyCircleOptions(ll, pos.accuracy));
+      gpsCircleRef.current.setMap(map);
+    } else {
+      gpsCircleRef.current.setCenter(ll);
+      gpsCircleRef.current.setRadius(pos.accuracy);
+      if (gpsCircleRef.current.getMap() !== map) gpsCircleRef.current.setMap(map);
+    }
+    if (gpsFollowRef.current) map.panTo(ll);
+  }, [gps.position, gps.isTracking, mapReady, mapVersion]);
+
+  // Tracking off: remove the dot.
+  useEffect(() => {
+    if (gps.isTracking) return;
+    gpsMarkerRef.current?.setMap(null);
+    gpsMarkerRef.current = null;
+    gpsCircleRef.current?.setMap(null);
+    gpsCircleRef.current = null;
+  }, [gps.isTracking]);
+
+  // A user drag stops following.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const l = mapRef.current.addListener('dragstart', () => setGpsFollow(false));
+    return () => l.remove();
+  }, [mapReady, mapVersion]);
+
+  const toggleGps = () => {
+    if (!gps.isTracking) {
+      setGpsFollow(true);
+      // First fix can take a few seconds; zoom in to street level once it arrives.
+      const map = mapRef.current;
+      if (map && (map.getZoom() ?? 0) < 15) {
+        const once = setInterval(() => {
+          const p = gpsPosRef.current;
+          if (p && mapRef.current) {
+            mapRef.current.setZoom(16);
+            mapRef.current.panTo({ lat: p.lat, lng: p.lng });
+            clearInterval(once);
+          }
+        }, 250);
+        setTimeout(() => clearInterval(once), 20000);
+      }
+    }
+    gps.toggleTracking();
+  };
+  const followGps = () => {
+    setGpsFollow(true);
+    const p = gps.position;
+    if (p) mapRef.current?.panTo({ lat: p.lat, lng: p.lng });
+  };
 
   // ---- init map once ----
   useEffect(() => {
@@ -1118,6 +1196,14 @@ function TourMapPageInner() {
             placesToggleAvailable={!!MAP_ID_NO_PLACES && !!MAP_ID_PLACES}
             compact={narrow}
           />
+          <GpsControl
+            tracking={gps.isTracking}
+            hasFix={!!gps.position}
+            following={gpsFollow}
+            error={gps.error ? (gps.error.code === 1 ? 'Location permission denied — allow it for this site in your browser settings' : gps.error.message || 'Location unavailable') : null}
+            onToggle={toggleGps}
+            onFollow={followGps}
+          />
 
           {focusStopId && (
             <div
@@ -1431,6 +1517,44 @@ function TourMapPageInner() {
 
 // Map / Satellite / Terrain + Places, styled like GoogleMapContainer's custom control
 // (white group, #1a73e8 active, Roboto 16px / 40px buttons, separate checkbox box).
+// Live GPS: locate toggle + Follow, top-right of the map.
+function GpsControl(props: { tracking: boolean; hasFix: boolean; following: boolean; error: string | null; onToggle: () => void; onFollow: () => void }) {
+  const box = { backgroundColor: '#fff', borderRadius: 3, boxShadow: '0 2px 6px rgba(0,0,0,.3)', border: 'none', cursor: 'pointer', height: 40 } as const;
+  const on = props.tracking ? '#4285F4' : '#666';
+  return (
+    <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 3, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {props.tracking && (
+          <button
+            type="button"
+            onClick={props.onFollow}
+            title={props.following ? 'Map follows your location (drag the map to stop)' : 'Recenter and follow your location'}
+            style={{ ...box, padding: '0 12px', fontFamily: 'Roboto,Arial,sans-serif', fontSize: 14, color: props.following ? '#fff' : 'rgb(25,25,25)', backgroundColor: props.following ? '#1a73e8' : '#fff' }}
+          >
+            {props.hasFix ? 'Follow' : 'Locating…'}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={props.onToggle}
+          title={props.tracking ? 'Stop GPS tracking' : 'Show my live location'}
+          aria-pressed={props.tracking}
+          style={{ ...box, width: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="8" stroke={on} strokeWidth="2" />
+            <circle cx="12" cy="12" r="4" fill={on} />
+            <path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke={on} strokeWidth="2" />
+          </svg>
+        </button>
+      </div>
+      {props.error && props.tracking && (
+        <div style={{ background: '#fff', border: `1px solid ${TERRACOTTA}`, color: TERRACOTTA, borderRadius: 6, padding: '4px 8px', fontSize: 12, maxWidth: 240 }}>{props.error}</div>
+      )}
+    </div>
+  );
+}
+
 function MapTypeControl(props: {
   mapType: MapTypeChoice;
   onMapType: (t: MapTypeChoice) => void;
