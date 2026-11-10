@@ -4,7 +4,7 @@
 // action. Dark; type sizes scale with the board's A-/A+ control (`scale`).
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import SiteSubmitSidebar from '../shared/SiteSubmitSidebar';
 import { loadBoardThread, type ThreadEntry } from '../../lib/boardWrites';
 import {
   BoardDeal,
@@ -31,7 +31,7 @@ export default function DealSlideOver({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const px = (n: number) => Math.round(n * scale);
 
   const [notes, setNotes] = useState<ThreadEntry[]>([]);
@@ -123,13 +123,24 @@ export default function DealSlideOver({
         </div>
 
         <div className="px-5 py-3" style={{ borderTop: `1px solid ${PALETTE.ground}` }}>
-          {deal.dealId ? (
-            <button onClick={() => navigate(`/deal/${deal.dealId}`)} style={{ color: PALETTE.textDim, fontSize: px(13) }}>Open full deal →</button>
-          ) : (
-            <button onClick={() => navigate(`/site-submit/${deal.siteSubmitId}`)} style={{ color: PALETTE.textDim, fontSize: px(13) }}>No deal yet — open site submit →</button>
-          )}
+          <button onClick={() => setSidebarOpen(true)} style={{ color: PALETTE.textDim, fontSize: px(13) }}>
+            {deal.dealId ? 'Open deal →' : 'No deal yet — open site submit →'}
+          </button>
         </div>
       </div>
+
+      {/* Overlay, not navigation (docs/OVIS_OVERLAY_UX.md): the same slideout the
+          Pipeline Report and map open — site submit with its deal tab, or the
+          deal directly when the card has no site submit. */}
+      <SiteSubmitSidebar
+        siteSubmitId={deal.siteSubmitId}
+        dealId={deal.siteSubmitId ? null : deal.dealId}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        context="deal"
+        onStatusChange={() => onChanged()}
+        onDataUpdate={() => onChanged()}
+      />
     </>
   );
 }
