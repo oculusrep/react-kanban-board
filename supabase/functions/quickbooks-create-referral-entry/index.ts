@@ -5,6 +5,7 @@ import {
   refreshTokenIfNeeded,
   findOrCreateVendor,
   createBill,
+  createPurchase,
   createJournalEntry,
   logSync,
   QBBill,
@@ -26,7 +27,12 @@ interface CreateReferralEntryRequest {
 }
 
 /**
- * Creates a QBO Bill for referral fee payment when a payment is marked as received.
+ * Records a referral fee payout in QBO when the referral fee is marked paid.
+ *  - Normal referral: a Check (Purchase, PaymentType=Check) drawn on the bank account in
+ *    app_settings.qbo_referral_bank_account, so the bank book balance drops when the fee is
+ *    marked paid. Mike matches the BofA bill-pay debit to this check in the bank feed.
+ *  - BOR pass-through: unchanged — a Bill to the clearing account + a BOR income JE.
+ * See docs/CASH_FLOW_DASHBOARD_AUDIT.md ("v1 revision").
  * The referral payee is determined from the deal's referral_payee_client_id.
  */
 serve(async (req) => {
@@ -262,6 +268,29 @@ serve(async (req) => {
       )
     }
 
+    // Normal referrals post as a Check, which needs the bank account it is drawn on.
+    // Refuse rather than silently falling back to a Bill (that would leave the bank
+    // balance overstated on the cash flow page).
+    let bankAccount: { id: string; name?: string } | null = null
+    if (!isBor) {
+      const { data: setting } = await supabaseClient
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'qbo_referral_bank_account')
+        .maybeSingle()
+      const v = setting?.value as { id?: string; name?: string } | null
+      if (!v?.id) {
+        return new Response(
+          JSON.stringify({
+            error: 'Referral check bank account not configured',
+            message: 'Set app_settings.qbo_referral_bank_account to the QBO bank account referral checks are drawn on.'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        )
+      }
+      bankAccount = { id: v.id, name: v.name }
+    }
+
     const transactionDate = paidDate || payment.sf_payment_date_actual || new Date().toISOString().split('T')[0]
 
     // Build description
@@ -306,19 +335,33 @@ serve(async (req) => {
       Description: description
     }
 
-    const bill: QBBill = {
-      VendorRef: { value: vendorId, name: vendorName },
-      Line: [billLine],
-      TxnDate: transactionDate,
-      PrivateNote: `OVIS Referral Fee - Payment: ${paymentId}, Deal: ${deal?.id}`
+    let result: { Id: string; DocNumber?: string }
+    let qbEntityType: 'Bill' | 'Purchase'
+    if (isBor) {
+      const bill: QBBill = {
+        VendorRef: { value: vendorId, name: vendorName },
+        Line: [billLine],
+        TxnDate: transactionDate,
+        PrivateNote: `OVIS Referral Fee - Payment: ${paymentId}, Deal: ${deal?.id}`
+      }
+      result = await createBill(connection, bill)
+      qbEntityType = 'Bill'
+    } else {
+      result = await createPurchase(connection, {
+        PaymentType: 'Check',
+        AccountRef: { value: bankAccount!.id, name: bankAccount!.name },
+        EntityRef: { value: vendorId, name: vendorName, type: 'Vendor' },
+        Line: [billLine],
+        TxnDate: transactionDate,
+        PrivateNote: `OVIS Referral Fee (BofA bill pay) - Payment: ${paymentId}, Deal: ${deal?.id}`
+      })
+      qbEntityType = 'Purchase'
     }
-
-    const result = await createBill(connection, bill)
 
     // Log sync
     await logSync(
       supabaseClient,
-      'bill',
+      qbEntityType === 'Bill' ? 'bill' : 'expense',
       'outbound',
       'success',
       paymentId,
@@ -388,7 +431,7 @@ serve(async (req) => {
       .insert({
         payment_id: paymentId,  // referral/BOR entries key off the payment
         commission_mapping_id: mapping?.id || null,
-        qb_entity_type: 'Bill',
+        qb_entity_type: qbEntityType,
         qb_entity_id: result.Id,
         qb_doc_number: result.DocNumber,
         amount: referralAmount,
@@ -412,7 +455,7 @@ serve(async (req) => {
         success: true,
         message: isBor
           ? `Created BOR pass-through Bill ($${referralAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}) for ${referralPayee.client_name}${jeResult ? ` and recognized $${borFee.toLocaleString('en-US', { minimumFractionDigits: 2 })} BOR Fee as income` : ''}`
-          : `Created referral fee Bill for ${referralPayee.client_name}`,
+          : `Created referral fee check for ${referralPayee.client_name}`,
         qbEntityId: result.Id,
         qbDocNumber: result.DocNumber,
         amount: referralAmount,

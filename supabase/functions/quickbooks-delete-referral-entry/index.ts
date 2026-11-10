@@ -5,6 +5,8 @@ import {
   refreshTokenIfNeeded,
   getBill,
   deleteBill,
+  getPurchase,
+  deletePurchase,
   getJournalEntry,
   deleteJournalEntry,
   logSync
@@ -94,6 +96,10 @@ serve(async (req) => {
             const bill = await getBill(connection, entry.qb_entity_id)
             if (bill) await deleteBill(connection, bill.Id, bill.SyncToken)
             await logSync(supabaseClient, 'bill', 'outbound', 'success', paymentId, 'payment_referral', entry.qb_entity_id)
+          } else if (entry.qb_entity_type === 'Purchase') {
+            const purchase = await getPurchase(connection, entry.qb_entity_id)
+            if (purchase) await deletePurchase(connection, purchase.Id, purchase.SyncToken)
+            await logSync(supabaseClient, 'expense', 'outbound', 'success', paymentId, 'payment_referral', entry.qb_entity_id)
           } else if (entry.qb_entity_type === 'JournalEntry') {
             const je = await getJournalEntry(connection, entry.qb_entity_id)
             if (je) await deleteJournalEntry(connection, je.Id, je.SyncToken)
@@ -105,7 +111,7 @@ serve(async (req) => {
           console.error(`Error deleting QBO ${entry.qb_entity_type} ${entry.qb_entity_id}:`, qbError.message)
           await logSync(
             supabaseClient,
-            entry.qb_entity_type === 'Bill' ? 'bill' : 'journal_entry',
+            entry.qb_entity_type === 'Bill' ? 'bill' : entry.qb_entity_type === 'Purchase' ? 'expense' : 'journal_entry',
             'outbound',
             'failed',
             paymentId,

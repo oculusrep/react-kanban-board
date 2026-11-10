@@ -944,6 +944,74 @@ export async function deleteBill(
 }
 
 // ============================================================================
+// Purchase (Check) Functions
+// API reference: https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/purchase
+// A Check is a Purchase with PaymentType 'Check'; AccountRef must be a Bank account.
+// The Check resource itself is not writable via the API.
+// ============================================================================
+
+export interface QBPurchase {
+  Id?: string
+  SyncToken?: string
+  DocNumber?: string
+  PaymentType: 'Check' | 'Cash' | 'CreditCard'
+  AccountRef: { value: string; name?: string }
+  EntityRef?: { value: string; name?: string; type?: 'Vendor' | 'Customer' | 'Employee' }
+  Line: QBBillLine[]
+  TxnDate?: string  // YYYY-MM-DD format
+  PrivateNote?: string
+}
+
+/**
+ * Create a Purchase (e.g. a Check drawn on a bank account). Reduces the bank account's
+ * book balance on TxnDate.
+ */
+export async function createPurchase(
+  connection: QBConnection,
+  purchase: QBPurchase
+): Promise<{ Id: string; DocNumber?: string }> {
+  const result = await qbApiRequest<{ Purchase: { Id: string; DocNumber?: string } }>(
+    connection,
+    'POST',
+    'purchase',
+    purchase
+  )
+  console.log('Created QBO purchase:', result.Purchase.Id, 'type:', purchase.PaymentType)
+  return { Id: result.Purchase.Id, DocNumber: result.Purchase.DocNumber }
+}
+
+export async function getPurchase(
+  connection: QBConnection,
+  purchaseId: string
+): Promise<{ Id: string; SyncToken: string; DocNumber?: string } | null> {
+  try {
+    const result = await qbApiRequest<{ Purchase: { Id: string; SyncToken: string; DocNumber?: string } }>(
+      connection,
+      'GET',
+      `purchase/${purchaseId}`
+    )
+    return result.Purchase
+  } catch (error) {
+    console.error(`Failed to get purchase ${purchaseId}:`, error)
+    return null
+  }
+}
+
+export async function deletePurchase(
+  connection: QBConnection,
+  purchaseId: string,
+  syncToken: string
+): Promise<void> {
+  await qbApiRequest(
+    connection,
+    'POST',
+    'purchase?operation=delete',
+    { Id: purchaseId, SyncToken: syncToken }
+  )
+  console.log(`Deleted QBO purchase ${purchaseId}`)
+}
+
+// ============================================================================
 // Journal Entry Functions
 // ============================================================================
 
