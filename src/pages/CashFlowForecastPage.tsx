@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { computeHouseNet } from "../lib/houseNet";
 import { useAuth } from "../contexts/AuthContext";
 import CashflowDashboard from "../components/reports/CashflowDashboard";
 import {
@@ -200,11 +201,8 @@ export default function CashFlowForecastPage() {
             category = 'ucContingent';
           }
 
-          const paymentAmount = p.payment_amount || 0;
-          const referralFee = p.referral_fee_usd || 0;
-          const gci = paymentAmount - referralFee;
-          const agci = p.agci || 0;  // AGCI = GCI - House$ (calculated by DB trigger)
-          const houseNet = gci - agci;  // House$ = GCI - AGCI
+          // Shared helper, profit mode (all referral fees) — see src/lib/houseNet.ts
+          const { paymentAmount, referralFee, gci, agci, houseNet } = computeHouseNet(p, 'profit');
           const brokerSplits = agci;  // What brokers split = AGCI
           const mikeSplit = mikeSplitByPayment.get(p.id) || 0;
 
