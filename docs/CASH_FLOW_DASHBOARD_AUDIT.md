@@ -132,16 +132,8 @@ See §4 Verification for the findings behind these.
   - **Bank actual balance = QBO book balance + outstanding checks**
   Clearing: use QBO cleared status if the API exposes it (unconfirmed — see §4); otherwise a
   one-click "Cleared" in OVIS.
-- **Budget-driven outflows** (supersedes the prorated "Next 30 days operating" line above):
-  - Each budget line gets `pay_method` (`bank` | `amex`) and `due_day` (bank lines only).
-  - Bank-paid lines hit the calendar on `due_day`.
-  - AMEX-paid lines roll into the AMEX payment for their statement cycle. Config:
-    `AMEX_STATEMENT_CLOSE_DAY` (value needed from Mike), `AMEX_PAYMENT_DAY = 12`.
-  - Next AMEX payment = actual QBO AMEX liability balance. Future AMEX payments = sum of
-    budgeted amex lines for that cycle.
-  - An amex budget line is never counted separately on the calendar.
 
-### Added 2026-11-10 — deal team, review tracking, critical dates, nudges
+### Added 2026-11-10 — deal team, backlog
 
 Supersedes the "owning broker" and "Stale" (probability ≥ 50, 30 days) definitions in the
 2026-11-06 Needs-attention plan.
@@ -149,39 +141,14 @@ Supersedes the "owning broker" and "Stale" (probability ≥ 50, 30 days) definit
 1. **Deal team** = all brokers on the deal's `commission_split`, every name shown per row.
    (Not `deal.owner_id`. Note `deal_team` in the database is a role lookup table, not a
    membership table.)
-2. **`deal.last_reviewed_at`** — new column.
-   - Set **only** by human edits to `probability`, `fee`, `payment_date_estimated`, critical
-     dates, or an explicit "Still on track" confirm.
-   - Automated writes (triggers, recalcs, syncs, behind-schedule pushes) never touch it. So it
-     is set by the app/edit path, not by a generic `BEFORE UPDATE` trigger on `deal`.
-   - Backfill = `last_stage_change_at`.
-3. **Critical dates drive payment dates** (proposal; findings in §4C):
-   - `payment_date_estimated` derives per installment from the deal's critical dates when they
-     are entered — Lease: installment 1 = Contingency Date Expiration (fallback Lease / PSA
-     Effective Date), installment 2 = Estimated Open Date (fallback Rent Commencement Date);
-     Purchase: installment 1 = closing date. When a mapped critical date is missing, the
-     existing velocity estimate stays.
-   - Source is recorded in `payment_date_source`: `critical_date` (value already documented,
-     never used), `auto` (velocity), `broker_override` (manual — wins over both, as today).
-   - **Stage gate:** moving At Lease/PSA → Under Contract / Contingent requires Contingency
-     Date Expiration and Estimated Open Date before save.
-4. **Nudge triggers** (replace the 30-day stale rule):
-   - Payment due within 30, 14, 7 days: one nudge per threshold, skipped if `last_reviewed_at`
-     is after the payment entered that window.
-   - Past due (estimated < today, not received): weekly nudge until the date is updated or the
-     payment is received.
-   - Contingency date passed without a stage change: flag + nudge.
-   - Recipients: deal-team members other than the current user. Each nudge is a **drafted
-     email for Mike to approve; never auto-sent.** Nudges sent are logged so a threshold fires
-     once.
-5. **Needs-attention groups:** Missing fee, Missing payout date, Past due, Due in 30 days
-   unconfirmed, Contingency passed. Row actions: Update (slideout), Still on track,
-   Nudge &lt;name&gt;.
-6. **Backlog first.** A one-time cleanup view lists all past-due payments (37 today) in one
-   sortable list with inline date edit. **Nudges stay disabled** (one config flag, default off)
-   until Mike turns them on.
+2. **Backlog first.** A one-time cleanup view lists all past-due payments (37 today) in one
+   sortable list with inline date edit (v1). Nudges are v2 and stay disabled until Mike turns
+   them on.
 
-## 3. Phased plan (no code yet)
+Items 2–5 of this block (last_reviewed_at, critical dates → payment dates, stage gate, nudges)
+moved to **Phase v2 (deferred)**.
+
+## 3. Phased plan
 
 ### Phase 1 — Data foundations
 - Persist QBO Bank-type account balances with an `as_of` timestamp on each
@@ -191,9 +158,6 @@ Supersedes the "owning broker" and "Stale" (probability ≥ 50, 30 days) definit
 - List the 4 open active payments that have no `payment_date_estimated`, and have Mike fill
   them in, so the timeline has no silent holes.
 - Persist the QBO AMEX (Credit Card type) liability balance the same way as Bank.
-- Add `pay_method` / `due_day` per budget line. They describe the account, not the year, so
-  store them per `qb_account_id` (on `qb_account` or a small side table), not on each
-  `account_budget` year row. Mike tags the 63 lines in §4.
 - Outstanding checks: decide how QBO records the BofA checks (§4 open question 1), then run a
   minimal TransactionList call with the `cleared` filter to see if cleared status is usable.
 
@@ -225,30 +189,32 @@ constants.
 | 1 | Missing fee | Open deal with no `fee` / `gci` set | — | — |
 | 2 | Missing payout date | Active, unreceived payment with no `payment_date_estimated` | `payment_amount` | — |
 | 3 | Past due | `payment_date_estimated` < today (ET), `payment_received = false` | `payment_amount` | days past due |
-| 4 | Due in 30 days, unconfirmed | Due within `DUE_SOON_DAYS = 30` and `last_reviewed_at` is before the payment entered that window | `payment_amount` | days until due |
-| 5 | Contingency passed | Contingency Date Expiration < today and deal still in Under Contract / Contingent | `fee` | days since expiration |
 
-Row actions:
+v1 is read-only. Row action:
 - **Update** — opens `DealDetailsSlideout` (overlay-first per CLAUDE.md).
-- **Still on track** — sets `last_reviewed_at = now()`; nothing else changes.
-- **Nudge &lt;name&gt;** — one per deal-team member other than the current user; drafts an
-  email for Mike to approve (never auto-sends).
 
 **Open deal** = stage not `Lost` and not `Closed Paid` (there is no "closed-dead" stage).
 
-### Phase 2b — Review tracking, backlog cleanup, nudges
-1. Migration: `deal.last_reviewed_at` (backfill from `last_stage_change_at`); a nudge log table
-   (payment/deal, threshold, drafted_at, approved_at, recipient) with the CLAUDE.md grants block.
-2. Write `last_reviewed_at` from the human edit paths only (deal form, payment date edit,
-   critical-date edit, "Still on track").
-3. **Backlog cleanup view:** all past-due payments, sortable (date, amount, deal, team), inline
-   `payment_date_estimated` edit. Team clears it before nudges go on.
-4. Critical-date → payment-date derivation (§4C), as a change to the existing
-   `calculate_deal_payment_dates` pulled from the live definition — not a rebuild from the
-   old migration. Plus the At Lease/PSA → Under Contract stage gate in the UI.
-5. Nudge engine behind `NUDGES_ENABLED = false`: computes due nudges, drafts emails into an
-   approval queue for Mike. Nothing sends without his approval. Mike flips the flag after the
-   backlog is clear.
+
+### v1 build (2026-11-10) — on `/admin/budget/forecast`, extending it
+
+Replaces Phase 2's monthly safe-to-draw timeline and budget-driven opex for now.
+
+1. **QBO balance snapshots** — Bank + AMEX (Credit Card) balances saved to a snapshot table
+   with `fetched_at` (CLAUDE.md grants block), plus a "Refresh now" button.
+2. **`scheduled_payment`** — add/edit list: name, date *or* day_of_month, amount *or* "use QBO
+   AMEX balance". Seeded with AMEX on the 12th.
+3. **Outstanding checks** — referral fees / broker splits marked paid in OVIS, one-click
+   "Cleared". Shows QBO book balance and bank balance (book + outstanding).
+4. **45-day cash calendar** — start balance − scheduled payments − referral/split owed −
+   planned draws + commission payments on deals with probability ≥ 90 by
+   `payment_date_estimated`. Running balance per day, lowest point highlighted.
+5. **Needs attention** (read-only) — Missing fee, Missing payout date, Past due; deal-team names;
+   click opens the deal slideout.
+6. **Past-due cleanup view** — sortable list with inline `payment_date_estimated` edit.
+
+Plus the shared house-net helper (`profit` / `cash`); existing page totals must match
+pre-refactor exactly.
 
 ### Phase 3 — Claude / MCP access
 - `update_payment_date` tool on `ovis-mcp`: resolves `payment_id` or deal + installment,
@@ -257,6 +223,69 @@ Row actions:
 - Read-only cash-flow tools for Claude (e.g. available cash, upcoming payments by month,
   safe-to-draw), using the same helper as the page.
 - Merge to main before deploying the edge function.
+
+## Phase v2 (deferred)
+
+Moved out of v1 on 2026-11-10. Text kept as decided; nothing here is built.
+
+### Review tracking, critical dates, nudges
+
+- **`deal.last_reviewed_at`** — new column.
+   - Set **only** by human edits to `probability`, `fee`, `payment_date_estimated`, critical
+     dates, or an explicit "Still on track" confirm.
+   - Automated writes (triggers, recalcs, syncs, behind-schedule pushes) never touch it. So it
+     is set by the app/edit path, not by a generic `BEFORE UPDATE` trigger on `deal`.
+   - Backfill = `last_stage_change_at`.
+- **Critical dates drive payment dates** (proposal; findings in §4C):
+   - `payment_date_estimated` derives per installment from the deal's critical dates when they
+     are entered — Lease: installment 1 = Contingency Date Expiration (fallback Lease / PSA
+     Effective Date), installment 2 = Estimated Open Date (fallback Rent Commencement Date);
+     Purchase: installment 1 = closing date. When a mapped critical date is missing, the
+     existing velocity estimate stays.
+   - Source is recorded in `payment_date_source`: `critical_date` (value already documented,
+     never used), `auto` (velocity), `broker_override` (manual — wins over both, as today).
+   - **Stage gate:** moving At Lease/PSA → Under Contract / Contingent requires Contingency
+     Date Expiration and Estimated Open Date before save.
+- **Nudge triggers** (replace the 30-day stale rule):
+   - Payment due within 30, 14, 7 days: one nudge per threshold, skipped if `last_reviewed_at`
+     is after the payment entered that window.
+   - Past due (estimated < today, not received): weekly nudge until the date is updated or the
+     payment is received.
+   - Contingency date passed without a stage change: flag + nudge.
+   - Recipients: deal-team members other than the current user. Each nudge is a **drafted
+     email for Mike to approve; never auto-sent.** Nudges sent are logged so a threshold fires
+     once.
+- **Needs-attention v2 groups:** "Due in 30 days, unconfirmed" (due within 30 days and
+  `last_reviewed_at` before the payment entered that window) and "Contingency passed"
+  (Contingency Date Expiration < today, still Under Contract / Contingent).
+- **Row actions:** "Still on track" (sets `last_reviewed_at = now()`) and "Nudge <name>" (one per
+  deal-team member other than the current user; drafts an email for Mike to approve).
+
+### Build steps (formerly Phase 2b, minus the backlog view now in v1)
+
+1. Migration: `deal.last_reviewed_at` (backfill from `last_stage_change_at`); a nudge log table
+   (payment/deal, threshold, drafted_at, approved_at, recipient) with the CLAUDE.md grants block.
+2. Write `last_reviewed_at` from the human edit paths only (deal form, payment date edit,
+   critical-date edit, "Still on track").
+3. Critical-date → payment-date derivation (§4C), as a change to the existing
+   `calculate_deal_payment_dates` pulled from the live definition — not a rebuild from the
+   old migration. Plus the At Lease/PSA → Under Contract stage gate in the UI.
+4. Nudge engine behind `NUDGES_ENABLED = false`: computes due nudges, drafts emails into an
+   approval queue for Mike. Nothing sends without his approval. Mike flips the flag after the
+   backlog is clear.
+
+### Budget pay_method / AMEX cycle tagging
+
+- **Budget-driven outflows** (would supersede the prorated "Next 30 days operating" line in Decisions):
+  - Each budget line gets `pay_method` (`bank` | `amex`) and `due_day` (bank lines only).
+  - Bank-paid lines hit the calendar on `due_day`.
+  - AMEX-paid lines roll into the AMEX payment for their statement cycle. Config:
+    `AMEX_STATEMENT_CLOSE_DAY` (value needed from Mike), `AMEX_PAYMENT_DAY = 12`.
+  - Next AMEX payment = actual QBO AMEX liability balance. Future AMEX payments = sum of
+    budgeted amex lines for that cycle.
+  - An amex budget line is never counted separately on the calendar.
+- Storage: `pay_method` / `due_day` describe the account, not the year — store per
+  `qb_account_id`, not on each `account_budget` year row. Mike tags the 63 lines in §4B.
 
 ## 4. Verification (2026-11-10)
 
