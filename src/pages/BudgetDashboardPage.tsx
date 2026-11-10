@@ -2034,7 +2034,7 @@ export default function BudgetDashboardPage() {
                 className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
               >
                 <TrendingUp className="h-4 w-4" />
-                Cash Flow Forecast
+                Cash &amp; Profit Forecast
               </button>
               <button
                 onClick={() => navigate('/admin/budget/manage')}

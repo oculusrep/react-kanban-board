@@ -296,6 +296,17 @@ Behaviour notes:
   function refuses with "Referral check bank account not configured"; the OVIS paid flag still
   saves and the UI shows the error.
 
+### Finance hub placement (2026-11-10)
+
+- `/admin/finance` opens with a **Cash Position (45 days)** card
+  ([CashPositionCard.tsx](../src/components/cashflow/CashPositionCard.tsx)): QBO bank balance with
+  as-of time, 45-day low point (amount + date), red when the low is below the cash cushion. Click →
+  `/admin/budget/forecast?tab=cash`.
+- Cash cushion = `app_settings.cash_cushion_usd`, edited on Finance Settings (default 0).
+- The old "Cash Flow Forecast" card/tab is renamed **Profit Forecast** (`?tab=profit`; the old
+  `?tab=forecast` still works). It projects house net − budgeted opex by month; it was never a
+  cash view. Page title is now "Cash & Profit Forecast"; **Cash is the default tab**.
+
 ### Phase 3 — Claude / MCP access
 - `update_payment_date` tool on `ovis-mcp`: resolves `payment_id` or deal + installment,
   writes `payment_date_estimated`, audits old → new (same `audited()` wrapper as `update_deal`).

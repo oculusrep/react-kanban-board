@@ -102,7 +102,7 @@ interface MonthlyForecast {
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 
-type TabKey = 'forecast' | 'splits' | 'cash';
+type TabKey = 'cash' | 'profit' | 'splits';
 
 export default function CashFlowForecastPage() {
   const navigate = useNavigate();
@@ -110,10 +110,12 @@ export default function CashFlowForecastPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const tabParam = searchParams.get('tab');
-  const activeTab: TabKey = tabParam === 'splits' || tabParam === 'cash' ? tabParam : 'forecast';
+  // Cash is the default tab. 'forecast' is the old name for the Profit tab (kept for old links).
+  const activeTab: TabKey =
+    tabParam === 'splits' ? 'splits' : tabParam === 'profit' || tabParam === 'forecast' ? 'profit' : 'cash';
   const setActiveTab = (key: TabKey) => {
     const next = new URLSearchParams(searchParams);
-    if (key === 'forecast') next.delete('tab');
+    if (key === 'cash') next.delete('tab');
     else next.set('tab', key);
     setSearchParams(next, { replace: true });
   };
@@ -131,7 +133,7 @@ export default function CashFlowForecastPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    document.title = "Cash Flow Forecast | OVIS Admin";
+    document.title = "Cash & Profit Forecast | OVIS Admin";
     fetchData();
   }, [selectedYear]);
 
@@ -462,11 +464,11 @@ export default function CashFlowForecastPage() {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Cash Flow Forecast</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Cash &amp; Profit Forecast</h1>
               <p className="text-sm text-gray-500">Projected income vs budgeted expenses</p>
             </div>
           </div>
-          {activeTab === 'forecast' && (
+          {activeTab === 'profit' && (
             <div className="flex items-center gap-4">
               <select
                 value={selectedYear}
@@ -489,7 +491,7 @@ export default function CashFlowForecastPage() {
         </div>
 
         {/* Cash Position Answer Card — the primary question this page answers */}
-        {monthlyForecasts[answerMonthIdx] && (() => {
+        {activeTab === 'profit' && monthlyForecasts[answerMonthIdx] && (() => {
           const m = monthlyForecasts[answerMonthIdx];
           const companyColor = m.netCashFlow >= 0 ? '#002147' : '#A27B5C';
           return (
@@ -525,15 +527,26 @@ export default function CashFlowForecastPage() {
         <div className="mb-6 border-b border-gray-200">
           <nav className="-mb-px flex gap-6" aria-label="Tabs">
             <button
-              onClick={() => setActiveTab('forecast')}
+              onClick={() => setActiveTab('cash')}
               className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
-                activeTab === 'forecast'
+                activeTab === 'cash'
                   ? 'border-blue-600 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
-              style={activeTab === 'forecast' ? { borderColor: '#002147', color: '#002147' } : undefined}
+              style={activeTab === 'cash' ? { borderColor: '#002147', color: '#002147' } : undefined}
             >
-              Cash Flow Forecast
+              Cash (45 days)
+            </button>
+            <button
+              onClick={() => setActiveTab('profit')}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
+                activeTab === 'profit'
+                  ? 'border-blue-600 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              style={activeTab === 'profit' ? { borderColor: '#002147', color: '#002147' } : undefined}
+            >
+              Profit Forecast
             </button>
             <button
               onClick={() => setActiveTab('splits')}
@@ -545,17 +558,6 @@ export default function CashFlowForecastPage() {
               style={activeTab === 'splits' ? { borderColor: '#002147', color: '#002147' } : undefined}
             >
               Broker Splits
-            </button>
-            <button
-              onClick={() => setActiveTab('cash')}
-              className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
-                activeTab === 'cash'
-                  ? 'border-blue-600 text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              style={activeTab === 'cash' ? { borderColor: '#002147', color: '#002147' } : undefined}
-            >
-              Cash (45 days)
             </button>
           </nav>
         </div>
