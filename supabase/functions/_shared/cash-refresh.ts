@@ -123,6 +123,26 @@ export async function snapshotCashBalances(
     `query?query=${encodeURIComponent(query)}`
   )
   const accounts = result.QueryResponse.Account || []
+
+  // Extra accounts the cash model reads (v1.6): credit-facility liabilities (LOC payoff) and broker
+  // draw/advance accounts (journal_entry commission mappings — Arty's "Santos Real Estate Commission Draw").
+  const [{ data: facilities }, { data: drawMaps }] = await Promise.all([
+    supabase.from('credit_facility').select('qb_account_id').not('qb_account_id', 'is', null),
+    supabase.from('qb_commission_mapping').select('qb_credit_account_id')
+      .eq('payment_method', 'journal_entry').eq('is_active', true).not('qb_credit_account_id', 'is', null),
+  ])
+  const have = new Set(accounts.map((a) => a.Id))
+  const extraIds = [...new Set([
+    ...(facilities || []).map((f: { qb_account_id: string }) => f.qb_account_id),
+    ...(drawMaps || []).map((m: { qb_credit_account_id: string }) => m.qb_credit_account_id),
+  ])].filter((id) => id && !have.has(id))
+  if (extraIds.length > 0) {
+    const q = `SELECT * FROM Account WHERE Id IN (${extraIds.map((id) => `'${String(id).replace(/'/g, '')}'`).join(', ')})`
+    const extra = await qbApiRequest<{ QueryResponse: { Account?: QBBalanceAccount[] } }>(
+      connection, 'GET', `query?query=${encodeURIComponent(q)}`
+    )
+    accounts.push(...(extra.QueryResponse.Account || []))
+  }
   const fetchedAt = new Date().toISOString()
 
   if (accounts.length > 0) {

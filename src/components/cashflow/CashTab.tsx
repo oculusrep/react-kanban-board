@@ -21,6 +21,7 @@ const KIND_LABEL: Record<CashEventKind, string> = {
   split_owed: 'Split owed',
   split_bill: 'QBO Bill',
   commission: 'Commission',
+  tax: 'Tax reserve',
 };
 
 function formatDay(d: string) {
@@ -279,6 +280,7 @@ export default function CashTab() {
             owed={summary.owed}
             operatingBalance={hasBal ? summary.balanceToday : null}
             today={today}
+            artyAdvance={summary.arty.advanceNow}
             onOpenDeal={setSlideoutDealId}
             onChanged={reload}
           />

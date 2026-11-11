@@ -13,7 +13,9 @@ interface Draft {
   id?: string;
   name: string;
   kind: 'bill' | 'draw';
-  when: 'monthly' | 'date';
+  when: 'monthly' | 'date' | 'weeks';
+  every_n_weeks: string;
+  end_date: string;
   day_of_month: string;
   scheduled_date: string;
   source: 'amount' | 'qbo';
@@ -27,6 +29,8 @@ const emptyDraft: Draft = {
   name: '',
   kind: 'bill',
   when: 'monthly',
+  every_n_weeks: '2',
+  end_date: '',
   day_of_month: '1',
   scheduled_date: '',
   source: 'amount',
@@ -41,7 +45,9 @@ function toDraft(r: ScheduledPayment): Draft {
     id: r.id,
     name: r.name,
     kind: r.kind,
-    when: r.day_of_month ? 'monthly' : 'date',
+    when: r.every_n_weeks ? 'weeks' : r.day_of_month ? 'monthly' : 'date',
+    every_n_weeks: String(r.every_n_weeks ?? 2),
+    end_date: r.end_date ?? '',
     day_of_month: String(r.day_of_month ?? 1),
     scheduled_date: r.scheduled_date ?? '',
     source: r.qb_account_id ? 'qbo' : 'amount',
@@ -67,7 +73,9 @@ export function ScheduledPaymentsEditor({ rows, accounts, onChanged }: Props) {
     if (!draft.name.trim()) return setErr('Name is required');
     const dom = parseInt(draft.day_of_month, 10);
     if (draft.when === 'monthly' && !(dom >= 1 && dom <= 31)) return setErr('Day of month must be 1–31');
-    if (draft.when === 'date' && !draft.scheduled_date) return setErr('Pick a date');
+    if (draft.when !== 'monthly' && !draft.scheduled_date) return setErr(draft.when === 'weeks' ? 'Pick the first date' : 'Pick a date');
+    const weeks = parseInt(draft.every_n_weeks, 10);
+    if (draft.when === 'weeks' && !(weeks >= 1 && weeks <= 52)) return setErr('Every N weeks must be 1–52');
     if (draft.source === 'qbo' && !draft.qb_account_id) return setErr('Pick a QBO account');
     const amount = draft.amount.trim() === '' ? null : Number(draft.amount);
     if (draft.source === 'amount' && amount !== null && !(amount >= 0)) return setErr('Amount must be a positive number');
@@ -76,7 +84,9 @@ export function ScheduledPaymentsEditor({ rows, accounts, onChanged }: Props) {
       name: draft.name.trim(),
       kind: draft.kind,
       day_of_month: draft.when === 'monthly' ? dom : null,
-      scheduled_date: draft.when === 'date' ? draft.scheduled_date : null,
+      scheduled_date: draft.when !== 'monthly' ? draft.scheduled_date : null,
+      every_n_weeks: draft.when === 'weeks' ? weeks : null,
+      end_date: draft.when !== 'date' && draft.end_date ? draft.end_date : null,
       amount: draft.source === 'amount' ? amount : null,
       qb_account_id: draft.source === 'qbo' ? draft.qb_account_id : null,
       qb_payee_names: (() => {
@@ -130,12 +140,22 @@ export function ScheduledPaymentsEditor({ rows, accounts, onChanged }: Props) {
           <div className="flex flex-wrap items-center gap-1.5">
             <select value={draft.when} onChange={(e) => setDraft({ ...draft, when: e.target.value as Draft['when'] })}>
               <option value="monthly">Monthly on day</option>
+              <option value="weeks">Every N weeks from</option>
               <option value="date">Once on date</option>
             </select>
-            {draft.when === 'monthly' ? (
+            {draft.when === 'monthly' && (
               <input type="number" min={1} max={31} className="w-14" value={draft.day_of_month} onChange={(e) => setDraft({ ...draft, day_of_month: e.target.value })} />
-            ) : (
+            )}
+            {draft.when === 'weeks' && (
+              <input type="number" min={1} max={52} className="w-12" title="Weeks" value={draft.every_n_weeks} onChange={(e) => setDraft({ ...draft, every_n_weeks: e.target.value })} />
+            )}
+            {draft.when !== 'monthly' && (
               <input type="date" value={draft.scheduled_date} onChange={(e) => setDraft({ ...draft, scheduled_date: e.target.value })} />
+            )}
+            {draft.when !== 'date' && (
+              <label className="cf-note flex items-center gap-1">until
+                <input type="date" value={draft.end_date} onChange={(e) => setDraft({ ...draft, end_date: e.target.value })} />
+              </label>
             )}
             <select value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value as Draft['source'] })}>
               <option value="amount">Fixed amount</option>
@@ -181,7 +201,11 @@ export function ScheduledPaymentsEditor({ rows, accounts, onChanged }: Props) {
                     <div className="cf-strong">{r.name}{r.kind === 'draw' && <span className="cf-label ml-1.5">draw</span>}</div>
                     {r.qb_payee_names && r.qb_payee_names.length > 0 && <div className="cf-faint">QBO payee: {r.qb_payee_names.join(', ')}</div>}
                   </td>
-                  <td className="cf-num whitespace-nowrap">{r.day_of_month ? `day ${r.day_of_month}` : r.scheduled_date}</td>
+                  <td className="cf-num whitespace-nowrap">
+                    {r.every_n_weeks ? `every ${r.every_n_weeks}w from ${r.scheduled_date}` : r.day_of_month ? `day ${r.day_of_month}` : r.scheduled_date}
+                    {r.end_date && <div className="cf-faint">until {r.end_date}</div>}
+                    {r.payoff_qb_account_id && <div className="cf-faint">until paid off</div>}
+                  </td>
                   <td className="r">
                     {r.qb_account_id
                       ? <span className="cf-muted">QBO bal: {linked ?? r.qb_account_id}</span>
