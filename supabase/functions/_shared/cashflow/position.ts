@@ -3,8 +3,8 @@
  * Cash tab and planner use (docs/CASH_FLOW_DASHBOARD_AUDIT.md, v1.6 item 7).
  */
 import { buildCalendar, CASH_CONFIG, daysBetween } from './calendar.ts';
-import { CashData, STAGE } from './data.ts';
-import { buildCashEvents } from './events.ts';
+import { CashData } from './data.ts';
+import { buildCashEvents, isOpenPayment } from './events.ts';
 import { computeProjections } from './bundle.ts';
 import { Projection } from './projection.ts';
 
@@ -49,7 +49,7 @@ export function getCashPosition(data: CashData, today: string) {
   const owedTotal = s.owed.reduce((t, o) => t + o.amount, 0);
 
   const pastDue = data.payments
-    .filter((x) => !x.payment_received && x.deal?.stage_id !== STAGE.lost && x.payment_date_estimated && x.payment_date_estimated < today)
+    .filter((x) => isOpenPayment(x) && x.payment_date_estimated && x.payment_date_estimated < today)
     .map((x) => ({
       deal: x.deal?.deal_name || 'Unknown deal',
       payment: x.payment_name,

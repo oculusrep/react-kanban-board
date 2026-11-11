@@ -550,6 +550,27 @@ export async function deleteInvoice(
 }
 
 /**
+ * Void an invoice in QuickBooks. The invoice stays in QBO (amounts zeroed, marked "Voided") — unlike
+ * delete. Used by the payment write-off flow; never call it without an explicit human confirm.
+ * API: POST /invoice?operation=void with { Id, SyncToken }
+ * https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/invoice#void-an-invoice
+ */
+export async function voidInvoice(
+  connection: QBConnection,
+  invoiceId: string,
+  syncToken: string
+): Promise<{ Id: string; PrivateNote?: string; TotalAmt?: number }> {
+  console.log(`[QBO API] Voiding invoice ${invoiceId}`)
+  const result = await qbApiRequest<{ Invoice: { Id: string; PrivateNote?: string; TotalAmt?: number } }>(
+    connection,
+    'POST',
+    'invoice?operation=void',
+    { Id: invoiceId, SyncToken: syncToken }
+  )
+  return result.Invoice
+}
+
+/**
  * Update an invoice in QuickBooks (sparse update)
  * QBO requires SyncToken for optimistic locking
  */

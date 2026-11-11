@@ -86,7 +86,9 @@ export interface CashSummary {
   };
 }
 
-const isOpenPayment = (p: PaymentRow) => !p.payment_received && p.deal?.stage_id !== STAGE.lost;
+/** Still expected: not received, not on a Lost deal, not written off. */
+export const isOpenPayment = (p: PaymentRow) =>
+  !p.payment_received && p.deal?.stage_id !== STAGE.lost && !p.written_off_at;
 
 function dealLabel(p: PaymentRow) {
   return `${p.deal?.deal_name || 'Unknown deal'} — ${p.payment_name || 'Payment'}`;

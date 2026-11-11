@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { daysBetween } from '../../lib/cashCalendar';
-import { CashData, STAGE } from './useCashData';
+import { CashData } from './useCashData';
+import { isOpenPayment } from './cashEvents';
+import WriteOffPaymentDialog, { WriteOffTarget } from '../payments/WriteOffPaymentDialog';
 import { Money, money } from './cfTheme';
 
 interface Props {
@@ -19,10 +21,11 @@ export function PastDueCleanup({ data, today, onOpenDeal, onChanged }: Props) {
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
+  const [writeOff, setWriteOff] = useState<WriteOffTarget | null>(null);
 
   const rows = useMemo(() => {
     const list = data.payments
-      .filter((p) => !p.payment_received && p.deal?.stage_id !== STAGE.lost && p.payment_date_estimated && p.payment_date_estimated < today)
+      .filter((p) => isOpenPayment(p) && p.payment_date_estimated && p.payment_date_estimated < today)
       .map((p) => ({
         id: p.id,
         dealId: p.deal_id,
@@ -32,6 +35,8 @@ export function PastDueCleanup({ data, today, onOpenDeal, onChanged }: Props) {
         team: ((p.deal_id && data.dealTeam.get(p.deal_id)) || []).join(', '),
         probability: Number(p.deal?.probability) || 0,
         amount: Number(p.payment_amount) || 0,
+        qbInvoiceId: p.qb_invoice_id,
+        qbInvoiceNumber: p.qb_invoice_number,
         date: p.payment_date_estimated!,
         days: daysBetween(p.payment_date_estimated!, today),
       }));
@@ -86,6 +91,7 @@ export function PastDueCleanup({ data, today, onOpenDeal, onChanged }: Props) {
               {header('date', 'Estimated')}
               {header('days', 'Overdue', true)}
               <th>New date</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -104,12 +110,29 @@ export function PastDueCleanup({ data, today, onOpenDeal, onChanged }: Props) {
                   <input type="date" min={today} disabled={saving === r.id} onChange={(e) => saveDate(r.id, e.target.value)} />
                   {saved.has(r.id) && <span className="cf-pos ml-1">saved</span>}
                 </td>
+                <td className="r">
+                  <button
+                    className="cf-btn"
+                    onClick={() => setWriteOff({
+                      id: r.id, payment_name: r.payment, payment_amount: r.amount, qb_invoice_id: r.qbInvoiceId,
+                      qb_invoice_number: r.qbInvoiceNumber, deal_id: r.dealId, deal_name: r.deal,
+                    })}
+                  >
+                    Write off
+                  </button>
+                </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={7} className="cf-muted">No past-due payments.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} className="cf-muted">No past-due payments.</td></tr>}
           </tbody>
         </table>
       </div>
+      <WriteOffPaymentDialog
+        payment={writeOff}
+        isOpen={!!writeOff}
+        onClose={() => setWriteOff(null)}
+        onDone={onChanged}
+      />
     </div>
   );
 }

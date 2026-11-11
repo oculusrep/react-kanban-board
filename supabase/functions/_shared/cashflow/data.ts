@@ -74,6 +74,11 @@ export interface PaymentRow {
   payment_received: boolean | null;
   payment_received_date: string | null;
   referral_fee_planned_pay_date: string | null;
+  /** Written off (won't be collected): excluded from calendar, projection, past-due and needs-attention. */
+  write_off_reason: string | null;
+  written_off_at: string | null;
+  qb_invoice_id: string | null;
+  qb_invoice_number: string | null;
   deal: DealLite | null;
 }
 
@@ -214,6 +219,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
         .select(
           `id, deal_id, payment_name, payment_amount, referral_fee_usd, referral_fee_paid, agci,
                    payment_date_estimated, payment_received, payment_received_date, referral_fee_planned_pay_date,
+                   write_off_reason, written_off_at, qb_invoice_id, qb_invoice_number,
                    deal:deal_id (${DEAL_SELECT})`,
         )
         .eq("is_active", true)

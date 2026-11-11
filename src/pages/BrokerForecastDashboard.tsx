@@ -197,6 +197,7 @@ export default function BrokerForecastDashboard() {
           )
         `)
         .eq('is_active', true)
+        .is('written_off_at', null) // written-off payments won't be collected
         .or('payment_received.eq.false,payment_received.is.null');
 
       // Create a broker lookup map for owner names

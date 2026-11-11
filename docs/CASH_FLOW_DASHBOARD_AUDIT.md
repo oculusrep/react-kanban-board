@@ -721,3 +721,66 @@ Live-data results on 2026-11-10 (Operating book balance $5,516; today $19,123):
   There's no Apr/Jun payment because the base is ≤ 0 in the months before them.
 - **MCP:** `get_cash_position` in ovis-mcp v0.7.0 (`cash_position.ts`), admin-only. Checked locally
   under Deno against live data; the output is about 21 KB.
+
+## Payment write-off (2026-11-10)
+
+**Not reusing `is_active = false`.** OVIS has an "archived" state (`is_active = false` + `deleted_at`),
+but it's the wrong fit:
+- it hides the payment from the deal's Payments tab (`usePaymentData` filters `is_active = true`);
+- `usePaymentLifecycle.restoreArchivedPayments` re-activates *all* archived payments when a deal leaves
+  Lost, which would silently undo a write-off;
+- `sync_payment_names` renumbers "Payment n of m" when `is_active` changes.
+
+So a written-off payment stays active and visible, with its own columns.
+
+**Schema** (`20261110223127_payment_write_off.sql`):
+- `payment.write_off_reason`, `written_off_at`, `written_off_by`, `qb_invoice_voided_at`,
+  `qb_invoice_voided_by`.
+- CHECK: the reason and `written_off_at` are set together.
+- Trigger `payment_write_off_guard`:
+  - stamps who and when from the reason, and clears them on undo;
+  - rejects a blank reason;
+  - rejects marking a written-off payment received.
+
+**Excluded wherever a payment counts as "still expected":**
+- Shared `isOpenPayment` covers the cash calendar, the 12-month projection, past-due cleanup,
+  needs-attention and MCP `get_cash_position`.
+- Explicit `.is('written_off_at', null)` filters on the Profit Forecast, Broker Splits (CashflowDashboard),
+  the Broker Forecast dashboard, Aged/Upcoming payments and the CFO agent tools (`cfo-tools.ts`).
+- It still shows in the deal's payment list as "Written off <date>" with the reason.
+
+**Actions:**
+- "Write off…" in the slideout payment-row menu and on each Past-due cleanup row. The reason is
+  required (`WriteOffPaymentDialog`).
+- If the payment has `qb_invoice_id`, the next step offers **Void QBO invoice**.
+  - Each one needs an explicit confirm; it's never automatic.
+  - New edge function `quickbooks-void-invoice` (admin only; requires the payment to be written off;
+    `POST invoice?operation=void`).
+  - QBO keeps the invoice at $0. Nothing is deleted.
+- "Undo write-off" is allowed until the invoice is voided.
+- `quickbooks-sync-invoice` now refuses (409) to create, resync or delete for a written-off payment, so
+  a voided invoice can't be revived or a new one created by accident.
+
+**Closed Paid prompt:**
+- After a write-off, or after ticking "received" in the slideout: if every active payment on the deal is
+  received or written off, OVIS offers to move the deal to Closed Paid.
+- The closed date defaults to the latest received date, else today (ET), and can be edited.
+- It's a prompt, not automatic.
+- Received ticks made elsewhere (payment dashboard) don't prompt yet.
+
+**Lost deals (checked 2026-11-10):**
+- Every forecast path excludes Lost deals by stage in code: cash model, Profit Forecast,
+  CashflowDashboard, Broker Forecast, Aged/Upcoming, CFO tools.
+- **But the database trigger `auto_archive_lost_deal_payments` has a bug.** It matches
+  `payment_received = false`, which never matches NULL.
+  - 23 active unpaid payments ($465,376) sit on Lost deals, all with `payment_received` NULL.
+  - They don't reach the forecasts only because of the code-level stage filter.
+  - Fix + backfill: `20261110223636_lost_archive_null_received.sql`, rebuilt from the live definition.
+    **Held — not applied** until Mike approves.
+
+**Deploy (not done — waiting for Mike):**
+- Apply `20261110223127_payment_write_off.sql`, plus the held Lost fix if approved.
+- Push to main.
+- Deploy `quickbooks-void-invoice`, `quickbooks-sync-invoice`, `ovis-mcp` and `cfo-query`
+  (imports `cfo-tools.ts`).
+- **The migration must go before the frontend:** the cash loader selects the new columns.

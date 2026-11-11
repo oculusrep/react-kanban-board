@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { daysBetween } from '../../lib/cashCalendar';
-import { CashData, STAGE } from './useCashData';
+import { CashData } from './useCashData';
+import { isOpenPayment } from './cashEvents';
 import { Money } from './cfTheme';
 
 interface Props {
@@ -24,7 +25,7 @@ interface Row {
 export function NeedsAttentionPanel({ data, today, onOpenDeal }: Props) {
   const groups = useMemo(() => {
     const team = (dealId: string | null) => (dealId && data.dealTeam.get(dealId)) || [];
-    const open = data.payments.filter((p) => !p.payment_received && p.deal?.stage_id !== STAGE.lost);
+    const open = data.payments.filter(isOpenPayment);
 
     const missingFee: Row[] = data.openDeals
       .filter((d) => !(Number(d.fee) > 0) && !(Number(d.gci) > 0))

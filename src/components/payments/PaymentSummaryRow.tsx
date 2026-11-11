@@ -5,6 +5,7 @@ import { formatDateString } from '../../utils/dateUtils';
 import { supabase } from '../../lib/supabaseClient';
 import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
 import DatePickerInput from './DatePickerInput';
+import WriteOffPaymentDialog, { ClosedPaidPrompt, closedPaidSuggestion, voidQboInvoice } from './WriteOffPaymentDialog';
 
 interface PaymentSummaryRowProps {
   payment: Payment;
@@ -31,6 +32,29 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [syncingToQB, setSyncingToQB] = useState(false);
   const [qbSyncMessage, setQbSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showWriteOff, setShowWriteOff] = useState(false);
+  const [settlePrompt, setSettlePrompt] = useState<{ closedDate: string } | null>(null);
+  const writtenOffAt: string | null = (payment as any).written_off_at ?? null;
+  const writeOffReason: string | null = (payment as any).write_off_reason ?? null;
+  const invoiceVoided = !!(payment as any).qb_invoice_voided_at;
+
+  const handleReceivedChange = async (checked: boolean) => {
+    await onUpdatePayment({ payment_received: checked });
+    if (checked && payment.deal_id) setSettlePrompt(await closedPaidSuggestion(payment.deal_id));
+  };
+
+  const handleUndoWriteOff = async () => {
+    if (!window.confirm('Undo the write-off? The payment goes back into the forecast.')) return;
+    await onUpdatePayment({ write_off_reason: null } as any);
+    if (onRefresh) onRefresh();
+  };
+
+  const handleVoidInvoice = async () => {
+    const r = await voidQboInvoice({ id: payment.id, qb_invoice_id: (payment as any).qb_invoice_id, qb_invoice_number: (payment as any).qb_invoice_number });
+    if (r.ok) setQbSyncMessage({ type: 'success', text: 'QBO invoice voided' });
+    else if (!('cancelled' in r)) setQbSyncMessage({ type: 'error', text: r.error || 'Void failed' });
+    if (onRefresh) onRefresh();
+  };
 
   // Sync payment to QuickBooks
   const handleSyncToQuickBooks = async () => {
@@ -225,22 +249,30 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         <input
           type="checkbox"
           checked={payment.payment_received || false}
-          onChange={(e) => onUpdatePayment({ payment_received: e.target.checked })}
-          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded flex-shrink-0"
+          disabled={!!writtenOffAt}
+          title={writtenOffAt ? 'Written off — undo the write-off to mark it received' : undefined}
+          onChange={(e) => handleReceivedChange(e.target.checked)}
+          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded flex-shrink-0 disabled:opacity-40"
         />
-        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-          payment.payment_received ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-        }`}>
-          {payment.payment_received ? 'Received' : 'Pending'}
-        </span>
+        {writtenOffAt ? (
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-gray-200 text-gray-700" title={writeOffReason || undefined}>
+            Written off
+          </span>
+        ) : (
+          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+            payment.payment_received ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+          }`}>
+            {payment.payment_received ? 'Received' : 'Pending'}
+          </span>
+        )}
       </div>
 
       {/* QuickBooks Status - 2 cols */}
       <div className="col-span-2">
         {payment.qb_invoice_id ? (
           <div className="flex flex-col">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 w-fit">
-              QB Synced
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium w-fit ${invoiceVoided ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-800'}`}>
+              {invoiceVoided ? 'QB Voided' : 'QB Synced'}
             </span>
             <span className="text-xs text-gray-500 mt-0.5">
               #{payment.qb_invoice_number}
@@ -255,7 +287,12 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
 
       {/* Date - 2 cols (reduced from 3) */}
       <div className="col-span-2">
-        {payment.payment_received ? (
+        {writtenOffAt ? (
+          <div className="w-full px-2 py-1 text-sm">
+            <div className="font-medium text-gray-700">Written off {formatDateString(writtenOffAt.slice(0, 10))}</div>
+            {writeOffReason && <div className="text-xs text-gray-500 break-words">{writeOffReason}</div>}
+          </div>
+        ) : payment.payment_received ? (
           // Show static paid date when payment is received
           <div className="w-full px-2 py-1 text-sm">
             <div className="font-medium text-green-800">
@@ -340,6 +377,30 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
                   🔓 Clear Override
                 </button>
               )}
+              {!payment.payment_received && !writtenOffAt && (
+                <button
+                  onClick={() => { setShowWriteOff(true); setShowMenu(false); }}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Write off…
+                </button>
+              )}
+              {writtenOffAt && (payment as any).qb_invoice_id && !invoiceVoided && (
+                <button
+                  onClick={() => { setShowMenu(false); handleVoidInvoice(); }}
+                  className="block w-full text-left px-4 py-2 text-sm text-amber-800 hover:bg-gray-100"
+                >
+                  Void QBO invoice #{(payment as any).qb_invoice_number || (payment as any).qb_invoice_id}
+                </button>
+              )}
+              {writtenOffAt && !invoiceVoided && (
+                <button
+                  onClick={() => { setShowMenu(false); handleUndoWriteOff(); }}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Undo write-off
+                </button>
+              )}
               <button
                 onClick={() => {
                   onDeletePayment();
@@ -358,6 +419,33 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
           </span>
         )}
       </div>
+
+      <WriteOffPaymentDialog
+        isOpen={showWriteOff}
+        onClose={() => setShowWriteOff(false)}
+        onDone={() => { if (onRefresh) onRefresh(); }}
+        payment={{
+          id: payment.id,
+          payment_name: payment.payment_name ?? null,
+          payment_amount: payment.payment_amount ?? null,
+          qb_invoice_id: (payment as any).qb_invoice_id ?? null,
+          qb_invoice_number: (payment as any).qb_invoice_number ?? null,
+          deal_id: payment.deal_id ?? null,
+          deal_name: deal.deal_name ?? null,
+        }}
+      />
+      {settlePrompt && payment.deal_id && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setSettlePrompt(null)}>
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <ClosedPaidPrompt
+              dealId={payment.deal_id}
+              dealName={deal.deal_name}
+              closedDate={settlePrompt.closedDate}
+              onDone={(moved) => { setSettlePrompt(null); if (moved && onRefresh) onRefresh(); }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Override Modal */}
       <PaymentAmountOverrideModal
