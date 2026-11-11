@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { daysBetween } from '../../lib/cashCalendar';
 import { CashData, DealLite, PaymentRow, STAGE } from './useCashData';
 import { isOpenPayment } from './cashEvents';
-import { Money, money } from './cfTheme';
+import { Money, money, OutsideCf } from './cfTheme';
 import WriteOffPaymentDialog, { WriteOffTarget } from '../payments/WriteOffPaymentDialog';
 
 /**
@@ -377,7 +377,7 @@ export function CleanupScreen({ data, today, initialGroup = 'all', onOpenDeal, o
         number of payments and commission splits (same as the Payments tab). Total {money(visible.reduce((t, r) => t + r.fee, 0))} in fees across {visible.length} deals shown.
       </div>
 
-      <WriteOffPaymentDialog payment={writeOff} isOpen={!!writeOff} onClose={() => setWriteOff(null)} onDone={onChanged} />
+      <OutsideCf><WriteOffPaymentDialog payment={writeOff} isOpen={!!writeOff} onClose={() => setWriteOff(null)} onDone={onChanged} /></OutsideCf>
       {losing && (
         <MarkLostDialog
           row={losing}

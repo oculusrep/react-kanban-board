@@ -11,7 +11,7 @@ import { CleanupSummary } from './CleanupScreen';
 import { OwedOutPanel, owedUrgency } from './OwedOutPanel';
 import { ProjectionPanel } from './ProjectionPanel';
 import { CreditFacilityEditor } from './CreditFacilityEditor';
-import { CF, Money, money, useCfFonts } from './cfTheme';
+import { CF, Money, money, OutsideCf, useCfFonts } from './cfTheme';
 
 const KIND_LABEL: Record<CashEventKind, string> = {
   scheduled: 'Scheduled',
@@ -293,12 +293,12 @@ export default function CashTab() {
         <CreditFacilityEditor rows={data.credit} onChanged={reload} />
       </div>
 
-      <DealDetailsSlideout
+      <OutsideCf><DealDetailsSlideout
         dealId={slideoutDealId}
         isOpen={!!slideoutDealId}
         onClose={() => setSlideoutDealId(null)}
         onDealUpdated={reload}
-      />
+      /></OutsideCf>
     </div>
   );
 }

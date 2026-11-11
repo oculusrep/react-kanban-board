@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { ReactNode, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import './cf.css';
 
 /** Dark "mission control" palette — mirrors the CSS variables in cf.css (for Recharts, which needs literals). */
@@ -49,4 +50,12 @@ export function money(n: number, cents = false): string {
 export function Money({ v, tone = 'plain', cents = false, className = '' }: { v: number; tone?: 'plain' | 'in' | 'warn' | 'bad'; cents?: boolean; className?: string }) {
   const color = v < -0.004 || tone === 'bad' ? 'cf-neg' : tone === 'in' && v > 0 ? 'cf-pos' : tone === 'warn' ? 'cf-warn' : '';
   return <span className={`cf-num ${color} ${className}`}>{money(v, cents)}</span>;
+}
+
+/**
+ * Render light OVIS UI (deal slideout, dialogs) outside the dark `.cf` scope. Mounted inside `.cf`, its
+ * `.cf input/select` rules turn the slideout's form fields black and shrink them — they read as disabled.
+ */
+export function OutsideCf({ children }: { children: ReactNode }) {
+  return typeof document === 'undefined' ? <>{children}</> : createPortal(children, document.body);
 }

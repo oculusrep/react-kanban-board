@@ -4,7 +4,7 @@ import DealDetailsSlideout from '../DealDetailsSlideout';
 import { todayET } from '../../lib/cashCalendar';
 import { useCashData } from './useCashData';
 import { CleanupScreen, GROUPS, GroupId } from './CleanupScreen';
-import { useCfFonts } from './cfTheme';
+import { OutsideCf, useCfFonts } from './cfTheme';
 
 /** /admin/budget/forecast?tab=cleanup[&group=pastDue|missingDate|missingFee|noPayments] */
 export default function CleanupTab() {
@@ -21,7 +21,7 @@ export default function CleanupTab() {
   return (
     <>
       <CleanupScreen data={data} today={todayET()} initialGroup={initialGroup} onOpenDeal={setSlideoutDealId} onChanged={reload} />
-      <DealDetailsSlideout dealId={slideoutDealId} isOpen={!!slideoutDealId} onClose={() => setSlideoutDealId(null)} onDealUpdated={reload} />
+      <OutsideCf><DealDetailsSlideout dealId={slideoutDealId} isOpen={!!slideoutDealId} onClose={() => setSlideoutDealId(null)} onDealUpdated={reload} /></OutsideCf>
     </>
   );
 }
