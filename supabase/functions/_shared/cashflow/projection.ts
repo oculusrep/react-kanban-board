@@ -77,10 +77,6 @@ export function monthLabel(key: string) {
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-function lastDayOfMonth(key: string): string {
-  const [y, m] = key.split('-').map(Number);
-  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-}
 
 /** Committed events, or committed + below-threshold commissions weighted by probability. */
 export function scenarioEvents(events: CashEvent[], upside: CashEvent[], scenario: Scenario): CashEvent[] {

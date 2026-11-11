@@ -784,3 +784,33 @@ So a written-off payment stays active and visible, with its own columns.
 - Deploy `quickbooks-void-invoice`, `quickbooks-sync-invoice`, `ovis-mcp` and `cfo-query`
   (imports `cfo-tools.ts`).
 - **The migration must go before the frontend:** the cash loader selects the new columns.
+
+## Cleanup screen (2026-11-11)
+
+`/admin/budget/forecast?tab=cleanup` (optionally `&group=pastDue|missingDate|missingFee|noPayments`).
+It replaces the Needs-attention panel and the Past-due cleanup table. The Cash tab now shows a compact
+count per group, linking here.
+
+**One row per deal, tagged with every group it falls in:**
+- **Past due:** an unreceived, not written-off payment estimated before today.
+- **Missing payout date:** such a payment with no estimate.
+- **Missing fee:** an open deal (not Lost / Closed Paid) with no fee and no GCI.
+- **No payments:** an open deal with a fee > 0 and zero active payment rows. There were 22 on
+  2026-11-11.
+
+**Columns:** deal, client, stage, deal team, fee, payments, earliest est., overdue, probability.
+Sortable, with stage and broker filters.
+
+**Inline edits save on blur:**
+- **Fee** writes `deal.flat_fee_override`. `deal.fee` is set by the `update_deal_calculations` trigger
+  (`flat_fee_override ?? deal_value × commission %`), so writing `fee` directly would be overwritten.
+- **Probability** writes `deal.probability`.
+- **Earliest est.** edits that payment's `payment_date_estimated`. Expand the row to edit each payment.
+
+**Actions:**
+- **Write off** (one open payment) or **Write off…** (several: expand and pick one). Uses the
+  write-off dialog, including the QBO void step.
+- **Mark Lost** requires a loss reason (same rule as the Kanban). The DB trigger archives the unpaid
+  payments.
+- **Generate payments** (No-payments rows) calls the same `generate_payments_for_deal` RPC as the
+  Payments tab, so it uses the deal's `number_of_payments` and its commission splits.

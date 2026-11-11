@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { computeHouseNet } from "../lib/houseNet";
 import { useAuth } from "../contexts/AuthContext";
 import CashflowDashboard from "../components/reports/CashflowDashboard";
+import CleanupTab from '../components/cashflow/CleanupTab';
 import CashTab from "../components/cashflow/CashTab";
 import {
   ArrowLeft,
@@ -102,7 +103,7 @@ interface MonthlyForecast {
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 
-type TabKey = 'cash' | 'profit' | 'splits';
+type TabKey = 'cash' | 'cleanup' | 'profit' | 'splits';
 
 export default function CashFlowForecastPage() {
   const navigate = useNavigate();
@@ -112,11 +113,15 @@ export default function CashFlowForecastPage() {
   const tabParam = searchParams.get('tab');
   // Cash is the default tab. 'forecast' is the old name for the Profit tab (kept for old links).
   const activeTab: TabKey =
-    tabParam === 'splits' ? 'splits' : tabParam === 'profit' || tabParam === 'forecast' ? 'profit' : 'cash';
+    tabParam === 'splits' ? 'splits'
+    : tabParam === 'cleanup' ? 'cleanup'
+    : tabParam === 'profit' || tabParam === 'forecast' ? 'profit'
+    : 'cash';
   const setActiveTab = (key: TabKey) => {
     const next = new URLSearchParams(searchParams);
     if (key === 'cash') next.delete('tab');
     else next.set('tab', key);
+    if (key !== 'cleanup') next.delete('group');
     setSearchParams(next, { replace: true });
   };
 
@@ -440,9 +445,10 @@ export default function CashFlowForecastPage() {
   };
 
   // Cash tab: dark "mission control" shell, scoped to this tab only (see components/cashflow/cf.css).
-  if (activeTab === 'cash') {
+  if (activeTab === 'cash' || activeTab === 'cleanup') {
     const tabs: { key: TabKey; label: string }[] = [
       { key: 'cash', label: 'Cash (45 days)' },
+      { key: 'cleanup', label: 'Cleanup' },
       { key: 'profit', label: 'Profit Forecast' },
       { key: 'splits', label: 'Broker Splits' },
     ];
@@ -462,7 +468,7 @@ export default function CashFlowForecastPage() {
             </button>
           ))}
         </nav>
-        <CashTab />
+        {activeTab === 'cleanup' ? <CleanupTab /> : <CashTab />}
       </div>
     );
   }
@@ -565,6 +571,12 @@ export default function CashFlowForecastPage() {
               style={(activeTab as TabKey) === 'cash' ? { borderColor: '#002147', color: '#002147' } : undefined}
             >
               Cash (45 days)
+            </button>
+            <button
+              onClick={() => setActiveTab('cleanup')}
+              className="whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            >
+              Cleanup
             </button>
             <button
               onClick={() => setActiveTab('profit')}

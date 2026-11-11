@@ -7,8 +7,7 @@ import { CASH_CONFIG, CashEventKind, buildCalendar, todayET } from '../../lib/ca
 import { useCashData } from './useCashData';
 import { buildCashEvents } from './cashEvents';
 import { ScheduledPaymentsEditor } from './ScheduledPaymentsEditor';
-import { NeedsAttentionPanel } from './NeedsAttentionPanel';
-import { PastDueCleanup } from './PastDueCleanup';
+import { CleanupSummary } from './CleanupScreen';
 import { OwedOutPanel, owedUrgency } from './OwedOutPanel';
 import { ProjectionPanel } from './ProjectionPanel';
 import { CreditFacilityEditor } from './CreditFacilityEditor';
@@ -290,11 +289,9 @@ export default function CashTab() {
 
       <div className="cf-grid grid-cols-1 lg:grid-cols-3">
         <ScheduledPaymentsEditor rows={data.scheduled} accounts={data.balances} onChanged={reload} />
-        <NeedsAttentionPanel data={data} today={today} onOpenDeal={setSlideoutDealId} />
+        <CleanupSummary data={data} today={today} />
         <CreditFacilityEditor rows={data.credit} onChanged={reload} />
       </div>
-
-      <PastDueCleanup data={data} today={today} onOpenDeal={setSlideoutDealId} onChanged={reload} />
 
       <DealDetailsSlideout
         dealId={slideoutDealId}

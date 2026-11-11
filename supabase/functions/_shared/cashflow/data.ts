@@ -58,6 +58,8 @@ export interface DealLite {
   probability: number | null;
   fee: number | null;
   gci: number | null;
+  flat_fee_override: number | null;
+  number_of_payments: number | null;
   client: { client_name: string | null } | null;
   referral_payee: { client_name: string | null } | null;
 }
@@ -133,6 +135,8 @@ export interface CashData {
   credit: CreditFacility[];
   /** app_settings.cash_cushion_usd (0 if unset). */
   cushion: number;
+  /** deal_stage id → label. */
+  stageLabels: Map<string, string>;
   /** app_settings.tax_reserve_pct (placeholder; null if unset). */
   taxReservePct: number | null;
   /** broker_id → QBO draw/advance account id (journal_entry commission mappings). */
@@ -168,7 +172,7 @@ async function inChunks<T>(
 }
 
 const DEAL_SELECT =
-  "id, deal_name, stage_id, probability, fee, gci, client:client_id (client_name), referral_payee:referral_payee_client_id (client_name)";
+  "id, deal_name, stage_id, probability, fee, gci, flat_fee_override, number_of_payments, client:client_id (client_name), referral_payee:referral_payee_client_id (client_name)";
 
 /** Any supabase-js client (browser or Deno). Kept structural so this file has no package import. */
 // deno-lint-ignore no-explicit-any
@@ -311,7 +315,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
     dealTeam.set(row.deal_id, list);
   }
 
-  const [{ data: credit, error: creditErr }, { data: settings }, { data: maps }] = await Promise.all([
+  const [{ data: credit, error: creditErr }, { data: settings }, { data: maps }, { data: stages }] = await Promise.all([
     supabase
       .from("credit_facility")
       .select("id, name, qb_account_id, credit_limit, available, apr, active, notes, updated_at")
@@ -323,6 +327,7 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
       .eq("payment_method", "journal_entry")
       .eq("is_active", true)
       .not("broker_id", "is", null),
+    supabase.from("deal_stage").select("id, label"),
   ]);
   if (creditErr) throw creditErr;
   const setting = (key: string) => {
@@ -344,6 +349,9 @@ export async function loadCashData(supabase: Client): Promise<CashData> {
     cushion,
     taxReservePct,
     advanceAccounts,
+    stageLabels: new Map<string, string>(
+      ((stages || []) as { id: string; label: string }[]).map((r): [string, string] => [r.id, r.label]),
+    ),
     balances,
     balancesFetchedAt,
     bankTxns,
