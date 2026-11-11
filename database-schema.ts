@@ -11324,6 +11324,11 @@ export type Database = {
           pz_window_start: string | null
           radius_miles: number
           research_mode: string | null
+          density_estimate: Json | null
+          leads_not_pursued: Json | null
+          permit_volume: Json | null
+          signal_rationale: string | null
+          signal_strength: string | null
           site_submit_id: string
           state: string
           sweep_chunk_index: number | null
@@ -11348,6 +11353,11 @@ export type Database = {
           pz_window_start?: string | null
           radius_miles?: number
           research_mode?: string | null
+          density_estimate?: Json | null
+          leads_not_pursued?: Json | null
+          permit_volume?: Json | null
+          signal_rationale?: string | null
+          signal_strength?: string | null
           site_submit_id: string
           state?: string
           sweep_chunk_index?: number | null
@@ -11372,6 +11382,11 @@ export type Database = {
           pz_window_start?: string | null
           radius_miles?: number
           research_mode?: string | null
+          density_estimate?: Json | null
+          leads_not_pursued?: Json | null
+          permit_volume?: Json | null
+          signal_rationale?: string | null
+          signal_strength?: string | null
           site_submit_id?: string
           state?: string
           sweep_chunk_index?: number | null
@@ -18813,6 +18828,11 @@ export type Database = {
           p_needs_review?: string
           p_output_tokens?: number
           p_run_id: string
+          p_density_estimate?: Json
+          p_leads_not_pursued?: Json
+          p_permit_volume?: Json
+          p_signal_rationale?: string
+          p_signal_strength?: string
         }
         Returns: Json
       }

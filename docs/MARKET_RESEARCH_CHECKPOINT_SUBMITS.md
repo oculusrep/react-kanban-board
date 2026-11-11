@@ -91,3 +91,31 @@ treats that as a failed chunk, as before.
   approval modal.
 - A late checkpoint on a reaped run revives it to `running`. If that run was a sweep chunk, the
   chunk is already `failed` and the engine has moved on.
+
+## Quick-mode recommendation (2026-11-11)
+
+Migration `20261111084848_research_run_quick_signal.sql`. The Quick run's "is a Deep run worth
+it" output used to exist only in the Telegram message. It now lives on `research_run`, and the
+approval screen shows it for runs where `research_mode = 'quick'`. Sweeps and Deep runs show
+nothing extra.
+
+`submit_research_report` takes five more optional args. They work like `needs_review`: each call
+overwrites them, so every checkpoint must carry them, and a call that omits them erases them.
+
+| Tool field / column | Type | Shape |
+|---|---|---|
+| `signal_strength` | text | exactly `strong` \| `moderate` \| `weak` (CHECK) |
+| `signal_rationale` | text | free text |
+| `density_estimate` | jsonb array | `{municipality*, meetings_in_window, meetings_sampled, meetings_with_residential, extrapolated_count, not_sampled_reason}` |
+| `permit_volume` | jsonb array | `{municipality*, result_count, no_count_reason}` |
+| `leads_not_pursued` | jsonb array | `{name*, seen_in*, municipality, note}` |
+
+`*` = required, non-empty string. Counts are non-negative integers or null.
+
+- **Validation rejects; it doesn't coerce.** The edge function checks every field and returns a
+  specific error, for example `signal_strength must be exactly one of ... (got "Moderate-to-Strong")`.
+  The table CHECKs (one value of three; the detail fields must be arrays) are the backstop. A
+  rejected call stages nothing. The previous checkpoint stands.
+- **UI:** `ResearchSignalPanel` (`src/components/shared/`) takes the run's five fields as props, so
+  it can mount anywhere. Leads are open by default, with Copy all (one line per lead: `name — seen_in
+  (municipality) — note`) and a per-name Copy. Density and permits are collapsed.

@@ -11,7 +11,9 @@
  *   3. update_checklist_status(research_run_id, boundary_municipality_id, status, notes?)
  *   4. submit_research_report(research_run_id, candidate_records[], needs_review?, alt_avenues?, final?)
  *      Cumulative checkpoint after each municipality (replaces the staged set);
- *      only final: true moves the run to awaiting_review.
+ *      only final: true moves the run to awaiting_review. Quick runs also carry
+ *      signal_strength / signal_rationale / density_estimate / permit_volume /
+ *      leads_not_pursued (same overwrite-every-call semantics).
  *
  * Auth: bearer token in Authorization header, validated against env OVIS_MCP_BEARER_TOKEN.
  * Writes go through SECURITY DEFINER RPCs (see 20260607120000_market_research_mcp_rpcs.sql)
@@ -131,7 +133,7 @@ const TOOLS = [
   {
     name: 'submit_research_report',
     description:
-      'Stage candidate development records for a research_run, with server-side duplicate detection against existing municipal_project rows. Call it after EACH municipality with EVERY record found so far in this run — each call REPLACES the run\'s staged set, so a call that leaves a record out deletes it. Carry needs_review and alt_avenues cumulatively on every call too; each call overwrites them, and omitting them clears them. Set final: true ONLY on the last call, after every municipality is done: that is the only call that closes the run and sends it to review. Calls without final: true are checkpoints — the run stays open, and if you stop early, the last checkpoint is what survives. Returns { staged_count, final, state }.',
+      'Stage candidate development records for a research_run, with server-side duplicate detection against existing municipal_project rows. Call it after EACH municipality with EVERY record found so far in this run — each call REPLACES the run\'s staged set, so a call that leaves a record out deletes it. Carry needs_review and alt_avenues cumulatively on every call too; each call overwrites them, and omitting them clears them. Set final: true ONLY on the last call, after every municipality is done: that is the only call that closes the run and sends it to review. Calls without final: true are checkpoints — the run stays open, and if you stop early, the last checkpoint is what survives. Quick runs: also send the Deep-run recommendation (signal_strength, signal_rationale, density_estimate, permit_volume, leads_not_pursued) on EVERY call, cumulatively — like needs_review, each call overwrites them and a call that omits them ERASES them. A malformed recommendation field (e.g. signal_strength "moderate-to-strong") rejects the WHOLE call and nothing from it is staged; fix the field and resend. Deep runs omit all five. Returns { staged_count, final, state }.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -202,6 +204,59 @@ const TOOLS = [
         alt_avenues: {
           type: 'string',
           description: 'Free-text notes about alternative research avenues taken (developer association, county news outlet, builder forum, etc.). Cumulative: send the full text so far on every call (each call overwrites it).',
+        },
+        // Quick-mode Deep-run recommendation. Deep runs omit all five.
+        signal_strength: {
+          type: ['string', 'null'],
+          enum: ['strong', 'moderate', 'weak', null],
+          description: 'QUICK RUNS. Is a Deep run worth it here? Exactly one of "strong", "moderate", "weak" (lowercase). No in-between values: "moderate-to-strong" rejects the whole call — pick one and explain in signal_rationale. Cumulative: resend on every call; omitting it erases it.',
+        },
+        signal_rationale: {
+          type: ['string', 'null'],
+          description: 'QUICK RUNS. Which signals drove signal_strength. Cumulative: resend on every call; omitting it erases it.',
+        },
+        density_estimate: {
+          type: ['array', 'null'],
+          description: 'QUICK RUNS. One entry per municipality. Either the sample figures, or not_sampled_reason when no meetings could be sampled. Cumulative: resend on every call; omitting it erases it.',
+          items: {
+            type: 'object',
+            properties: {
+              municipality: { type: 'string', description: 'REQUIRED. Municipality name as on the checklist.' },
+              meetings_in_window: { type: ['integer', 'null'], minimum: 0, description: 'Total P&Z/council meetings in the run window.' },
+              meetings_sampled: { type: ['integer', 'null'], minimum: 0, description: 'How many of those you actually read.' },
+              meetings_with_residential: { type: ['integer', 'null'], minimum: 0, description: 'How many sampled meetings had residential items.' },
+              extrapolated_count: { type: ['integer', 'null'], minimum: 0, description: 'Estimated residential items across the whole window.' },
+              not_sampled_reason: { type: ['string', 'null'], description: 'Why none could be sampled (no agendas online, portal down, ...). Set this instead of the counts.' },
+            },
+            required: ['municipality'],
+          },
+        },
+        permit_volume: {
+          type: ['array', 'null'],
+          description: 'QUICK RUNS. One entry per municipality: the permit search result count, or no_count_reason. Cumulative: resend on every call; omitting it erases it.',
+          items: {
+            type: 'object',
+            properties: {
+              municipality: { type: 'string', description: 'REQUIRED. Municipality name as on the checklist.' },
+              result_count: { type: ['integer', 'null'], minimum: 0, description: 'Residential permit results in the window.' },
+              no_count_reason: { type: ['string', 'null'], description: 'Why there is no count: login required, no public search, portal not drivable, ...' },
+            },
+            required: ['municipality'],
+          },
+        },
+        leads_not_pursued: {
+          type: ['array', 'null'],
+          description: 'QUICK RUNS. Names (projects, developers, subdivisions) that surfaced but you did not chase — where a Deep run should start. Cumulative: resend on every call; omitting it erases it.',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'REQUIRED. The project / developer / subdivision name as it appeared.' },
+              seen_in: { type: 'string', description: 'REQUIRED. Where you saw it — document and date, e.g. "Senoia P&Z agenda 2026-03-12, item 4".' },
+              municipality: { type: ['string', 'null'], description: 'Municipality name, if known.' },
+              note: { type: ['string', 'null'], description: 'Anything else worth knowing (acreage, applicant, why not pursued).' },
+            },
+            required: ['name', 'seen_in'],
+          },
         },
         // Usage accounting. OVIS cannot derive these — the token counts live in
         // the agent's own LLM responses. Omitting them leaves the run's cost
@@ -312,6 +367,7 @@ async function toolSubmitResearchReport(args: any) {
   const {
     research_run_id, candidate_records, needs_review, alt_avenues,
     estimated_cost_cents, input_tokens, output_tokens, final,
+    signal_strength, signal_rationale, density_estimate, permit_volume, leads_not_pursued,
   } = args ?? {};
   if (typeof research_run_id !== 'string') throw new ToolError('research_run_id is required');
   if (!Array.isArray(candidate_records)) throw new ToolError('candidate_records must be an array');
@@ -328,6 +384,12 @@ async function toolSubmitResearchReport(args: any) {
     return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
   };
 
+  // Quick-mode recommendation. Validated here so the agent gets a specific
+  // message; research_run's CHECKs are the backstop. Unlike usage figures these
+  // are rejected, not coerced — "Moderate-to-Strong" must not quietly become
+  // something. The rejection fails the whole call; the previous checkpoint stands.
+  const signal = validateSignal({ signal_strength, signal_rationale, density_estimate, permit_volume, leads_not_pursued });
+
   const supabase = getSupabase();
   const { data, error } = await supabase.rpc('submit_research_report', {
     p_run_id: research_run_id,
@@ -338,11 +400,63 @@ async function toolSubmitResearchReport(args: any) {
     p_input_tokens: usageInt(input_tokens),
     p_output_tokens: usageInt(output_tokens),
     p_final: isFinal,
+    p_signal_strength: signal.signal_strength,
+    p_signal_rationale: signal.signal_rationale,
+    p_density_estimate: signal.density_estimate,
+    p_permit_volume: signal.permit_volume,
+    p_leads_not_pursued: signal.leads_not_pursued,
   });
   if (error) throw new ToolError(`submit_research_report failed: ${error.message}`);
   // data = { staged_count, final, state } — echo it so the agent can confirm
   // whether the run is still open (state 'running') or closed for review.
   return { ...(data as Record<string, unknown>), research_run_id };
+}
+
+const SIGNAL_STRENGTHS = ['strong', 'moderate', 'weak'];
+
+function validateSignal(a: Record<string, unknown>) {
+  const nil = (v: unknown) => v === null || v === undefined;
+  const reject = (msg: string): never => {
+    throw new ToolError(`${msg} — nothing from this call was staged; fix it and resend the whole call.`);
+  };
+
+  if (!nil(a.signal_strength) && !SIGNAL_STRENGTHS.includes(a.signal_strength as string)) {
+    reject(`signal_strength must be exactly one of "strong", "moderate", "weak" (got ${JSON.stringify(a.signal_strength)})`);
+  }
+  if (!nil(a.signal_rationale) && typeof a.signal_rationale !== 'string') {
+    reject('signal_rationale must be a string');
+  }
+
+  const isInt = (v: unknown) => nil(v) || (Number.isInteger(v) && (v as number) >= 0);
+  const isStr = (v: unknown) => nil(v) || typeof v === 'string';
+  const nonEmpty = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+
+  const checkArray = (
+    field: string, v: unknown, required: string[], ints: string[], strs: string[],
+  ) => {
+    if (nil(v)) return null;
+    if (!Array.isArray(v)) reject(`${field} must be an array of objects`);
+    (v as unknown[]).forEach((e, i) => {
+      if (typeof e !== 'object' || e === null || Array.isArray(e)) reject(`${field}[${i}] must be an object`);
+      const o = e as Record<string, unknown>;
+      for (const k of required) if (!nonEmpty(o[k])) reject(`${field}[${i}].${k} is required (non-empty string)`);
+      for (const k of ints) if (!isInt(o[k])) reject(`${field}[${i}].${k} must be a non-negative integer or null`);
+      for (const k of strs) if (!isStr(o[k])) reject(`${field}[${i}].${k} must be a string or null`);
+    });
+    return v;
+  };
+
+  return {
+    signal_strength: (a.signal_strength ?? null) as string | null,
+    signal_rationale: (a.signal_rationale ?? null) as string | null,
+    density_estimate: checkArray('density_estimate', a.density_estimate, ['municipality'],
+      ['meetings_in_window', 'meetings_sampled', 'meetings_with_residential', 'extrapolated_count'],
+      ['not_sampled_reason']),
+    permit_volume: checkArray('permit_volume', a.permit_volume, ['municipality'],
+      ['result_count'], ['no_count_reason']),
+    leads_not_pursued: checkArray('leads_not_pursued', a.leads_not_pursued, ['name', 'seen_in'],
+      [], ['municipality', 'note']),
+  };
 }
 
 class ToolError extends Error {

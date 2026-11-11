@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { geocodingService } from '../../services/geocodingService';
 import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../services/placementPrecision';
 import { usePermissions } from '../../hooks/usePermissions';
+import { ResearchSignalPanel, type ResearchSignal } from './ResearchSignalPanel';
 
 interface ResearchRunApprovalModalProps {
   // Exactly one of researchRunId | sweepId. sweepId opens the UNIFIED approval:
@@ -48,6 +49,13 @@ interface RunRow {
   state: string;
   needs_review: string | null;
   alt_avenues: string | null;
+  research_mode: string | null;
+  // Quick-mode Deep-run recommendation (null on Deep runs).
+  signal_strength: ResearchSignal['signal_strength'];
+  signal_rationale: string | null;
+  density_estimate: ResearchSignal['density_estimate'];
+  permit_volume: ResearchSignal['permit_volume'];
+  leads_not_pursued: ResearchSignal['leads_not_pursued'];
 }
 interface ChecklistRow {
   boundary_municipality_id: string;
@@ -510,7 +518,7 @@ export default function ResearchRunApprovalModal({
         // ---- single-run mode (unchanged) ----
         const { data: runRow, error: runErr } = await supabase
           .from('research_run')
-          .select('id, triggered_at, radius_miles, state, needs_review, alt_avenues')
+          .select('id, triggered_at, radius_miles, state, needs_review, alt_avenues, research_mode, signal_strength, signal_rationale, density_estimate, permit_volume, leads_not_pursued')
           .eq('id', researchRunId!)
           .single();
         if (runErr) throw runErr;
@@ -2252,6 +2260,8 @@ export default function ResearchRunApprovalModal({
 
           {!loading && (run || isSweep) && (
             <>
+              {/* Quick runs: the Deep-run recommendation, next to the records it's about */}
+              {!isSweep && run?.research_mode === 'quick' && <ResearchSignalPanel signal={run} />}
               {/* Checklist (collapsible) — single-run only */}
               {!isSweep && (
               <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
