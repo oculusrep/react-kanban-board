@@ -699,3 +699,25 @@ Build order is as given. Design notes are mine, written before building.
    tax reserve.
    - The pure cash logic moves to `supabase/functions/_shared/cashflow/` (explicit `.ts` imports, no
      React). The `src/` modules re-export it, so the UI and the MCP tool run the same code.
+
+### v1.6 as built (2026-11-10)
+
+Migration `20261110211904_cash_flow_v1_6.sql` (applied to prod and recorded). Code is in
+`supabase/functions/_shared/cashflow/` (`calendar`, `data`, `events`, `projection`, `bundle`,
+`position`); the `src/` modules re-export it.
+
+Live-data results on 2026-11-10 (Operating book balance $5,516; today $19,123):
+- **45-day low:** −$19,907 on Dec 18.
+- **Steady owner pay:** $0 committed and $0 with pipeline. No flat amount fits in either scenario, and
+  there's no start month within 12 months. The window starts $14.5K under the $20K cushion, and the
+  no-draw path ends at −$161K (committed) / −$34K (pipeline).
+- **Take-home:** $0 in every month in both scenarios. Under the new rule, every month is followed by a
+  dip below the cushion.
+- **LOC payoff:** Jun 14, 2027. QBO 1150040002 balance $72,681.37; six payments of $11,523.77, then a
+  last payment of $3,538.75.
+- **Arty advance:** $0 in QBO now. Projected draws of $4,167 in the 45-day window aren't recouped yet,
+  because no commission with an Arty split lands in that window.
+- **Tax reserve (25% placeholder, committed):** $2,688 on Jan 15, 2027 and $2,032 on Sep 15, 2027.
+  There's no Apr/Jun payment because the base is ≤ 0 in the months before them.
+- **MCP:** `get_cash_position` in ovis-mcp v0.7.0 (`cash_position.ts`), admin-only. Checked locally
+  under Deno against live data; the output is about 21 KB.

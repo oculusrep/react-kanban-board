@@ -22,6 +22,9 @@
  * CALLER's own mailbox and log every write to mcp_audit_log; the static token
  * acts for OVIS_MCP_OWNER_EMAIL (default mike@oculusrep.com).
  *
+ * Cash (cash_position.ts, docs/CASH_FLOW_DASHBOARD_AUDIT.md v1.6): get_cash_position — read-only,
+ * admin-only (is_admin() as the OAuth caller; the static token acts for the owner).
+ *
  * Intel (same module, docs/KNOWLEDGE_CAPTURE.md): log_intel_note files through
  * ovis-knowledge-capture's own `file` action and so needs an OAuth caller — it
  * runs as them, like the panel does. find_intel_note reads the intel_search RPC.
@@ -47,8 +50,9 @@ import {
   type Ctx, type InvokeFn,
 } from './voice_triage.ts';
 import { supabaseStore } from './voice_triage_store.ts';
+import { CASH_TOOLS, toolGetCashPosition } from './cash_position.ts';
 
-const SERVER_INFO = { name: 'ovis-mcp', version: '0.6.1' };
+const SERVER_INFO = { name: 'ovis-mcp', version: '0.7.0' };
 
 /** Link that opens a listing's review panel in OVIS (timeline, sources, conflicts, comp). */
 const OVIS_ORIGIN = 'https://ovis.oculusrep.com';
@@ -182,8 +186,8 @@ const LISTING_TOOLS = [
   },
 ] as const;
 
-/** What tools/list answers: the listing tools, then the voice-triage desk. */
-const TOOLS = [...LISTING_TOOLS, ...VOICE_TOOLS];
+/** What tools/list answers: the listing tools, the voice-triage desk, then cash (admin-only). */
+const TOOLS = [...LISTING_TOOLS, ...VOICE_TOOLS, ...CASH_TOOLS];
 
 // ----------------------------------------------------------------------------
 // Auth
@@ -636,6 +640,8 @@ const TOOL_IMPLS: Record<string, (args: unknown, caller: Caller) => Promise<unkn
   create_va_task: createVaTask,
   list_recent_listings: toolListRecentListings,
   listing_activity: toolListingActivity,
+  get_cash_position: (args: unknown, caller: Caller) =>
+    toolGetCashPosition(args, caller, getService(), SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, (m) => new ToolError(m)),
   ...Object.fromEntries(Object.entries(VOICE_TOOL_IMPLS).map(([name, impl]) => [
     name,
     async (args: unknown, caller: Caller) => {
