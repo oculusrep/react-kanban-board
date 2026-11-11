@@ -647,3 +647,55 @@ keep the light layout. The planner summary stays light for printing.
   - Bottom: Scheduled payments, Needs attention and Credit lines in a row, then Past-due cleanup.
 - **Tables:** compact, sticky headers, hover highlight only, money right-aligned; negatives use a true
   minus sign ("−") and are red.
+
+## v1.6 — remaining work for Thursday 2026-11-12 (Mike, 2026-11-10)
+
+Build order is as given. Design notes are mine, written before building.
+
+1. **Take-home rule.** Take-home in month M is the largest amount Mike can take at the end of M such
+   that, with nothing else taken, no later day in the 12-month window drops below the cushion. The
+   check runs on the path with no LOC draws.
+   - Formally: `min(cash_M − cushion, min_future_balance − cushion)`, floored at 0, after the
+     month-end LOC paydown.
+   - Applies to both scenarios. Take-home is never followed by borrowing: if any later day is below
+     the cushion even with nothing taken, take-home is 0.
+2. **LOC payment until payoff.**
+   - Each snapshot also reads the LOC liability account (QBO 1150040002 "Line of Credit- American
+     Express"; $72,681.37 on 2026-11-10, including the entered 11/13 payment). It's linked through
+     `credit_facility.qb_account_id`.
+   - The scheduled $11,523.77 runs only until the balance is paid; the last payment is the remainder.
+     The payoff month is shown. Without a QBO balance it's flagged and runs 12 months.
+   - Simplification: the whole payment counts against the balance. The 11/13 payment was actually
+     $10,329.19 principal + $1,194.58 interest, but the payoff month comes out the same either way
+     (7th payment).
+3. **Every N weeks.** `scheduled_payment.every_n_weeks` uses `scheduled_date` as the anchor, with an
+   optional `end_date`. Noree's three one-off rows become one row: every 2 weeks, $495, anchored
+   11/20, no end.
+4. **Arty advances.**
+   - The advance balance is Arty's draws not yet recouped. It starts at the live QBO balance of
+     "Santos Real Estate Commission Draw" (1150040000, the account `process-arty-commission` reads)
+     and grows with each future scheduled draw (`scheduled_payment.advance_broker_id`).
+   - Any Arty split (expected commission or split owed) is paid as split − outstanding advance,
+     floored at 0, and the advance drops by the amount recouped. Applied in date order, per scenario.
+   - Shown in Money owed out as "advanced to Arty" (information only).
+5. **Steady monthly owner pay.** The largest flat X taken at the end of every month in the window with
+   no day below the cushion and no LOC draws. Found by binary search on the no-draw path, for both
+   scenarios.
+   - If X is $0 starting now, it reports the earliest month a positive X could start, judged from
+     that month onward.
+   - Shown at the top of the take-home section and on the planner. No payroll schedule for Mike;
+     owner pay replaces it.
+6. **Tax reserve.** `app_settings.tax_reserve_pct` (placeholder 0.25).
+   - Base per month = owner pay + business net income, i.e. commission cash in − business outflows.
+     Owner pay is excluded from outflows, so the base doesn't depend on it. LOC principal is not an
+     expense; referral fees and splits are already netted out of inflows.
+   - Accrues monthly from the current month and is paid Jan 15, Apr 15, Jun 15 and Sep 15 (the amount
+     accrued through the previous month end).
+   - Labelled "Tax reserve (placeholder 25% — confirm with CPA)". Projection only: no tax payment
+     date falls inside the current 45 days.
+7. **MCP `get_cash_position`** (read-only, ovis-mcp). Returns the same numbers as the UI: balances,
+   the 45-day summary, the 12-month committed vs pipeline projection, take-home, steady owner pay,
+   LOC draws and what repays them, money owed out, the Arty advance, past-due payments, cushion and
+   tax reserve.
+   - The pure cash logic moves to `supabase/functions/_shared/cashflow/` (explicit `.ts` imports, no
+     React). The `src/` modules re-export it, so the UI and the MCP tool run the same code.
