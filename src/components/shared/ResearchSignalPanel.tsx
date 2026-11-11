@@ -86,16 +86,44 @@ function Section({ title, open, onToggle, children }: {
   );
 }
 
-export function ResearchSignalPanel({ signal }: { signal: ResearchSignal }) {
+// First two sentences of the rationale, for the at-a-glance view. Splits only on
+// terminal punctuation followed by whitespace and a capital/digit/quote, so
+// decimals ("2.5 mi") don't split; an abbreviation like "St. Johns" may, which
+// only costs a slightly shorter preview — the full text is one click away.
+function firstTwoSentences(text: string): { head: string; rest: boolean } {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  const parts = flat.split(/(?<=[.!?])\s+(?=[A-Z0-9"“(])/);
+  const head = parts.slice(0, 2).join(' ');
+  return { head, rest: parts.length > 2 };
+}
+
+export interface StagedTotals {
+  records: number;
+  units: number;
+  // Records with no unit count. Without this the units figure silently
+  // understates whenever the agent couldn't source a count.
+  noCount: number;
+}
+
+export function ResearchSignalPanel({ signal, totals }: { signal: ResearchSignal; totals?: StagedTotals }) {
   const leads = asArray<LeadEntry>(signal.leads_not_pursued);
   const density = asArray<DensityEntry>(signal.density_estimate);
   const permits = asArray<PermitEntry>(signal.permit_volume);
-  const [showLeads, setShowLeads] = useState(true);
-  const [showDensity, setShowDensity] = useState(false);
-  const [showPermits, setShowPermits] = useState(false);
+  // Display-only collapse: every field is still stored and reachable below.
+  const [showFullRationale, setShowFullRationale] = useState(false);
+  const [showLeads, setShowLeads] = useState(false);
+  const [openLeads, setOpenLeads] = useState<Set<number>>(new Set());
+  const [showSupporting, setShowSupporting] = useState(false);
 
   const badge = signal.signal_strength ? BADGE[signal.signal_strength] : null;
   const nothing = !badge && !signal.signal_rationale && !leads.length && !density.length && !permits.length;
+  const preview = signal.signal_rationale ? firstTwoSentences(signal.signal_rationale) : null;
+  const toggleLead = (i: number) =>
+    setOpenLeads((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
 
   return (
     <div className="border rounded-md" style={{ borderColor: '#8FA9C8', backgroundColor: '#FFFFFF' }}>
@@ -108,8 +136,26 @@ export function ResearchSignalPanel({ signal }: { signal: ResearchSignal }) {
             <span className="text-xs" style={{ color: '#8FA9C8' }}>no signal recorded</span>
           )}
         </div>
-        {signal.signal_rationale && (
-          <p className="text-sm whitespace-pre-wrap" style={{ color: '#002147' }}>{signal.signal_rationale}</p>
+        {totals && (
+          <div className="text-sm" style={{ color: '#4A6B94' }}>
+            {totals.records.toLocaleString()} record{totals.records === 1 ? '' : 's'} · {totals.units.toLocaleString()} units
+            {totals.noCount > 0 && <span style={{ color: '#A27B5C' }}> · {totals.noCount} with no count</span>}
+          </div>
+        )}
+        {preview && (
+          showFullRationale ? (
+            <p className="text-sm whitespace-pre-wrap" style={{ color: '#002147' }}>
+              {signal.signal_rationale}{' '}
+              <button type="button" onClick={() => setShowFullRationale(false)} className="text-xs underline" style={{ color: '#4A6B94' }}>less</button>
+            </p>
+          ) : (
+            <div>
+              <p className="text-sm line-clamp-2" style={{ color: '#002147' }}>{preview.head}</p>
+              {(preview.rest || preview.head.length > 160) && (
+                <button type="button" onClick={() => setShowFullRationale(true)} className="text-xs underline" style={{ color: '#4A6B94' }}>more</button>
+              )}
+            </div>
+          )
         )}
         {nothing && (
           <p className="text-xs" style={{ color: '#4A6B94' }}>
@@ -119,75 +165,95 @@ export function ResearchSignalPanel({ signal }: { signal: ResearchSignal }) {
       </div>
 
       {leads.length > 0 && (
-        <Section title={`Leads not pursued (${leads.length})`} open={showLeads} onToggle={() => setShowLeads((v) => !v)}>
-          <div className="flex justify-end mb-1">
+        <div className="border-t px-3 py-1.5" style={{ borderColor: '#E2E8F0' }}>
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={() => setShowLeads((v) => !v)}
+                    className="text-left text-xs font-medium min-w-0 flex-1" style={{ color: '#002147' }}>
+              <span style={{ color: '#4A6B94' }}>{showLeads ? '▾' : '▸'}</span> Leads not pursued ({leads.length})
+              {!showLeads && (
+                <span className="font-normal" style={{ color: '#4A6B94' }}>: {leads.map((l) => l.name).join(' · ')}</span>
+              )}
+            </button>
             <CopyButton text={leads.map(leadLine).join('\n')} label="Copy all" />
           </div>
-          <ul className="space-y-1.5">
-            {leads.map((l, i) => (
-              <li key={i} className="flex items-start justify-between gap-2 text-sm">
-                <div className="min-w-0 select-text">
-                  <div className="font-medium" style={{ color: '#002147' }}>
-                    {l.name}
-                    {l.municipality && <span className="font-normal" style={{ color: '#8FA9C8' }}> · {l.municipality}</span>}
+          {showLeads && (
+            <ul className="mt-1 space-y-1">
+              {leads.map((l, i) => (
+                <li key={i} className="text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <button type="button" onClick={() => toggleLead(i)} className="text-left min-w-0 select-text"
+                            title="Show where it was seen">
+                      <span className="text-xs" style={{ color: '#8FA9C8' }}>{openLeads.has(i) ? '▾' : '▸'} </span>
+                      <span className="font-medium" style={{ color: '#002147' }}>{l.name}</span>
+                      {l.municipality && <span style={{ color: '#8FA9C8' }}> · {l.municipality}</span>}
+                    </button>
+                    <CopyButton text={l.name} label="Copy" />
                   </div>
-                  <div className="text-xs" style={{ color: '#4A6B94' }}>Seen in: {l.seen_in}</div>
-                  {l.note && <div className="text-xs" style={{ color: '#4A6B94' }}>{l.note}</div>}
-                </div>
-                <CopyButton text={l.name} label="Copy" />
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      {density.length > 0 && (
-        <Section title="Agenda density estimate" open={showDensity} onToggle={() => setShowDensity((v) => !v)}>
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ color: '#4A6B94' }}>
-                <th className="text-left font-medium py-0.5">Municipality</th>
-                <th className="text-right font-medium">Meetings</th>
-                <th className="text-right font-medium">Sampled</th>
-                <th className="text-right font-medium">w/ residential</th>
-                <th className="text-right font-medium">Est. items</th>
-              </tr>
-            </thead>
-            <tbody style={{ color: '#002147' }}>
-              {density.map((d, i) => (
-                <tr key={i} className="border-t" style={{ borderColor: '#E2E8F0' }}>
-                  <td className="py-0.5">{d.municipality}</td>
-                  {d.not_sampled_reason && d.meetings_sampled == null ? (
-                    <td colSpan={4} className="text-right" style={{ color: '#A27B5C' }}>Not sampled — {d.not_sampled_reason}</td>
-                  ) : (
-                    <>
-                      <td className="text-right">{n(d.meetings_in_window)}</td>
-                      <td className="text-right">{n(d.meetings_sampled)}</td>
-                      <td className="text-right">{n(d.meetings_with_residential)}</td>
-                      <td className="text-right font-semibold">{n(d.extrapolated_count)}</td>
-                    </>
+                  {openLeads.has(i) && (
+                    <div className="pl-4 select-text">
+                      <div className="text-xs" style={{ color: '#4A6B94' }}>Seen in: {l.seen_in}</div>
+                      {l.note && <div className="text-xs" style={{ color: '#4A6B94' }}>{l.note}</div>}
+                    </div>
                   )}
-                </tr>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </Section>
+            </ul>
+          )}
+        </div>
       )}
 
-      {permits.length > 0 && (
-        <Section title="Permit volume" open={showPermits} onToggle={() => setShowPermits((v) => !v)}>
-          <ul className="text-xs space-y-0.5">
-            {permits.map((p, i) => (
-              <li key={i} className="flex justify-between gap-2">
-                <span style={{ color: '#002147' }}>{p.municipality}</span>
-                {typeof p.result_count === 'number' ? (
-                  <span className="font-semibold" style={{ color: '#002147' }}>{p.result_count.toLocaleString()} results</span>
-                ) : (
-                  <span style={{ color: '#A27B5C' }}>{p.no_count_reason || 'no count'}</span>
-                )}
-              </li>
-            ))}
-          </ul>
+      {(density.length > 0 || permits.length > 0) && (
+        <Section title="Supporting data (agenda density, permit volume)" open={showSupporting} onToggle={() => setShowSupporting((v) => !v)}>
+          {density.length > 0 && (
+            <>
+              <div className="text-xs font-medium mb-0.5" style={{ color: '#002147' }}>Agenda density estimate</div>
+              <table className="w-full text-xs mb-2">
+                <thead>
+                  <tr style={{ color: '#4A6B94' }}>
+                    <th className="text-left font-medium py-0.5">Municipality</th>
+                    <th className="text-right font-medium">Meetings</th>
+                    <th className="text-right font-medium">Sampled</th>
+                    <th className="text-right font-medium">w/ residential</th>
+                    <th className="text-right font-medium">Est. items</th>
+                  </tr>
+                </thead>
+                <tbody style={{ color: '#002147' }}>
+                  {density.map((d, i) => (
+                    <tr key={i} className="border-t" style={{ borderColor: '#E2E8F0' }}>
+                      <td className="py-0.5">{d.municipality}</td>
+                      {d.not_sampled_reason && d.meetings_sampled == null ? (
+                        <td colSpan={4} className="text-right" style={{ color: '#A27B5C' }}>Not sampled — {d.not_sampled_reason}</td>
+                      ) : (
+                        <>
+                          <td className="text-right">{n(d.meetings_in_window)}</td>
+                          <td className="text-right">{n(d.meetings_sampled)}</td>
+                          <td className="text-right">{n(d.meetings_with_residential)}</td>
+                          <td className="text-right font-semibold">{n(d.extrapolated_count)}</td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {permits.length > 0 && (
+            <>
+              <div className="text-xs font-medium mb-0.5" style={{ color: '#002147' }}>Permit volume</div>
+              <ul className="text-xs space-y-0.5">
+                {permits.map((p, i) => (
+                  <li key={i} className="flex justify-between gap-2">
+                    <span style={{ color: '#002147' }}>{p.municipality}</span>
+                    {typeof p.result_count === 'number' ? (
+                      <span className="font-semibold" style={{ color: '#002147' }}>{p.result_count.toLocaleString()} results</span>
+                    ) : (
+                      <span style={{ color: '#A27B5C' }}>{p.no_count_reason || 'no count'}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </Section>
       )}
     </div>

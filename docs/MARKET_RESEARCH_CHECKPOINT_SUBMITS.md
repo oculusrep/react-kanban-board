@@ -119,3 +119,23 @@ overwrites them, so every checkpoint must carry them, and a call that omits them
 - **UI:** `ResearchSignalPanel` (`src/components/shared/`) takes the run's five fields as props, so
   it can mount anywhere. Leads are open by default, with Copy all (one line per lead: `name — seen_in
   (municipality) — note`) and a per-name Copy. Density and permits are collapsed.
+
+## Approval screen simplification (2026-11-11)
+
+Display only — every field is still stored, loaded and editable; nothing about commit changed.
+
+- **Recommendation panel:** signal badge; one line `N records · X units` (excludes rejected and
+  merged-away rows, since merged units are already summed into the survivor; adds
+  `· K with no count` when any live row has no unit count, so the total can't silently
+  understate); the rationale's first two sentences (clamped to two lines) with a `more` toggle.
+  Leads not pursued is collapsed to its count + names, Copy all stays on the header; each lead's
+  "seen in" / note opens on click. Agenda density and permit volume moved under one collapsed
+  "Supporting data" section.
+- **Record cards (expanded):** project name, address, phase label, **Pin hint**
+  (`location_description`), **Polygon hint** (`parcel_boundary_notes`), total units, builder,
+  permit URL, source, notes. A per-card "Show all fields" (default collapsed) holds permit date
+  and discovery source (still editable) plus read-only municipality, status, zoning, zoning
+  approval date, unit breakdown, units basis, amendment and parcel numbers — fetched for that row
+  the first time Show all opens, so `get_sweep_staging` is unchanged.
+- Always visible, unchanged: the `⚠ CHECK UNITS` badge and units line, and every duplicate /
+  proximity warning (matches existing, possible dup within ~Nm, dup across runs, approx. location).

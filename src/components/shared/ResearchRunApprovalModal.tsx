@@ -324,7 +324,9 @@ const DISCOVERY_SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: 'other',         label: 'Other' },
 ];
 
-const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url' | 'select'; full?: boolean; options?: { value: string; label: string }[] }[] = [
+// `more: true` fields sit behind the per-card "Show all" toggle. Display only —
+// they're still loaded, editable and committed exactly as before.
+const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url' | 'select'; full?: boolean; more?: boolean; options?: { value: string; label: string }[] }[] = [
   { key: 'project_name',            label: 'Project name',     type: 'text', full: true },
   { key: 'address',                 label: 'Address (geocoded)', type: 'text', full: true },
   // Two distinct projects with the same name + address commit as ONE record
@@ -332,16 +334,37 @@ const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number
   { key: 'phase_label',             label: 'Phase label (tells apart projects at one address)', type: 'text', full: true },
   // Location-precision fields the agent captures from sources; reviewer reads these
   // when manually placing the pin / drawing the polygon. Neither feeds geocoding.
-  { key: 'location_description',    label: 'Location description (manual-pin hint)', type: 'text', full: true },
-  { key: 'parcel_boundary_notes',   label: 'Parcel / boundary notes (polygon hint)', type: 'text', full: true },
+  { key: 'location_description',    label: 'Pin hint',         type: 'text', full: true },
+  { key: 'parcel_boundary_notes',   label: 'Polygon hint',     type: 'text', full: true },
   { key: 'total_housing_units',     label: 'Total units',      type: 'number' },
   { key: 'builder_developer',       label: 'Builder',          type: 'text' },
   { key: 'permit_url',              label: 'Permit URL',       type: 'url', full: true },
-  { key: 'permit_application_date', label: 'Permit app. date', type: 'date' },
   { key: 'source',                  label: 'Source (full citation)', type: 'text', full: true },
-  { key: 'discovery_source',        label: 'Discovery source (which phase found it)', type: 'select', options: DISCOVERY_SOURCE_OPTIONS },
   { key: 'notes',                   label: 'Notes',            type: 'text', full: true },
+  { key: 'permit_application_date', label: 'Permit app. date', type: 'date', more: true },
+  { key: 'discovery_source',        label: 'Discovery source (which phase found it)', type: 'select', options: DISCOVERY_SOURCE_OPTIONS, more: true },
 ];
+
+// Read-only staged fields the card never needed by default. Fetched per row the
+// first time its "Show all" opens, so the list load (incl. get_sweep_staging)
+// stays unchanged.
+interface StagingExtra {
+  municipality_name: string | null;
+  status_name: string | null;
+  zoning: string | null;
+  zoning_approval_date: string | null;
+  single_family_lots: number | null;
+  townhouse_units: number | null;
+  duplex_units: number | null;
+  apt_units: number | null;
+  cottage_units: number | null;
+  units_basis: string | null;
+  is_amendment: boolean | null;
+  amends_case_number: string | null;
+  prior_total: number | null;
+  parcel_numbers: string[] | null;
+}
+
 
 export default function ResearchRunApprovalModal({
   researchRunId,
@@ -402,6 +425,9 @@ export default function ResearchRunApprovalModal({
   // reviewer expands the ones they want to edit. Bulk buckets (clean / decided)
   // collapse so the screen leads with the decisions that actually need judgment.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  // Per-card "Show all" (default collapsed) + the lazily fetched extra fields.
+  const [showAllRows, setShowAllRows] = useState<Set<string>>(new Set());
+  const [extraById, setExtraById] = useState<Record<string, StagingExtra | 'loading' | { error: string }>>({});
   const [showClean, setShowClean] = useState(false);
   const [showDecided, setShowDecided] = useState(false);
   // Step 1 state: stagingId -> group key (or REJECT_KEY). Keyed by ROW, so an
@@ -884,6 +910,16 @@ export default function ResearchRunApprovalModal({
 
   const pendingCount   = staging.filter((s) => s.approval_state === 'pending').length;
   const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
+  // Recommendation-panel headline. Merged rows are already summed into their
+  // survivor and rejected rows aren't candidates, so both are left out.
+  const stagedTotals = useMemo(() => {
+    const live = staging.filter((s) => s.approval_state !== 'merged' && s.approval_state !== 'rejected');
+    return {
+      records: live.length,
+      units: live.reduce((sum, s) => sum + (s.total_housing_units ?? 0), 0),
+      noCount: live.filter((s) => s.total_housing_units == null).length,
+    };
+  }, [staging]);
   const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
   const mergedCount    = staging.filter((s) => s.approval_state === 'merged').length;
 
@@ -1518,6 +1554,34 @@ export default function ResearchRunApprovalModal({
       return n;
     });
 
+  const toggleShowAll = async (id: string) => {
+    const opening = !showAllRows.has(id);
+    setShowAllRows((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+    if (!opening || (extraById[id] && extraById[id] !== 'loading' && !('error' in (extraById[id] as object)))) return;
+    setExtraById((prev) => ({ ...prev, [id]: 'loading' }));
+    const { data, error: exErr } = await supabase
+      .from('municipal_project_staging')
+      .select(`zoning, zoning_approval_date, single_family_lots, townhouse_units, duplex_units,
+               apt_units, cottage_units, units_basis, is_amendment, amends_case_number, prior_total,
+               parcel_numbers, municipality(name), project_stage(name)`)
+      .eq('id', id)
+      .maybeSingle();
+    setExtraById((prev) => ({
+      ...prev,
+      [id]: exErr || !data
+        ? { error: exErr ? toErrorMessage(exErr) : 'Row not found' }
+        : {
+            ...(data as any),
+            municipality_name: (data as any).municipality?.name ?? null,
+            status_name: (data as any).project_stage?.name ?? null,
+          },
+    }));
+  };
+
   // One-line identity for the compact summary.
   const rowSummaryLine = (r: StagingRow) =>
     [
@@ -1701,43 +1765,92 @@ export default function ResearchRunApprovalModal({
       const v = (r as any)[key];
       return v == null ? '' : String(v);
     };
+    const renderField = (f: (typeof EDITABLE_FIELDS)[number]) => (
+        <div key={f.key} className={f.full ? 'col-span-2' : ''}>
+          <label className="block text-xs mb-0.5" style={{ color: '#4A6B94' }}>{f.label}</label>
+          {f.type === 'select' ? (
+            <select
+              value={value(f.key)}
+              disabled={!isPending || isReadOnlyRun}
+              onChange={(e) => setEdit(r.id, f.key, e.target.value)}
+              className="w-full px-2 py-1 text-sm border rounded bg-white"
+              style={{ borderColor: '#8FA9C8', color: '#002147' }}
+            >
+              {(f.options ?? []).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+              value={value(f.key)}
+              disabled={!isPending || isReadOnlyRun}
+              onChange={(e) => setEdit(r.id, f.key, e.target.value)}
+              className="w-full px-2 py-1 text-sm border rounded"
+              style={{ borderColor: '#8FA9C8', color: '#002147' }}
+            />
+          )}
+          {/* Explains an otherwise mysterious "Other": the agent reported a
+              value outside our taxonomy and the server coerced it. Showing the
+              original lets the reviewer reclassify it deliberately. */}
+          {f.key === 'discovery_source' && r.discovery_source_raw && (
+            <div className="text-xs mt-0.5" style={{ color: '#A27B5C' }}>
+              Agent reported: “{r.discovery_source_raw}” — not in our list, filed as Other.
+            </div>
+          )}
+        </div>
+    );
+    const showAll = showAllRows.has(r.id);
+    const extra = extraById[r.id];
+    const muni = (e: StagingExtra) =>
+      [r.muni_name, e.municipality_name && e.municipality_name !== r.muni_name ? `committed as ${e.municipality_name}` : null]
+        .filter(Boolean).join(' · ') || null;
+    const unitBreakdown = (e: StagingExtra) =>
+      ([['SF lots', e.single_family_lots], ['Townhomes', e.townhouse_units], ['Duplex', e.duplex_units],
+        ['Apartments', e.apt_units], ['Cottage', e.cottage_units]] as const)
+        .filter(([, v]) => v != null).map(([k, v]) => `${k} ${v}`).join(' · ') || null;
+    const readOnly = (e: StagingExtra): [string, string | null][] => [
+      ['Municipality', muni(e)],
+      ['Status', e.status_name],
+      ['Zoning', e.zoning],
+      ['Zoning approval date', e.zoning_approval_date],
+      ['Unit breakdown', unitBreakdown(e)],
+      ['Units basis', e.units_basis],
+      ['Amendment', e.is_amendment ? `yes${e.amends_case_number ? ` — amends ${e.amends_case_number}` : ''}${e.prior_total != null ? ` (prior total ${e.prior_total})` : ''}` : null],
+      ['Parcel numbers', e.parcel_numbers?.length ? e.parcel_numbers.join(', ') : null],
+    ];
     return (
-      <div className="grid grid-cols-2 gap-2 mt-2">
-        {EDITABLE_FIELDS.map((f) => (
-          <div key={f.key} className={f.full ? 'col-span-2' : ''}>
-            <label className="block text-xs mb-0.5" style={{ color: '#4A6B94' }}>{f.label}</label>
-            {f.type === 'select' ? (
-              <select
-                value={value(f.key)}
-                disabled={!isPending || isReadOnlyRun}
-                onChange={(e) => setEdit(r.id, f.key, e.target.value)}
-                className="w-full px-2 py-1 text-sm border rounded bg-white"
-                style={{ borderColor: '#8FA9C8', color: '#002147' }}
-              >
-                {(f.options ?? []).map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-                value={value(f.key)}
-                disabled={!isPending || isReadOnlyRun}
-                onChange={(e) => setEdit(r.id, f.key, e.target.value)}
-                className="w-full px-2 py-1 text-sm border rounded"
-                style={{ borderColor: '#8FA9C8', color: '#002147' }}
-              />
-            )}
-            {/* Explains an otherwise mysterious "Other": the agent reported a
-                value outside our taxonomy and the server coerced it. Showing the
-                original lets the reviewer reclassify it deliberately. */}
-            {f.key === 'discovery_source' && r.discovery_source_raw && (
-              <div className="text-xs mt-0.5" style={{ color: '#A27B5C' }}>
-                Agent reported: “{r.discovery_source_raw}” — not in our list, filed as Other.
-              </div>
-            )}
+      <div className="mt-2">
+        <div className="grid grid-cols-2 gap-2">
+          {EDITABLE_FIELDS.filter((f) => !f.more).map(renderField)}
+        </div>
+        <button type="button" onClick={() => toggleShowAll(r.id)}
+                className="mt-2 text-xs underline" style={{ color: '#4A6B94' }}>
+          {showAll ? 'Hide extra fields' : 'Show all fields'}
+        </button>
+        {showAll && (
+          <div className="mt-1 pt-2 border-t" style={{ borderColor: '#E2E8F0' }}>
+            <div className="grid grid-cols-2 gap-2">
+              {EDITABLE_FIELDS.filter((f) => f.more).map(renderField)}
+            </div>
+            <div className="mt-2 text-xs">
+              {extra === 'loading' || extra === undefined ? (
+                <span style={{ color: '#8FA9C8' }}>Loading…</span>
+              ) : 'error' in extra ? (
+                <span style={{ color: '#A27B5C' }}>Couldn’t load the remaining fields: {extra.error}</span>
+              ) : (
+                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5">
+                  {readOnly(extra).map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt style={{ color: '#4A6B94' }}>{k}</dt>
+                      <dd style={{ color: v ? '#002147' : '#8FA9C8' }}>{v ?? '—'}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
           </div>
-        ))}
+        )}
       </div>
     );
   };
@@ -2261,7 +2374,7 @@ export default function ResearchRunApprovalModal({
           {!loading && (run || isSweep) && (
             <>
               {/* Quick runs: the Deep-run recommendation, next to the records it's about */}
-              {!isSweep && run?.research_mode === 'quick' && <ResearchSignalPanel signal={run} />}
+              {!isSweep && run?.research_mode === 'quick' && <ResearchSignalPanel signal={run} totals={stagedTotals} />}
               {/* Checklist (collapsible) — single-run only */}
               {!isSweep && (
               <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
