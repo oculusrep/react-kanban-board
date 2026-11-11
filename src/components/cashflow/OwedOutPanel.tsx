@@ -10,6 +10,8 @@ interface Props {
   /** Operating account balance today (the "cash in the bank" the owed total is compared to). */
   operatingBalance: number | null;
   today: string;
+  /** Arty advance (draws not yet recouped) from QBO — informational. null = not in the snapshot. */
+  artyAdvance: number | null;
   onOpenDeal: (dealId: string) => void;
   onChanged: () => void;
 }
@@ -28,7 +30,7 @@ const TYPE_LABEL: Record<OwedItem['type'], string> = {
 };
 
 /** "Money owed out": referral fees + broker splits on payments already received. */
-export function OwedOutPanel({ owed, operatingBalance, today, onOpenDeal, onChanged }: Props) {
+export function OwedOutPanel({ owed, operatingBalance, today, artyAdvance, onOpenDeal, onChanged }: Props) {
   const { updateReferralPaid, updatePaymentSplitPaid } = usePaymentDisbursement();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -104,7 +106,10 @@ export function OwedOutPanel({ owed, operatingBalance, today, onOpenDeal, onChan
                   <td>
                     {o.dealId ? <button onClick={() => onOpenDeal(o.dealId!)} className="cf-link">{o.deal}</button> : o.deal}
                   </td>
-                  <td className="r"><Money v={o.amount} cents /></td>
+                  <td className="r">
+                    <Money v={o.amount} cents />
+                    {o.recouped > 0 && <div className="cf-faint cf-num">after {money(o.recouped)} advance</div>}
+                  </td>
                   <td className="cf-num">{o.receivedDate || '—'}</td>
                   <td className={`r cf-num ${cls}`}>{o.daysHeld ?? '?'}d</td>
                   <td>
@@ -129,6 +134,16 @@ export function OwedOutPanel({ owed, operatingBalance, today, onOpenDeal, onChan
             })}
           </tbody>
         </table>
+      </div>
+      <div className="cf-pb flex items-center justify-between gap-2" style={{ borderBottom: '1px solid var(--cf-row)' }}>
+        <span className="cf-label">Advanced to Arty</span>
+        <span className="cf-note">
+          {artyAdvance === null ? (
+            <span className="cf-warn">no QBO balance for his draw account — refresh QBO</span>
+          ) : (
+            <><span className="cf-num cf-strong">{money(artyAdvance)}</span> draws not yet recouped (info — offsets his next splits)</>
+          )}
+        </span>
       </div>
       <div className="cf-pb cf-faint">
         Referral fees and Arty/Greg splits on client payments received in the last {CASH_CONFIG.OWED_LOOKBACK_DAYS} days, plus open

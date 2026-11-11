@@ -451,6 +451,7 @@
         "npm:email-addresses@5",
         "npm:email-reply-parser@2.0.1",
         "npm:exceljs@^4.4.0",
+        "npm:jspdf@^4.2.1",
         "npm:lucide-react@0.544",
         "npm:papaparse@^5.5.3",
         "npm:pg@^8.16.3",

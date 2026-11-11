@@ -117,6 +117,35 @@ export default function CashPlannerSummaryPage() {
           ))}
         </div>
 
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: 'Steady owner pay — committed', st: p.committed.steady },
+            { label: 'Steady owner pay — with pipeline', st: p.pipeline.steady },
+          ].map(({ label, st }) => (
+            <div key={label} className="rounded border px-3 py-2" style={{ borderColor: NAVY }}>
+              <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: STEEL }}>{label}</p>
+              <p className="text-lg font-bold" style={{ color: NAVY }}>{st.amount > 0 ? `${fmt(st.amount)}/mo` : '$0 now'}</p>
+              <p className="text-[10px] text-gray-500">
+                {st.amount > 0 ? 'every month for 12 months' : st.startLabel ? `could start ${st.startLabel} at ${fmt(st.amountFromStart)}/mo` : 'no flat amount fits in 12 months'}
+              </p>
+            </div>
+          ))}
+          <div className="rounded border px-3 py-2" style={{ borderColor: SLATE }}>
+            <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: STEEL }}>AMEX LOC payoff</p>
+            <p className="text-lg font-bold" style={{ color: NAVY }}>
+              {s.payoffs[0]?.payoffDate ? formatDay(s.payoffs[0].payoffDate) : s.payoffs[0]?.warning ? '—' : '> 12 months'}
+            </p>
+            <p className="text-[10px] text-gray-500">
+              {s.payoffs[0]?.warning ?? (s.payoffs[0] ? `${fmt(s.payoffs[0].balance ?? 0)} owed now` : '')}
+            </p>
+          </div>
+          <div className="rounded border px-3 py-2" style={{ borderColor: SLATE }}>
+            <p className="text-[10px] uppercase tracking-wide font-semibold" style={{ color: STEEL }}>Tax reserve</p>
+            <p className="text-lg font-bold" style={{ color: NAVY }}>{Math.round(s.taxReservePct * 100)}%</p>
+            <p className="text-[10px] text-gray-500">placeholder — confirm with CPA</p>
+          </div>
+        </div>
+
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: STEEL }}>12-month ending cash — committed vs with pipeline</p>
           <ProjectionChart committed={p.committed} pipeline={p.pipeline} cushion={p.cushion} height={190} />
@@ -150,8 +179,10 @@ export default function CashPlannerSummaryPage() {
         </div>
 
         <p className="text-[10px] text-gray-500 leading-snug">
-          Operating account only (QBO). Ending cash is after LOC paydown, before the owner distribution; the distribution is
-          assumed taken at month end. Committed = deals ≥ 90% probability; with pipeline adds lower-probability payments
+          Operating account only (QBO). Ending cash is after LOC paydown, before take-home. Take-home is the most that can be taken
+          without any later month falling below the cushion (never followed by borrowing). Steady owner pay is the largest flat
+          monthly amount with no month below the cushion and no LOC draws. Arty's draws are recouped from his splits; tax reserve
+          is a placeholder % on cash in − business expenses, paid Jan/Apr/Jun/Sep 15. Committed = deals ≥ 90% probability; with pipeline adds lower-probability payments
           weighted by probability. Outflows are scheduled payments only (no payroll or taxes unless scheduled). Inflow
           amounts are Oculus's cash share (net of referral fees and other brokers' splits).
         </p>
