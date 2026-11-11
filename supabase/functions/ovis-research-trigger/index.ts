@@ -163,7 +163,7 @@ function buildOpenClawMessage(opts: {
     '',
     muniLines,
     '',
-    'When finished, call submit_research_report ONCE with all candidates. Use update_checklist_status to report per-muni progress.',
+    'After each municipality, call update_checklist_status, then submit_research_report with EVERY candidate found so far (each call replaces the staged set). Set final: true only on the last submit_research_report call, once every municipality is done.',
   ].join('\n');
 }
 

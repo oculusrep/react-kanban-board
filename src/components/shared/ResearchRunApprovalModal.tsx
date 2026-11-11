@@ -348,6 +348,10 @@ export default function ResearchRunApprovalModal({
   const [run, setRun] = useState<RunRow | null>(null);
   const [sweepState, setSweepState] = useState<string | null>(null);
   const [gapInfo, setGapInfo] = useState<SweepGapInfo | null>(null);
+  // Sweep mode: rows checkpointed by a chunk whose agent is still running. They
+  // are held back from the review list — the DB refuses review actions on an
+  // in-flight run (municipal_project_staging_00_in_flight_guard).
+  const [inFlightHeld, setInFlightHeld] = useState(0);
   const [rerunConfirm, setRerunConfirm] = useState(false);
   const [rerunning, setRerunning] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
@@ -422,7 +426,7 @@ export default function ResearchRunApprovalModal({
             // 1000 anyway so a wide sweep can't silently truncate the list.
             supabase
               .from('research_checklist_item')
-              .select('boundary_municipality_id, priority, research_run!inner(id, sweep_chunk_index, sweep_id), boundary_municipality(name, kind)')
+              .select('boundary_municipality_id, priority, research_run!inner(id, sweep_chunk_index, sweep_id, state), boundary_municipality(name, kind)')
               .eq('research_run.sweep_id', sweepId!)
               .order('priority')
               .range(0, 4999),
@@ -436,9 +440,11 @@ export default function ResearchRunApprovalModal({
           setChecklist([]);
           // Group the chunk runs' checklist rows by run, in chunk order.
           const byRun = new Map<string, { chunkIndex: number | null; rows: { boundary_municipality_id: string; muni_name: string; muni_kind: string }[] }>();
+          const inFlightRunIds = new Set<string>();
           for (const r of (chunkChecklist ?? []) as any[]) {
             const rr = r.research_run;
             if (!rr?.id) continue;
+            if (rr.state === 'pending' || rr.state === 'running') inFlightRunIds.add(rr.id);
             if (!byRun.has(rr.id)) byRun.set(rr.id, { chunkIndex: rr.sweep_chunk_index ?? null, rows: [] });
             byRun.get(rr.id)!.rows.push({
               boundary_municipality_id: r.boundary_municipality_id,
@@ -461,7 +467,10 @@ export default function ResearchRunApprovalModal({
               .sort((a, b) => a.first - b.first)
               .map(({ summary, chunks }) => ({ summary, chunks })),
           );
-          const stagingNorm: StagingRow[] = ((stagingRows ?? []) as any[]).map((r) => ({
+          const allSweepRows = (stagingRows ?? []) as any[];
+          const reviewableRows = allSweepRows.filter((r) => !inFlightRunIds.has(r.research_run_id));
+          setInFlightHeld(allSweepRows.length - reviewableRows.length);
+          const stagingNorm: StagingRow[] = reviewableRows.map((r) => ({
             id: r.id,
             research_run_id: r.research_run_id,
             sweep_chunk_index: r.sweep_chunk_index,
@@ -534,6 +543,7 @@ export default function ResearchRunApprovalModal({
         setRun(runRow as RunRow);
         setNeedsReview(runRow?.needs_review ?? '');
         setChunkMunis([]);
+        setInFlightHeld(0);
         setChecklist((checklistRows ?? []).map((r: any) => ({
           boundary_municipality_id: r.boundary_municipality_id,
           priority: r.priority,
@@ -1484,7 +1494,10 @@ export default function ResearchRunApprovalModal({
       setRerunning(false);
     }
   };
-  const isReadOnlyRun = !canApprove || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
+  // A run still pending/running has only checkpointed rows: the agent may still
+  // replace them, and the DB refuses review actions until its final submit.
+  const isInFlightRun = !isSweep && (run?.state === 'pending' || run?.state === 'running');
+  const isReadOnlyRun = !canApprove || isInFlightRun || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
   const cleanSelectable = triage.clean.filter((r) => !r.matched_existing_id).map((r) => r.id);
   // Single-run header line: the frozen checklist municipalities, in trigger order.
   const runMuniSummary = useMemo(() => muniSummary(checklist), [checklist]);
@@ -2222,6 +2235,18 @@ export default function ResearchRunApprovalModal({
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#F8FAFC' }}>
               View-only — you don't have the <code>can_approve_market_research</code> permission. Ask an admin to grant it if you need to approve or reject findings here.
+            </div>
+          )}
+          {!loading && isInFlightRun && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#4A6B94', color: '#002147', backgroundColor: '#E8F1FF' }}>
+              Agent still running — {staging.length} record{staging.length === 1 ? '' : 's'} saved so far. These are checkpoints the agent may still replace; review opens when it sends its final report.
+            </div>
+          )}
+          {!loading && isSweep && inFlightHeld > 0 && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#4A6B94', color: '#002147', backgroundColor: '#E8F1FF' }}>
+              {inFlightHeld} record{inFlightHeld === 1 ? '' : 's'} from the chunk still running {inFlightHeld === 1 ? 'is' : 'are'} held back — {inFlightHeld === 1 ? 'it appears' : 'they appear'} here for review once that chunk's agent finishes.
             </div>
           )}
 

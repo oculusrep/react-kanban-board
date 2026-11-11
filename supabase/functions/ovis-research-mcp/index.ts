@@ -9,7 +9,9 @@
  *   1. get_municipalities_in_radius(site_id, radius_miles?)
  *   2. create_research_checklist(site_id, radius_miles, municipality_ids[], openclaw_run_id?)
  *   3. update_checklist_status(research_run_id, boundary_municipality_id, status, notes?)
- *   4. submit_research_report(research_run_id, candidate_records[], needs_review?, alt_avenues?)
+ *   4. submit_research_report(research_run_id, candidate_records[], needs_review?, alt_avenues?, final?)
+ *      Cumulative checkpoint after each municipality (replaces the staged set);
+ *      only final: true moves the run to awaiting_review.
  *
  * Auth: bearer token in Authorization header, validated against env OVIS_MCP_BEARER_TOKEN.
  * Writes go through SECURITY DEFINER RPCs (see 20260607120000_market_research_mcp_rpcs.sql)
@@ -129,7 +131,7 @@ const TOOLS = [
   {
     name: 'submit_research_report',
     description:
-      'Single batched write at the end of a research_run. Inserts all candidate development records into the staging table with server-side duplicate detection against existing municipal_project rows. Updates the run state to awaiting_review. SEND ALL RECORDS IN ONE CALL — this tool is explicitly designed to be the only write at end-of-run, avoiding chatty per-record calls.',
+      'Stage candidate development records for a research_run, with server-side duplicate detection against existing municipal_project rows. Call it after EACH municipality with EVERY record found so far in this run — each call REPLACES the run\'s staged set, so a call that leaves a record out deletes it. Carry needs_review and alt_avenues cumulatively on every call too; each call overwrites them, and omitting them clears them. Set final: true ONLY on the last call, after every municipality is done: that is the only call that closes the run and sends it to review. Calls without final: true are checkpoints — the run stays open, and if you stop early, the last checkpoint is what survives. Returns { staged_count, final, state }.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -188,13 +190,18 @@ const TOOLS = [
             required: ['boundary_municipality_id', 'project_name', 'address', 'source'],
           },
         },
+        final: {
+          type: 'boolean',
+          default: false,
+          description: 'true ONLY on the last call of the run, once every municipality is done. Closes the run and opens it for review. Omitted or false = checkpoint: records are saved, the run stays open.',
+        },
         needs_review: {
           type: 'string',
-          description: 'Free-text "needs review" section — anything that didn\'t fit the schema or is incomplete. Mike sees + edits this in the approval UI.',
+          description: 'Free-text "needs review" section — anything that didn\'t fit the schema or is incomplete. Mike sees + edits this in the approval UI. Cumulative: send the full text so far on every call (each call overwrites it).',
         },
         alt_avenues: {
           type: 'string',
-          description: 'Free-text notes about alternative research avenues taken (developer association, county news outlet, builder forum, etc.).',
+          description: 'Free-text notes about alternative research avenues taken (developer association, county news outlet, builder forum, etc.). Cumulative: send the full text so far on every call (each call overwrites it).',
         },
         // Usage accounting. OVIS cannot derive these — the token counts live in
         // the agent's own LLM responses. Omitting them leaves the run's cost
@@ -304,10 +311,13 @@ async function toolUpdateChecklistStatus(args: any) {
 async function toolSubmitResearchReport(args: any) {
   const {
     research_run_id, candidate_records, needs_review, alt_avenues,
-    estimated_cost_cents, input_tokens, output_tokens,
+    estimated_cost_cents, input_tokens, output_tokens, final,
   } = args ?? {};
   if (typeof research_run_id !== 'string') throw new ToolError('research_run_id is required');
   if (!Array.isArray(candidate_records)) throw new ToolError('candidate_records must be an array');
+  // Strictly true closes the run. Anything else (omitted, false, "true", 1) is a
+  // checkpoint: a malformed flag must leave the run open, never close it early.
+  const isFinal = final === true;
 
   // Usage figures are optional and advisory. Coerce to a non-negative integer or
   // null — a malformed value must never cost us the whole staged batch, which is
@@ -327,9 +337,12 @@ async function toolSubmitResearchReport(args: any) {
     p_estimated_cost_cents: usageInt(estimated_cost_cents),
     p_input_tokens: usageInt(input_tokens),
     p_output_tokens: usageInt(output_tokens),
+    p_final: isFinal,
   });
   if (error) throw new ToolError(`submit_research_report failed: ${error.message}`);
-  return { staged_count: data, research_run_id };
+  // data = { staged_count, final, state } — echo it so the agent can confirm
+  // whether the run is still open (state 'running') or closed for review.
+  return { ...(data as Record<string, unknown>), research_run_id };
 }
 
 class ToolError extends Error {

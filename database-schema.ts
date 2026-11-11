@@ -18807,10 +18807,14 @@ export type Database = {
         Args: {
           p_alt_avenues?: string
           p_candidates: Json
+          p_estimated_cost_cents?: number
+          p_final?: boolean
+          p_input_tokens?: number
           p_needs_review?: string
+          p_output_tokens?: number
           p_run_id: string
         }
-        Returns: number
+        Returns: Json
       }
       sync_deal_field_to_critical_date: {
         Args: { p_deal_id: string; p_field_name: string; p_new_value: string }
