@@ -253,3 +253,26 @@ been driven by hand. That is the next thing to do.
 - **Adapter:** `services1.arcgis.com/3t0UAc8xSMWWaD2c/.../parcel_owner_public/FeatureServer/0`, `PIN`.
   It matches Hall County, Gainesville, Flowery Branch, Oakwood, Lula, Clermont and Gillsville
   (not Braselton). Data last edited 2025-07-22.
+
+## Acreage reader + partial-parcel flag (2026-11-12)
+
+Migration `20261112100659_parcel_fetch_acreage_and_partial_flag`, built from the live definitions.
+
+- **`extract_stated_acres`** now reads "84.25 approx. acres", "29.52-acre", "combined 116.47± acres",
+  "±", singular "acre" and thousands separators. A figure tied to "combined" beats an earlier
+  per-parcel figure. Ranges still return NULL. Regression over committed records: 8 went from NULL
+  to a value; one changed (5.303 → 5.529, the "combined" total over the first parcel's acreage).
+  It's used only by the fetch RPC.
+- **`cites_partial_parcel(text)`** matches "(pt.)", "pt.", "partial", "portion of", and "part of
+  [a/the] [tax] parcel". Bare "portion" / "part of" were dropped after they hit "western portion",
+  "apartment portion" and "Part of broader PRD". It now matches 11 committed notes, all genuine.
+- **`set_municipal_project_polygon_from_parcels`** sets `geometry_needs_review` whenever the notes cite
+  a partial parcel, whatever the acreage, and returns `partial_parcel`. The slideout says to trim.
+- **Grants:** `set_municipal_project_polygon`, `set_municipal_project_polygon_from_parcels` and
+  `cites_partial_parcel` were executable by anon (SECURITY DEFINER writers). They're now
+  authenticated + service_role only; an anonymous HTTP call gets 42501 / 401.
+- **Hall dry run (19 records, rolled back):** the 6 previously unchecked records all validate.
+  Taylor Morrison 1.7% and Revive Land Group 1.7% pass. Caneybrooke +5.8%, Bolding Road +5.5% and
+  BCBTR +8.9% flag. 5401 Old Winder Hwy flags at +224.8% (273.78 vs 84.30) AND as a partial parcel.
+  Overall: 8 pass, 11 flagged. Of the flagged, 6 cite a partial parcel (Yellow Creek Rd flags on
+  that alone at 0.2%) and 5 are acreage-only, at +5.3% to +6.3%.

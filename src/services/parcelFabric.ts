@@ -231,6 +231,9 @@ export interface ApplyParcelBoundaryResult {
   statedAcres: number | null;
   variancePct: number | null;
   needsReview: boolean;
+  /** The polygon hint cites a partial parcel ("(pt.)", "portion of"): the
+   *  boundary covers the whole parcel, so it's flagged whatever the acreage. */
+  partialParcel: boolean;
   missing: string[];
   parts: number;
 }
@@ -285,6 +288,7 @@ export async function applyParcelBoundary(opts: {
     statedAcres: d.stated_acres == null ? null : Number(d.stated_acres),
     variancePct: d.variance_pct == null ? null : Number(d.variance_pct),
     needsReview: !!d.needs_review,
+    partialParcel: !!d.partial_parcel,
     missing,
     parts: resolved.length,
   };
