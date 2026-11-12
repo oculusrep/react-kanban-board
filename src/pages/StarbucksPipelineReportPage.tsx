@@ -52,10 +52,12 @@ interface Filters {
   courts: CourtValue[];   // empty = all
   minDays: string;        // '' = any
   parked: ParkedFilter;
+  rem: string;            // '' = all, REM_UNASSIGNED, else a contact id
 }
+const REM_UNASSIGNED = '__unassigned';
 type ParkedFilter = 'show' | 'hide' | 'only';
 const PARKED_LABEL: Record<ParkedFilter, string> = { show: 'Show', hide: 'Hide', only: 'Only' };
-const NO_FILTERS: Filters = { search: '', stages: [], status: '', courts: [], minDays: '', parked: 'show' };
+const NO_FILTERS: Filters = { search: '', stages: [], status: '', courts: [], minDays: '', parked: 'show', rem: '' };
 
 function readStore<T>(key: string, fallback: T): T {
   try {
@@ -88,6 +90,7 @@ function matches(r: ReportRow, f: Filters): boolean {
   if (f.parked === 'hide' && r.parked) return false;
   if (f.parked === 'only' && !r.parked) return false;
   if (f.stages.length && !f.stages.includes(r.stageLabel)) return false;
+  if (f.rem === REM_UNASSIGNED ? r.remId !== null : f.rem && r.remId !== f.rem) return false;
   if (f.status && statusText(r) !== f.status) return false;
   if (f.courts.length && !f.courts.includes(courtOf(r))) return false;
   if (f.minDays !== '') {
@@ -96,16 +99,17 @@ function matches(r: ReportRow, f: Filters): boolean {
   }
   const q = f.search.trim().toLowerCase();
   if (q) {
-    const hay = [r.name, r.city, r.notes, r.packageStatus, r.ballInCourtParty, r.parkedReason, statusText(r)].join(' ').toLowerCase();
+    const hay = [r.name, r.city, r.remName, r.notes, r.packageStatus, r.ballInCourtParty, r.parkedReason, statusText(r)].join(' ').toLowerCase();
     if (!hay.includes(q)) return false;
   }
   return true;
 }
 
-function filterNote(f: Filters): string | undefined {
+function filterNote(f: Filters, remName?: string): string | undefined {
   const parts: string[] = [];
   if (f.stages.length) parts.push(f.stages.join(', '));
   if (f.status) parts.push(f.status);
+  if (f.rem) parts.push(`REM: ${f.rem === REM_UNASSIGNED ? 'Unassigned' : remName ?? 'selected'}`);
   if (f.courts.length) parts.push(`Court: ${f.courts.map((c) => COURT_LABEL[c]).join('/')}`);
   if (f.minDays !== '') parts.push(`${f.minDays}+ days in court`);
   if (f.parked === 'hide') parts.push('parked hidden');
@@ -142,6 +146,22 @@ export default function StarbucksPipelineReportPage() {
     setFiltersState(next);
     writeStore(FILTER_KEY, next);
   }
+
+  // A saved account that no longer exists (e.g. the merged "Starbucks - JW" child) → All.
+  useEffect(() => {
+    if (!loading && accounts.length > 0 && accountId !== ACCOUNT_ALL && !accounts.some((a) => a.clientId === accountId)) {
+      setAccountId(ACCOUNT_ALL);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, accounts, accountId]);
+
+  // REM filter options, from the rows themselves (sorted by name).
+  const remOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of rows) if (r.remId) m.set(r.remId, r.remName || 'Unnamed');
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
+  const unassignedCount = useMemo(() => rows.filter((r) => !r.remId).length, [rows]);
 
   const isAll = accountId === ACCOUNT_ALL;
   const accountName = isAll ? 'All Starbucks' : accounts.find((a) => a.clientId === accountId)?.filter ?? 'Starbucks';
@@ -181,7 +201,7 @@ export default function StarbucksPipelineReportPage() {
   async function onExport() {
     setExporting(true);
     try {
-      await exportPipelineReport(visible, { showAccount: isAll, accountName: isAll || accountId === STARBUCKS_CLIENT_ID ? undefined : accountName, filterNote: filterNote(filters) });
+      await exportPipelineReport(visible, { showAccount: isAll, accountName: isAll || accountId === STARBUCKS_CLIENT_ID ? undefined : accountName, filterNote: filterNote(filters, remOptions.find(([id]) => id === filters.rem)?.[1]) });
     } finally {
       setExporting(false);
     }
@@ -286,6 +306,19 @@ export default function StarbucksPipelineReportPage() {
             <option value="">All statuses</option>
             {statusOptions.map((o) => (
               <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+          <select
+            value={filters.rem}
+            onChange={(e) => setFilters({ ...filters, rem: e.target.value })}
+            className="px-2 py-1.5 rounded text-sm bg-white focus:outline-none"
+            style={{ border: '1px solid #8FA9C8', color: filters.rem ? '#002147' : '#4A6B94' }}
+            title="Real Estate Manager"
+          >
+            <option value="">All REMs</option>
+            <option value={REM_UNASSIGNED}>Unassigned ({unassignedCount})</option>
+            {remOptions.map(([id, name]) => (
+              <option key={id} value={id}>{name}</option>
             ))}
           </select>
           <div className="flex items-center gap-1.5">

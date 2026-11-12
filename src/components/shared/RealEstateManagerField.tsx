@@ -5,12 +5,19 @@
  *
  * Self-contained: loads its own current value and candidate contacts, and writes the
  * tag to BOTH the site submit and its linked deal so the two never disagree (it is a
- * tag, not snapshot economics). Candidates = contacts related to the client
- * (contact_client_relation) or whose primary client is the client.
+ * tag, not snapshot economics).
+ *
+ * Starbucks only (for now): renders nothing for any other client. Candidates are the
+ * account's contacts holding the "Site Selector" role (contact_client_role). No REM
+ * (null) is a real state — "Unassigned" — and is filterable as such.
  */
 
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+
+export const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
+export const REM_ROLE_NAME = 'Site Selector';
+export const UNASSIGNED_LABEL = 'Unassigned';
 
 interface Props {
   clientId: string | null | undefined;
@@ -27,7 +34,12 @@ interface ContactOption {
 const contactName = (c: { first_name: string | null; last_name: string | null }) =>
   [c.first_name, c.last_name].filter(Boolean).join(' ') || '(unnamed)';
 
-export function RealEstateManagerField({ clientId, siteSubmitId, dealId, isEditable }: Props) {
+export function RealEstateManagerField(props: Props) {
+  if (props.clientId !== STARBUCKS_CLIENT_ID) return null;
+  return <RealEstateManagerRow {...props} />;
+}
+
+function RealEstateManagerRow({ clientId, siteSubmitId, dealId, isEditable }: Props) {
   const [value, setValue] = useState<string | null>(null);
   const [options, setOptions] = useState<ContactOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -59,13 +71,13 @@ export function RealEstateManagerField({ clientId, siteSubmitId, dealId, isEdita
     }
     let cancelled = false;
     (async () => {
-      const [rel, primary] = await Promise.all([
-        supabase.from('contact_client_relation').select('contact:contact_id(id, first_name, last_name)').eq('client_id', clientId),
-        supabase.from('contact').select('id, first_name, last_name').eq('client_id', clientId),
-      ]);
+      const { data } = await supabase
+        .from('contact_client_role')
+        .select('contact:contact_id(id, first_name, last_name), role:role_id(role_name)')
+        .eq('client_id', clientId)
+        .eq('is_active', true);
       const byId = new Map<string, ContactOption>();
-      for (const r of (rel.data || []) as any[]) if (r.contact) byId.set(r.contact.id, { id: r.contact.id, name: contactName(r.contact) });
-      for (const c of (primary.data || []) as any[]) byId.set(c.id, { id: c.id, name: contactName(c) });
+      for (const r of (data || []) as any[]) if (r.contact && r.role?.role_name === REM_ROLE_NAME) byId.set(r.contact.id, { id: r.contact.id, name: contactName(r.contact) });
       if (!cancelled) setOptions([...byId.values()].sort((a, b) => a.name.localeCompare(b.name)));
     })();
     return () => {
@@ -73,7 +85,7 @@ export function RealEstateManagerField({ clientId, siteSubmitId, dealId, isEdita
     };
   }, [clientId]);
 
-  // Make sure the current value is selectable/displayable even if it isn't a related contact.
+  // Keep the current value displayable even if that contact has since lost the Site Selector role.
   useEffect(() => {
     if (!value || options.some((o) => o.id === value)) return;
     let cancelled = false;
@@ -133,7 +145,7 @@ export function RealEstateManagerField({ clientId, siteSubmitId, dealId, isEdita
             className="w-full text-sm border rounded px-2 py-1"
             style={{ borderColor: '#8FA9C8', color: '#002147' }}
           >
-            <option value="">—</option>
+            <option value="">{UNASSIGNED_LABEL}</option>
             {options.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
@@ -143,7 +155,7 @@ export function RealEstateManagerField({ clientId, siteSubmitId, dealId, isEdita
           {error && <div className="text-xs mt-1" style={{ color: '#A27B5C' }}>{error}</div>}
         </div>
       ) : (
-        <span className="text-sm font-medium text-gray-900">{currentName || '-'}</span>
+        <span className="text-sm font-medium text-gray-900">{currentName || UNASSIGNED_LABEL}</span>
       )}
     </div>
   );

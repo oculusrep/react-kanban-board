@@ -36,7 +36,12 @@ interface PropertyCoords {
 interface Extra {
   name: string | null;
   mapUrl: string | null;
+  remId: string | null;
+  remName: string | null;
 }
+
+type RemEmbed = { first_name: string | null; last_name: string | null };
+const remNameOf = (c: RemEmbed | null) => (c ? [c.first_name, c.last_name].filter(Boolean).join(' ') || null : null);
 
 interface StoredRow {
   site_submit_id: string | null;
@@ -69,7 +74,8 @@ async function fetchExtras(cards: BoardDeal[]): Promise<Map<string, Extra>> {
     const { data, error } = await supabase
       .from('site_submit')
       .select(`
-        id, site_submit_name,
+        id, site_submit_name, real_estate_manager_id,
+        rem:contact!site_submit_real_estate_manager_id_fkey ( first_name, last_name ),
         verified_latitude, verified_longitude, sf_property_latitude, sf_property_longitude,
         property:property!site_submit_property_id_fkey ( verified_latitude, verified_longitude, latitude, longitude ),
         deal:deal!deal_site_submit_fk ( deal_name )
@@ -86,18 +92,28 @@ async function fetchExtras(cards: BoardDeal[]): Promise<Map<string, Extra>> {
         googleMapsUrl(r.sf_property_latitude, r.sf_property_longitude) ??
         googleMapsUrl(p?.latitude, p?.longitude);
       const dealName = embed<{ deal_name: string | null }>(r.deal)?.deal_name ?? null;
-      out.set(r.id, { name: dealName || r.site_submit_name || null, mapUrl: url });
+      out.set(r.id, {
+        name: dealName || r.site_submit_name || null,
+        mapUrl: url,
+        remId: r.real_estate_manager_id ?? null,
+        remName: remNameOf(embed<RemEmbed>(r.rem)),
+      });
     }
   }
 
   for (const ids of chunks(orphanDealIds)) {
     const { data, error } = await supabase
       .from('deal')
-      .select('id, deal_name, property:property_id ( verified_latitude, verified_longitude, latitude, longitude )')
+      .select('id, deal_name, real_estate_manager_id, rem:contact!deal_real_estate_manager_id_fkey ( first_name, last_name ), property:property_id ( verified_latitude, verified_longitude, latitude, longitude )')
       .in('id', ids);
     if (error) throw error;
     for (const r of (data as any[]) ?? []) {
-      out.set(r.id, { name: r.deal_name, mapUrl: propertyUrl(embed<PropertyCoords>(r.property)) });
+      out.set(r.id, {
+        name: r.deal_name,
+        mapUrl: propertyUrl(embed<PropertyCoords>(r.property)),
+        remId: r.real_estate_manager_id ?? null,
+        remName: remNameOf(embed<RemEmbed>(r.rem)),
+      });
     }
   }
   return out;
@@ -219,6 +235,8 @@ export default function useStarbucksPipelineReport(accountFilter: string): Pipel
         heat: c.heat,
         packageStatus: s?.package_status ?? '',
         notes: s?.notes ?? '',
+        remId: ex?.remId ?? null,
+        remName: ex?.remName ?? null,
       };
     });
     built.sort(compareReportRows);
