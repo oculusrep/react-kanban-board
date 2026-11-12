@@ -65,3 +65,17 @@ status anonymously, but not its description or attachments.
   `/v1/Meetings/{agendaId}` → `attachmentsList[].pdfVersionFullPath`. Attachment links are expiring
   SAS URLs. BOC annexation reports state "dwelling units from application".
 - **Welch Farms is 9 lots**, below the 25-unit threshold.
+
+## Henry follow-up (Locust Grove run e0aa24f8)
+
+- **Curry Conservation (`dfe779be`): 35 lots, recoverable in one fetch, the same miss as above.** The
+  agent cited the May 14 2026 ZAB packet. That packet's RZ-26-03 staff report states "35 lots" three
+  times (fileId=2508, p.62). The agent didn't read it and guessed "50-80" from R-3 density.
+  Pattern: **cite a document, don't read it, estimate instead.** The count is now set on the row.
+  The row stays rejected because 238 Elliott Rd is 9.76 mi from the site, outside the run's 5 mi radius.
+- **Dawson Creek (`cb8c696e`): 36 lots, in radius, restored.** jome.com's Jonesboro/Clayton
+  address is the builder's (Sunrise Builders), not the site. Henry's parcel layer has subdivision
+  DAWSON CREEK in Locust Grove, 1.94 mi from the site, with lot parcels 128E01001000–036. jome says 39 lots,
+  so we used the platted 36.
+- Honey Creek (`076f4179`): no count. RZ-26-02 was postponed on May 14 and hasn't been re-heard.
+- Overland, Brighton, The Park at Brighton: blocked. Their lot maps are JS-rendered (Zonda / DRB).
