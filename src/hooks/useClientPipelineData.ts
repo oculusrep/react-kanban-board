@@ -51,6 +51,8 @@ interface UseClientPipelineDataOptions {
   visibleStageNames?: string[];
   refreshTrigger?: number;
   enabled?: boolean;
+  /** Only site submits tagged with this Real Estate Manager (portal "My sites"). null = all. */
+  realEstateManagerId?: string | null;
 }
 
 interface UseClientPipelineDataResult {
@@ -66,6 +68,7 @@ export function useClientPipelineData({
   visibleStageNames,
   refreshTrigger,
   enabled = true,
+  realEstateManagerId = null,
 }: UseClientPipelineDataOptions): UseClientPipelineDataResult {
   const [siteSubmits, setSiteSubmits] = useState<PipelineSiteSubmit[]>([]);
   const [stages, setStages] = useState<PipelineSubmitStage[]>([]);
@@ -139,7 +142,7 @@ export function useClientPipelineData({
           return;
         }
 
-        const { data, error: fetchError } = await supabase
+        let submitQuery = supabase
           .from('site_submit')
           .select(
             `
@@ -184,6 +187,8 @@ export function useClientPipelineData({
           )
           .in('client_id', clientIds)
           .in('submit_stage_id', visibleStageIds);
+        if (realEstateManagerId) submitQuery = submitQuery.eq('real_estate_manager_id', realEstateManagerId);
+        const { data, error: fetchError } = await submitQuery;
 
         if (fetchError) throw fetchError;
 
@@ -207,7 +212,7 @@ export function useClientPipelineData({
     return () => {
       cancelled = true;
     };
-  }, [clientIdsKey, stageNamesKey, refreshTrigger, enabled]);
+  }, [clientIdsKey, stageNamesKey, refreshTrigger, enabled, realEstateManagerId]);
 
   useEffect(() => {
     if (!enabled || clientIds.length === 0) return;

@@ -65,6 +65,7 @@ export interface SiteSubmitLoadingConfig {
   mode: SiteSubmitLoadingMode;
   clientId?: string | null; // For client filtering
   clientIds?: string[] | null; // Multi-client filter (account family); takes precedence over clientId
+  realEstateManagerId?: string | null; // client-filtered mode only: just this REM's sites (portal "My sites")
   visibleStages?: Set<string>; // For stage filtering
   clusterConfig?: {
     minimumClusterSize: number;
@@ -304,6 +305,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           if (filterClientIds.length > 0) {
             console.log(`🔍 Filtering by client(s): ${filterClientIds.join(', ')}`);
             query = query.in('client_id', filterClientIds);
+            if (loadingConfig.realEstateManagerId) query = query.eq('real_estate_manager_id', loadingConfig.realEstateManagerId);
           } else {
             // No client selected - return empty results instead of all site submits
             console.log('🚫 No client selected, skipping site submit fetch (will return 0 results)');

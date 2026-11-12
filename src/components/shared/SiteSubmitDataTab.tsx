@@ -17,6 +17,7 @@ import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
 import DemographicsSection from './DemographicsSection';
+import RealEstateManagerField from './RealEstateManagerField';
 
 interface SiteSubmitDataTabProps {
   siteSubmit: SiteSubmitData;
@@ -453,6 +454,14 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
             </span>
           )}
         </div>
+
+        {/* Client-side Real Estate Manager tag (e.g. Starbucks REM) */}
+        <RealEstateManagerField
+          clientId={siteSubmit.client_id}
+          siteSubmitId={siteSubmit.id}
+          dealId={null}
+          isEditable={isEditable}
+        />
 
         {/* Date Submitted - editable */}
         <Field
