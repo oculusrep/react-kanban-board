@@ -76,6 +76,14 @@ export default function StarbucksDealBoardPage() {
     localStorage.setItem(ACCOUNT_KEY, id);
     setAgendaOnly(false);
   }
+  // A saved account that no longer exists (e.g. the merged "Starbucks - JW" child) → All.
+  useEffect(() => {
+    if (!loading && accounts.length > 0 && accountFilter !== ACCOUNT_ALL && !accounts.some((a) => a.clientId === accountFilter)) {
+      setAccountFilter(ACCOUNT_ALL);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, accounts, accountFilter]);
+
   function onAgendaChip(clientId: string) {
     if (agendaOnly && accountFilter === clientId) { setAgendaOnly(false); return; }
     setAccountFilterState(clientId);

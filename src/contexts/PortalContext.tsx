@@ -36,6 +36,14 @@ interface PortalContextType {
   // Site submit refresh trigger - increment to force refetch across portal pages
   siteSubmitRefreshTrigger: number;
   triggerSiteSubmitRefresh: () => void;
+
+  // "My sites" — portal user is tagged as Real Estate Manager on some site submits.
+  // Defaults on for them; toggling shows the whole account. Display filter only (not access control).
+  hasMySites: boolean;
+  mySitesOnly: boolean;
+  setMySitesOnly: (on: boolean) => void;
+  /** contactId to filter site submits by real_estate_manager_id, or null = show everything. */
+  mySitesFilterContactId: string | null;
 }
 
 const PortalContext = createContext<PortalContextType | undefined>(undefined);
@@ -45,6 +53,7 @@ interface PortalProviderProps {
 }
 
 const PORTAL_SELECTED_CLIENT_KEY = 'portal_selected_client_id';
+const PORTAL_MY_SITES_ONLY_KEY = 'portal_my_sites_only';
 
 export function PortalProvider({ children }: PortalProviderProps) {
   const { user, userRole } = useAuth();
@@ -69,6 +78,22 @@ export function PortalProvider({ children }: PortalProviderProps) {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<PortalViewMode>('broker');
   const [siteSubmitRefreshTrigger, setSiteSubmitRefreshTrigger] = useState(0);
+  const [hasMySites, setHasMySites] = useState(false);
+  const [mySitesOnly, setMySitesOnlyState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(PORTAL_MY_SITES_ONLY_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const setMySitesOnly = useCallback((on: boolean) => {
+    setMySitesOnlyState(on);
+    try {
+      localStorage.setItem(PORTAL_MY_SITES_ONLY_KEY, String(on));
+    } catch {
+      /* storage unavailable — in-memory only */
+    }
+  }, []);
 
   const isInternalUser = userRole ? ['admin', 'broker_full', 'broker_limited', 'assistant'].includes(userRole) : false;
 
@@ -94,6 +119,27 @@ export function PortalProvider({ children }: PortalProviderProps) {
   };
 
   const selectedClient = accessibleClients.find(c => c.id === selectedClientId) || null;
+
+  // Does this portal user have any site submits tagged to them as Real Estate Manager?
+  useEffect(() => {
+    if (!contactId) {
+      setHasMySites(false);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from('site_submit')
+      .select('id', { count: 'exact', head: true })
+      .eq('real_estate_manager_id', contactId)
+      .then(({ count }) => {
+        if (!cancelled) setHasMySites((count ?? 0) > 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contactId]);
+
+  const mySitesFilterContactId = hasMySites && mySitesOnly && !isInternalUser ? contactId : null;
 
   // Fetch accessible clients
   const refreshClients = async () => {
@@ -221,6 +267,10 @@ export function PortalProvider({ children }: PortalProviderProps) {
     refreshClients,
     siteSubmitRefreshTrigger,
     triggerSiteSubmitRefresh,
+    hasMySites,
+    mySitesOnly,
+    setMySitesOnly,
+    mySitesFilterContactId,
   };
 
   return (

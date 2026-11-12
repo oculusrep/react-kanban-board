@@ -38,6 +38,8 @@ export interface ReportRow {
   heat: Heat;                  // board heat — same warm/hot thresholds as the tiles
   packageStatus: string;
   notes: string;
+  remId: string | null;         // Real Estate Manager contact; null = Unassigned
+  remName: string | null;
 }
 
 interface RowKey {

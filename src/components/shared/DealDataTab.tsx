@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { SiteSubmitData } from './SiteSubmitSidebar';
 import DemographicsSection from './DemographicsSection';
+import RealEstateManagerField from './RealEstateManagerField';
 import ClientSelector from '../mapping/ClientSelector';
 import { ClientSearchResult } from '../../hooks/useClientSearch';
 
@@ -522,6 +523,14 @@ export default function DealDataTab({ siteSubmit, dealId, isEditable, onUpdate }
             </span>
           )}
         </div>
+
+        {/* Client-side Real Estate Manager tag — written to deal + linked site submit */}
+        <RealEstateManagerField
+          clientId={siteSubmit.client_id}
+          siteSubmitId={siteSubmit.id || null}
+          dealId={dealId}
+          isEditable={isEditable}
+        />
 
         {/* Fields based on property type */}
         {isLand ? (

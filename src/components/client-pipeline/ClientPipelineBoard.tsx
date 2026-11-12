@@ -50,6 +50,8 @@ export interface ClientPipelineBoardProps {
   siteSubmitSidebarRightOffset?: number;
   /** Tab to focus when the sidebar opens (e.g. from a deep link in an alert email). */
   initialSidebarTab?: 'data' | 'chat' | 'files' | 'contacts';
+  /** Only show site submits tagged with this Real Estate Manager (portal "My sites"). */
+  realEstateManagerId?: string | null;
 }
 
 export default function ClientPipelineBoard({
@@ -70,12 +72,14 @@ export default function ClientPipelineBoard({
   onViewProperty,
   siteSubmitSidebarRightOffset = 0,
   initialSidebarTab,
+  realEstateManagerId = null,
 }: ClientPipelineBoardProps) {
   const { user } = useAuth();
   const { siteSubmits, stages, loading, error, applyStatusChange } = useClientPipelineData({
     clientIds,
     visibleStageNames,
     refreshTrigger,
+    realEstateManagerId,
   });
 
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);

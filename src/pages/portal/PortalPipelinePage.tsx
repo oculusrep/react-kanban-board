@@ -21,6 +21,7 @@ export default function PortalPipelinePage() {
     viewMode,
     siteSubmitRefreshTrigger,
     triggerSiteSubmitRefresh,
+    mySitesFilterContactId,
   } = usePortal();
   const [searchParams, setSearchParams] = useSearchParams();
   usePortalActivityTracker();
@@ -112,6 +113,7 @@ export default function PortalPipelinePage() {
       initialStageName={initialStageName}
       initialSidebarTab={initialSidebarTab}
       onCopyForReviewLink={handleCopyForReviewLink}
+      realEstateManagerId={mySitesFilterContactId}
     />
   );
 }

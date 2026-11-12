@@ -33,7 +33,7 @@ const getUserInitials = (firstName?: string, lastName?: string): string => {
  */
 export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarProps) {
   const { user, signOut, userRole } = useAuth();
-  const { accessibleClients, selectedClientId, setSelectedClientId, isInternalUser: isInternalPortalUser, viewMode, setViewMode } = usePortal();
+  const { accessibleClients, selectedClientId, setSelectedClientId, isInternalUser: isInternalPortalUser, viewMode, setViewMode, hasMySites, mySitesOnly, setMySitesOnly } = usePortal();
   const navigate = useNavigate();
   const location = useLocation();
   const [userProfile, setUserProfile] = useState<{ first_name?: string; last_name?: string } | null>(null);
@@ -388,6 +388,24 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
         {/* Right side - Client logo and user menu */}
         <div className="flex items-center space-x-4">
+          {/* My sites / All — only for portal users tagged as Real Estate Manager on some sites */}
+          {hasMySites && !isInternalPortalUser && (
+            <div className="flex rounded-md overflow-hidden text-xs font-medium" style={{ border: '1px solid #8FA9C8' }} role="group" aria-label="Site filter">
+              {([['My sites', true], ['All sites', false]] as const).map(([lbl, on]) => (
+                <button
+                  key={lbl}
+                  type="button"
+                  onClick={() => setMySitesOnly(on)}
+                  aria-pressed={mySitesOnly === on}
+                  className="px-3 py-1.5 transition-colors"
+                  style={mySitesOnly === on ? { backgroundColor: '#FFFFFF', color: '#002147' } : { backgroundColor: 'transparent', color: '#FFFFFF' }}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Client Search/Switcher */}
           {isInternalPortalUser ? (
             // Internal users get a searchable client selector
