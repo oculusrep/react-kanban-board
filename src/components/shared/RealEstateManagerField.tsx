@@ -8,8 +8,10 @@
  * tag, not snapshot economics).
  *
  * Starbucks only (for now): renders nothing for any other client. Candidates are the
- * account's contacts holding the "Site Selector" role (contact_client_role). No REM
- * (null) is a real state — "Unassigned" — and is filterable as such.
+ * account's contacts holding the "Site Selector" role. No REM (null) is a real state —
+ * "Unassigned" — and is filterable as such. Names come from the SECURITY DEFINER RPC
+ * client_real_estate_managers, so the read-only row also works for portal users (who
+ * can't read contact / contact_client_role directly).
  */
 
 import { useEffect, useState } from 'react';
@@ -31,12 +33,12 @@ interface Props {
 export interface ContactOption {
   id: string;
   name: string;
+  /** Active Site Selector on the account (pickable). False = a former REM still tagged somewhere. */
+  isSiteSelector: boolean;
 }
 
-const contactName = (c: { first_name: string | null; last_name: string | null }) =>
-  [c.first_name, c.last_name].filter(Boolean).join(' ') || '(unnamed)';
-
-/** The account's active Site Selector contacts — the REM choices. */
+/** Everyone who is or has been an REM on the account (Site Selectors + anyone still tagged).
+ *  Pickers should offer only isSiteSelector; displays can name anyone. */
 export function useRemOptions(clientId: string | null | undefined): ContactOption[] {
   const [options, setOptions] = useState<ContactOption[]>([]);
   useEffect(() => {
@@ -46,14 +48,15 @@ export function useRemOptions(clientId: string | null | undefined): ContactOptio
     }
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from('contact_client_role')
-        .select('contact:contact_id(id, first_name, last_name), role:role_id(role_name)')
-        .eq('client_id', clientId)
-        .eq('is_active', true);
-      const byId = new Map<string, ContactOption>();
-      for (const r of (data || []) as any[]) if (r.contact && r.role?.role_name === REM_ROLE_NAME) byId.set(r.contact.id, { id: r.contact.id, name: contactName(r.contact) });
-      if (!cancelled) setOptions([...byId.values()].sort((a, b) => a.name.localeCompare(b.name)));
+      const { data, error } = await supabase.rpc('client_real_estate_managers', { p_client_id: clientId });
+      if (error) console.error('Error loading REMs:', error);
+      const rows = (data || []) as { id: string; name: string | null; is_site_selector: boolean }[];
+      if (!cancelled)
+        setOptions(
+          rows
+            .map((r) => ({ id: r.id, name: r.name || '(unnamed)', isSiteSelector: !!r.is_site_selector }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+        );
     })();
     return () => {
       cancelled = true;
@@ -90,9 +93,9 @@ export function RealEstateManagerField(props: Props) {
 
 function RealEstateManagerRow({ clientId, siteSubmitId, dealId, isEditable }: Props) {
   const [value, setValue] = useState<string | null>(null);
-  const roleOptions = useRemOptions(clientId);
-  const [extra, setExtra] = useState<ContactOption | null>(null);
-  const options = extra && !roleOptions.some((o) => o.id === extra.id) ? [...roleOptions, extra] : roleOptions;
+  const allRems = useRemOptions(clientId);
+  // Pick from Site Selectors; keep the current value listed even if they've lost the role.
+  const options = allRems.filter((o) => o.isSiteSelector || o.id === value);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,24 +117,6 @@ function RealEstateManagerRow({ clientId, siteSubmitId, dealId, isEditable }: Pr
     };
   }, [siteSubmitId, dealId]);
 
-  // Keep the current value displayable even if that contact has since lost the Site Selector role.
-  useEffect(() => {
-    if (!value || roleOptions.some((o) => o.id === value)) return;
-    let cancelled = false;
-    supabase
-      .from('contact')
-      .select('id, first_name, last_name')
-      .eq('id', value)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled && data) setExtra({ id: data.id, name: contactName(data) });
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, roleOptions]);
-
   const save = async (next: string | null) => {
     const prev = value;
     setValue(next);
@@ -147,7 +132,7 @@ function RealEstateManagerRow({ clientId, siteSubmitId, dealId, isEditable }: Pr
     }
   };
 
-  const currentName = options.find((o) => o.id === value)?.name;
+  const currentName = allRems.find((o) => o.id === value)?.name;
 
   return (
     <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">

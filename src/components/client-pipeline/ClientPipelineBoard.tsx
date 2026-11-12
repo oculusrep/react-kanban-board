@@ -107,7 +107,8 @@ export default function ClientPipelineBoard({
 
   // Real Estate Manager column + filter — Starbucks only, internal (editable) view only.
   const showRem = isEditable && clientIds.includes(STARBUCKS_CLIENT_ID);
-  const remOptions = useRemOptions(showRem ? STARBUCKS_CLIENT_ID : null);
+  const allRems = useRemOptions(showRem ? STARBUCKS_CLIENT_ID : null);
+  const remOptions = allRems.filter((o) => o.isSiteSelector);
   const [remFilter, setRemFilter] = useState<string>(REM_ALL);
   // Local edits win over the fetched value until the next refetch.
   const [remEdits, setRemEdits] = useState<Map<string, string | null>>(new Map());
@@ -824,6 +825,7 @@ export default function ClientPipelineBoard({
                           const rem = remOf(ss);
                           // Keep a REM who has lost the Site Selector role displayable.
                           const known = !rem || remOptions.some((o) => o.id === rem);
+                          const formerName = allRems.find((o) => o.id === rem)?.name;
                           return (
                             <select
                               value={rem ?? ''}
@@ -835,7 +837,7 @@ export default function ClientPipelineBoard({
                               {remOptions.map((o) => (
                                 <option key={o.id} value={o.id}>{o.name}</option>
                               ))}
-                              {!known && <option value={rem!}>(former REM)</option>}
+                              {!known && <option value={rem!}>{formerName ? `${formerName} (former)` : '(former REM)'}</option>}
                             </select>
                           );
                         })()}
