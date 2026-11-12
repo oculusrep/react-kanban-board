@@ -37,13 +37,15 @@ interface PortalContextType {
   siteSubmitRefreshTrigger: number;
   triggerSiteSubmitRefresh: () => void;
 
-  // "My sites" — portal user is tagged as Real Estate Manager on some site submits.
-  // Defaults on for them; toggling shows the whole account. Display filter only (not access control).
-  hasMySites: boolean;
-  mySitesOnly: boolean;
-  setMySitesOnly: (on: boolean) => void;
-  /** contactId to filter site submits by real_estate_manager_id, or null = show everything. */
-  mySitesFilterContactId: string | null;
+  // Real Estate Manager filter (Starbucks only). Display filter, not access control.
+  // '' = all REMs, REM_UNASSIGNED, or a contact id. Defaults to the viewer's own sites
+  // when they are tagged as REM on any, else all.
+  showRemFilter: boolean;
+  remOptions: { id: string; name: string | null }[];
+  remFilter: string;
+  setRemFilter: (value: string) => void;
+  /** remFilter as a query value (null = no filter) for pipeline + map loaders. */
+  remFilterValue: string | null;
 }
 
 const PortalContext = createContext<PortalContextType | undefined>(undefined);
@@ -53,7 +55,8 @@ interface PortalProviderProps {
 }
 
 const PORTAL_SELECTED_CLIENT_KEY = 'portal_selected_client_id';
-const PORTAL_MY_SITES_ONLY_KEY = 'portal_my_sites_only';
+const PORTAL_REM_FILTER_KEY = 'portal_rem_filter';
+const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
 
 export function PortalProvider({ children }: PortalProviderProps) {
   const { user, userRole } = useAuth();
@@ -79,17 +82,19 @@ export function PortalProvider({ children }: PortalProviderProps) {
   const [viewMode, setViewMode] = useState<PortalViewMode>('broker');
   const [siteSubmitRefreshTrigger, setSiteSubmitRefreshTrigger] = useState(0);
   const [hasMySites, setHasMySites] = useState(false);
-  const [mySitesOnly, setMySitesOnlyState] = useState<boolean>(() => {
+  const [remOptions, setRemOptions] = useState<{ id: string; name: string | null }[]>([]);
+  // null = viewer hasn't chosen yet → default (own sites if tagged, else all).
+  const [remChoice, setRemChoice] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(PORTAL_MY_SITES_ONLY_KEY) !== 'false';
+      return localStorage.getItem(PORTAL_REM_FILTER_KEY);
     } catch {
-      return true;
+      return null;
     }
   });
-  const setMySitesOnly = useCallback((on: boolean) => {
-    setMySitesOnlyState(on);
+  const setRemFilter = useCallback((value: string) => {
+    setRemChoice(value);
     try {
-      localStorage.setItem(PORTAL_MY_SITES_ONLY_KEY, String(on));
+      localStorage.setItem(PORTAL_REM_FILTER_KEY, value);
     } catch {
       /* storage unavailable — in-memory only */
     }
@@ -139,7 +144,31 @@ export function PortalProvider({ children }: PortalProviderProps) {
     };
   }, [contactId]);
 
-  const mySitesFilterContactId = hasMySites && mySitesOnly && !isInternalUser ? contactId : null;
+  // The client in view: the selected one, or the only one this user can see.
+  const effectiveClientId = selectedClientId || (accessibleClients.length === 1 ? accessibleClients[0].id : null);
+  const showRemFilter = effectiveClientId === STARBUCKS_CLIENT_ID;
+
+  useEffect(() => {
+    if (!showRemFilter) {
+      setRemOptions([]);
+      return;
+    }
+    let cancelled = false;
+    supabase.rpc('client_real_estate_managers', { p_client_id: STARBUCKS_CLIENT_ID }).then(({ data, error: rpcErr }) => {
+      if (rpcErr) console.error('Error loading REMs:', rpcErr);
+      if (!cancelled) setRemOptions((data as { id: string; name: string | null }[]) || []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showRemFilter]);
+
+  const defaultRem = hasMySites && contactId && !isInternalUser ? contactId : '';
+  const rawRem = remChoice ?? defaultRem;
+  // A stored REM that is no longer an option falls back to all.
+  const remFilter =
+    rawRem === '' || rawRem === '__unassigned' || remOptions.length === 0 || remOptions.some((o) => o.id === rawRem) ? rawRem : '';
+  const remFilterValue = showRemFilter && remFilter ? remFilter : null;
 
   // Fetch accessible clients
   const refreshClients = async () => {
@@ -267,10 +296,11 @@ export function PortalProvider({ children }: PortalProviderProps) {
     refreshClients,
     siteSubmitRefreshTrigger,
     triggerSiteSubmitRefresh,
-    hasMySites,
-    mySitesOnly,
-    setMySitesOnly,
-    mySitesFilterContactId,
+    showRemFilter,
+    remOptions,
+    remFilter,
+    setRemFilter,
+    remFilterValue,
   };
 
   return (

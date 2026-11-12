@@ -65,7 +65,7 @@ export default function PortalMapPage() {
  */
 function PortalMapContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh, canUploadDealFiles, mySitesFilterContactId } = usePortal();
+  const { selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh, canUploadDealFiles, remFilterValue } = usePortal();
   const { trackEvent } = usePortalActivityTracker();
   const { refreshLayer } = useLayerManager();
 
@@ -215,7 +215,7 @@ function PortalMapContent() {
     return {
       mode: 'client-filtered',
       clientId: selectedClientId || (accessibleClients.length === 1 ? accessibleClients[0].id : null),
-      realEstateManagerId: mySitesFilterContactId,
+      realEstateManagerId: remFilterValue,
       visibleStages,
       clusterConfig: {
         minimumClusterSize: 5,
@@ -227,7 +227,7 @@ function PortalMapContent() {
         useAdvancedMarkers: true,
       },
     };
-  }, [selectedClientId, visibleStages, isInternalUser, accessibleClients, mySitesFilterContactId]);
+  }, [selectedClientId, visibleStages, isInternalUser, accessibleClients, remFilterValue]);
 
   // Handle site submit click - center map on pin and open sidebar
   const handleSiteSubmitClick = useCallback((siteSubmit: any) => {

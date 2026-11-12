@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useId } from 'react';
+import { REM_UNASSIGNED } from '../components/shared/RealEstateManagerField';
 import { supabase } from '../lib/supabaseClient';
 
 export interface PipelineSiteSubmit {
@@ -52,7 +53,7 @@ interface UseClientPipelineDataOptions {
   visibleStageNames?: string[];
   refreshTrigger?: number;
   enabled?: boolean;
-  /** Only site submits tagged with this Real Estate Manager (portal "My sites"). null = all. */
+  /** Portal REM filter: a contact id, '__unassigned' (no REM), or null = all. */
   realEstateManagerId?: string | null;
 }
 
@@ -189,7 +190,8 @@ export function useClientPipelineData({
           )
           .in('client_id', clientIds)
           .in('submit_stage_id', visibleStageIds);
-        if (realEstateManagerId) submitQuery = submitQuery.eq('real_estate_manager_id', realEstateManagerId);
+        if (realEstateManagerId === REM_UNASSIGNED) submitQuery = submitQuery.is('real_estate_manager_id', null);
+        else if (realEstateManagerId) submitQuery = submitQuery.eq('real_estate_manager_id', realEstateManagerId);
         const { data, error: fetchError } = await submitQuery;
 
         if (fetchError) throw fetchError;

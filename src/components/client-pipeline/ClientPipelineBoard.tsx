@@ -14,13 +14,13 @@ import {
 import SiteSubmitSidebar from '../shared/SiteSubmitSidebar';
 import {
   STARBUCKS_CLIENT_ID,
+  REM_UNASSIGNED,
   UNASSIGNED_LABEL,
   saveRealEstateManager,
   useRemOptions,
 } from '../shared/RealEstateManagerField';
 
 const REM_ALL = '';
-const REM_UNASSIGNED = '__unassigned';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
 import RecentChangesTab from '../portal/RecentChangesTab';
 
@@ -59,7 +59,7 @@ export interface ClientPipelineBoardProps {
   siteSubmitSidebarRightOffset?: number;
   /** Tab to focus when the sidebar opens (e.g. from a deep link in an alert email). */
   initialSidebarTab?: 'data' | 'chat' | 'files' | 'contacts';
-  /** Only show site submits tagged with this Real Estate Manager (portal "My sites"). */
+  /** Portal REM filter: a contact id, REM_UNASSIGNED, or null = all. */
   realEstateManagerId?: string | null;
 }
 
