@@ -78,6 +78,21 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     timeoutMs: 75_000,
     retries: 1,
   },
+  {
+    // Gainesville-Hall County GIS, Esri-hosted (hallgis.maps.arcgis.com). There is
+    // no county-run server; this AGOL layer is the public one. Data last edited
+    // 2025-07-22 — a parcel split since then won't be in it, which surfaces as a
+    // "missing" id, same as a re-plat. PIN is "10081 000099" or "15043D000069",
+    // with an optional 1–2 letter suffix; likeFromRuns + the normalized compare
+    // handle the space / dash variants sources write. Braselton straddles four
+    // counties, so it isn't matched.
+    matches: (n) => /^(hall county|gainesville|flowery branch|oakwood|lula|clermont|gillsville)$/i.test(n),
+    label: 'Hall County',
+    layerUrl: 'https://services1.arcgis.com/3t0UAc8xSMWWaD2c/arcgis/rest/services/parcel_owner_public/FeatureServer/0',
+    idField: 'PIN',
+    whereFor: (id) => likeFromRuns('PIN', id),
+    retries: 1,
+  },
 ];
 
 export const adapterFor = (municipalityName: string | null | undefined): CountyAdapter | null =>
