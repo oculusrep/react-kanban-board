@@ -184,3 +184,23 @@ exercised against production data inside a transaction and rolled back, and the
 Forsyth fetch was run end-to-end against the live service. The **UI** — the
 unplaced panel, pin-drop mode, the dashed stroke, the acreage banner — has not
 been driven by hand. That is the next thing to do.
+
+## Status check (2026-11-12)
+
+- **Forsyth fetch:** service up (105,620 parcels, anonymous query OK). 13 records carry
+  `geometry_source = 'parcel_fetch'` (8 fetched 2026-09-21, 5 on 2026-09-28); none since.
+  `VITE_PARCEL_FETCH_ENABLED` exists in Vercel for Development, Preview and Production (added ~52
+  days before this check); its value is encrypted and was not read.
+- **Unmerged related work:** `feature/geocode-proxy` (da5290e7, 2026-10-31) — browser geocoding via
+  an authenticated edge function; built, awaiting the four-persona localhost test. No unmerged
+  parcel-boundary branches or stashes.
+- **Adding the other six "usable" counties (Gwinnett, DeKalb, Bibb, Columbia, Jackson, Decatur):**
+  their endpoint URLs were never written down, only the field names — each has to be re-found.
+  `fetchParcelPolygons` hardcodes `STATEDAREA` in `outFields` (a Forsyth column), so a shared
+  change is needed first. Then per county: CORS from the browser, the stored ID format → a
+  `whereFor`, city-name matching, a live test with the acreage check. Estimate ~1–2 h shared +
+  ~1–2 h per county ≈ 1–1.5 working days for all six.
+- **Payoff today is small:** committed `municipal_project` rows with parcel ids outside
+  Forsyth/Cumming — Macon-Bibb/Bibb 14, Columbia 1, Jackson 0; no Gwinnett/DeKalb/Decatur records
+  at all. The biggest hand-draw counts (Hall, Winder/Barrow, Hiram, Dallas, Paulding) have no public
+  parcel endpoint. Fetch also needs the record to carry parcel ids.
