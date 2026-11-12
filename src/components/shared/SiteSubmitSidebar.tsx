@@ -1880,6 +1880,7 @@ export default function SiteSubmitSidebar({
           propertyUnitId={siteSubmit.property_unit_id}
           onSuccess={handleDealConversionSuccess}
           triggerStage={conversionTriggerStage}
+          isStarbucks={isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)}
         />
       )}
 

@@ -35,6 +35,8 @@ interface ConvertSiteSubmitToDealModalProps {
   propertyUnitId: string | null;
   onSuccess: (dealId: string) => void;
   triggerStage?: TriggerStage;
+  /** Starbucks account family: name "SBUX - City - Address", $0, 4%, Lease, Mike & Arty. */
+  isStarbucks?: boolean;
 }
 
 export default function ConvertSiteSubmitToDealModal({
@@ -50,6 +52,7 @@ export default function ConvertSiteSubmitToDealModal({
   propertyUnitId,
   onSuccess,
   triggerStage = 'LOI',
+  isStarbucks = false,
 }: ConvertSiteSubmitToDealModalProps) {
   // LOI is the only trigger that forces the site_submit stage forward and
   // sets loi_written_date; the other two are early-funnel Starbucks triggers
@@ -85,14 +88,38 @@ export default function ConvertSiteSubmitToDealModal({
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [fetchingAssignments, setFetchingAssignments] = useState(true);
 
-  // Initialize default deal name
+  const genericDefaultName = `${clientName || 'Client'} - ${propertyName || 'Property'}`;
+
+  // Initialize default deal name. Starbucks deals use "SBUX - City - Street Address"
+  // from the property record.
   useEffect(() => {
-    if (isOpen) {
-      const defaultName = `${clientName || 'Client'} - ${propertyName || 'Property'}`;
+    if (!isOpen) return;
+    let cancelled = false;
+    const init = async () => {
+      let defaultName = genericDefaultName;
+      if (isStarbucks && propertyId) {
+        const { data } = await supabase
+          .from('property')
+          .select('city, address')
+          .eq('id', propertyId)
+          .maybeSingle();
+        const parts = ['SBUX', data?.city?.trim(), data?.address?.trim()].filter(Boolean);
+        if (parts.length > 1) defaultName = parts.join(' - ');
+      }
+      if (cancelled) return;
       setDealName(defaultName);
       checkForDuplicateDeal(defaultName);
-    }
-  }, [isOpen, clientName, propertyName]);
+    };
+    init();
+    return () => { cancelled = true; };
+  }, [isOpen, clientName, propertyName, propertyId, isStarbucks]);
+
+  // Starbucks economics defaults: $0 value, 4% commission.
+  useEffect(() => {
+    if (!isOpen || !isStarbucks) return;
+    setDealValue(prev => (prev === null ? 0 : prev));
+    setCommission(prev => (prev === null ? 4 : prev));
+  }, [isOpen, isStarbucks]);
 
   // Fetch assignments and lookup options
   useEffect(() => {
@@ -139,7 +166,13 @@ export default function ConvertSiteSubmitToDealModal({
         .eq('active', true)
         .order('sort_order');
 
-      if (transactionTypes) setTransactionTypeOptions(transactionTypes);
+      if (transactionTypes) {
+        setTransactionTypeOptions(transactionTypes);
+        if (isStarbucks) {
+          const lease = transactionTypes.find(t => t.label === 'Lease');
+          if (lease) setTransactionTypeId(prev => prev ?? lease.id);
+        }
+      }
 
       // Fetch deal teams
       const { data: dealTeams } = await supabase
@@ -147,7 +180,13 @@ export default function ConvertSiteSubmitToDealModal({
         .select('id, label')
         .order('label');
 
-      if (dealTeams) setDealTeamOptions(dealTeams);
+      if (dealTeams) {
+        setDealTeamOptions(dealTeams);
+        if (isStarbucks) {
+          const team = dealTeams.find(t => t.label === 'Mike & Arty');
+          if (team) setDealTeamId(prev => prev ?? team.id);
+        }
+      }
     } catch (err) {
       console.error('Error fetching lookup options:', err);
     }
@@ -525,7 +564,7 @@ export default function ConvertSiteSubmitToDealModal({
   const handleClose = () => {
     if (!loading) {
       // Reset form
-      setDealName(`${clientName || 'Client'} - ${propertyName || 'Property'}`);
+      setDealName(genericDefaultName);
       setTargetCloseDate(null);
       setSelectedAssignmentId('');
       setDealValue(null);
@@ -713,23 +752,6 @@ export default function ConvertSiteSubmitToDealModal({
             options={dealTeamOptions}
             placeholder="-- Select Deal Team --"
           />
-
-          {/* Summary Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-            <h3 className="text-sm font-semibold text-blue-900 mb-2">What will happen:</h3>
-            <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-              <li>New deal will be created with stage "{dealStageLabel}"</li>
-              <li>Number of payments will be set based on transaction type (2 for leases, 1 for purchases)</li>
-              <li>Property and property unit from site submit will be linked to the deal</li>
-              {propertyId && <li>Property contacts will be copied to the deal (editable in Contacts tab)</li>}
-              {selectedAssignmentId && <li>Assignment will be linked to the new deal and priority changed to "Converted"</li>}
-              <li>
-                {isLoiTrigger
-                  ? 'Site submit will be linked to the deal and stage changed to "LOI"'
-                  : `Site submit will be linked to the deal; stage stays at "${dealStageLabel}"`}
-              </li>
-            </ul>
-          </div>
         </div>
 
         {/* Footer */}
