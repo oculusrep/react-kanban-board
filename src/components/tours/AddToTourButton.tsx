@@ -14,7 +14,8 @@ import type { TourStoreRef } from '../../lib/tourStores';
 // ---------------------------------------------------------------------------
 // AddToTourButton — overlay-first, drop-in staging control.
 //
-// Minimal clicks: "Add to tour ▾" opens a dropdown of the client's tours; pick one
+// Minimal clicks: "Add to tour ▾" opens a dropdown of every active tour (this client's
+// first, others labelled with their client); pick one
 // to stage this site submit (lands in Unscheduled), or create a new tour inline.
 // Tours that already contain it show ✓ and "Remove" on hover; clicking removes the
 // stop (confirming first only if the stop carries work: notes, label, approach
@@ -62,7 +63,13 @@ export function AddToTourButton({
   noSiteSubmitReason = 'No linked site submit to add to a tour',
   onStaged,
 }: AddToTourButtonProps) {
-  const { tours, loading, createTour, refresh } = useTours(store ? null : clientId, { allClients: !!store });
+  // Every active (non-archived) tour across clients — a site can go on any tour, not just
+  // its own client's (e.g. a "Starbucks" site on a "Starbucks - JW (Coastal GA)" tour).
+  // This record's client's tours sort first; archive a tour in its detail panel to drop it here.
+  const { tours: allTours, loading, createTour, refresh } = useTours(store ? null : clientId, { allClients: true });
+  const tours = store
+    ? allTours
+    : [...allTours].sort((a, b) => Number(b.client_id === clientId) - Number(a.client_id === clientId));
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -216,7 +223,7 @@ export function AddToTourButton({
           {loading && tours.length === 0 && <div style={itemMuted}>Loading tours…</div>}
 
           {!loading && tours.length === 0 && !creating && (
-            <div style={itemMuted}>{store ? 'No active tours.' : 'No tours yet for this client.'}</div>
+            <div style={itemMuted}>No active tours.</div>
           )}
 
           {!creating &&
@@ -277,7 +284,7 @@ export function AddToTourButton({
                     <span>
                       {t.tour_name}
                       {t.is_archived ? ' (archived)' : ''}
-                      {store && t.client_name && (
+                      {(store || t.client_id !== clientId) && t.client_name && (
                         <span style={{ display: 'block', color: SLATE, fontSize: 11, fontWeight: 400 }}>{t.client_name}</span>
                       )}
                     </span>
