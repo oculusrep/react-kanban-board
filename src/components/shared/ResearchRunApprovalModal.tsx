@@ -429,6 +429,9 @@ export default function ResearchRunApprovalModal({
   const [showAllRows, setShowAllRows] = useState<Set<string>>(new Set());
   const [extraById, setExtraById] = useState<Record<string, StagingExtra | 'loading' | { error: string }>>({});
   const [showClean, setShowClean] = useState(false);
+  // "Leads — no unit count found": collapsed by default so the main list is the
+  // mappable records. Still fully approvable from there.
+  const [showLeads, setShowLeads] = useState(false);
   const [showDecided, setShowDecided] = useState(false);
   // Step 1 state: stagingId -> group key (or REJECT_KEY). Keyed by ROW, so an
   // assignment survives the cluster re-forming after a partial resolution.
@@ -955,12 +958,30 @@ export default function ResearchRunApprovalModal({
     return r.units_needs_review ? (r.units_review_reason || 'Unit count needs review') : null;
   };
 
+  // A LEAD is a record with no usable unit count: the DB flagged it
+  // (units_needs_review — null, 0, or a placeholder) or the count is null / 0.
+  // Classified on the STAGED values so a row doesn't jump sections while the
+  // reviewer types a count into it.
+  const isLead = (r: StagingRow) =>
+    r.units_needs_review || !(r.total_housing_units != null && r.total_housing_units > 0);
+  // What it will commit as: a lead whose reviewer typed a positive count commits
+  // as a project (mirrors unitsFlagOnCommit / approve_research_staging_rows).
+  const isLeadOnCommit = (r: StagingRow) => {
+    const e = edits[r.id]?.total_housing_units;
+    const typed = e !== undefined ? (Number(e) || null) : null;
+    if (typed != null && typed > 0 && typed !== r.total_housing_units) return false;
+    return isLead(r);
+  };
+
   // Triage: split every row into the section it belongs to. In-sweep cluster
   // members are rendered inside their cluster card (see `clusters`), so they're
   // excluded here. Everything else: flagged pending -> needs attention; clean
-  // pending -> ready; approved/rejected -> decided.
+  // pending -> ready; approved/rejected -> decided. Pending LEADS (no unit
+  // count) go to their own section whatever else is flagged on them — their
+  // conflict badges and panels still render on the lead card.
   const triage = useMemo(() => {
     const needsAttention: StagingRow[] = [];
+    const leads: StagingRow[] = [];
     const clean: StagingRow[] = [];
     const approved: StagingRow[] = [];
     const rejected: StagingRow[] = [];
@@ -974,10 +995,12 @@ export default function ResearchRunApprovalModal({
       if (r.approval_state === 'merged') { merged.push(r); continue; }
       // Members of a location or name cluster render in their cluster card.
       if (clusterMemberIds.has(r.id) || nameClusterMemberIds.has(r.id)) continue;
+      if (isLead(r)) { leads.push(r); continue; }
       (isFlagged(r) ? needsAttention : clean).push(r);
     }
     return {
       needsAttention: needsAttention.sort(byName),
+      leads: leads.sort(byName),
       clean: clean.sort(byName),
       approved: approved.sort(byName),
       rejected: rejected.sort(byName),
@@ -1543,6 +1566,20 @@ export default function ResearchRunApprovalModal({
   const isInFlightRun = !isSweep && (run?.state === 'pending' || run?.state === 'running');
   const isReadOnlyRun = !canApprove || isInFlightRun || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
   const cleanSelectable = triage.clean.filter((r) => !r.matched_existing_id).map((r) => r.id);
+  const leadIds = triage.leads.map((r) => r.id);
+  const leadsSelected = leadIds.filter((id) => selected.has(id)).length;
+  // Footer split: what the selection will commit as.
+  const commitSplit = (() => {
+    let projects = 0, leadsN = 0;
+    for (const id of selected) {
+      const r = stagingById.get(id);
+      if (!r) continue;
+      if (isLeadOnCommit(r)) leadsN++; else projects++;
+    }
+    return { projects, leads: leadsN };
+  })();
+  const commitLabel = `${commitSplit.projects} project${commitSplit.projects === 1 ? '' : 's'}`
+    + (commitSplit.leads > 0 ? ` + ${commitSplit.leads} lead${commitSplit.leads === 1 ? '' : 's'}` : '');
   // Single-run header line: the frozen checklist municipalities, in trigger order.
   const runMuniSummary = useMemo(() => muniSummary(checklist), [checklist]);
 
@@ -2211,6 +2248,49 @@ export default function ResearchRunApprovalModal({
   };
 
   // Collapsible section shell for the bulk buckets (clean / decided).
+  // A lead: name, municipality, source and notes — enough to judge whether it's
+  // worth chasing. Conflict badges stay visible. Clicking the name opens the
+  // full editor (e.g. to type a count found by hand).
+  const leadCard = (r: StagingRow) => {
+    const isPending = r.approval_state === 'pending';
+    const isExpanded = expandedRows.has(r.id);
+    return (
+      <div key={r.id} className="px-3 py-1.5" style={{ backgroundColor: '#FFFFFF' }}>
+        <div className="flex items-start gap-2">
+          {isPending && !isReadOnlyRun && (
+            <input type="checkbox" className="mt-1" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)}
+                   title="Include in Approve & Commit" />
+          )}
+          <div className="flex-1 min-w-0">
+            <button type="button" onClick={() => toggleExpand(r.id)} className="text-left">
+              <span className="text-xs mr-1" style={{ color: '#8FA9C8' }}>{isExpanded ? '▾' : '▸'}</span>
+              <span className="text-sm font-medium" style={{ color: '#002147' }}>{r.project_name ?? '(unnamed)'}</span>
+              {r.muni_name && <span className="text-xs" style={{ color: '#4A6B94' }}> · {r.muni_name}</span>}
+            </button>
+            <span className="inline-flex flex-wrap gap-1.5 ml-1.5 align-middle">{rowBadges(r)}</span>
+            {r.source && (
+              <div className="text-xs mt-0.5 select-text" style={{ color: '#4A6B94' }}>
+                <span style={{ color: '#8FA9C8' }}>Source: </span>{r.source}
+              </div>
+            )}
+            {r.notes && (
+              <div className="text-xs mt-0.5 select-text whitespace-pre-wrap" style={{ color: '#002147' }}>
+                <span style={{ color: '#8FA9C8' }}>Notes: </span>{r.notes}
+              </div>
+            )}
+          </div>
+          {isPending && !isReadOnlyRun && (
+            <button type="button" onClick={() => handleReject(r.id)}
+                    className="text-xs px-2 py-1 rounded border self-start" style={{ borderColor: '#A27B5C', color: '#A27B5C' }}
+                    title="Reject this row (kept for audit; reversible with Undo)">Reject</button>
+          )}
+        </div>
+        <div className="pl-6">{conflictPanels(r)}</div>
+        {isExpanded && (<div className="pl-6">{fieldEditor(r)}</div>)}
+      </div>
+    );
+  };
+
   const sectionShell = (title: string, open: boolean, onToggle: () => void, right: ReactNode, body: ReactNode) => (
     <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
       <div className="px-3 py-2 flex items-center justify-between" style={{ backgroundColor: '#F8FAFC' }}>
@@ -2408,6 +2488,7 @@ export default function ResearchRunApprovalModal({
                   {nameClusters.length > 0 && <span>· <b style={{ color: '#A27B5C' }}>{nameClusters.length}</b> name dup{nameClusters.length === 1 ? '' : 's'}</span>}
                   {triage.needsAttention.length > 0 && <span>· {triage.needsAttention.length} need a look</span>}
                   {triage.clean.length > 0 && <span>· {triage.clean.length} clean</span>}
+                  {triage.leads.length > 0 && <span>· {triage.leads.length} lead{triage.leads.length === 1 ? '' : 's'} (no unit count)</span>}
                   <span>· <b style={{ color: '#002147' }}>{selected.size}</b> selected to commit</span>
                   {checkingDupes && <span style={{ color: '#8FA9C8' }}>· checking for duplicates…</span>}
                   {!isReadOnlyRun && (
@@ -2487,6 +2568,32 @@ export default function ResearchRunApprovalModal({
                 triage.clean.map((r) => rowCard(r)),
               )}
 
+              {/* 3b. Leads — no unit count (collapsed by default). Below the mappable
+                  records so a Deep run's list reads as what gets mapped. */}
+              {triage.leads.length > 0 && sectionShell(
+                `Leads — no unit count found (${triage.leads.length})`
+                  + (!isReadOnlyRun ? ` · ${leadsSelected} selected` : ''),
+                showLeads,
+                () => setShowLeads((v) => !v),
+                !isReadOnlyRun ? (
+                  <span className="flex gap-1.5">
+                    <button type="button"
+                            onClick={() => setSelected((prev) => { const n = new Set(prev); triage.leads.filter((r) => !r.matched_existing_id).forEach((r) => n.add(r.id)); return n; })}
+                            className="text-xs px-2 py-1 rounded border" style={{ borderColor: '#002147', color: '#002147' }}
+                            title="Select every lead (except ones matching a committed record) for Approve & Commit">
+                      Select all
+                    </button>
+                    <button type="button"
+                            onClick={() => setSelected((prev) => { const n = new Set(prev); leadIds.forEach((id) => n.delete(id)); return n; })}
+                            className="text-xs px-2 py-1 rounded border" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+                            title="Leave every lead out of this commit">
+                      Deselect all
+                    </button>
+                  </span>
+                ) : null,
+                triage.leads.map((r) => leadCard(r)),
+              )}
+
               {/* 4. Decided (approved + rejected, collapsed by default) */}
               {(triage.approved.length + triage.rejected.length + triage.merged.length) > 0 && sectionShell(
                 `Decided — ${triage.approved.length} approved · ${triage.rejected.length} rejected${triage.merged.length > 0 ? ` · ${triage.merged.length} merged` : ''}`,
@@ -2555,7 +2662,7 @@ export default function ResearchRunApprovalModal({
                 opacity: selected.size === 0 || submitting ? 0.7 : 1,
               }}
             >
-              {submitting ? 'Approving…' : `Approve & Commit (${selected.size})`}
+              {submitting ? 'Approving…' : `Approve & Commit (${commitLabel})`}
             </button>
           ) : null}
         </div>
