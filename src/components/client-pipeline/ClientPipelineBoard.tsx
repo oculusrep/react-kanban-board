@@ -12,6 +12,15 @@ import {
   STAGE_TAB_ORDER,
 } from './pipelineConfig';
 import SiteSubmitSidebar from '../shared/SiteSubmitSidebar';
+import {
+  STARBUCKS_CLIENT_ID,
+  UNASSIGNED_LABEL,
+  saveRealEstateManager,
+  useRemOptions,
+} from '../shared/RealEstateManagerField';
+
+const REM_ALL = '';
+const REM_UNASSIGNED = '__unassigned';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
 import RecentChangesTab from '../portal/RecentChangesTab';
 
@@ -95,6 +104,28 @@ export default function ClientPipelineBoard({
   const sidebarOpen = !!selectedSiteSubmitId;
 
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Real Estate Manager column + filter — Starbucks only, internal (editable) view only.
+  const showRem = isEditable && clientIds.includes(STARBUCKS_CLIENT_ID);
+  const remOptions = useRemOptions(showRem ? STARBUCKS_CLIENT_ID : null);
+  const [remFilter, setRemFilter] = useState<string>(REM_ALL);
+  // Local edits win over the fetched value until the next refetch.
+  const [remEdits, setRemEdits] = useState<Map<string, string | null>>(new Map());
+  const [remError, setRemError] = useState<string | null>(null);
+  const remOf = (ss: PipelineSiteSubmit) => (remEdits.has(ss.id) ? remEdits.get(ss.id)! : ss.real_estate_manager_id);
+  const remMatches = (ss: PipelineSiteSubmit) =>
+    !showRem || remFilter === REM_ALL || (remFilter === REM_UNASSIGNED ? !remOf(ss) : remOf(ss) === remFilter);
+  const handleRemChange = async (ss: PipelineSiteSubmit, next: string | null) => {
+    const prev = remOf(ss);
+    setRemEdits((m) => new Map(m).set(ss.id, next));
+    setRemError(null);
+    try {
+      await saveRealEstateManager(ss.id, null, next);
+    } catch (e: any) {
+      setRemEdits((m) => new Map(m).set(ss.id, prev));
+      setRemError(`Couldn't save REM: ${e?.message ?? 'unknown error'}`);
+    }
+  };
   const [otherStagesDropdownOpen, setOtherStagesDropdownOpen] = useState(false);
   const [sortColumn, setSortColumn] = useState<string>('property_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -212,6 +243,10 @@ export default function ClientPipelineBoard({
     }
   }, [selectedSiteSubmitId, loading, siteSubmits]);
 
+  // Site submits after the REM filter — drives tab counts and the table.
+  const remScoped = siteSubmits.filter(remMatches);
+  const unassignedCount = showRem ? siteSubmits.filter((ss) => !remOf(ss)).length : 0;
+
   const markAsViewed = (siteSubmitId: string) => {
     setViewedSiteSubmits((prev) => new Set([...prev, siteSubmitId]));
   };
@@ -262,7 +297,7 @@ export default function ClientPipelineBoard({
     : null;
 
   // Filter
-  const filteredSubmits = siteSubmits.filter((ss) => {
+  const filteredSubmits = remScoped.filter((ss) => {
     if (selectedStageId) {
       if (selectedStageId === 'signed') {
         if (!signedStageIds.includes(ss.submit_stage_id)) return false;
@@ -409,7 +444,7 @@ export default function ClientPipelineBoard({
             {STAGE_TAB_ORDER.map((stageName) => {
               const stage = stages.find((s) => s.name === stageName);
               if (!stage) return null;
-              const count = siteSubmits.filter((ss) => ss.submit_stage_id === stage.id).length;
+              const count = remScoped.filter((ss) => ss.submit_stage_id === stage.id).length;
               const displayName = STAGE_DISPLAY_NAMES[stage.name] || stage.name;
               return (
                 <div key={stage.id} className="contents">
@@ -433,7 +468,7 @@ export default function ClientPipelineBoard({
 
                   {stageName === 'At Lease/PSA' &&
                     (() => {
-                      const signedCount = siteSubmits.filter((ss) =>
+                      const signedCount = remScoped.filter((ss) =>
                         signedStageIds.includes(ss.submit_stage_id)
                       ).length;
                       return (
@@ -474,7 +509,7 @@ export default function ClientPipelineBoard({
                   !selectedStageId ? 'text-blue-500' : 'text-gray-400'
                 }`}
               >
-                {siteSubmits.length}
+                {remScoped.length}
               </span>
             </button>
 
@@ -511,7 +546,7 @@ export default function ClientPipelineBoard({
               {otherStagesDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[180px] max-h-64 overflow-y-auto">
                   {otherStages.map((stage) => {
-                    const count = siteSubmits.filter(
+                    const count = remScoped.filter(
                       (ss) => ss.submit_stage_id === stage.id
                     ).length;
                     return (
@@ -586,6 +621,25 @@ export default function ClientPipelineBoard({
           )}
 
           <div className="flex-1" />
+
+          {showRem && (
+            <div className="flex items-center gap-2">
+              {remError && <span className="text-xs" style={{ color: '#A27B5C' }}>{remError}</span>}
+              <select
+                value={remFilter}
+                onChange={(e) => setRemFilter(e.target.value)}
+                title="Filter by Real Estate Manager"
+                className="py-2 px-2 border rounded-lg text-sm bg-white"
+                style={{ borderColor: remFilter ? '#002147' : '#8FA9C8', color: remFilter ? '#002147' : '#4A6B94' }}
+              >
+                <option value={REM_ALL}>All REMs</option>
+                <option value={REM_UNASSIGNED}>{UNASSIGNED_LABEL} ({unassignedCount})</option>
+                {remOptions.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="max-w-xs">
             <div className="relative">
@@ -667,6 +721,11 @@ export default function ClientPipelineBoard({
                   Notes
                 </th>
                 <SortHeader column="status" label="Status" />
+                {showRem && (
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    REM
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -759,6 +818,29 @@ export default function ClientPipelineBoard({
                         }
                       />
                     </td>
+                    {showRem && (
+                      <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {(() => {
+                          const rem = remOf(ss);
+                          // Keep a REM who has lost the Site Selector role displayable.
+                          const known = !rem || remOptions.some((o) => o.id === rem);
+                          return (
+                            <select
+                              value={rem ?? ''}
+                              onChange={(e) => handleRemChange(ss, e.target.value || null)}
+                              className="text-sm border rounded px-2 py-1 bg-white"
+                              style={{ borderColor: '#8FA9C8', color: rem ? '#002147' : '#8FA9C8' }}
+                            >
+                              <option value="">{UNASSIGNED_LABEL}</option>
+                              {remOptions.map((o) => (
+                                <option key={o.id} value={o.id}>{o.name}</option>
+                              ))}
+                              {!known && <option value={rem!}>(former REM)</option>}
+                            </select>
+                          );
+                        })()}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
