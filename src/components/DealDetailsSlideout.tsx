@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import DealDetailsForm from './DealDetailsForm';
 import CommissionTab from './CommissionTab';
@@ -75,10 +75,12 @@ export default function DealDetailsSlideout({
     }
   }, [dealId, isOpen, initialTab]);
 
-  const fetchDeal = async () => {
+  // silent: refresh in place without the loading state. The loading state
+  // unmounts every tab, which wipes in-progress edits (e.g. bill-to fields).
+  const fetchDeal = async (silent = false) => {
     if (!dealId) return;
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
 
     try {
@@ -107,13 +109,34 @@ export default function DealDetailsSlideout({
     }
   };
 
-  const handleAsyncDealUpdate = async () => {
-    // Refetch the deal to get latest data
-    if (dealId) {
-      await fetchDeal();
-      if (onDealUpdated) {
-        onDealUpdated();
-      }
+  // Tabs call this on every edit (PaymentTab's bill-to fields fire per keystroke).
+  // Merge the changes locally instead of refetching: a refetch flipped `loading`,
+  // unmounted the tab and discarded the pending debounced save, so typing never stuck.
+  const parentNotifyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDealUpdatedRef = useRef(onDealUpdated);
+  onDealUpdatedRef.current = onDealUpdated;
+  // If the slideout closes before the timer fires, notify the parent right away.
+  useEffect(() => () => {
+    if (parentNotifyRef.current) {
+      clearTimeout(parentNotifyRef.current);
+      onDealUpdatedRef.current?.();
+    }
+  }, []);
+
+  const handleAsyncDealUpdate = async (updates?: Partial<any>): Promise<void> => {
+    if (!dealId) return;
+    if (updates && Object.keys(updates).length > 0) {
+      setDeal(prev => (prev ? ({ ...prev, ...updates } as Deal) : prev));
+    } else {
+      await fetchDeal(true);
+    }
+    // Tell the parent once the edits settle, not on every keystroke.
+    if (onDealUpdated) {
+      if (parentNotifyRef.current) clearTimeout(parentNotifyRef.current);
+      parentNotifyRef.current = setTimeout(() => {
+        parentNotifyRef.current = null;
+        onDealUpdatedRef.current?.();
+      }, 1500);
     }
   };
 
