@@ -293,3 +293,38 @@ they're currently excluded from.
 Probe scripts used for this report are throwaway and live in the session
 scratchpad; every number above is reproducible with the single `curl` in §1 plus
 the SQL in §3–§4. No credentials needed for the endpoint work.
+
+---
+
+## Addendum (2026-11-12): direct endpoint search + what the records actually contain
+
+**Section 6's "none" verdicts were a scan artifact.** Searching county sites, viewer configs and
+county AGOL org directories (not the AGOL search index) found a full-county, anonymous,
+CORS-open, geojson-capable parcel polygon layer for all eight counties checked. An ID taken from
+a real staging record was resolved against each one.
+
+| County | Layer | Parcels | ID field | Real record ID resolved | Caveat |
+|---|---|---|---|---|---|
+| Hall | `services1.arcgis.com/3t0UAc8xSMWWaD2c/arcgis/rest/services/parcel_owner_public/FeatureServer/0` | 89,484 | `PIN` | `15036B000037` ✓ | last edited 2025-07-22 (stale); `NO_RELEASE` field |
+| Barrow | `services5.arcgis.com/OVFGXfRTCVcPwl55/arcgis/rest/services/BCGIS_Base_Layers/FeatureServer/120` | 44,671 | `Parcel_no` | — (no staged Barrow rows) | count > parcels (split multiparts) |
+| Paulding | `services8.arcgis.com/7YXQzPPGs9Uc4qKl/arcgis/rest/services/Paulding_Map_Auto_Updated_WFL3/FeatureServer/25` | 75,771 | `GPIN` | `177.1.3.043.0000` ✓ | also APIN / HPIN |
+| Coweta | `services1.arcgis.com/AaPyNbrJpNGryRqh/ArcGIS/rest/services/WeeklyUpdate_WinGapParcels/FeatureServer/0` | 66,099 | `ParcelNumber` | — (agent-verified only) | double internal spaces |
+| Henry | `arcgis.co.henry.ga.us/server/rest/services/Parcels/MapServer/12` | 103,773 | `PARCEL_NO` | `128-02065000` ✓ | Imperva WAF, intermittent 20–60 s hangs |
+| Houston | `services6.arcgis.com/wtKwyZlCD3bY8Zh4/arcgis/rest/services/Base_Map_Polygon/FeatureServer/0` | 71,182 (filter `County='Houston'`) | `Parcel_No` | `0W1330 089000` ✓ | hosted by City of Warner Robins, includes Peach |
+| Clayton | `gis.claytoncountyga.gov/server/rest/services/TaxAssessor/Parcels/MapServer/0` | 92,100 | `PARCELID` | `12045B A011` ✓ | — |
+| Cobb | `gis.cobbcounty.org/gisserver/rest/services/tax/taxassessorsdaily/MapServer/0` | 280,021 | `PIN` | `17021400320` ✓ | land-lot citations need composing into the PIN |
+
+**What the 241 staged rows in these counties contain** (Hall 80, Houston 37, Clayton 36, Henry 27,
+Cobb 25, Paulding 22, Coweta 14; Barrow 0):
+
+- 41 have `parcel_numbers` populated (38 Hall).
+- **54 state parcel IDs in `parcel_boundary_notes` but `parcel_numbers` is empty.** The agent is not
+  skipping them. `parcel_numbers` is filled by the trigger `municipal_project_sync_parcel_numbers`
+  → `extract_parcel_numbers()`, whose patterns only know the Forsyth, Macon-Bibb and
+  `NNNNN NNNNNN` shapes. Houston, Clayton, Henry, Paulding, Cobb and unspaced Hall IDs all fall
+  through. That's why the fill rate fell to 3 of 115 in October and 0 of 34 in November, when runs
+  moved into those counties.
+- 45 have acreage only, 4 have other boundary text, 97 have no polygon hint at all.
+- By source: government documents (minutes, agendas, case files, permits) state IDs in 93 of 156
+  rows; news, builder and other sources do in 2 of 85. Most of the empty rows come from sources
+  that don't carry parcel IDs.
