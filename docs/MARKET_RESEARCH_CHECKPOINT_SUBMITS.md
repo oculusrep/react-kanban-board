@@ -139,3 +139,19 @@ Display only — every field is still stored, loaded and editable; nothing about
   the first time Show all opens, so `get_sweep_staging` is unchanged.
 - Always visible, unchanged: the `⚠ CHECK UNITS` badge and units line, and every duplicate /
   proximity warning (matches existing, possible dup within ~Nm, dup across runs, approx. location).
+
+## Leads section — records with no unit count (2026-11-12)
+
+Single-run and sweep review both get a fourth section, "Leads — no unit count found (N)", below
+Clean & ready and collapsed by default. A pending row is a lead when `units_needs_review` is set
+(null, 0 or placeholder count) or its staged count is null/0. Classification uses the staged
+values, so a row doesn't jump sections while the reviewer types a count. Leads skip Needs attention
+even when they carry a duplicate/location flag; those badges and conflict panels still render on
+the lead card. Location/name duplicate clusters still own their members.
+
+- Lead card: name, municipality, source, notes, warning badges. Clicking the name opens the full
+  editor. Leads stay fully approvable; the header has Select all / Deselect all.
+- Footer: `Approve & Commit (12 projects + 7 leads)`, counted by what each selected row commits as.
+  A lead with a typed positive count counts as a project.
+- Default selection is unchanged (every pending row not matching a committed record), so leads
+  start selected, as they did when they sat in Needs attention.
