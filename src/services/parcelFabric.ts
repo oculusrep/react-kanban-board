@@ -32,6 +32,13 @@ export interface CountyAdapter {
    * client-side by comparing normalized strings.
    */
   whereFor: (parcelId: string) => string;
+  /** Extra attribute fields to request. Only fields the layer actually has — an
+   *  unknown field fails the whole query. */
+  extraFields?: string[];
+  /** Per-attempt timeout. Default 30 s. */
+  timeoutMs?: number;
+  /** Retries after a timeout / 5xx / server-side wait timeout. Default 0. */
+  retries?: number;
 }
 
 /** Strip punctuation and case. Verified lossless on all 105,470 Forsyth parcels: */
@@ -53,6 +60,23 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     layerUrl: 'https://geo.forsythco.com/gis/rest/services/Public/Tax_Parcel/FeatureServer/0',
     idField: 'PARCELID',
     whereFor: (id) => likeFromRuns('PARCELID', id),
+    extraFields: ['STATEDAREA'],
+  },
+  {
+    // Henry County's own ArcGIS Server, behind an Imperva WAF. Anonymous and
+    // CORS-open, but it hangs: queries have taken 20–60 s, and the server's own
+    // queue gives up at 60 s with an HTTP 200 carrying {"error":{"code":503,
+    // "message":"…Wait timeout for the request exceeded."}} (seen 2026-11-12).
+    // Hence the long timeout and a retry. PARCEL_NO comes dashed or not
+    // (128-02065000, H04A01001000); likeFromRuns + the normalized compare
+    // handle both. Jenkinsburg is in Butts County, not Henry — not matched here.
+    matches: (n) => /^(henry county|mcdonough|stockbridge|hampton|locust grove)$/i.test(n),
+    label: 'Henry County',
+    layerUrl: 'https://arcgis.co.henry.ga.us/server/rest/services/Parcels/MapServer/12',
+    idField: 'PARCEL_NO',
+    whereFor: (id) => likeFromRuns('PARCEL_NO', id),
+    timeoutMs: 75_000,
+    retries: 1,
   },
 ];
 
@@ -63,6 +87,82 @@ export interface ParcelFetchResult {
   resolved: { parcelId: string; geometry: unknown }[];
   /** Asked for but absent from the current fabric — almost always re-platted. */
   missing: string[];
+}
+
+export interface FetchProgress {
+  attempt: number;
+  of: number;
+  /** Why the previous attempt failed, when this is a retry. */
+  retryReason?: string;
+}
+
+class RetryableError extends Error {}
+
+/**
+ * One GET with a per-attempt timeout, retried on timeouts and server-side
+ * failures. A caller abort is never retried. ArcGIS reports its own failures as
+ * HTTP 200 with an `error` body, so those are classified too.
+ */
+async function queryWithRetry(
+  adapter: CountyAdapter,
+  url: string,
+  signal: AbortSignal | undefined,
+  onProgress?: (p: FetchProgress) => void,
+): Promise<any> {
+  const timeoutMs = adapter.timeoutMs ?? 30_000;
+  const of = 1 + (adapter.retries ?? 0);
+  let lastReason = '';
+  for (let attempt = 1; attempt <= of; attempt++) {
+    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    onProgress?.({ attempt, of, retryReason: attempt > 1 ? lastReason : undefined });
+
+    const ctl = new AbortController();
+    const onAbort = () => ctl.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs);
+    try {
+      let res: Response;
+      try {
+        res = await fetch(url, { signal: ctl.signal });
+      } catch (e) {
+        if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+        throw new RetryableError(timedOut
+          ? `no answer after ${Math.round(timeoutMs / 1000)} s`
+          : `network error (${e instanceof Error ? e.message : String(e)})`);
+      }
+      if (res.status >= 500) throw new RetryableError(`server returned ${res.status}`);
+      if (!res.ok) throw new Error(`${adapter.label} parcel service returned ${res.status}`);
+      let body: any;
+      try {
+        body = await res.json();
+      } catch {
+        if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+        throw new RetryableError(timedOut ? `no answer after ${Math.round(timeoutMs / 1000)} s` : 'unreadable response');
+      }
+      if (body?.error) {
+        const code = Number(body.error.code);
+        const msg = body.error.message ?? 'query failed';
+        if (code >= 500 || /timeout/i.test(msg)) throw new RetryableError(`server: ${msg}`);
+        throw new Error(`${adapter.label} parcel service: ${msg}`);
+      }
+      return body;
+    } catch (e) {
+      if (!(e instanceof RetryableError)) throw e;
+      lastReason = e.message;
+      if (attempt === of) {
+        throw new Error(
+          `${adapter.label}'s parcel server didn't respond (${lastReason}`
+          + `${of > 1 ? `, ${of} attempts` : ''}). It's often slow — try again in a minute, or draw the boundary by hand.`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, 2_000));
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    }
+  }
+  throw new Error('unreachable');
 }
 
 /**
@@ -76,24 +176,20 @@ export async function fetchParcelPolygons(
   adapter: CountyAdapter,
   parcelIds: string[],
   signal?: AbortSignal,
+  onProgress?: (p: FetchProgress) => void,
 ): Promise<ParcelFetchResult> {
   const wanted = parcelIds.filter(Boolean);
   if (wanted.length === 0) return { resolved: [], missing: [] };
 
   const params = new URLSearchParams({
     where: wanted.map((id) => adapter.whereFor(id)).join(' OR '),
-    outFields: `${adapter.idField},STATEDAREA`,
+    outFields: [adapter.idField, ...(adapter.extraFields ?? [])].join(','),
     returnGeometry: 'true',
     outSR: '4326',
     f: 'geojson',
   });
 
-  const res = await fetch(`${adapter.layerUrl}/query?${params}`, { signal });
-  if (!res.ok) throw new Error(`${adapter.label} parcel service returned ${res.status}`);
-  const body = await res.json();
-  if (body?.error) {
-    throw new Error(`${adapter.label} parcel service: ${body.error.message ?? 'query failed'}`);
-  }
+  const body = await queryWithRetry(adapter, `${adapter.layerUrl}/query?${params}`, signal, onProgress);
 
   const byNorm = new Map<string, unknown>();
   for (const f of body?.features ?? []) {
@@ -136,6 +232,7 @@ export async function applyParcelBoundary(opts: {
   parcelNumbers: string[];
   statedAcres: number | null;
   signal?: AbortSignal;
+  onProgress?: (p: FetchProgress) => void;
 }): Promise<ApplyParcelBoundaryResult> {
   const adapter = adapterFor(opts.municipalityName);
   if (!adapter) {
@@ -148,7 +245,7 @@ export async function applyParcelBoundary(opts: {
     throw new Error('This project has no parcel numbers to look up.');
   }
 
-  const { resolved, missing } = await fetchParcelPolygons(adapter, opts.parcelNumbers, opts.signal);
+  const { resolved, missing } = await fetchParcelPolygons(adapter, opts.parcelNumbers, opts.signal, opts.onProgress);
   if (resolved.length === 0) {
     throw new Error(
       `None of these parcel ids exist in the current ${adapter.label} parcel map `
@@ -156,6 +253,9 @@ export async function applyParcelBoundary(opts: {
     );
   }
 
+  // Cancel only abandons the county fetch above. Once the polygons are in hand
+  // the write goes through, so a late Cancel can't leave the UI claiming no
+  // boundary was saved when one was.
   const { data, error } = await supabase.rpc('set_municipal_project_polygon_from_parcels', {
     p_id: opts.projectId,
     p_parts: resolved.map((r) => r.geometry),

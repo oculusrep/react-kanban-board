@@ -204,3 +204,30 @@ been driven by hand. That is the next thing to do.
   Forsyth/Cumming — Macon-Bibb/Bibb 14, Columbia 1, Jackson 0; no Gwinnett/DeKalb/Decatur records
   at all. The biggest hand-draw counts (Hall, Winder/Barrow, Hiram, Dallas, Paulding) have no public
   parcel endpoint. Fetch also needs the record to carry parcel ids.
+
+## Henry County adapter (2026-11-12)
+
+- **Parser:** migration `20261112075338_parcel_id_henry_format` adds Henry's shape
+  (`[0-9H][0-9]{2}[A-Z]?-?[0-9]{8}`: 128-02065000, H04A01001000, 077A01084000) to
+  `extract_parcel_numbers()`, from the live definition. A regression check over every staged and
+  committed row showed only additions: the Henry row, plus one Cobb row whose 11-digit PINs now
+  match too. That Cobb row wasn't backfilled. Backfill was Henry-only: 1 staging row and 1
+  committed row (Davis Lake Road, `128-02065000` and `128-02066000`). The other Henry records cite
+  land lots or acreage only, never a parcel id. Henry's layer does carry `LANDLOT_1` /
+  `LANDDISTRI`, if land-lot lookup is ever worth building.
+- **Adapter:** `arcgis.co.henry.ga.us/server/rest/services/Parcels/MapServer/12`, `PARCEL_NO`.
+  It matches Henry County, McDonough, Stockbridge, Hampton and Locust Grove.
+- **Slow server:** the WAF-fronted server hangs. Observed 2026-11-12: 0.8 s, 60 s with an HTTP 200
+  `{"error":{"code":503,"message":"…Wait timeout…"}}`, a 60 s empty body, then 22 s. Adapters now
+  take `timeoutMs` / `retries`; Henry gets 75 s and 1 retry. A timeout, network error, 5xx, or an
+  ArcGIS error body with code ≥ 500 or "timeout" is retried. The slideout shows the attempt and
+  offers Cancel. Cancel only abandons the county fetch; once polygons are in hand the write
+  completes.
+- `outFields` no longer hardcodes `STATEDAREA` (Forsyth-only); it's `extraFields` per adapter.
+- **Verified:** Davis Lake Road fetched with the adapter's query → 2 polygons. The RPC (rolled
+  back) gave 47.01 ac computed vs 47.99 stated (2.0%, not flagged) and a MultiPolygon.
+- **Jenkinsburg is in Butts County** (TIGERweb: the city polygon is within Butts and only touches
+  Henry along the county line). Butts has no county-published parcel layer. The only public one is a
+  third-party AGOL snapshot, `services6.arcgis.com/NJH5XZkcw7MLsnAI/arcgis/rest/services/Parcels_Butts_County_GA/FeatureServer/0`
+  (13,065 parcels, `GSI_PIN` like `00010-001-000`, last edited 2024-09-13, owner "VerticalAccuracy"),
+  which covers Jenkinsburg. Not built. The parser doesn't know the 5-3-3 shape either.

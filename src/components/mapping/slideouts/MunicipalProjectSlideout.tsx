@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { geocodingService } from '../../../services/geocodingService';
@@ -133,6 +133,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [fetchingParcel, setFetchingParcel] = useState(false);
   const [parcelNotice, setParcelNotice] = useState<string>('');
+  // Progress for slow county servers (Henry hangs 20–60 s). The fetch is async,
+  // so the rest of the slideout stays usable; this just says what's happening
+  // and offers Cancel.
+  const [parcelProgress, setParcelProgress] = useState<string>('');
+  const parcelAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => parcelAbortRef.current?.abort(), []);
   // Phase 3 is flagged off until the Forsyth adapter has been exercised on real
   // records. Offered only where a county adapter exists, the project has parcel
   // ids, and there is no boundary yet — re-fetching over an existing one is the
@@ -427,12 +433,21 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setFetchingParcel(true);
     setPolygonError('');
     setParcelNotice('');
+    setParcelProgress('');
+    const ctl = new AbortController();
+    parcelAbortRef.current = ctl;
     try {
       const r = await applyParcelBoundary({
         projectId: project.id,
         municipalityName: project.municipality_name ?? null,
         parcelNumbers: project.parcel_numbers ?? [],
         statedAcres: null,   // the RPC parses it from parcel_boundary_notes
+        signal: ctl.signal,
+        onProgress: (p) => setParcelProgress(
+          p.attempt === 1
+            ? 'Asking the county parcel map — some county servers take up to a minute…'
+            : `County server didn't answer (${p.retryReason}). Retrying — attempt ${p.attempt} of ${p.of}…`,
+        ),
       });
       const bits = [`Boundary set from ${r.parts} parcel${r.parts === 1 ? '' : 's'}`];
       if (r.computedAcres != null) bits.push(`${r.computedAcres} ac`);
@@ -448,8 +463,14 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
       setParcelNotice(bits.join(' · '));
       onProjectUpdated?.({ id: project.id, is_unplaced: false, unplaced_reason: null });
     } catch (e) {
-      setPolygonError(e instanceof Error ? e.message : String(e));
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setParcelNotice('Fetch cancelled — nothing was saved.');
+      } else {
+        setPolygonError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
+      if (parcelAbortRef.current === ctl) parcelAbortRef.current = null;
+      setParcelProgress('');
       setFetchingParcel(false);
     }
   }
@@ -1092,6 +1113,16 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                       : `Fetch boundary from ${(project.parcel_numbers ?? []).length} parcel`
                         + `${(project.parcel_numbers ?? []).length === 1 ? '' : 's'}`}
                   </button>
+                  {fetchingParcel && (
+                    <button type="button" onClick={() => parcelAbortRef.current?.abort()}
+                            className="ml-2 px-2 py-1.5 rounded text-xs border"
+                            style={{ borderColor: BRAND.slate, color: BRAND.steel }}>
+                      Cancel
+                    </button>
+                  )}
+                  {fetchingParcel && parcelProgress && (
+                    <div className="text-xs mt-1" style={{ color: BRAND.steel }}>{parcelProgress}</div>
+                  )}
                   <div className="text-xs mt-0.5" style={{ color: BRAND.slate }}>
                     Fetched once, on request — never refreshed, so a re-plat can&rsquo;t overwrite it.
                   </div>
