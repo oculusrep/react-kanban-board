@@ -12,6 +12,7 @@ export interface PipelineSiteSubmit {
   year_1_rent: number | null;
   competitor_data: string | null;
   property_unit_id: string | null;
+  real_estate_manager_id: string | null;
   property: {
     id: string;
     property_name: string | null;
@@ -156,6 +157,7 @@ export function useClientPipelineData({
             year_1_rent,
             competitor_data,
             property_unit_id,
+            real_estate_manager_id,
             property:property_id (
               id,
               property_name,
