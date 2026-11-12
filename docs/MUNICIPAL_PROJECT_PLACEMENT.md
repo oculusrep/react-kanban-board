@@ -231,3 +231,48 @@ been driven by hand. That is the next thing to do.
   third-party AGOL snapshot, `services6.arcgis.com/NJH5XZkcw7MLsnAI/arcgis/rest/services/Parcels_Butts_County_GA/FeatureServer/0`
   (13,065 parcels, `GSI_PIN` like `00010-001-000`, last edited 2024-09-13, owner "VerticalAccuracy"),
   which covers Jenkinsburg. Not built. The parser doesn't know the 5-3-3 shape either.
+
+## Hall County adapter (2026-11-12)
+
+- **Parser:** migration `20261112083634_parcel_id_hall_format` (built from the live definition,
+  including Henry). Hall PIN = 5-digit map + (space | sub-map letter) + 6-digit parcel + optional
+  1–2 letter suffix. Hall sources state the map once and list the rest bare ("15048 000008, 000007,
+  000025C"); a bare parcel now inherits the clause's last map, and ranges of ≤ 25 expand
+  ("09108 000107-000109"). "(pt.)" is stripped first. A regression check over every staged and
+  committed row: zero changes outside Hall, and no row lost an id.
+- **Backfill (superset-only, skips parcel-fetched boundaries and in-flight runs):** 30 staging + 12
+  committed rows. Committed Hall: 17 records / 33 ids → 22 records / 59 ids.
+- **Resolution:** all 59 committed ids resolve on the Hall layer (22/22 records complete); 19 of those
+  records have no polygon yet.
+- **RPC dry run (rolled back) on those 19:** 9 within tolerance of the stated acres, 4 flagged
+  +5.3% to +8.9% (each over-shoots, typically where a cited parcel is "(pt.)"), and **6 had no stated
+  acres parsed**, so they weren't checked. The acreage parser misses "84.25 approx. acres",
+  "29.52-acre parcel" and "combined 116.47± acres". One of the 6, 5401 Old Winder Hwy, is a
+  "(partial)" parcel whose project is 84.30 ac of a 278 ac tract; the fetch draws the whole
+  273.78 ac tract and nothing flags it.
+- **Adapter:** `services1.arcgis.com/3t0UAc8xSMWWaD2c/.../parcel_owner_public/FeatureServer/0`, `PIN`.
+  It matches Hall County, Gainesville, Flowery Branch, Oakwood, Lula, Clermont and Gillsville
+  (not Braselton). Data last edited 2025-07-22.
+
+## Acreage reader + partial-parcel flag (2026-11-12)
+
+Migration `20261112100659_parcel_fetch_acreage_and_partial_flag`, built from the live definitions.
+
+- **`extract_stated_acres`** now reads "84.25 approx. acres", "29.52-acre", "combined 116.47± acres",
+  "±", singular "acre" and thousands separators. A figure tied to "combined" beats an earlier
+  per-parcel figure. Ranges still return NULL. Regression over committed records: 8 went from NULL
+  to a value; one changed (5.303 → 5.529, the "combined" total over the first parcel's acreage).
+  It's used only by the fetch RPC.
+- **`cites_partial_parcel(text)`** matches "(pt.)", "pt.", "partial", "portion of", and "part of
+  [a/the] [tax] parcel". Bare "portion" / "part of" were dropped after they hit "western portion",
+  "apartment portion" and "Part of broader PRD". It now matches 11 committed notes, all genuine.
+- **`set_municipal_project_polygon_from_parcels`** sets `geometry_needs_review` whenever the notes cite
+  a partial parcel, whatever the acreage, and returns `partial_parcel`. The slideout says to trim.
+- **Grants:** `set_municipal_project_polygon`, `set_municipal_project_polygon_from_parcels` and
+  `cites_partial_parcel` were executable by anon (SECURITY DEFINER writers). They're now
+  authenticated + service_role only; an anonymous HTTP call gets 42501 / 401.
+- **Hall dry run (19 records, rolled back):** the 6 previously unchecked records all validate.
+  Taylor Morrison 1.7% and Revive Land Group 1.7% pass. Caneybrooke +5.8%, Bolding Road +5.5% and
+  BCBTR +8.9% flag. 5401 Old Winder Hwy flags at +224.8% (273.78 vs 84.30) AND as a partial parcel.
+  Overall: 8 pass, 11 flagged. Of the flagged, 6 cite a partial parcel (Yellow Creek Rd flags on
+  that alone at 0.2%) and 5 are acreage-only, at +5.3% to +6.3%.

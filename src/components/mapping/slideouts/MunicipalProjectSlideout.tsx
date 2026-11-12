@@ -457,6 +457,9 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
           + `no longer in the parcel map (${r.missing.join(', ')}) — usually re-platted`,
         );
       }
+      if (r.partialParcel) {
+        bits.push('a cited parcel is only partly in this project, so the boundary covers the whole parcel — trim it to the project');
+      }
       if (r.needsReview && r.variancePct != null) {
         bits.push(`acreage is ${r.variancePct > 0 ? '+' : ''}${r.variancePct}% against the ${r.statedAcres} ac stated — check it`);
       }
