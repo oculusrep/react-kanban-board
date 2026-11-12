@@ -18,6 +18,8 @@ import { supabase } from '../../lib/supabaseClient';
 export const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
 export const REM_ROLE_NAME = 'Site Selector';
 export const UNASSIGNED_LABEL = 'Unassigned';
+/** Filter sentinel for "no REM" (real_estate_manager_id IS NULL). */
+export const REM_UNASSIGNED = '__unassigned';
 
 interface Props {
   clientId: string | null | undefined;
