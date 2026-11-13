@@ -22,7 +22,7 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database' | 'seven_eleven' | 'interstate_exit';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database' | 'seven_eleven' | 'interstate_exit' | 'truck_stop';
 
 export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
@@ -260,6 +260,16 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     type: 'seven_eleven',
     icon: '⛽',
     description: '7-Eleven and Speedway store locations (Georgia)',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
+    // Everyone can view; verify/remove are internal-only RPCs.
+    id: 'truck_stops',
+    name: 'Truck Stops',
+    type: 'truck_stop',
+    icon: '🚛',
+    description: "Pilot, Flying J, Love's, TA / Petro, QuikTrip truck stops, Buc-ee's (Georgia)",
     defaultVisible: false,
     isSystemLayer: true,
   },
