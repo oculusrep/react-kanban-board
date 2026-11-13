@@ -93,6 +93,24 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     whereFor: (id) => likeFromRuns('PIN', id),
     retries: 1,
   },
+  {
+    // Coweta County, Esri-hosted and refreshed weekly ("WeeklyUpdate" in the
+    // name), so the fabric moves after a fetch — another reason to fetch once.
+    // ParcelNumber is padded with internal whitespace: '162  1259 001' (double
+    // space), '075A      012'. Sources write '162-1259-001' or '163 1261 002'.
+    // likeFromRuns splits on any separator run, so the padding never reaches the
+    // where clause, and the normalized compare is exact (65,417 distinct ids, zero
+    // collisions after stripping punctuation — profiled 2026-11-13).
+    // Haralson straddles Coweta and Meriwether; a Meriwether parcel just comes back
+    // "missing". Palmetto and Chattahoochee Hills are mostly Fulton — not matched.
+    matches: (n) =>
+      /^(coweta county|newnan|senoia|haralson|grantville|moreland|turin|sharpsburg)$/i.test(n),
+    label: 'Coweta County',
+    layerUrl: 'https://services1.arcgis.com/AaPyNbrJpNGryRqh/ArcGIS/rest/services/WeeklyUpdate_WinGapParcels/FeatureServer/0',
+    idField: 'ParcelNumber',
+    whereFor: (id) => likeFromRuns('ParcelNumber', id),
+    retries: 1,
+  },
 ];
 
 export const adapterFor = (municipalityName: string | null | undefined): CountyAdapter | null =>
