@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLayerManager, CreateMode } from './layers/LayerManager';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useSevenElevenAccess } from '../../hooks/useSevenElevenAccess';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
@@ -632,10 +633,12 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ onBuildTerritory, onBulkAddFrom
   } = useLayerManager();
 
   const { hasPermission } = usePermissions();
+  const hasSevenElevenAccess = useSevenElevenAccess();
 
   // Filter out layers that require a permission the user doesn't have
   const visibleLayers = layers.filter(l =>
-    !l.requiresPermission || hasPermission(l.requiresPermission as any)
+    (l.id !== 'seven_eleven_stores' || hasSevenElevenAccess) &&
+    (!l.requiresPermission || hasPermission(l.requiresPermission as any))
   );
 
   if (!isPanelOpen) {

@@ -22,7 +22,7 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database' | 'seven_eleven';
 
 export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
@@ -251,6 +251,17 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     defaultVisible: false,
     isSystemLayer: true,
     requiresPermission: 'can_view_starbucks_layer',
+  },
+  {
+    // Gated by useSevenElevenAccess() (permission OR 7-Eleven client broker),
+    // not requiresPermission — a single permission key can't express the OR.
+    id: 'seven_eleven_stores',
+    name: '7-Eleven / Speedway',
+    type: 'seven_eleven',
+    icon: '⛽',
+    description: '7-Eleven and Speedway store locations (Georgia)',
+    defaultVisible: false,
+    isSystemLayer: true,
   },
   {
     id: 'municipal_projects',
