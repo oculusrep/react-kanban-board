@@ -305,10 +305,11 @@ function townRegion(
     maxRequestsPerBrand: 21,
     accept: (p) =>
       haversineMiles(p.latitude, p.longitude, center.lat, center.lng) <= radiusMiles,
-    // Estimate: Columbia measured 2.0 calls/brand over a far larger area; a
-    // 10-mile town saturates less often. Kept at 2.0 to over- rather than
+    // Estimate: the full Columbia run measured 2.46–3.13 calls/brand. A town
+    // box is smaller, but saturation is tested on Google's raw (loose) results,
+    // so junk matches trip it regardless of size. 3.0 to over- rather than
     // under-quote. Recalibrate from google_places_api_log after the first run.
-    avgRequestsPerBrand: 2.0,
+    avgRequestsPerBrand: 3.0,
     costBasis: 'estimated',
   };
 }
