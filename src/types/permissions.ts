@@ -139,6 +139,7 @@ export interface RolePermissions {
   can_view_layer_cached_demographics?: boolean;
   can_view_layer_merchants?: boolean;
   can_view_layer_comp_database?: boolean;
+  can_view_7eleven_layer?: boolean;
   can_view_all_custom_layers?: boolean;
 }
 
@@ -826,6 +827,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_view_layer_comp_database',
     label: 'Comp Database',
     description: 'Comp Database map layer',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_7eleven_layer',
+    label: '7-Eleven / Speedway',
+    description: '7-Eleven and Speedway store locations. Brokers on the 7-Eleven client see it without this flag',
     category: 'map_layers',
     defaultValue: false,
   },

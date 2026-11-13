@@ -22,6 +22,8 @@ import MerchantLayer, { type MerchantLocationWithBrand } from '../components/map
 import MerchantsDrawer from '../components/mapping/MerchantsDrawer';
 import MerchantContextMenu from '../components/mapping/MerchantContextMenu';
 import StarbucksLicensedStoreLayer, { type StarbucksLicensedStore } from '../components/mapping/layers/StarbucksLicensedStoreLayer';
+import SevenElevenLayer from '../components/mapping/layers/SevenElevenLayer';
+import { useSevenElevenAccess } from '../hooks/useSevenElevenAccess';
 import StarbucksLicensedStoreContextMenu from '../components/mapping/StarbucksLicensedStoreContextMenu';
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
 import type { TargetAreaRow } from '../components/mapping/layers/StarbucksTargetAreaLayer';
@@ -106,6 +108,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 }) => {
   const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
+  const hasSevenElevenAccess = useSevenElevenAccess();
   const { canAccess, canSeeAnySiteSubmits } = useBrokerLiteAccess();
   const canManageLayers = userRole === 'admin' || hasPermission('can_manage_map_layers');
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
@@ -3241,6 +3244,30 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       />
                     )}
 
+                    {/* 7-Eleven / Speedway stores — permission OR 7-Eleven client broker */}
+                    {hasSevenElevenAccess && (
+                      <div className="p-2 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => toggleLayer('seven_eleven_stores')}
+                              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                                layerState.seven_eleven_stores?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                  layerState.seven_eleven_stores?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                            <span className="text-base">⛽</span>
+                            <span className="text-sm font-medium text-gray-900">7-Eleven / Speedway</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Municipal Projects system layer */}
 {canAccess('can_view_layer_municipal_projects') && (
 <div className="p-2 border-b border-gray-200">
@@ -3889,6 +3916,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               verifyingStoreNumber={verifyingLicensedStoreNumber}
               onLocationVerified={handleLicensedStoreLocationVerified}
               onRightClick={handleLicensedStoreRightClick}
+            />
+
+            {/* 7-Eleven / Speedway stores — RLS-gated (user_has_seven_eleven_access) */}
+            <SevenElevenLayer
+              map={mapInstance}
+              isVisible={hasSevenElevenAccess && (layerState.seven_eleven_stores?.isVisible || false)}
             />
 
             {/* Starbucks Target Areas (polygons) — same permission gate as Starbucks Stores */}
