@@ -155,3 +155,55 @@ the lead card. Location/name duplicate clusters still own their members.
   A lead with a typed positive count counts as a project.
 - Default selection is unchanged (every pending row not matching a committed record), so leads
   start selected, as they did when they sat in Needs attention.
+
+## Auto-resolved duplicates (2026-11-12)
+
+Opening any research review first runs `auto_resolve_research_duplicates()` (migration
+`20261112202117_research_auto_dedupe.sql`). The review then reads back what changed for its own runs
+with `get_research_auto_resolutions(run_ids)` and lists it in **"✓ Auto-resolved duplicates"** at the
+top of the list. Each item has an Undo.
+
+**Scope:** every pending row in any run that isn't in flight, not only the run being opened.
+Committed records are global, and today's copies sat in separate runs: 141 South was staged by four
+Quick runs. A copy can therefore be folded into a kept record that lives in another run's review, and
+the list says so.
+
+**Match keys (unambiguous only):**
+- the same normalized name *and* phase label (parentheticals dropped, the same rule as the UI's name
+  clusters) in the same place, **or**
+- the same case number (`Z2026-05`, `REZ25-05`, …) read from the name or zoning field, in the same place.
+
+"Same place" means the places overlap: municipality, boundary municipality, or the city in the address.
+
+**Resolves only when nothing conflicts:**
+- **Units:** no two non-zero counts differ.
+- **Addresses:** compatible. Different house numbers or different streets fail. A vaguer form of the
+  same address passes: "Hwy 16 & Pylant St" vs "SW corner of GA Hwy 16 & Pylant Street".
+
+Anything else stays a cluster for the reviewer.
+
+| Case | Action |
+|---|---|
+| Pending vs committed, unambiguous | Rejected: *Duplicates committed record "X" (auto-resolved)*. `duplicate_of_project_id` is set. |
+| Pending vs committed, units or address differ | Flagged ⚠ MAY DUPLICATE "X", with the reason. Lands in Needs attention, **unselected** by default. |
+| Pending vs pending, unambiguous | Merged into the fullest row (`_research_dedupe_merge`). |
+
+**How the merge fills each field:**
+- **Text fields:** the longest value; for the address, one with a house number wins.
+- **Counts and dates:** the kept row's value if present, otherwise any copy's. **Units are not added**,
+  unlike the manual "parts of one project" merge.
+- **Sources:** the union, plus any other permit URL as "Also cited: …".
+- **Parcel numbers:** the union.
+
+The kept row's prior values sit in `merge_snapshot` (`kind: 'dedupe'`).
+
+**Undo:**
+- **Undo merge** calls `unmerge_research_staging_rows`, which now restores every field for a dedupe merge.
+- **Undo reject** calls `unreject_research_staging_row`.
+
+Both set `auto_dedupe_skip`, so the resolver never redoes something a reviewer undid. Those rows fall
+back to the ordinary manual clusters.
+
+**Dry run on 2026-11-12** (102 pending rows): 5 merges (12 rows), 11 rejected as copies of committed
+records, 6 flagged near-misses, 2 case-number groups left for review (unit counts differ). See the
+session report for the per-project list.
