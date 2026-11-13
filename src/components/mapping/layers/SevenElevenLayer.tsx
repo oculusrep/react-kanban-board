@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { buildLogoUrl } from '../../../pages/admin/merchants/shared';
+import { loadMarkerLibrary } from '../utils/advancedMarkers';
 
 /**
  * 7-Eleven / Speedway store locations (Georgia), from Google Places.
@@ -40,7 +41,7 @@ function svgPin(fill: string, stroke: string, text: string, textColor: string): 
   return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
 }
 
-// Fallback pins, used only if the Brandfetch logo fails to load.
+// Fallback pin images, used only if the Brandfetch logo fails to load.
 // 7-Eleven: white disc, green ring, orange 7. Speedway: red disc, white S.
 const FALLBACK_ICON: Record<SevenElevenStore['brand'], string> = {
   '7-Eleven': svgPin('#FFFFFF', '#008163', '7', '#F47B20'),
@@ -54,21 +55,27 @@ const BRAND_DOMAIN: Record<SevenElevenStore['brand'], string> = {
   Speedway: 'speedway.com',
 };
 
-/** Resolve each brand's pin URL once: the Brandfetch icon if it loads, else the SVG fallback. */
-const iconUrlCache = new Map<SevenElevenStore['brand'], Promise<string>>();
-function resolveIconUrl(brand: SevenElevenStore['brand']): Promise<string> {
-  let p = iconUrlCache.get(brand);
-  if (!p) {
-    p = new Promise<string>((resolve) => {
-      const url = buildLogoUrl(BRAND_DOMAIN[brand], 'icon');
-      const img = new Image();
-      img.onload = () => resolve(url);
-      img.onerror = () => resolve(FALLBACK_ICON[brand]);
-      img.src = url;
-    });
-    iconUrlCache.set(brand, p);
-  }
-  return p;
+/**
+ * Round pin: the Brandfetch logo clipped to a circle with a white ring.
+ * Falls back to the drawn SVG pin if the logo fails to load.
+ */
+function buildPinContent(brand: SevenElevenStore['brand']): HTMLElement {
+  const el = document.createElement('div');
+  el.style.cssText =
+    `width:${PIN_SIZE}px;height:${PIN_SIZE}px;border-radius:50%;overflow:hidden;` +
+    'background:#fff;box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.4);cursor:pointer;';
+  const img = document.createElement('img');
+  img.src = buildLogoUrl(BRAND_DOMAIN[brand], 'icon');
+  img.alt = brand;
+  img.decoding = 'async';
+  img.referrerPolicy = 'no-referrer-when-downgrade';
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+  img.onerror = () => {
+    img.onerror = null;
+    img.src = FALLBACK_ICON[brand];
+  };
+  el.appendChild(img);
+  return el;
 }
 
 function coordsOf(s: SevenElevenStore): google.maps.LatLngLiteral {
@@ -120,23 +127,11 @@ function popupContent(s: SevenElevenStore): HTMLElement {
 
 const SevenElevenLayer: React.FC<SevenElevenLayerProps> = ({ map, isVisible }) => {
   const [stores, setStores] = useState<SevenElevenStore[]>([]);
-  const [iconUrls, setIconUrls] = useState<Record<SevenElevenStore['brand'], string> | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   const { refreshTrigger } = useLayerManager();
   const layerRefreshTrigger = refreshTrigger.seven_eleven_stores || 0;
-
-  useEffect(() => {
-    if (!isVisible || iconUrls) return;
-    let cancelled = false;
-    Promise.all([resolveIconUrl('7-Eleven'), resolveIconUrl('Speedway')]).then(([seven, speedway]) => {
-      if (!cancelled) setIconUrls({ '7-Eleven': seven, Speedway: speedway });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isVisible, iconUrls]);
 
   useEffect(() => {
     if (!isVisible) {
@@ -161,41 +156,45 @@ const SevenElevenLayer: React.FC<SevenElevenLayerProps> = ({ map, isVisible }) =
   }, [isVisible, layerRefreshTrigger]);
 
   useEffect(() => {
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach((m) => (m.map = null));
     markersRef.current = [];
     if (!map || !isVisible) {
       infoWindowRef.current?.close();
       return;
     }
-    if (!iconUrls) return; // wait for logos so pins don't flash fallback → logo
 
-    if (!infoWindowRef.current) infoWindowRef.current = new google.maps.InfoWindow();
-    const info = infoWindowRef.current;
+    let cancelled = false;
+    loadMarkerLibrary()
+      .then(({ AdvancedMarkerElement }) => {
+        if (cancelled) return;
+        if (!infoWindowRef.current) infoWindowRef.current = new google.maps.InfoWindow();
+        const info = infoWindowRef.current;
 
-    markersRef.current = stores.map((s) => {
-      const marker = new google.maps.Marker({
-        position: coordsOf(s),
-        map,
-        title: `${s.name || s.brand}${s.formatted_address ? ' — ' + s.formatted_address : ''}`,
-        icon: {
-          url: iconUrls[s.brand] ?? FALLBACK_ICON.Speedway,
-          scaledSize: new google.maps.Size(PIN_SIZE, PIN_SIZE),
-          anchor: new google.maps.Point(PIN_SIZE / 2, PIN_SIZE / 2),
-        },
-        zIndex: 150,
-      });
-      marker.addListener('click', (event: google.maps.MapMouseEvent) => {
-        event.domEvent?.stopPropagation();
-        info.setContent(popupContent(s));
-        info.open({ map, anchor: marker });
-      });
-      return marker;
-    });
-  }, [stores, map, isVisible, iconUrls]);
+        markersRef.current = stores.map((s) => {
+          const marker = new AdvancedMarkerElement({
+            map,
+            position: coordsOf(s),
+            content: buildPinContent(s.brand),
+            title: `${s.name || s.brand}${s.formatted_address ? ' — ' + s.formatted_address : ''}`,
+            zIndex: 150,
+          });
+          marker.addListener('gmp-click', () => {
+            info.setContent(popupContent(s));
+            info.open({ map, anchor: marker });
+          });
+          return marker;
+        });
+      })
+      .catch((err) => console.error('SevenElevenLayer marker library load failed:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stores, map, isVisible]);
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current.forEach((m) => (m.map = null));
       markersRef.current = [];
       infoWindowRef.current?.close();
     };
