@@ -365,6 +365,22 @@ interface StagingExtra {
   parcel_numbers: string[] | null;
 }
 
+// What auto_resolve_research_duplicates did to this review's rows (read back via
+// get_research_auto_resolutions). Copies of one pending project are merged
+// (fullest value per field, sources combined, units NOT added); staged copies of
+// a committed project are rejected; near-misses against a committed project are
+// flagged with the reason and left for the reviewer.
+interface AutoResolutions {
+  merged: {
+    keep_id: string; keep_name: string | null; keep_run_id: string; keep_state: string; units: number | null;
+    folded: { id: string; name: string | null; run_id: string; units: number | null; address: string | null }[] | null;
+  }[];
+  rejected: { id: string; name: string | null; committed_id: string; committed_name: string | null }[];
+  flagged: { id: string; committed_id: string; committed_name: string | null; note: string | null }[];
+}
+const NO_AUTO: AutoResolutions = { merged: [], rejected: [], flagged: [] };
+
+
 
 export default function ResearchRunApprovalModal({
   researchRunId,
@@ -433,6 +449,11 @@ export default function ResearchRunApprovalModal({
   // mappable records. Still fully approvable from there.
   const [showLeads, setShowLeads] = useState(false);
   const [showDecided, setShowDecided] = useState(false);
+  const [autoRes, setAutoRes] = useState<AutoResolutions>(NO_AUTO);
+  const [autoResError, setAutoResError] = useState<string | null>(null);
+  const [showAutoRes, setShowAutoRes] = useState(true);
+  // Bumped after an auto-resolution undo: reloads the review from the server.
+  const [reloadKey, setReloadKey] = useState(0);
   // Step 1 state: stagingId -> group key (or REJECT_KEY). Keyed by ROW, so an
   // assignment survives the cluster re-forming after a partial resolution.
   const [groupByRow, setGroupByRow] = useState<Record<string, string>>({});
@@ -449,6 +470,19 @@ export default function ResearchRunApprovalModal({
       setLoading(true);
       setError(null);
       try {
+        // Resolve obvious duplicates first, so the rows below already reflect it.
+        // The read-back (scoped to this review's runs) happens once rows are known.
+        const { error: resolveErr } = await supabase.rpc('auto_resolve_research_duplicates', { p_dry_run: false });
+        if (cancelled) return;
+        setAutoResError(resolveErr && !/forbidden/i.test(resolveErr.message) ? resolveErr.message : null);
+        const readAuto = async (runIds: string[]) => {
+          if (runIds.length === 0) return NO_AUTO;
+          const { data, error: rdErr } = await supabase.rpc('get_research_auto_resolutions', { p_run_ids: runIds });
+          if (rdErr) { setAutoResError((prev) => prev ?? rdErr.message); return NO_AUTO; }
+          const d = (data ?? {}) as Partial<AutoResolutions>;
+          return { merged: d.merged ?? [], rejected: d.rejected ?? [], flagged: d.flagged ?? [] };
+        };
+
         if (isSweep) {
           // ---- unified sweep mode: all staged rows across the sweep's runs ----
           const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }, { data: gaps }, { data: chunkChecklist }] = await Promise.all([
@@ -539,8 +573,14 @@ export default function ResearchRunApprovalModal({
             units_needs_review: !!r.units_needs_review,
             units_review_reason: r.units_review_reason ?? null,
           }));
+          const ar = await readAuto([...new Set(allSweepRows.map((r) => r.research_run_id as string))]);
+          if (cancelled) return;
+          setAutoRes(ar);
+          // A possible copy of a committed project starts UNselected: committing it
+          // by default is how the map gets a second pin for one project.
+          const flaggedIds = new Set(ar.flagged.map((f) => f.id));
           setStaging(stagingNorm);
-          setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id).map((s) => s.id)));
+          setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id)).map((s) => s.id)));
           return;
         }
 
@@ -602,10 +642,15 @@ export default function ResearchRunApprovalModal({
           duplicate_of_project_name: null,
           duplicate_of_chunk_index: null,
         }));
+        const ar = await readAuto([researchRunId!]);
+        if (cancelled) return;
+        setAutoRes(ar);
+        const flaggedIds = new Set(ar.flagged.map((f) => f.id));
         setStaging(stagingNorm);
-        // Default: select all pending rows that don't match an existing record.
+        // Default: select all pending rows that don't match an existing record
+        // (and aren't flagged as a possible copy of one).
         const defaultSelected = new Set(
-          stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id).map((s) => s.id),
+          stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id)).map((s) => s.id),
         );
         setSelected(defaultSelected);
       } catch (e) {
@@ -616,7 +661,7 @@ export default function ResearchRunApprovalModal({
     }
     load();
     return () => { cancelled = true; };
-  }, [researchRunId, sweepId, isSweep]);
+  }, [researchRunId, sweepId, isSweep, reloadKey]);
 
   // ---- soft dedupe: flag staged rows sitting near an already-committed project ----
   // The hard match (matched_existing_id) covers exact name/address + permit_url.
@@ -926,6 +971,10 @@ export default function ResearchRunApprovalModal({
   const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
   const mergedCount    = staging.filter((s) => s.approval_state === 'merged').length;
 
+  // Auto-resolution lookups for badges and triage.
+  const autoFlagById = useMemo(() => new Map(autoRes.flagged.map((f) => [f.id, f])), [autoRes]);
+  const autoMergeByKeep = useMemo(() => new Map(autoRes.merged.map((m) => [m.keep_id, m])), [autoRes]);
+
   // Per-row dedupe flags — drives which triage bucket a row lands in and which
   // comparison panels render. matched = hard match; possible = near a committed
   // project; inSweep = near a sibling staged row in this same sweep.
@@ -944,7 +993,7 @@ export default function ResearchRunApprovalModal({
     // so they must not be quietly filed under "clean & ready". Same for a row
     // whose unit count is missing or a placeholder — it must not read as clean.
     return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id))
-      || (!f.matched && r.units_needs_review);
+      || (!f.matched && r.units_needs_review) || autoFlagById.has(r.id);
   };
 
   // The unit-count flag this row will carry onto the committed record, or null.
@@ -1007,7 +1056,7 @@ export default function ResearchRunApprovalModal({
       merged: merged.sort(byName),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staging, clusterMemberIds, nameClusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo]);
+  }, [staging, clusterMemberIds, nameClusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo, autoFlagById]);
 
   // ---- handlers ----
   const setEdit = (id: string, key: keyof Edits, value: string) => {
@@ -1367,6 +1416,26 @@ export default function ResearchRunApprovalModal({
     }
   };
 
+  // Undo an automatic resolution. Both go through the ordinary undo RPCs, which
+  // also mark the rows so the resolver won't redo it; then reload from the server
+  // (the merge may have pulled in rows from runs outside this review).
+  const [undoingAuto, setUndoingAuto] = useState<string | null>(null);
+  const handleUndoAuto = async (kind: 'merge' | 'reject', id: string) => {
+    setError(null);
+    setUndoingAuto(id);
+    try {
+      const { error: rpcErr } = kind === 'merge'
+        ? await supabase.rpc('unmerge_research_staging_rows', { p_keep_id: id })
+        : await supabase.rpc('unreject_research_staging_row', { p_staging_id: id });
+      if (rpcErr) throw rpcErr;
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setUndoingAuto(null);
+    }
+  };
+
   // Explicit close-out for a run sitting all-rejected (nothing left to commit).
   const handleMarkReviewed = async () => {
     if (!run) return;
@@ -1683,13 +1752,26 @@ export default function ResearchRunApprovalModal({
             KEPT SEPARATE
           </span>
         )}
-        {r.is_merge_keeper && (
+        {r.approval_state === 'pending' && autoFlagById.has(r.id) && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                title={`${autoFlagById.get(r.id)!.note ?? ''} Left unselected so it isn't committed by default; select it if it's a different project.`}>
+            ⚠ MAY DUPLICATE “{autoFlagById.get(r.id)!.committed_name ?? 'a committed record'}”
+          </span>
+        )}
+        {r.is_merge_keeper && (autoMergeByKeep.has(r.id) ? (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title="The same project was staged more than once. Merged automatically: fullest value kept per field, sources combined, units NOT added. Undo is in the Auto-resolved list.">
+            AUTO-MERGED · {1 + (autoMergeByKeep.get(r.id)!.folded?.length ?? 0)} COPIES
+          </span>
+        ) : (
           <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
                 style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
                 title="Other staged rows were merged into this one — units summed, their sources are in the notes">
             MERGED · {1 + staging.filter((s) => s.merged_into_staging_id === r.id).length} RECORDS
           </span>
-        )}
+        ))}
         {r.approval_state === 'merged' && (
           <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}>
             MERGED INTO “{(r.merged_into_staging_id && stagingById.get(r.merged_into_staging_id)?.project_name) || 'another record'}”
@@ -2504,6 +2586,80 @@ export default function ResearchRunApprovalModal({
               {staging.length === 0 && (
                 <div className="text-sm italic" style={{ color: '#8FA9C8' }}>
                   No staged records {isSweep ? 'in this sweep yet.' : 'on this run.'}
+                </div>
+              )}
+
+              {/* 0. Auto-resolved duplicates — what the resolver did, each with Undo */}
+              {autoResError && (
+                <div className="text-xs" style={{ color: '#A27B5C' }}>
+                  Couldn’t auto-resolve duplicates ({autoResError}). Nothing was changed; resolve them by hand below.
+                </div>
+              )}
+              {(autoRes.merged.length + autoRes.rejected.length) > 0 && (
+                <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
+                  <button type="button" onClick={() => setShowAutoRes((v) => !v)}
+                          className="w-full text-left px-3 py-2 text-sm font-semibold flex justify-between items-center"
+                          style={{ color: '#002147', backgroundColor: '#F8FAFC' }}>
+                    <span>
+                      ✓ Auto-resolved duplicates ({autoRes.merged.length + autoRes.rejected.length})
+                      <span className="font-normal" style={{ color: '#4A6B94' }}>
+                        {autoRes.merged.length > 0 && ` · ${autoRes.merged.length} merged`}
+                        {autoRes.rejected.length > 0 && ` · ${autoRes.rejected.length} already on the map, rejected`}
+                      </span>
+                    </span>
+                    <span style={{ color: '#4A6B94' }}>{showAutoRes ? '▲' : '▼'}</span>
+                  </button>
+                  {showAutoRes && (
+                    <div className="px-3 pb-2 space-y-1.5">
+                      <div className="text-xs" style={{ color: '#8FA9C8' }}>
+                        Only exact matches are resolved here: same name and phase in the same place, or the same case number,
+                        with no conflicting unit count or address. Undo puts the rows back for you to decide, and they won’t
+                        be auto-resolved again.
+                      </div>
+                      {autoRes.merged.map((m) => (
+                        <div key={m.keep_id} className="flex items-start justify-between gap-2 text-sm">
+                          <div className="min-w-0">
+                            <span style={{ color: '#002147' }}>
+                              Merged {1 + (m.folded?.length ?? 0)} copies of <b>{m.keep_name ?? '(unnamed)'}</b>
+                            </span>
+                            <span style={{ color: '#4A6B94' }}> · {m.units != null ? `${m.units.toLocaleString()} units` : 'no unit count'} (not added up)</span>
+                            {!stagingById.has(m.keep_id) && (
+                              <span style={{ color: '#8FA9C8' }}> · kept record is in another run’s review</span>
+                            )}
+                            <div className="text-xs" style={{ color: '#8FA9C8' }}>
+                              Folded in: {(m.folded ?? []).map((f) => `${f.name ?? '(unnamed)'}${f.units != null ? ` [${f.units}]` : ''}${f.address ? ` — ${f.address}` : ''}`).join('; ')}
+                            </div>
+                          </div>
+                          {canApprove && m.keep_state === 'pending' ? (
+                            <button type="button" disabled={undoingAuto === m.keep_id}
+                                    onClick={() => handleUndoAuto('merge', m.keep_id)}
+                                    className="text-xs px-2 py-0.5 rounded border shrink-0"
+                                    style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                              {undoingAuto === m.keep_id ? 'Undoing…' : 'Undo merge'}
+                            </button>
+                          ) : (
+                            <span className="text-xs shrink-0" style={{ color: '#8FA9C8' }}>{m.keep_state === 'pending' ? '' : 'committed'}</span>
+                          )}
+                        </div>
+                      ))}
+                      {autoRes.rejected.map((x) => (
+                        <div key={x.id} className="flex items-start justify-between gap-2 text-sm">
+                          <div className="min-w-0" style={{ color: '#002147' }}>
+                            Rejected <b>{x.name ?? '(unnamed)'}</b>
+                            <span style={{ color: '#4A6B94' }}> · duplicates committed record “{x.committed_name ?? 'unnamed'}”</span>
+                          </div>
+                          {canApprove && (
+                            <button type="button" disabled={undoingAuto === x.id}
+                                    onClick={() => handleUndoAuto('reject', x.id)}
+                                    className="text-xs px-2 py-0.5 rounded border shrink-0"
+                                    style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                              {undoingAuto === x.id ? 'Undoing…' : 'Undo reject'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
