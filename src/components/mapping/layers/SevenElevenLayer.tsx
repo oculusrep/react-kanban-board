@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
+import { buildLogoUrl } from '../../../pages/admin/merchants/shared';
 
 /**
  * 7-Eleven / Speedway store locations (Georgia), from Google Places.
@@ -28,7 +29,7 @@ interface SevenElevenLayerProps {
   isVisible: boolean;
 }
 
-const PIN_SIZE = 26;
+const PIN_SIZE = 28;
 
 function svgPin(fill: string, stroke: string, text: string, textColor: string): string {
   const svg =
@@ -39,11 +40,36 @@ function svgPin(fill: string, stroke: string, text: string, textColor: string): 
   return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
 }
 
+// Fallback pins, used only if the Brandfetch logo fails to load.
 // 7-Eleven: white disc, green ring, orange 7. Speedway: red disc, white S.
-const BRAND_ICON: Record<SevenElevenStore['brand'], string> = {
+const FALLBACK_ICON: Record<SevenElevenStore['brand'], string> = {
   '7-Eleven': svgPin('#FFFFFF', '#008163', '7', '#F47B20'),
   Speedway: svgPin('#D71920', '#FFFFFF', 'S', '#FFFFFF'),
 };
+
+// Brand logos are HOTLINKED from the Brandfetch CDN (their terms forbid storing
+// copies), same as the Merchants layer. 'icon' variant = square brand mark.
+const BRAND_DOMAIN: Record<SevenElevenStore['brand'], string> = {
+  '7-Eleven': '7-eleven.com',
+  Speedway: 'speedway.com',
+};
+
+/** Resolve each brand's pin URL once: the Brandfetch icon if it loads, else the SVG fallback. */
+const iconUrlCache = new Map<SevenElevenStore['brand'], Promise<string>>();
+function resolveIconUrl(brand: SevenElevenStore['brand']): Promise<string> {
+  let p = iconUrlCache.get(brand);
+  if (!p) {
+    p = new Promise<string>((resolve) => {
+      const url = buildLogoUrl(BRAND_DOMAIN[brand], 'icon');
+      const img = new Image();
+      img.onload = () => resolve(url);
+      img.onerror = () => resolve(FALLBACK_ICON[brand]);
+      img.src = url;
+    });
+    iconUrlCache.set(brand, p);
+  }
+  return p;
+}
 
 function coordsOf(s: SevenElevenStore): google.maps.LatLngLiteral {
   if (s.verified_latitude != null && s.verified_longitude != null) {
@@ -94,11 +120,23 @@ function popupContent(s: SevenElevenStore): HTMLElement {
 
 const SevenElevenLayer: React.FC<SevenElevenLayerProps> = ({ map, isVisible }) => {
   const [stores, setStores] = useState<SevenElevenStore[]>([]);
+  const [iconUrls, setIconUrls] = useState<Record<SevenElevenStore['brand'], string> | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   const { refreshTrigger } = useLayerManager();
   const layerRefreshTrigger = refreshTrigger.seven_eleven_stores || 0;
+
+  useEffect(() => {
+    if (!isVisible || iconUrls) return;
+    let cancelled = false;
+    Promise.all([resolveIconUrl('7-Eleven'), resolveIconUrl('Speedway')]).then(([seven, speedway]) => {
+      if (!cancelled) setIconUrls({ '7-Eleven': seven, Speedway: speedway });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isVisible, iconUrls]);
 
   useEffect(() => {
     if (!isVisible) {
@@ -129,6 +167,7 @@ const SevenElevenLayer: React.FC<SevenElevenLayerProps> = ({ map, isVisible }) =
       infoWindowRef.current?.close();
       return;
     }
+    if (!iconUrls) return; // wait for logos so pins don't flash fallback → logo
 
     if (!infoWindowRef.current) infoWindowRef.current = new google.maps.InfoWindow();
     const info = infoWindowRef.current;
@@ -139,7 +178,7 @@ const SevenElevenLayer: React.FC<SevenElevenLayerProps> = ({ map, isVisible }) =
         map,
         title: `${s.name || s.brand}${s.formatted_address ? ' — ' + s.formatted_address : ''}`,
         icon: {
-          url: BRAND_ICON[s.brand] ?? BRAND_ICON.Speedway,
+          url: iconUrls[s.brand] ?? FALLBACK_ICON.Speedway,
           scaledSize: new google.maps.Size(PIN_SIZE, PIN_SIZE),
           anchor: new google.maps.Point(PIN_SIZE / 2, PIN_SIZE / 2),
         },
@@ -152,7 +191,7 @@ const SevenElevenLayer: React.FC<SevenElevenLayerProps> = ({ map, isVisible }) =
       });
       return marker;
     });
-  }, [stores, map, isVisible]);
+  }, [stores, map, isVisible, iconUrls]);
 
   useEffect(() => {
     return () => {

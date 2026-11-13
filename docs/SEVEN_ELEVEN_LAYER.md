@@ -50,3 +50,16 @@ Cost: 406 requests on 2026-11-13, logged in `google_places_api_log`.
 Re-run the script, then upsert on `google_place_id` (update name/address/lat/lng/status and
 `last_fetched_at`; **never touch `verified_*`**). Stores that disappear from Google are not
 removed automatically.
+
+## Pin logos
+
+Pins are the Brandfetch **icon** variant for `7-eleven.com` and `speedway.com`, **hotlinked** from
+`cdn.brandfetch.io` via `buildLogoUrl()` (same client id as the Merchants layer). Brandfetch's terms
+forbid downloading and storing the files, so no SVG/PNG is committed. Checked 2026-11-13: both
+return real logos (1,492 and 1,924 bytes, not the 344-byte placeholder). The `symbol` variant is a
+generic placeholder for both, so don't use it.
+
+If the CDN errors, the layer falls back to drawn pins (white "7" / red "S"). It can't detect the
+placeholder, though, because that comes back as a 200. Merchant brands stay licensed through the
+`merchant-logo-refresh` cron; these two domains aren't in `merchant_brand`, so they aren't covered.
+If the pins turn into a grey placeholder, that's the cause.
