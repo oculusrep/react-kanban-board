@@ -307,3 +307,43 @@ Migration `20261112100659_parcel_fetch_acreage_and_partial_flag`, built from the
   - Net: **0 records gain a polygon from this.** The other 48 Coweta/Senoia/Haralson records state
     acreage, a land lot ("Land Lot 135 of the 1st District") or nothing. The fetch only helps once
     research starts capturing Coweta parcel ids.
+
+### 141 South boundary replaced (2026-11-13)
+
+`d4549c22`: the hand-drawn boundary (128.68 ac, drawn to the ~152 ac DRI footprint) was replaced by
+the union of its 4 parcels from merged staging row `4fda4623`: 87.87 ac vs 82.10 stated, +7.0%.
+`parcel_numbers` was set first. It is `parcel_fetch`, `geometry_needs_review = true` (dashed), and the
+pin is inside the shape. The old shape wasn't snapshotted and `municipal_project` keeps no geometry
+history, so a database backup is the only way back to it. Templar was left hand-drawn.
+Grants: migration `20261113152028` revoked PUBLIC + anon EXECUTE on `extract_parcel_numbers` and
+`extract_stated_acres`. Verified with an anonymous RPC call (42501), and by impersonating
+authenticated and service_role (both still parse).
+
+### Coweta/Senoia source audit (2026-11-13), report only
+
+Corrects the count above: there are 62 rows, not 50 (12 on the map, 50 staged). **58 have no parcel
+ids** (10 on the map, 48 staged). By a keyword match on `source` (minutes, agenda, BOC, staff
+report, plat, Accela, CivicClerk, DRI, annexation report, REZ/LDP numbers), **7 of the 10 on the map
+and 22 of the 48 staged cite a government document.** The rest cite builder sites, MLS, blogs and
+news.
+
+Five cited documents were opened (CivicClerk API: `cowetacoga.api.civicclerk.com/v1/Events/{id}`,
+files via `Meetings/GetMeetingFileStream(fileId=…)`):
+
+| Record | Document | States parcel ids? | Resolve on Coweta layer |
+|---|---|---|---|
+| Freedom Land REZ 25-05 (`f19f177a`) | BOC 2025-08-19 packet, staff memo | **Yes, 29** (`111-6001-082` … `-032`), 101.36 ac | 29/29 |
+| Benister REZ 24-003 (`75755c3e`) | BOC 2025-09-16 packet, staff memo | **Yes, 4** (`154-1220-001 {Partial}`, `155-1217-014`, `155-1224-002`, `155-1224-009`), 1,543.23 ac | 4/4 (tax-roll 1,558.73 ac) |
+| Pollard / Silver Springs (`87f6cc3d`) | BOC 2025-04-15 packet item 11 (the cited AN 004-25 link, senoia.com/media/14631, is 404) | **Yes, 3** (`157 1213 001`, `157 1213 009`, `157 1212 005`), 108.14 ac | 3/3 (tax-roll 108.17 ac) |
+| Fox Hall Phase 5 (`49463114`) | BOC 2024-09-17 packet, deed + plat + PT-61s (scanned) | Only `1401135022` on the PT-61 conveying roads/open space to the county: a 0 ac parcel, not the phase. The deed describes "Land Lot 135, 1st District, Lots 31–48, 93–103, 131–134" | not a project boundary |
+| Monarch at the Creek (`b96280c3`) | Accela LDP-26-006 | Couldn't open. The deep link returns Accela's error page, even with a session cookie | — |
+
+**Verdict: the agent is missing ids that government sources state.** 3 of the 4 documents that
+opened list parcel ids in the staff memo header ("Tax Parcel(s): …" / "Tax ID #: …"), all 3-part
+dashed or spaced, and every one resolves. That's a research-prompt fix (Market Research), not a
+coverage ceiling.
+
+Side notes for the parser: Coweta packets also write `075A-042` (the 2-part form this parser
+deliberately doesn't read) and run ids across line breaks (`111-6001-` / `078`). The fabric also
+carries `SubdivisionName` / `SubdivisionPhase` (e.g. "Fox Hall 6": 32 parcels), which could place
+platted subdivisions with no id at all. Not built.
