@@ -10,6 +10,7 @@ import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../components/mapping/layers/MunicipalProjectLayer';
 import InterstateExitLayer from '../components/mapping/layers/InterstateExitLayer';
 import TruckStopLayer from '../components/mapping/layers/TruckStopLayer';
+import CustomLayerShapeList from '../components/mapping/CustomLayerShapeList';
 import MunicipalProjectInlineFilters from '../components/mapping/layers/MunicipalProjectInlineFilters';
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
@@ -3682,6 +3683,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                                 🗑️
                               </button>
                             </div>
+                            {/* Shapes list with inline rename */}
+                            <CustomLayerShapeList
+                              shapes={layer.shapes ?? []}
+                              onRenamed={() => {
+                                refreshCustomLayers();
+                                setCustomLayerRefreshTrigger(prev => prev + 1);
+                                showToast('Shape renamed', { type: 'success' });
+                              }}
+                              onError={(msg) => showToast(`Failed to rename shape: ${msg}`, { type: 'error' })}
+                            />
                             {/* Merge button - show when layer has multiple shapes */}
                             {layer.shapes && layer.shapes.length > 1 && (
                               <button
