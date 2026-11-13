@@ -9,6 +9,7 @@ import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../components/mapping/layers/MunicipalProjectLayer';
 import InterstateExitLayer from '../components/mapping/layers/InterstateExitLayer';
+import TruckStopLayer from '../components/mapping/layers/TruckStopLayer';
 import MunicipalProjectInlineFilters from '../components/mapping/layers/MunicipalProjectInlineFilters';
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
@@ -3269,6 +3270,28 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       </div>
                     )}
 
+                    {/* Truck Stops — everyone can view */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('truck_stops')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.truck_stops?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.truck_stops?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span className="text-base">🚛</span>
+                          <span className="text-sm font-medium text-gray-900">Truck Stops</span>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Interstate exit badges — public road data, visible to everyone */}
                     <div className="p-2 border-b border-gray-200">
                       <div className="flex items-center justify-between">
@@ -3834,6 +3857,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             <MunicipalProjectOrientationOverlay
               map={mapInstance}
               project={selectedMunicipalProject}
+            />
+
+            {/* Truck Stops — everyone can view; verify/remove internal-only */}
+            <TruckStopLayer
+              map={mapInstance}
+              isVisible={layerState.truck_stops?.isVisible || false}
             />
 
             {/* Interstate exit badges — public, no permission gate */}
