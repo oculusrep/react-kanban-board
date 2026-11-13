@@ -262,7 +262,72 @@ const COLUMBIA_SC: MerchantRegion = {
   costBasis: 'measured',
 };
 
-export const MERCHANT_REGIONS: MerchantRegion[] = [GEORGIA, COLUMBIA_SC];
+// ---------- Town fill-ins ----------
+//
+// Georgia was ingested with one statewide search per brand plus six metro
+// boxes (GEORGIA_METROS). A statewide search returns only Google's top
+// results, so any brand with more stores than that is complete inside the
+// metro boxes and patchy everywhere else — Thomaston (outside every box) had
+// 7 pins and no McDonald's / Dollar General / CVS. Aiken SC sits on the edge
+// of the Columbia 50-mile circle and was similarly thin.
+//
+// These are small radius regions run on top of the state ingest to fill a
+// specific town. Rows dedupe on google_place_id, so overlap with the Georgia
+// or Columbia regions is harmless.
+
+const TOWN_RADIUS_MILES = 10;
+
+/**
+ * A `radiusMiles` circle around a town centre, searched as its own bbox and
+ * partitioned adaptively. Depth 2 on a ~20-mile box bottoms out at ~5-mile
+ * cells, which is enough for even Warner Robins-level density; the full tree
+ * is 1 + 4 + 16 = 21 calls, so the ceiling never truncates a real brand.
+ */
+function townRegion(
+  id: string,
+  name: string,
+  center: { lat: number; lng: number },
+  radiusMiles: number = TOWN_RADIUS_MILES,
+): MerchantRegion {
+  const dLat = radiusMiles / 69.0;
+  const dLng = radiusMiles / (69.0 * Math.cos((center.lat * Math.PI) / 180));
+  return {
+    id,
+    name: `${name} (${radiusMiles}-mile radius)`,
+    locationLabel: `${name}-area`,
+    bounds: {
+      north: center.lat + dLat,
+      south: center.lat - dLat,
+      east: center.lng + dLng,
+      west: center.lng - dLng,
+    },
+    strategy: { kind: 'adaptive', split: 2, maxDepth: 2 },
+    maxRequestsPerBrand: 21,
+    accept: (p) =>
+      haversineMiles(p.latitude, p.longitude, center.lat, center.lng) <= radiusMiles,
+    // Estimate: Columbia measured 2.0 calls/brand over a far larger area; a
+    // 10-mile town saturates less often. Kept at 2.0 to over- rather than
+    // under-quote. Recalibrate from google_places_api_log after the first run.
+    avgRequestsPerBrand: 2.0,
+    costBasis: 'estimated',
+  };
+}
+
+const THOMASTON_GA = townRegion('thomaston-ga-10mi', 'Thomaston GA', { lat: 32.8882, lng: -84.3266 });
+const LOCUST_GROVE_GA = townRegion('locust-grove-ga-10mi', 'Locust Grove GA', { lat: 33.3459, lng: -84.1091 });
+const WARNER_ROBINS_GA = townRegion('warner-robins-ga-10mi', 'Warner Robins GA', { lat: 32.6130, lng: -83.6242 });
+const GROVETOWN_GA = townRegion('grovetown-ga-10mi', 'Grovetown GA', { lat: 33.4504, lng: -82.1982 });
+const AIKEN_SC = townRegion('aiken-sc-10mi', 'Aiken SC', { lat: 33.5604, lng: -81.7196 });
+
+export const MERCHANT_REGIONS: MerchantRegion[] = [
+  GEORGIA,
+  COLUMBIA_SC,
+  THOMASTON_GA,
+  LOCUST_GROVE_GA,
+  WARNER_ROBINS_GA,
+  GROVETOWN_GA,
+  AIKEN_SC,
+];
 
 /** The region assumed when a caller doesn't name one. */
 export const DEFAULT_REGION_ID = GEORGIA.id;
