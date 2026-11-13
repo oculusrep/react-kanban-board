@@ -276,3 +276,34 @@ Migration `20261112100659_parcel_fetch_acreage_and_partial_flag`, built from the
   BCBTR +8.9% flag. 5401 Old Winder Hwy flags at +224.8% (273.78 vs 84.30) AND as a partial parcel.
   Overall: 8 pass, 11 flagged. Of the flagged, 6 cite a partial parcel (Yellow Creek Rd flags on
   that alone at 0.2%) and 5 are acreage-only, at +5.3% to +6.3%.
+
+## Coweta County adapter (2026-11-13)
+
+- **Parser:** migration `20261113062803_parcel_id_coweta_format` (built from the live definition,
+  including Henry and Hall). Coweta `ParcelNumber` was profiled over all 66,099 rows. 66% are
+  3-part, district / map / parcel, padded with a double space: `162  1259 001`, `N12A 1234 001A`.
+  The parser reads that form with any run of spaces or dashes between the parts (`162-1259-001`,
+  `163 1261 002`) and stores it single-spaced. The 2-part form (`075A      012`, 34% of parcels) is
+  **not** read. It's the same shape Dublin, Elbert County and Grovetown records use, and reading it
+  would fill `parcel_numbers` outside Coweta. No Coweta record cites a 2-part id today.
+  Regression over every staged and committed row: only the 3 Coweta rows changed, and no row lost an id.
+- **Double spaces:** they never reach the query. `likeFromRuns` splits on any separator run
+  (`ParcelNumber LIKE '162%1259%001'`), and the result is checked with the normalized compare.
+  Stripping non-alphanumerics is lossless on Coweta: 65,417 distinct ids → 65,417 normalized, zero
+  collisions.
+- **Adapter:** `services1.arcgis.com/AaPyNbrJpNGryRqh/.../WeeklyUpdate_WinGapParcels/FeatureServer/0`,
+  `ParcelNumber`, refreshed weekly. It matches Coweta County, Newnan, Senoia, Haralson, Grantville,
+  Moreland, Turin and Sharpsburg. Haralson straddles Meriwether, so a parcel on that side comes back
+  "missing". Palmetto and Chattahoochee Hills aren't matched (mostly Fulton).
+- **Records (Coweta County 7, Senoia 5 committed; 38 staged incl. 1 Haralson):** only **2** cite
+  parcel ids, both Senoia:
+  - *Templar Development Subdivision* (committed): 3 ids, backfilled. **3/3 resolve.** RPC dry run
+    (rolled back): 25.97 ac vs 29.58 stated, −12.2%, flagged. The note says "plus two existing
+    city-limit parcels" that it doesn't name, which accounts for the gap. It already has a
+    hand-drawn boundary (25.42 ac), so the fetch button doesn't appear (fetch once).
+  - *141 South*: the ids live only on merged staging row `4fda4623` (backfilled). The committed
+    record `d4549c22` has none. **4/4 resolve.** Dry run: 87.87 ac vs 82.10 stated, +7.0%, flagged.
+    Already hand-drawn (128.68 ac, drawn to the ~152 ac DRI footprint).
+  - Net: **0 records gain a polygon from this.** The other 48 Coweta/Senoia/Haralson records state
+    acreage, a land lot ("Land Lot 135 of the 1st District") or nothing. The fetch only helps once
+    research starts capturing Coweta parcel ids.
