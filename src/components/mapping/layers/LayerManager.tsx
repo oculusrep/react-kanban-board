@@ -22,7 +22,7 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database' | 'seven_eleven';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database' | 'seven_eleven' | 'interstate_exit';
 
 export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
@@ -260,6 +260,16 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     type: 'seven_eleven',
     icon: '⛽',
     description: '7-Eleven and Speedway store locations (Georgia)',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
+    // Public road data (OpenStreetMap) — no permission gate.
+    id: 'interstate_exits',
+    name: 'Interstate Exits',
+    type: 'interstate_exit',
+    icon: '🛣️',
+    description: 'Exit-number badges on I-85 and I-20 (Georgia). © OpenStreetMap contributors',
     defaultVisible: false,
     isSystemLayer: true,
   },

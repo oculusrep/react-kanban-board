@@ -8,6 +8,7 @@ import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../components/mapping/layers/MunicipalProjectLayer';
+import InterstateExitLayer from '../components/mapping/layers/InterstateExitLayer';
 import MunicipalProjectInlineFilters from '../components/mapping/layers/MunicipalProjectInlineFilters';
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
@@ -3268,6 +3269,39 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       </div>
                     )}
 
+                    {/* Interstate exit badges — public road data, visible to everyone */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('interstate_exits')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.interstate_exits?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.interstate_exits?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span
+                            className="inline-flex items-center justify-center rounded text-white font-bold"
+                            style={{ background: '#006B3F', border: '1px solid #fff', boxShadow: '0 0 0 1px #006B3F', fontSize: 8, padding: '1px 3px', lineHeight: 1 }}
+                          >
+                            EXIT
+                          </span>
+                          <span className="text-sm font-medium text-gray-900">Interstate Exits</span>
+                        </div>
+                        <span className="text-xs text-gray-400">I-85 · I-20</span>
+                      </div>
+                      {layerState.interstate_exits?.isVisible && (
+                        <div className="pl-11 pt-1 text-[11px] text-gray-500">
+                          Zoom in to see exit numbers · © OpenStreetMap contributors
+                        </div>
+                      )}
+                    </div>
+
                     {/* Municipal Projects system layer */}
 {canAccess('can_view_layer_municipal_projects') && (
 <div className="p-2 border-b border-gray-200">
@@ -3800,6 +3834,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             <MunicipalProjectOrientationOverlay
               map={mapInstance}
               project={selectedMunicipalProject}
+            />
+
+            {/* Interstate exit badges — public, no permission gate */}
+            <InterstateExitLayer
+              map={mapInstance}
+              isVisible={layerState.interstate_exits?.isVisible || false}
             />
 
             {/* Municipal Projects Layer — imported development tracking from cities */}
