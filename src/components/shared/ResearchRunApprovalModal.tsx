@@ -124,6 +124,21 @@ interface StagingRow {
   units_confidence: 'approved' | 'reported' | 'estimated' | null;
   // Non-null forces the row into Leads whatever its count (e.g. out of radius).
   lead_reason: string | null;
+  // Set by research_auto_dedupe_by_name when copies of this project (same
+  // name + municipality, staged or committed) carry DIFFERENT counts: a
+  // snapshot of every counted copy, shown side by side. Nothing auto-resolved.
+  count_conflict: CountConflictMember[] | null;
+}
+interface CountConflictMember {
+  kind: 'staged' | 'committed';
+  id: string;
+  project_name: string | null;
+  phase_label: string | null;
+  units: number | null;
+  units_confidence: string | null;
+  address: string | null;
+  source: string | null;
+  notes: string | null;
 }
 // A committed municipal_project whose centroid is near a staged candidate —
 // the soft "possible duplicate" signal (see find_nearby_municipal_projects RPC).
@@ -612,6 +627,7 @@ export default function ResearchRunApprovalModal({
             units_review_reason: r.units_review_reason ?? null,
             units_confidence: r.units_confidence ?? null,
             lead_reason: r.lead_reason ?? null,
+            count_conflict: r.count_conflict ?? null,
           }));
           const ar = await readAuto([...new Set(allSweepRows.map((r) => r.research_run_id as string))]);
           if (cancelled) return;
@@ -647,7 +663,7 @@ export default function ResearchRunApprovalModal({
               permit_application_date, source, discovery_source, discovery_source_raw,
               reject_reason, duplicate_of_staging_id, notes,
               not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
-              units_needs_review, units_review_reason, units_confidence, lead_reason,
+              units_needs_review, units_review_reason, units_confidence, lead_reason, count_conflict,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -1033,7 +1049,8 @@ export default function ResearchRunApprovalModal({
     // so they must not be quietly filed under "clean & ready". Same for a row
     // whose unit count is missing or a placeholder — it must not read as clean.
     return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id))
-      || (!f.matched && r.units_needs_review) || autoFlagById.has(r.id);
+      || (!f.matched && r.units_needs_review) || autoFlagById.has(r.id)
+      || (r.count_conflict != null && r.count_conflict.length > 1);
   };
 
   // The unit-count flag this row will carry onto the committed record, or null.
@@ -1764,6 +1781,13 @@ export default function ResearchRunApprovalModal({
             ⚠ DUP ACROSS RUNS{r.duplicate_of_chunk_index != null ? ` · chunk ${r.duplicate_of_chunk_index}` : ''}
           </span>
         )}
+        {r.approval_state === 'pending' && r.count_conflict && r.count_conflict.length > 1 && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                title="Other copies of this project (same name and municipality) carry a different unit count. Not auto-resolved — compare below.">
+            ≠ COUNT CONFLICT · {r.count_conflict.map((m) => m.units ?? '—').join(' vs ')}
+          </span>
+        )}
         {r.units_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
           <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
                 style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
@@ -2091,7 +2115,7 @@ export default function ResearchRunApprovalModal({
           </div>
         )}
         {/* Conflicting record(s) always visible — that's the point of the row. */}
-        <div className="pl-6">{conflictPanels(r)}</div>
+        <div className="pl-6">{conflictPanels(r)}{countConflictPanel(r)}</div>
         {isExpanded && (<div className="pl-6">{fieldEditor(r)}</div>)}
       </div>
     );
@@ -2385,6 +2409,49 @@ export default function ResearchRunApprovalModal({
   // A lead: name, municipality, source and notes — enough to judge whether it's
   // worth chasing. Conflict badges stay visible. Clicking the name opens the
   // full editor (e.g. to type a count found by hand).
+  // Side-by-side compare for a count conflict: every counted copy, with its
+  // count, confidence, source and notes. Reviewer decides (reject one, or Keep
+  // both with a phase label).
+  const countConflictPanel = (r: StagingRow) => {
+    if (r.approval_state !== 'pending' || !r.count_conflict || r.count_conflict.length < 2) return null;
+    return (
+      <div className="mt-1 rounded border p-2" style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+        <div className="text-xs font-semibold mb-1" style={{ color: '#A27B5C' }}>
+          Same project, different unit counts — compare and keep the right one
+        </div>
+        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(r.count_conflict.length, 3)}, minmax(0, 1fr))` }}>
+          {r.count_conflict.map((m) => (
+            <div key={m.id} className="rounded border p-1.5 text-xs bg-white min-w-0"
+                 style={{ borderColor: m.id === r.id ? '#002147' : '#8FA9C8', borderWidth: m.id === r.id ? 2 : 1 }}>
+              <div className="font-semibold" style={{ color: '#002147' }}>
+                {m.units ?? '—'} units
+                <span className="font-normal" style={{ color: '#4A6B94' }}>
+                  {' '}· {m.kind === 'committed' ? 'committed' : (m.units_confidence ?? 'reported')}
+                  {m.id === r.id ? ' · this row' : ''}
+                </span>
+              </div>
+              <div className="truncate" style={{ color: '#002147' }} title={m.project_name ?? ''}>
+                {m.project_name}{m.phase_label ? ` — ${m.phase_label}` : ''}
+              </div>
+              {m.address && <div className="truncate" style={{ color: '#4A6B94' }} title={m.address}>{m.address}</div>}
+              {m.source && (
+                <div className="mt-0.5 select-text break-words" style={{ color: '#4A6B94' }}>
+                  <span style={{ color: '#8FA9C8' }}>Source: </span>{m.source}
+                </div>
+              )}
+              {m.notes && (
+                <details className="mt-0.5">
+                  <summary className="cursor-pointer" style={{ color: '#8FA9C8' }}>Notes</summary>
+                  <div className="select-text whitespace-pre-wrap break-words" style={{ color: '#002147' }}>{m.notes}</div>
+                </details>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const leadCard = (r: StagingRow) => {
     const isPending = r.approval_state === 'pending';
     const isExpanded = expandedRows.has(r.id);
@@ -2419,7 +2486,7 @@ export default function ResearchRunApprovalModal({
                     title="Reject this row (kept for audit; reversible with Undo)">Reject</button>
           )}
         </div>
-        <div className="pl-6">{conflictPanels(r)}</div>
+        <div className="pl-6">{conflictPanels(r)}{countConflictPanel(r)}</div>
         {isExpanded && (<div className="pl-6">{fieldEditor(r)}</div>)}
       </div>
     );

@@ -418,9 +418,25 @@ async function toolSubmitResearchReport(args: any) {
   if (isFinal) {
     const geminiKey = Deno.env.get('GEMINI_API_KEY');
     if (geminiKey) {
-      const job = estimateMissingUnits(supabase, research_run_id, geminiKey)
-        .then((s) => console.log('[unit-estimate]', JSON.stringify(s)))
-        .catch((e) => console.error('[unit-estimate] failed', research_run_id, e));
+      // Name dedupe FIRST, so Gemini isn't paid to estimate a duplicate; then
+      // again after, since estimates can make two copies' counts comparable.
+      const dedupe = async (label: string) => {
+        const { data: d, error: dErr } = await supabase.rpc('research_auto_dedupe_by_name', {
+          p_run_ids: [research_run_id], p_dry_run: false,
+        });
+        if (dErr) console.error(`[name-dedupe ${label}] failed`, research_run_id, dErr.message);
+        else console.log(`[name-dedupe ${label}]`, JSON.stringify({
+          rejected_no_count: (d as any)?.rejected_no_count?.length ?? 0,
+          rejected_equal_count: (d as any)?.rejected_equal_count?.length ?? 0,
+          count_conflicts: (d as any)?.count_conflicts?.length ?? 0,
+        }));
+      };
+      const job = (async () => {
+        await dedupe('pre');
+        const s = await estimateMissingUnits(supabase, research_run_id, geminiKey);
+        console.log('[unit-estimate]', JSON.stringify(s));
+        await dedupe('post');
+      })().catch((e) => console.error('[unit-estimate] failed', research_run_id, e));
       if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(job);
     } else {
       console.error('[unit-estimate] GEMINI_API_KEY not set; skipped', research_run_id);
