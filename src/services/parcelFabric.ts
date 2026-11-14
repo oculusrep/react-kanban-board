@@ -116,6 +116,30 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
 export const adapterFor = (municipalityName: string | null | undefined): CountyAdapter | null =>
   COUNTY_ADAPTERS.find((a) => a.matches((municipalityName ?? '').trim())) ?? null;
 
+/**
+ * Counties checked and found to have NO public parcel service (login-gated,
+ * raster tiles only, or nothing published). Listing one stops the research
+ * run/sweep view from flagging it as "no parcel adapter". Add an entry only
+ * after actually checking, with the date and what was found; the cc prompt in
+ * docs/PARCEL_ADAPTER_CC_PROMPT.md ends by adding one when that's the answer.
+ */
+export interface CountyWithoutParcelService {
+  /** Matched against the county name, e.g. /^butts county$/i. */
+  matches: (countyName: string) => boolean;
+  label: string;
+  checkedOn: string; // YYYY-MM-DD
+  reason: string;
+}
+export const COUNTIES_WITHOUT_PARCEL_SERVICE: CountyWithoutParcelService[] = [];
+
+/** 'adapter' = fetchable; 'none' = checked, no public service; 'missing' = not yet checked. */
+export const countyParcelStatus = (countyName: string | null | undefined): 'adapter' | 'none' | 'missing' => {
+  const n = (countyName ?? '').trim();
+  if (adapterFor(n)) return 'adapter';
+  if (COUNTIES_WITHOUT_PARCEL_SERVICE.some((c) => c.matches(n))) return 'none';
+  return 'missing';
+};
+
 export interface ParcelFetchResult {
   resolved: { parcelId: string; geometry: unknown }[];
   /** Asked for but absent from the current fabric — almost always re-platted. */

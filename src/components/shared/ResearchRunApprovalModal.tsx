@@ -4,6 +4,7 @@ import { geocodingService } from '../../services/geocodingService';
 import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../services/placementPrecision';
 import { usePermissions } from '../../hooks/usePermissions';
 import { ResearchSignalPanel, type ResearchSignal } from './ResearchSignalPanel';
+import { ParcelAdapterNotice } from './ParcelAdapterNotice';
 
 interface ResearchRunApprovalModalProps {
   // Exactly one of researchRunId | sweepId. sweepId opens the UNIFIED approval:
@@ -2612,6 +2613,13 @@ export default function ResearchRunApprovalModal({
               <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
                 {gapInfo!.healable_count} chunk{gapInfo!.healable_count === 1 ? '' : 's'} finished after the timeout — their records are already included below and won't be re-run.
               </p>
+            )}
+            {/* Counties with parcel-ID records but no parcel adapter (never blocks). */}
+            {fillRunIds.length > 0 && (
+              <div className="mt-2">
+                <ParcelAdapterNotice runIds={fillRunIds}
+                                     runRef={isSweep ? `sweep ${sweepId}` : `run ${researchRunId}`} />
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2">
