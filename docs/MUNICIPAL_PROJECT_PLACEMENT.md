@@ -347,3 +347,26 @@ Side notes for the parser: Coweta packets also write `075A-042` (the 2-part form
 deliberately doesn't read) and run ids across line breaks (`111-6001-` / `078`). The fabric also
 carries `SubdivisionName` / `SubdivisionPhase` (e.g. "Fox Hall 6": 32 parcels), which could place
 platted subdivisions with no id at all. Not built.
+
+## Parcel-adapter check on research runs (2026-11-14)
+
+The run and sweep approval view now shows one line for each county with no
+parcel adapter:
+
+> Newton County — no parcel adapter (5 records with parcel IDs)
+
+Each line has a **Copy cc prompt** button.
+
+- `get_research_parcel_counties(run_ids)` (migration 20261114072811) maps the
+  run's checklist municipalities to counties. A city maps to the county that
+  contains its centroid. It counts the non-rejected staged records with
+  parcel IDs per county and returns up to 3 sample IDs.
+- The view compares each county with `COUNTY_ADAPTERS` and
+  `COUNTIES_WITHOUT_PARCEL_SERVICE` (`src/services/parcelFabric.ts`). It shows
+  a line only for counties that have neither and have at least one record
+  with parcel IDs. It's read-only and never blocks a run.
+- The check runs when the view opens, not once at run start. A county stops
+  being flagged as soon as its adapter, or its "none" entry, ships.
+- The prompt text is in [PARCEL_ADAPTER_CC_PROMPT.md](PARCEL_ADAPTER_CC_PROMPT.md),
+  between the PROMPT START and PROMPT END markers. It's bundled with Vite
+  `?raw`, so editing it needs a deploy but no code change.
