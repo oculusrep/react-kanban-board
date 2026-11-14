@@ -232,3 +232,37 @@ caller needs `can_approve_market_research`.
   - If one still gets no count, it goes back to rejected with exactly that
     reason. This also runs after a failure, so nothing is left half-restored.
 - Committed records are never touched.
+
+## Sweep summary + Agent reports (migration 20261114080749)
+
+`get_research_summary(run_ids)` puts every **pending** record in exactly one
+bucket. `get_sweep_summary(sweep_id)` is the same thing for a whole sweep.
+
+| Bucket | Rule | Units |
+|---|---|---|
+| Ready | has a count; no open conflict, unresolved duplicate or `lead_reason` | total, plus the estimated part |
+| Needs a decision | `count_conflict`, a pending `duplicate_of_project_id`, a `duplicate_of_staging_id` pointing at another pending row, or a `lead_reason` (distance / jurisdiction) | a range: per group, the smallest count to the largest |
+| Leads | no usable count (null, ≤ 0, or flagged by the unit-count trigger) | not counted |
+
+Units are counted after dedupe, so rejected and merged copies are already gone.
+
+- **Approval screen:** a header for both run and sweep views. It recomputes
+  live whenever a staged row's state, count, conflict or lead flag changes.
+- **Telegram** "Sweep ready — <site>" uses the same function, one line per
+  bucket.
+  - It's sent once (`research_sweep.ready_notified_at`) after the sweep
+    finishes **and** every chunk's post-run steps are done
+    (`research_run.post_run_done_at`, set by the MCP after dedupe → Gemini →
+    dedupe).
+  - Senders: the MCP when the last post-run step finishes, and a sweeper in
+    `ovis-sweep-tick` that covers finished sweeps from the last 3 days. A run
+    whose flag never got set counts as done after 10 minutes.
+  - **Parcel fetch is not part of this pipeline.** It still runs in the
+    browser on a committed record, so it isn't waited on.
+- **Agent reports** (sweep view, read-only): one collapsible entry per chunk,
+  "Chunk 0 — undated sources" or "Chunk 3 — May–Oct 2025". Each shows the
+  run's `needs_review`; a failed or gap chunk shows "no report".
+  - Chunk numbers here are 0-based `chunk_index`. Telegram's "Chunk N/M" is
+    1-based.
+- **Single-run Needs review** is now at the top, collapsed to 3 lines, with
+  Show all expanding to the full editable text.

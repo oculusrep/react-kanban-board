@@ -5,6 +5,8 @@ import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../servi
 import { usePermissions } from '../../hooks/usePermissions';
 import { ResearchSignalPanel, type ResearchSignal } from './ResearchSignalPanel';
 import { ParcelAdapterNotice } from './ParcelAdapterNotice';
+import { ResearchSummaryHeader } from './ResearchSummaryHeader';
+import { SweepAgentReports } from './SweepAgentReports';
 
 interface ResearchRunApprovalModalProps {
   // Exactly one of researchRunId | sweepId. sweepId opens the UNIFIED approval:
@@ -536,6 +538,20 @@ export default function ResearchRunApprovalModal({
   } | null>(null);
 
   const fillRunIds = useMemo(() => (stagingRunKey ? stagingRunKey.split(',') : []), [stagingRunKey]);
+
+  // Summary header inputs. The refresh key changes whenever a staged row's
+  // decision-relevant state does (approve / reject / merge / count edits /
+  // conflict resolution), so the header recomputes live.
+  const summaryRunIds = useMemo(
+    () => (isSweep ? fillRunIds : (researchRunId ? [researchRunId] : [])),
+    [isSweep, fillRunIds, researchRunId],
+  );
+  const summaryRefreshKey = useMemo(
+    () => staging.map((r) => `${r.id}:${r.approval_state}:${r.total_housing_units ?? ''}:${r.count_conflict ? r.count_conflict.length : 0}:${r.lead_reason ? 1 : 0}`).join('|'),
+    [staging],
+  );
+  // Single-run Needs review: collapsed to 3 lines by default.
+  const [needsReviewOpen, setNeedsReviewOpen] = useState(false);
 
   const loadFillPreview = async (includeRejected: boolean) => {
     setFillPreview(null);
@@ -2765,6 +2781,49 @@ export default function ResearchRunApprovalModal({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {loading && <div className="text-sm" style={{ color: '#8FA9C8' }}>Loading…</div>}
+          {!loading && summaryRunIds.length > 0 && (
+            <ResearchSummaryHeader runIds={summaryRunIds} refreshKey={summaryRefreshKey} />
+          )}
+          {/* Agent reports (sweep, read-only) / Needs review (single run). The
+              agent's end-of-run coverage report sits at the top of needs_review. */}
+          {!loading && isSweep && sweepId && <SweepAgentReports sweepId={sweepId} />}
+          {!loading && run && (
+            <div className="rounded-md border px-3 py-2" style={{ borderColor: '#8FA9C8' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold" style={{ color: '#002147' }}>Needs review</span>
+                {(needsReview.split('\n').length > 3 || needsReview.length > 300 || needsReviewOpen) && (
+                  <button type="button" onClick={() => setNeedsReviewOpen((v) => !v)}
+                          className="text-xs underline" style={{ color: '#4A6B94' }}>
+                    {needsReviewOpen ? 'Collapse' : 'Show all'}
+                  </button>
+                )}
+              </div>
+              {needsReviewOpen ? (
+                <textarea
+                  rows={Math.min(Math.max(needsReview.split('\n').length + 1, 4), 24)}
+                  value={needsReview}
+                  disabled={isReadOnlyRun}
+                  onChange={(e) => setNeedsReview(e.target.value)}
+                  className="mt-1 w-full px-2 py-1 text-sm border rounded"
+                  style={{ borderColor: '#8FA9C8', color: '#002147' }}
+                  placeholder="Anything the agent flagged for human review."
+                />
+              ) : (
+                <button type="button" onClick={() => setNeedsReviewOpen(true)} className="mt-1 w-full text-left"
+                        title="Show the full text">
+                  <div className="text-sm whitespace-pre-wrap select-text"
+                       style={{ color: needsReview.trim() ? '#002147' : '#8FA9C8', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {needsReview.trim() || 'Nothing flagged.'}
+                  </div>
+                </button>
+              )}
+              {run.alt_avenues && (
+                <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
+                  Agent alt avenues: {run.alt_avenues}
+                </p>
+              )}
+            </div>
+          )}
           {error && (
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
@@ -3058,26 +3117,7 @@ export default function ResearchRunApprovalModal({
                 [...triage.approved, ...triage.merged, ...triage.rejected].map((r) => rowCard(r)),
               )}
 
-              {/* Needs review — single-run only */}
-              {run && (
-              <div>
-                <label className="block text-sm font-semibold mb-1" style={{ color: '#002147' }}>Needs review</label>
-                <textarea
-                  rows={3}
-                  value={needsReview}
-                  disabled={isReadOnlyRun}
-                  onChange={(e) => setNeedsReview(e.target.value)}
-                  className="w-full px-2 py-1 text-sm border rounded"
-                  style={{ borderColor: '#8FA9C8', color: '#002147' }}
-                  placeholder="Anything the agent flagged for human review."
-                />
-                {run.alt_avenues && (
-                  <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
-                    Agent alt avenues: {run.alt_avenues}
-                  </p>
-                )}
-              </div>
-              )}
+              {/* Needs review moved to the top of the body (under the summary header). */}
             </>
           )}
         </div>
