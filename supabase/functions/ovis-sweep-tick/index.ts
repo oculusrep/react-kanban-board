@@ -31,6 +31,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { notifyResearchTelegram, oneLine, chunkLabel, getSweepInfo } from '../_shared/research-telegram.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -38,28 +39,8 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// Telegram operator notifications.
-//   chat 8371575998 = Mike Minihan's private chat (verified via getChat).
-//   TELEGRAM_BOT_TOKEN resolves to OVISbot / @oculusrep_bot (id 8677673692),
-//   verified via getMe on 2026-09-17 — NOT @orep_openclaw_bot, which is
-//   OpenClaw/Prime's own bot and a separate conversation thread. Earlier
-//   comments here and in ovis-research-trigger named the wrong bot.
-//   Re-verify with: curl https://api.telegram.org/bot<token>/getMe
-// Failures are swallowed (console.warn only), so a send that fails is INVISIBLE
-// in the tick's HTTP response — a 200 means the path ran, not that it delivered.
-const TELEGRAM_CHAT_ID = '8371575998';
-async function notifyTelegram(text: string): Promise<void> {
-  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
-  if (!token) { console.warn('TELEGRAM_BOT_TOKEN not set — skipping:', text); return; }
-  try {
-    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
-    });
-    if (!resp.ok) console.warn('Telegram non-2xx:', resp.status, await resp.text());
-  } catch (e) { console.warn('Telegram threw:', e); }
-}
+// Telegram: only started / failed / ready-for-approval go out from here (see
+// _shared/research-telegram.ts for the full list and the 2026-11-14 decision).
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
@@ -97,11 +78,8 @@ serve(async (req) => {
     console.warn('reap_orphaned_research_runs failed:', reapErr.message);
   } else {
     const r = reaped as { reaped_count?: number; chunks_closed?: number } | null;
-    if ((r?.reaped_count ?? 0) > 0) {
-      await notifyTelegram(
-        `🧹 Reaped ${r!.reaped_count} orphaned research run(s) stuck at 'running' (no activity for 90+ min) — marked failed. They now show as coverage gaps.`,
-      );
-    }
+    // No Telegram: reaped runs are not sweep chunks (advance_sweep owns those).
+    if ((r?.reaped_count ?? 0) > 0) console.log('reaped orphaned research runs:', r!.reaped_count);
   }
 
   // ---- 2) Advance every running sweep by one step.
@@ -116,6 +94,8 @@ serve(async (req) => {
     if (advErr) { console.warn('advance_sweep failed', sweep.id, advErr.message); continue; }
     const action = (act as { action?: string })?.action ?? 'none';
     processed.push({ sweep_id: sweep.id, action });
+    if (action === 'none') continue;
+    const info = await getSweepInfo(service, sweep.id);
 
     if (action === 'fire') {
       const a = act as {
@@ -146,6 +126,7 @@ serve(async (req) => {
 
         if (resp.ok && b.research_run_id) {
           await service.rpc('mark_chunk_fired', { p_chunk_id: a.chunk_id, p_run_id: b.research_run_id });
+          await notifyResearchTelegram(`${chunkLabel(a.chunk_index, info.total)} started — ${info.site}`);
         } else if (resp.status === 409) {
           // Blocked by the one-live-run-per-site guard. Transient by nature —
           // something is still live on this site and will terminalize (the
@@ -159,13 +140,13 @@ serve(async (req) => {
           // marked failed inside the trigger). Isolate: mark chunk failed, alert,
           // let the next tick advance past it.
           await service.rpc('mark_chunk_failed', { p_chunk_id: a.chunk_id, p_run_id: b.research_run_id ?? null });
-          await notifyTelegram(
-            `⚠️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) failed to fire: ${b.detail ?? b.error ?? ('HTTP ' + resp.status)}`,
+          await notifyResearchTelegram(
+            `${chunkLabel(a.chunk_index, info.total)} failed — ${oneLine(`could not start: ${b.detail ?? b.error ?? ('HTTP ' + resp.status)}`)}`,
           );
         }
       } catch (e) {
         await service.rpc('mark_chunk_failed', { p_chunk_id: a.chunk_id });
-        await notifyTelegram(`⚠️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) fire threw: ${String(e).slice(0, 150)}`);
+        await notifyResearchTelegram(`${chunkLabel(a.chunk_index, info.total)} failed — ${oneLine(`could not start: ${String(e)}`)}`);
       }
     } else if (action === 'stalled') {
       const a = act as {
@@ -176,9 +157,9 @@ serve(async (req) => {
       // the agent may still be alive, and marking it failed here would be us
       // manufacturing the very "confirmation of death" the cooldown exists to
       // wait for. The sweep is held until it resurrects or the cooldown expires.
-      await notifyTelegram(
-        `⏸️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) STALLED — silent ${a.idle_minutes} min. Sweep HELD (no next chunk) for up to ${a.cooldown_minutes} min in case it's alive.`,
-      );
+      // No Telegram: a stall is not a failure yet. If it never resurrects it
+      // becomes 'orphan' below, which is reported as a failure.
+      console.log('sweep chunk stalled', sweep.id, a.chunk_index, a.idle_minutes, a.cooldown_minutes);
     } else if (action === 'orphan') {
       const a = act as { chunk_index: number; window_start: string; window_end: string; research_run_id: string | null };
       // Silent through the whole cooldown: as dead as we can establish from this
@@ -189,8 +170,8 @@ serve(async (req) => {
           .update({ state: 'failed', completed_at: new Date().toISOString() })
           .eq('id', a.research_run_id);
       }
-      await notifyTelegram(
-        `⚠️ Deep-Sweep chunk ${a.chunk_index} (${a.window_start}→${a.window_end}) ORPHANED — no activity through the cooldown. Marked failed; sweep advancing. Re-run it from the sweep approval view.`,
+      await notifyResearchTelegram(
+        `${chunkLabel(a.chunk_index, info.total)} failed — agent went silent (no activity through the cooldown); marked as a gap, re-run it from the sweep view`,
       );
     } else if (action === 'aborted') {
       const a = act as {
@@ -199,15 +180,22 @@ serve(async (req) => {
       };
       // Circuit breaker: two consecutive chunks finished with no activity and no
       // records, so the agent side is down and the rest would fail identically.
-      const named = (a.dead_chunks ?? [])
-        .map((d) => `${d.chunk_index} (${d.window_start}→${d.window_end})`).join(' and ');
-      await notifyTelegram(
-        `🛑 Deep-Sweep ABORTED — chunks ${named} both finished with zero activity and zero records, so the agent side is down (check credits / gateway / network). ${a.skipped_count} remaining chunk(s) were NOT fired and are marked as gaps. Fix the cause, then use Re-run gaps to recover every window.`,
+      const last = (a.dead_chunks ?? []).reduce((m, d) => Math.max(m, d.chunk_index), 0);
+      await notifyResearchTelegram(
+        `${chunkLabel(last, info.total)} failed — ${oneLine(`agent side down (2 chunks in a row with no activity and no records); sweep stopped, ${a.skipped_count} chunk(s) not run — fix the cause, then Re-run gaps`, 220)}`,
       );
     } else if (action === 'terminal') {
-      const a = act as { sweep_state: string };
-      const emoji = a.sweep_state === 'complete' ? '✅' : a.sweep_state === 'failed' ? '❌' : '⚠️';
-      await notifyTelegram(`${emoji} Deep-Sweep finished: ${a.sweep_state}. Review in the sweep approval view.`);
+      // Failed chunks were already reported one by one; this is the hand-off.
+      const { data: runs } = await service.from('research_run').select('id').eq('sweep_id', sweep.id);
+      const runIds = (runs ?? []).map((r: { id: string }) => r.id);
+      let pending = 0;
+      if (runIds.length > 0) {
+        const { count } = await service.from('municipal_project_staging')
+          .select('id', { count: 'exact', head: true })
+          .in('research_run_id', runIds).eq('approval_state', 'pending');
+        pending = count ?? 0;
+      }
+      await notifyResearchTelegram(`Sweep ready for approval — ${info.site}, ${pending} records pending`);
     }
   }
 

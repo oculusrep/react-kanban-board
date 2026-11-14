@@ -162,3 +162,34 @@ Flagged three count conflicts:
 - The Quarry at Neely Farms: 514 vs 1300
 
 No copies without a count needed rejecting.
+
+## 5% tolerance (migration 20261114070306)
+
+Counts in a same-name group that are within 5% of each other (max ≤ 1.05 ×
+min) count as matching. The firmest copy is kept and the others are rejected
+with "Duplicate (counts within 5%) — kept &lt;id&gt;". Only a wider spread is a
+count conflict.
+
+On Alcovy Road, 2026-11-14:
+
+| Project | Result |
+|---|---|
+| Access Road Townhomes | 143 rejected; 144 kept (reported beats estimated) |
+| Grand Horizon Estates | 28 and two 27s rejected; reported 27 kept |
+| Quarry at Neely Farms | still flagged (514 vs 1,300) |
+
+## Agent usage on the approval screen
+
+`submit_research_report` takes optional `input_tokens`, `output_tokens` and
+`cost_usd` (dollars), or the older `estimated_cost_cents`. They are stored on
+`research_run`, and checkpoints don't wipe them. The approval screen shows
+"Research agent: Xk in / Yk out tokens · $Z" next to the Gemini line. If no
+run reported usage, it says "usage not reported", because none of the 120
+runs so far did.
+
+## Telegram (2026-11-14)
+
+The only messages now sent: chunk started, chunk finished with N staged,
+sweep ready for approval with N pending, and chunk failed with a one-line
+reason. A standalone (non-sweep) run that fails to start still gets one
+failure line. See `supabase/functions/_shared/research-telegram.ts`.

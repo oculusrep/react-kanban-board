@@ -480,7 +480,12 @@ export default function ResearchRunApprovalModal({
   const [showLeads, setShowLeads] = useState(false);
   // Post-run unit estimator spend (Gemini grounded search), summed over the
   // run(s) on screen. Upper bound: every call is charged the grounding fee.
-  const [estimateCost, setEstimateCost] = useState<{ calls: number; cents: number } | null>(null);
+  const [estimateCost, setEstimateCost] = useState<{
+    calls: number; cents: number;
+    // The research agent's own usage, as reported on submit_research_report.
+    // null = no run on screen reported it (not measured, NOT zero).
+    agentIn: number | null; agentOut: number | null; agentCents: number | null; agentRuns: number; runs: number;
+  } | null>(null);
   const stagingRunKey = useMemo(
     () => [...new Set(staging.map((r) => r.research_run_id))].sort().join(','),
     [staging],
@@ -490,13 +495,22 @@ export default function ResearchRunApprovalModal({
     let cancelled = false;
     supabase
       .from('research_run')
-      .select('unit_estimate_calls, unit_estimate_cost_cents')
+      .select('unit_estimate_calls, unit_estimate_cost_cents, input_tokens, output_tokens, estimated_cost_cents')
       .in('id', stagingRunKey.split(','))
       .then(({ data, error: e }) => {
         if (cancelled || e || !data) return;
+        const sumOrNull = (k: string) => {
+          const vals = data.map((r: any) => r[k]).filter((v: unknown) => v != null);
+          return vals.length ? vals.reduce((n: number, v: unknown) => n + Number(v), 0) : null;
+        };
         setEstimateCost({
           calls: data.reduce((n, r: any) => n + (r.unit_estimate_calls ?? 0), 0),
           cents: data.reduce((n, r: any) => n + Number(r.unit_estimate_cost_cents ?? 0), 0),
+          agentIn: sumOrNull('input_tokens'),
+          agentOut: sumOrNull('output_tokens'),
+          agentCents: sumOrNull('estimated_cost_cents'),
+          agentRuns: data.filter((r: any) => r.input_tokens != null || r.output_tokens != null || r.estimated_cost_cents != null).length,
+          runs: data.length,
         });
       });
     return () => { cancelled = true; };
@@ -2845,10 +2859,24 @@ export default function ResearchRunApprovalModal({
 
               {/* 3b. Leads — no unit count (collapsed by default). Below the mappable
                   records so a Deep run's list reads as what gets mapped. */}
-              {estimateCost && estimateCost.calls > 0 && (
-                <div className="text-xs px-1" style={{ color: '#4A6B94' }}
-                     title="Post-run unit estimator: Gemini 2.5 Flash with Google Search grounding, run on every record that came in without a unit count. Cost is an upper bound — grounding is free for the first 1,500 prompts/day.">
-                  Unit estimates: {estimateCost.calls} Gemini call{estimateCost.calls === 1 ? '' : 's'} · ${(estimateCost.cents / 100).toFixed(2)}
+              {estimateCost && (estimateCost.calls > 0 || estimateCost.runs > 0) && (
+                <div className="text-xs px-1 flex flex-wrap gap-x-3" style={{ color: '#4A6B94' }}>
+                  <span title="The research agent's own model usage, as it reported on submit. Runs that didn't report it are not counted: a blank means not measured, not zero.">
+                    Research agent:{' '}
+                    {estimateCost.agentRuns === 0
+                      ? 'usage not reported'
+                      : <>
+                          {estimateCost.agentIn != null && `${(estimateCost.agentIn / 1000).toFixed(0)}k in`}
+                          {estimateCost.agentOut != null && ` / ${(estimateCost.agentOut / 1000).toFixed(0)}k out tokens`}
+                          {estimateCost.agentCents != null && ` · $${(estimateCost.agentCents / 100).toFixed(2)}`}
+                          {estimateCost.agentRuns < estimateCost.runs && ` (${estimateCost.agentRuns} of ${estimateCost.runs} runs reported)`}
+                        </>}
+                  </span>
+                  {estimateCost.calls > 0 && (
+                    <span title="Post-run unit estimator: Gemini 2.5 Flash with Google Search grounding, run on every record that came in without a unit count. Cost is an upper bound: grounding is free for the first 1,500 prompts/day.">
+                      Unit estimates: {estimateCost.calls} Gemini call{estimateCost.calls === 1 ? '' : 's'} · ${(estimateCost.cents / 100).toFixed(2)}
+                    </span>
+                  )}
                 </div>
               )}
               {triage.leads.length > 0 && sectionShell(
