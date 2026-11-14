@@ -33,6 +33,7 @@ interface Props {
     location_description?: string | null;
     geometry_geojson?: MunicipalProjectMapRow['geometry_geojson'];
     geometry_source?: MunicipalProjectMapRow['geometry_source'];
+    geometry_source_vintage?: MunicipalProjectMapRow['geometry_source_vintage'];
     centroid_lat?: number | null;
     centroid_lng?: number | null;
     is_unplaced?: boolean;
@@ -998,6 +999,13 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                       ? 'Boundary from the county parcel map, adjusted by hand'
                       : 'Boundary drawn by hand'}
                   {' — the pin sits inside the shape.'}
+                  {project.geometry_source_vintage && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full border text-[10px] whitespace-nowrap"
+                          style={{ borderColor: BRAND.terracotta, color: BRAND.terracotta }}
+                          title="Drawn from a low-trust parcel source. Verify against current plats.">
+                      {project.geometry_source_vintage}
+                    </span>
+                  )}
                   {project.geometry_computed_acres != null && (
                     <span style={{ color: BRAND.slate }}> · {project.geometry_computed_acres} ac</span>
                   )}

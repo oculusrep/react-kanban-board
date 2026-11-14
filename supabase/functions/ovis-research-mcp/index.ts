@@ -498,6 +498,7 @@ async function toolSubmitResearchReport(args: any) {
           rejected_no_count: (d as any)?.rejected_no_count?.length ?? 0,
           rejected_equal_count: (d as any)?.rejected_equal_count?.length ?? 0,
           count_conflicts: (d as any)?.count_conflicts?.length ?? 0,
+          rejected_same_address: (d as any)?.rejected_same_address?.length ?? 0,
         }));
       };
       const job = (async () => {

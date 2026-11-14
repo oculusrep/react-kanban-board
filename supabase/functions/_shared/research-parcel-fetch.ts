@@ -26,11 +26,13 @@ export interface ParcelFetchSummary {
   partial: number;
   none_resolved: number;
   no_adapter: number;
+  snapshot_mismatch: number;
+  no_stated_acres: number;
   errors: number;
 }
 
 export async function fetchBoundariesForRuns(supabase: Supa, runIds: string[]): Promise<ParcelFetchSummary> {
-  const sum: ParcelFetchSummary = { attempted: 0, resolved: 0, partial: 0, none_resolved: 0, no_adapter: 0, errors: 0 };
+  const sum: ParcelFetchSummary = { attempted: 0, resolved: 0, partial: 0, none_resolved: 0, no_adapter: 0, snapshot_mismatch: 0, no_stated_acres: 0, errors: 0 };
   if (runIds.length === 0) return sum;
 
   const { data, error } = await supabase
@@ -45,7 +47,7 @@ export async function fetchBoundariesForRuns(supabase: Supa, runIds: string[]): 
   // deno-lint-ignore no-explicit-any
   const rows = (data ?? []).filter((r: any) =>
     Array.isArray(r.parcel_numbers) && r.parcel_numbers.some((p: string) => p && p.trim())
-    && !['resolved', 'partial', 'none_resolved'].includes(r.parcel_fetch_status ?? ''));
+    && !['resolved', 'partial', 'none_resolved', 'snapshot_mismatch', 'no_stated_acres'].includes(r.parcel_fetch_status ?? ''));
 
   const mark = (id: string, status: string, note: string | null) =>
     supabase.from('municipal_project_staging')
@@ -71,14 +73,20 @@ export async function fetchBoundariesForRuns(supabase: Supa, runIds: string[]): 
         sum.none_resolved++;
         continue;
       }
-      const { error: rpcErr } = await supabase.rpc('set_staging_polygon_from_parcels', {
+      const { data: res, error: rpcErr } = await supabase.rpc('set_staging_polygon_from_parcels', {
         p_id: r.id,
         p_parts: resolved.map((x) => x.geometry),
         p_parcels: resolved.map((x) => x.parcelId),
         p_missing: missing,
+        p_source_vintage: adapter.sourceVintage ?? null,
+        p_max_variance_pct: adapter.maxAcreageVariancePct ?? null,
+        p_require_stated: adapter.requireStatedAcres ?? false,
       });
       if (rpcErr) throw new Error(rpcErr.message);
-      if (missing.length > 0) sum.partial++; else sum.resolved++;
+      // The RPC records snapshot_mismatch / no_stated_acres itself (not saved).
+      if (res?.skipped === 'snapshot_mismatch') sum.snapshot_mismatch++;
+      else if (res?.skipped === 'no_stated_acres') sum.no_stated_acres++;
+      else if (missing.length > 0) sum.partial++; else sum.resolved++;
     } catch (e) {
       sum.errors++;
       await mark(r.id, 'error', (e instanceof Error ? e.message : String(e)).slice(0, 400));
