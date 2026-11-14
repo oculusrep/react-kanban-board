@@ -99,9 +99,16 @@ serve(async (req) => {
 
     if (action === 'fire') {
       const a = act as {
-        chunk_id: string; chunk_index: number; window_start: string; window_end: string;
+        chunk_id: string; chunk_index: number; window_start: string | null; window_end: string | null;
         site_submit_id: string; radius_miles: number; boundary_municipality_ids: string[]; triggered_by: string | null;
+        kind?: 'window' | 'evergreen'; research_scope?: 'full' | 'window' | 'evergreen';
+        sweep_window_start?: string | null; sweep_window_end?: string | null;
       };
+      // Evergreen (undated) chunk: no window of its own. It carries the sweep's
+      // whole span so the run row and the agent message keep their shape; the
+      // research_scope line tells the agent the span is NOT a filter.
+      const ws = a.kind === 'evergreen' ? a.sweep_window_start : a.window_start;
+      const we = a.kind === 'evergreen' ? a.sweep_window_end : a.window_end;
       try {
         const resp = await fetch(triggerUrl, {
           method: 'POST',
@@ -114,11 +121,12 @@ serve(async (req) => {
             radius_miles: a.radius_miles,
             municipality_ids: a.boundary_municipality_ids,
             research_mode: 'deep',
+            research_scope: a.research_scope ?? 'full',
             // (a'): the single 6-month slice IS both windows. Explicit, never a 2yr default.
-            pz_window_start: a.window_start,
-            pz_window_end: a.window_end,
-            permit_window_start: a.window_start,
-            permit_window_end: a.window_end,
+            pz_window_start: ws,
+            pz_window_end: we,
+            permit_window_start: ws,
+            permit_window_end: we,
           }),
         });
         let b: { research_run_id?: string; detail?: string; error?: string } = {};

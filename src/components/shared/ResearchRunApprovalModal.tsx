@@ -23,8 +23,10 @@ interface ResearchRunApprovalModalProps {
 // One gap chunk (a 6-month window whose Deep run didn't land) to be re-fired.
 interface SweepGap {
   chunk_index: number;
-  window_start: string;
-  window_end: string;
+  // NULL for the evergreen (undated) chunk.
+  window_start: string | null;
+  window_end: string | null;
+  kind?: 'window' | 'evergreen';
 }
 // Authoritative gap classification from get_sweep_gaps (keyed off RUN state, not
 // chunk state — so chunks whose run succeeded after a premature timeout are NOT
@@ -2722,7 +2724,9 @@ export default function ResearchRunApprovalModal({
               {gapInfo!.gaps.map((g, i) => (
                 <span key={g.chunk_index}>
                   {i > 0 && '· '}
-                  {fmtWindow(g.window_start)}–{fmtWindow(g.window_end)}
+                  {g.kind === 'evergreen' || !g.window_start || !g.window_end
+                    ? 'undated sources'
+                    : `${fmtWindow(g.window_start)}–${fmtWindow(g.window_end)}`}
                 </span>
               ))}
             </div>

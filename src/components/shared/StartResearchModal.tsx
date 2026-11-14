@@ -248,6 +248,11 @@ export default function StartResearchModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Deep Sweep: add an undated chunk (builder sites, news, community pages,
+  // known subdivisions) and keep the window chunks to date-bound sources.
+  // Off by default until the agent prompt handles research_scope.
+  // Plan: docs/DEEP_SWEEP_EVERGREEN_CHUNK_PLAN.md
+  const [includeEvergreen, setIncludeEvergreen] = useState(false);
 
   const [coverage, setCoverage] = useState<CoverageSegment[]>([]);
   const [coverageLoading, setCoverageLoading] = useState(false);
@@ -453,11 +458,12 @@ export default function StartResearchModal({
         p_radius_miles: radius,
         p_boundary_muni_ids: [...selected],
         p_windows: windows,
+        p_include_evergreen: includeEvergreen,
       });
       if (error) throw new Error(error.message);
       const sweepId = data as string;
       if (!sweepId) throw new Error('Sweep created but no id returned.');
-      onSweepStarted?.(sweepId, windows.length);
+      onSweepStarted?.(sweepId, windows.length + (includeEvergreen ? 1 : 0));
       onClose();
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : String(e));
@@ -734,6 +740,21 @@ export default function StartResearchModal({
             )}
           </div>
 
+          {needsChunkConfirm && confirmStep && (
+            <label className="flex items-start gap-2 text-sm" style={{ color: '#002147' }}>
+              <input type="checkbox" className="mt-1" checked={includeEvergreen} disabled={submitting}
+                     onChange={(e) => setIncludeEvergreen(e.target.checked)} />
+              <span>
+                Add an undated-sources chunk (runs first)
+                <span className="block text-xs" style={{ color: '#4A6B94' }}>
+                  One chunk covers builder sites, news, community pages and known subdivisions for the whole sweep;
+                  the {chunkPlan.count} window chunks then search only minutes, agendas, permits and plats.
+                  Needs the agent prompt that understands research_scope.
+                </span>
+              </span>
+            </label>
+          )}
+
           {submitError && (
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
@@ -768,7 +789,7 @@ export default function StartResearchModal({
               >
                 {submitting
                   ? 'Firing…'
-                  : `Confirm — fire ${chunkPlan.count} chunks (${costRange(chunkPlan.count)})`}
+                  : `Confirm — fire ${chunkPlan.count + (includeEvergreen ? 1 : 0)} chunks (${costRange(chunkPlan.count + (includeEvergreen ? 1 : 0))})`}
               </button>
             ) : (
               <button

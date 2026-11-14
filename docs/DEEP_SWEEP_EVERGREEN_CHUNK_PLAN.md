@@ -1,8 +1,44 @@
-# Deep Sweep: an undated chunk (plan, NOT built)
+# Deep Sweep: an undated chunk
 
 This is the OVIS side of "fix (a)" from the Alcovy Road sweep review
-(2026-11-14). Status: the requirements are recorded here. Mike is changing the
-agent prompt first, so nothing is built yet.
+(2026-11-14).
+
+**Status: BUILT 2026-11-14** (migration 20261114072514, plus `ovis-sweep-tick`,
+`ovis-research-trigger`, `ovis-research-mcp` and the Start Research modal).
+It's **off by default**: a sweep only gets an undated chunk when the "Add an
+undated-sources chunk" box is ticked at confirm time. The agent prompt has to
+handle `research_scope` before that box is used.
+
+## Contract the agent receives (as built)
+
+Every trigger message now carries a `research_scope:` line:
+
+| research_scope | When | Meaning |
+|---|---|---|
+| `full` | every non-sweep run; sweeps created without the undated chunk | unchanged: date-bound and undated sources within the windows |
+| `evergreen` | chunk 0 of a sweep created with the undated chunk | UNDATED sources only: builder and developer sites, news, community and apartment pages, known subdivisions in the radius. The four `*_window_*` lines carry the whole sweep span, for context only, not as a filter. |
+| `window` | chunks 1..N of that sweep | DATE-BOUND sources only: minutes, agendas, permits and plats, within the window lines |
+
+The `evergreen` and `window` messages also include a one-line
+`research_scope_detail:` saying the same thing in plain words.
+
+New MCP tool: **`get_sweep_known_projects(research_run_id)`**. It returns
+`{ sweep_id, projects: [...] }`: every non-rejected record staged by the
+sweep's other chunks (name, phase, municipality, address, units, case
+numbers, chunk_index, research_scope, approval_state). Window chunks are told
+to call it first and not re-stage a listed project unless the window adds
+something new, using the same name and phase when they do.
+
+Also as built:
+
+- Runs store their scope in `research_run.research_scope`.
+- `get_research_coverage` ignores evergreen runs.
+- `get_sweep_gaps` returns `kind`, and the re-run panel shows the undated
+  chunk as "undated sources".
+
+---
+
+Original plan follows.
 
 ## Goal
 
