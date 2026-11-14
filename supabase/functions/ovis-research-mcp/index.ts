@@ -23,7 +23,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { estimateMissingUnits } from '../_shared/research-unit-estimator.ts';
-import { notifyResearchTelegram, chunkLabel, getSweepInfo } from '../_shared/research-telegram.ts';
+import { notifyResearchTelegram, chunkLabel, getSweepInfo, sendSweepReadyIfDone } from '../_shared/research-telegram.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -500,14 +500,24 @@ async function toolSubmitResearchReport(args: any) {
         }));
       };
       const job = (async () => {
-        await dedupe('pre');
-        const s = await estimateMissingUnits(supabase, research_run_id, geminiKey);
-        console.log('[unit-estimate]', JSON.stringify(s));
-        await dedupe('post');
-      })().catch((e) => console.error('[unit-estimate] failed', research_run_id, e));
+        try {
+          await dedupe('pre');
+          const s = await estimateMissingUnits(supabase, research_run_id, geminiKey);
+          console.log('[unit-estimate]', JSON.stringify(s));
+          await dedupe('post');
+        } catch (e) {
+          console.error('[unit-estimate] failed', research_run_id, e);
+        }
+        // Post-run steps done (or failed): mark it, then send "Sweep ready" if
+        // this was the last piece of a finished sweep.
+        await supabase.from('research_run').update({ post_run_done_at: new Date().toISOString() }).eq('id', research_run_id);
+        const { data: rr } = await supabase.from('research_run').select('sweep_id').eq('id', research_run_id).maybeSingle();
+        if (rr?.sweep_id) await sendSweepReadyIfDone(supabase, rr.sweep_id);
+      })().catch((e) => console.error('[post-run] failed', research_run_id, e));
       if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(job);
     } else {
       console.error('[unit-estimate] GEMINI_API_KEY not set; skipped', research_run_id);
+      await supabase.from('research_run').update({ post_run_done_at: new Date().toISOString() }).eq('id', research_run_id);
     }
   }
 

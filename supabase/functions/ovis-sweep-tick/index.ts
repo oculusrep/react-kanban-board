@@ -31,7 +31,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-import { notifyResearchTelegram, oneLine, chunkLabel, getSweepInfo } from '../_shared/research-telegram.ts';
+import { notifyResearchTelegram, oneLine, chunkLabel, getSweepInfo, sendSweepReadyIfDone } from '../_shared/research-telegram.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -194,17 +194,19 @@ serve(async (req) => {
       );
     } else if (action === 'terminal') {
       // Failed chunks were already reported one by one; this is the hand-off.
-      const { data: runs } = await service.from('research_run').select('id').eq('sweep_id', sweep.id);
-      const runIds = (runs ?? []).map((r: { id: string }) => r.id);
-      let pending = 0;
-      if (runIds.length > 0) {
-        const { count } = await service.from('municipal_project_staging')
-          .select('id', { count: 'exact', head: true })
-          .in('research_run_id', runIds).eq('approval_state', 'pending');
-        pending = count ?? 0;
-      }
-      await notifyResearchTelegram(`Sweep ready for approval — ${info.site}, ${pending} records pending`);
+      // Sent only once every chunk's post-run steps are done; if they aren't
+      // yet, the MCP (or the sweeper below) sends it when they are.
+      await sendSweepReadyIfDone(service, sweep.id);
     }
+  }
+
+  // ---- 3) Sweeper: finished sweeps whose "Sweep ready" hasn't gone out yet
+  // (post-run steps were still running at the terminal tick). Last 3 days only.
+  const since = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const { data: unsent } = await service.from('research_sweep').select('id')
+    .is('ready_notified_at', null).neq('state', 'running').gte('created_at', since);
+  for (const u of (unsent ?? []) as Array<{ id: string }>) {
+    try { await sendSweepReadyIfDone(service, u.id); } catch (e) { console.warn('sweep-ready sweeper failed', u.id, e); }
   }
 
   return json({ ok: true, processed });
