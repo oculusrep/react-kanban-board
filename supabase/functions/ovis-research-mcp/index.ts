@@ -22,6 +22,9 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { estimateMissingUnits } from '../_shared/research-unit-estimator.ts';
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 // ----------------------------------------------------------------------------
 // Constants & types
@@ -407,6 +410,23 @@ async function toolSubmitResearchReport(args: any) {
     p_leads_not_pursued: signal.leads_not_pursued,
   });
   if (error) throw new ToolError(`submit_research_report failed: ${error.message}`);
+
+  // Final submit closed the run for review: backfill missing unit counts in
+  // the background (Gemini grounded search, then acreage × zoning density).
+  // Checkpoints REPLACE the staged set, so estimating before final would be
+  // thrown away. Never blocks or fails the agent's submit.
+  if (isFinal) {
+    const geminiKey = Deno.env.get('GEMINI_API_KEY');
+    if (geminiKey) {
+      const job = estimateMissingUnits(supabase, research_run_id, geminiKey)
+        .then((s) => console.log('[unit-estimate]', JSON.stringify(s)))
+        .catch((e) => console.error('[unit-estimate] failed', research_run_id, e));
+      if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(job);
+    } else {
+      console.error('[unit-estimate] GEMINI_API_KEY not set; skipped', research_run_id);
+    }
+  }
+
   // data = { staged_count, final, state } — echo it so the agent can confirm
   // whether the run is still open (state 'running') or closed for review.
   return { ...(data as Record<string, unknown>), research_run_id };
