@@ -59,10 +59,27 @@ export async function applyParcelBoundary(opts: {
     p_parts: resolved.map((r) => r.geometry),
     p_parcels: resolved.map((r) => r.parcelId),
     p_stated_acres: opts.statedAcres,
+    p_source_vintage: adapter.sourceVintage ?? null,
+    p_max_variance_pct: adapter.maxAcreageVariancePct ?? null,
+    p_require_stated: adapter.requireStatedAcres ?? false,
   });
   if (error) throw error;
 
   const d = (data ?? {}) as Record<string, unknown>;
+  // Low-trust source (e.g. a stale snapshot) refused to save: say why.
+  if (d.skipped === 'snapshot_mismatch') {
+    throw new Error(
+      `Snapshot mismatch: the ${adapter.sourceVintage ?? 'parcel map'} gives ${d.computed_acres} ac against `
+      + `${d.stated_acres} ac stated (${d.variance_pct}%, limit ${adapter.maxAcreageVariancePct}%). `
+      + 'Nothing was saved — the parcels have likely been re-platted since. Draw the boundary by hand.',
+    );
+  }
+  if (d.skipped === 'no_stated_acres') {
+    throw new Error(
+      `Not saved: boundaries from the ${adapter.sourceVintage ?? 'parcel map'} need a stated acreage to check against `
+      + `(fetched ${d.computed_acres} ac), and this record has none. Add the acreage to the parcel notes, or draw it by hand.`,
+    );
+  }
   return {
     computedAcres: d.computed_acres == null ? null : Number(d.computed_acres),
     statedAcres: d.stated_acres == null ? null : Number(d.stated_acres),

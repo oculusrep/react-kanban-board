@@ -133,6 +133,12 @@ interface StagingRow {
   // name + municipality, staged or committed) carry DIFFERENT counts: a
   // snapshot of every counted copy, shown side by side. Nothing auto-resolved.
   count_conflict: CountConflictMember[] | null;
+  // Post-run parcel fetch: low-trust source label on a drawn boundary, and the
+  // fetch outcome (resolved / partial / none_resolved / no_adapter /
+  // snapshot_mismatch / no_stated_acres / error).
+  geometry_source_vintage?: string | null;
+  parcel_fetch_status?: string | null;
+  has_boundary?: boolean;
 }
 interface CountConflictMember {
   kind: 'staged' | 'committed';
@@ -717,6 +723,9 @@ export default function ResearchRunApprovalModal({
             units_confidence: r.units_confidence ?? null,
             lead_reason: r.lead_reason ?? null,
             count_conflict: r.count_conflict ?? null,
+            geometry_source_vintage: r.geometry_source_vintage ?? null,
+            parcel_fetch_status: r.parcel_fetch_status ?? null,
+            has_boundary: !!r.has_boundary,
           }));
           const ar = await readAuto([...new Set(allSweepRows.map((r) => r.research_run_id as string))]);
           if (cancelled) return;
@@ -753,6 +762,7 @@ export default function ResearchRunApprovalModal({
               reject_reason, duplicate_of_staging_id, notes,
               not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
               units_needs_review, units_review_reason, units_confidence, lead_reason, count_conflict,
+              geometry_source_vintage, parcel_fetch_status, geometry_source,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -776,6 +786,7 @@ export default function ResearchRunApprovalModal({
         })));
         const stagingNorm: StagingRow[] = (stagingRows ?? []).map(({ merge_snapshot, ...r }: any) => ({
           ...r,
+          has_boundary: r.geometry_source != null,
           phase_label: r.phase_label ?? '',
           not_duplicate_of_ids: r.not_duplicate_of_ids ?? [],
           merged_into_staging_id: r.merged_into_staging_id ?? null,
@@ -1875,6 +1886,24 @@ export default function ResearchRunApprovalModal({
                 style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
                 title="Other copies of this project (same name and municipality) carry a different unit count. Not auto-resolved — compare below.">
             ≠ COUNT CONFLICT · {r.count_conflict.map((m) => m.units ?? '—').join(' vs ')}
+          </span>
+        )}
+        {r.has_boundary && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={r.geometry_source_vintage
+                  ? { borderColor: '#A27B5C', color: '#A27B5C' }
+                  : { borderColor: '#8FA9C8', color: '#4A6B94' }}
+                title={r.geometry_source_vintage
+                  ? `Boundary drawn from the ${r.geometry_source_vintage}. Verify against current plats; details in Notes.`
+                  : 'Boundary fetched from the county parcel map (dashed until reviewed).'}>
+            🗺 BOUNDARY{r.geometry_source_vintage ? ` · ${r.geometry_source_vintage.toUpperCase()}` : ''}
+          </span>
+        )}
+        {r.parcel_fetch_status === 'snapshot_mismatch' && r.approval_state === 'pending' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                title="The snapshot's acreage was more than 15% off the stated acreage, so no boundary was saved. Likely re-platted since 2022.">
+            SNAPSHOT MISMATCH
           </span>
         )}
         {r.units_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (

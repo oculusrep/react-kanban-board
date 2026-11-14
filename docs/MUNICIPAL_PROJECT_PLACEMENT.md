@@ -448,3 +448,51 @@ IDs. **Not built:** Newton County publishes no anonymous parcel service.
 sweep views stop flagging it. If the county ever publishes the layer
 anonymously, or grants OVIS a token, the adapter is a few lines: field
 `DXF_TEXT` (or `PARCEL_NO`), via `likeFromRuns`.
+
+## Newton County: the 2022 snapshot as a fallback adapter (2026-11-14, supersedes the "none" above)
+
+Mike chose to use the third-party snapshot rather than record "none". Newton
+County is out of `COUNTIES_WITHOUT_PARCEL_SERVICE`, and its adapter in
+`supabase/functions/_shared/parcel-adapters.ts` is set up as follows.
+
+**Adapter:**
+
+| Setting | Value |
+|---|---|
+| Layer | `services1.arcgis.com/qTQ6qYkHpxlu0G82/.../Newton_Parcels/FeatureServer/0` |
+| ID field | `DXF_TEXT`, via `likeFromRuns` + normalized compare. Values look like `27-127`; Covington city parcels look like `CO1-1-1`. |
+| Matches | Newton County, Covington, Oxford, Porterdale, Mansfield, Newborn. Social Circle straddles Walton County and isn't matched. |
+| Low-trust settings | `sourceVintage: '2022 third-party snapshot'`, `maxAcreageVariancePct: 15`, `requireStatedAcres: true`, 1 retry |
+
+**New adapter flags** (migration 20261114092015):
+
+- `sourceVintage`, `maxAcreageVariancePct` and `requireStatedAcres` are passed
+  to both RPCs: the browser button's `set_municipal_project_polygon_from_parcels`
+  and the post-run `set_staging_polygon_from_parcels`.
+- **Acreage validation is mandatory.** With no stated acres, nothing is saved
+  (`no_stated_acres`). If the fetched acreage is more than 15% off, nothing is
+  saved either and the record is marked `snapshot_mismatch`.
+- A saved boundary gets `geometry_source_vintage`, plus a dated line in the
+  record's notes. Approve carries it over, and `municipal_project_v` exposes
+  it.
+- It shows as a tag on the approval card ("🗺 BOUNDARY · 2022 THIRD-PARTY
+  SNAPSHOT") and in the map slideout next to "Boundary from the county parcel
+  map". A mismatch shows a "SNAPSHOT MISMATCH" badge.
+
+**Alcovy sweep, 5 records with parcel IDs:**
+
+| Record | IDs | Stated | Fetched | Result |
+|---|---|---|---|---|
+| Arbor (fka Crescent Place) | 27-127, 27-135, 27-136 | 38.08 ac | 37.85 ac (−0.6%) | **Drawn** (vintage-tagged, dashed until reviewed) |
+| Dobbs Landing | 25-174 | 213.86 ac | 14.74 ac | **Snapshot mismatch**: one parcel of a multi-parcel tract |
+| Towns at Yellow River | 25-104 | 28.16 ac | 18.11 ac | **Snapshot mismatch** (35.7%) |
+| Tomlo Farms Subdivision (2 staged copies) | 005-002 | 118.20 ac | — | **Missing** |
+
+**Covington city-format IDs.** Only one Newton project uses a non-county
+format: Tomlo Farms, `005-002`, staged twice. That's 1 project, 2 records, out
+of 5 records with parcel IDs.
+- It isn't in the snapshot under any form tried: `5-2`, the padded
+  `00050-00000-002`, or the city `CO…` form.
+- Its fetch note says "likely re-platted", the generic wording for a missing
+  ID. The real cause is the format.
+- No converter has been built.

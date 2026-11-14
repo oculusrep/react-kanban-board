@@ -54,6 +54,8 @@ export interface MunicipalProjectMapRow {
   geometry_stated_acres?: number | null;
   geometry_computed_acres?: number | null;
   geometry_area_variance_pct?: number | null;
+  // Set when the boundary came from a low-trust source, e.g. '2022 third-party snapshot'.
+  geometry_source_vintage?: string | null;
   geometry_needs_review?: boolean;
   // Unit count needs a human look: no count, 0, or a placeholder that was
   // removed. Set by a DB trigger / the approval carry-over; advisory only.
