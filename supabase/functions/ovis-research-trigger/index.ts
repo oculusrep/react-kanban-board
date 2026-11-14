@@ -55,6 +55,11 @@ interface CommitRequest extends BaseRequest {
   // anything else (incl. omitted) resolves to 'quick' — a sampled sniff test —
   // so a missing/typo'd value can never accidentally fire an expensive deep run.
   research_mode?: string;
+  // Which sources this run covers (Deep sweeps; see
+  // docs/DEEP_SWEEP_EVERGREEN_CHUNK_PLAN.md). 'full' (default) = everything in
+  // the window; 'window' = date-bound sources only; 'evergreen' = undated
+  // sources only, window is informational. Anything else resolves to 'full'.
+  research_scope?: string;
   // Optional explicit search-window overrides (YYYY-MM-DD, Eastern). When a
   // bound is omitted the edge function fills the Quick-tier default. A future
   // tier picker (Quick/Deep/Custom) supplies these; today they default.
@@ -122,6 +127,7 @@ function buildOpenClawMessage(opts: {
   radiusMiles: number;
   triggeredByUserId: string;
   researchMode: string;
+  researchScope: 'full' | 'window' | 'evergreen';
   window: SearchWindow;
   municipalities: Array<{
     boundary_municipality_id: string;
@@ -150,6 +156,18 @@ function buildOpenClawMessage(opts: {
     // deep = full enumeration + mandatory coverage report. The agent runs a
     // materially different protocol per value.
     `research_mode: ${opts.researchMode}`,
+    // Source scope. full = date-bound AND undated sources within the windows
+    // (the pre-2026-11-14 behaviour). window = date-bound sources only
+    // (minutes, agendas, permits, plats) within the windows. evergreen =
+    // undated sources only (builder sites, news, community/apartment pages,
+    // known subdivisions in the radius); the windows below are the sweep's
+    // span, for context only, NOT a filter.
+    `research_scope: ${opts.researchScope}`,
+    ...(opts.researchScope === 'full' ? [] : [
+      opts.researchScope === 'evergreen'
+        ? 'research_scope_detail: UNDATED sources only - builder/developer sites, news, community and apartment pages, known subdivisions in the radius. Do not read minutes, agendas, permits or plats. The window lines below are the whole sweep span, for context, not a filter.'
+        : 'research_scope_detail: DATE-BOUND sources only - minutes, agendas, permits, plats - within the window lines below. Do not search builder sites, news or community pages; a separate undated chunk covers those. Call get_sweep_known_projects first and do not re-stage a project it lists unless this window adds a new action (approval, plat, permit) to it.',
+    ]),
     // Locked windowing contract — agent reads these four unconditionally and
     // searches each record type only within its stated bounds (no extra cap).
     // News/context scopes to pz_window (outer envelope). YYYY-MM-DD, Eastern,
@@ -385,6 +403,9 @@ serve(async (req) => {
   // Resolve the run protocol. Only an explicit 'deep' opts into the expensive
   // full-enumeration run; everything else (incl. omitted/typo) is 'quick'.
   const researchMode = commitBody.research_mode === 'deep' ? 'deep' : 'quick';
+  const researchScope: 'full' | 'window' | 'evergreen' =
+    commitBody.research_scope === 'evergreen' || commitBody.research_scope === 'window'
+      ? commitBody.research_scope : 'full';
 
   // Create the run + checklist server-side. After this, OpenClaw cannot
   // expand scope — the only valid muni IDs are on the checklist row set.
@@ -412,6 +433,11 @@ serve(async (req) => {
     return jsonResponse({ error: 'create_run_failed', detail: createErr.message }, 500);
   }
   const researchRunId = runId as string;
+  if (researchScope !== 'full') {
+    const { error: scopeErr } = await service.from('research_run')
+      .update({ research_scope: researchScope }).eq('id', researchRunId);
+    if (scopeErr) console.warn('research_scope update failed', researchRunId, scopeErr.message);
+  }
 
   // Build a human-readable site label used in Telegram notifications below.
   const siteLabel = (site as { site_submit_name?: string | null; property?: { property_name?: string | null } | null })
@@ -448,6 +474,7 @@ serve(async (req) => {
     radiusMiles: radius,
     triggeredByUserId: userId ?? '',
     researchMode,
+    researchScope,
     window: win,
     municipalities: selectedMunis,
   });

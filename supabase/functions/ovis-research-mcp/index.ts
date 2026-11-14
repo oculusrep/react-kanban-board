@@ -290,6 +290,18 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_sweep_known_projects',
+    description:
+      'Deep sweeps only. List every project the OTHER chunks of your sweep have already staged (rejected ones excluded): name, phase, municipality, address, unit count, case numbers, which chunk found it and its research_scope. Call it at the start of a chunk and before staging: do not re-stage a listed project unless your window adds something new to it (an approval, plat, permit or a sourced unit count), and then use the SAME name and phase so dedupe can match it. Returns { sweep_id: null, projects: [] } for a run that is not part of a sweep.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        research_run_id: { type: 'string', format: 'uuid', description: 'Your current research_run_id.' },
+      },
+      required: ['research_run_id'],
+    },
+  },
+  {
     name: 'get_municipality_sources',
     description:
       'Before researching a municipality, read what earlier runs learned about its sources: permit portal, minutes, agendas, plat records — each with URL, status (works / blocked / none_exists), how to use it, and when it was last verified. effective_status is "unverified" for a blocked / none_exists entry older than 90 days: check that source ONCE more before skipping it, then record the result with set_municipality_source. A fresh blocked / none_exists entry can be skipped without re-checking. A "works" entry tells you the URL and the technique that worked (e.g. needs a browser, use firecrawl).',
@@ -504,6 +516,14 @@ async function toolSubmitResearchReport(args: any) {
   return { ...(data as Record<string, unknown>), research_run_id };
 }
 
+async function toolGetSweepKnownProjects(args: any) {
+  const runId = args?.research_run_id;
+  if (typeof runId !== 'string') throw new ToolError('research_run_id is required');
+  const { data, error } = await getSupabase().rpc('get_sweep_known_projects', { p_research_run_id: runId });
+  if (error) throw new ToolError(`get_sweep_known_projects failed: ${error.message}`);
+  return data ?? { sweep_id: null, projects: [] };
+}
+
 // ---- Municipality source memory (table municipality_source) ----
 
 const SOURCE_TYPES = ['permit_portal', 'minutes', 'agendas', 'plat_records'];
@@ -632,6 +652,7 @@ const TOOL_IMPLS: Record<string, (args: unknown) => Promise<unknown>> = {
   update_checklist_status:      toolUpdateChecklistStatus,
   submit_research_report:       toolSubmitResearchReport,
   get_municipality_sources:     toolGetMunicipalitySources,
+  get_sweep_known_projects:     toolGetSweepKnownProjects,
   set_municipality_source:      toolSetMunicipalitySource,
 };
 
