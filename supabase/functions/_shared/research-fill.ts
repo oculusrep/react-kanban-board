@@ -116,7 +116,7 @@ export async function fillRun(
     if (error) throw new Error(`dedupe: ${error.message}`);
     const d = data as Row;
     return (d?.rejected_no_count?.length ?? 0) + (d?.rejected_equal_count?.length ?? 0)
-      + (d?.rejected_within_5pct?.length ?? 0);
+      + (d?.rejected_within_5pct?.length ?? 0) + (d?.rejected_same_address?.length ?? 0);
   };
 
   // 2-4. dedupe → estimate (earlier leads re-asked with the current prompt) → dedupe
