@@ -119,6 +119,11 @@ interface StagingRow {
   // a real one once committed. Carried onto the committed row.
   units_needs_review: boolean;
   units_review_reason: string | null;
+  // 'estimated' = filled by the post-run unit estimator (Gemini web search or
+  // acreage × zoning density); the math / sources are in notes.
+  units_confidence: 'approved' | 'reported' | 'estimated' | null;
+  // Non-null forces the row into Leads whatever its count (e.g. out of radius).
+  lead_reason: string | null;
 }
 // A committed municipal_project whose centroid is near a staged candidate —
 // the soft "possible duplicate" signal (see find_nearby_municipal_projects RPC).
@@ -145,6 +150,16 @@ interface CommittedProject {
 // Supabase RPC errors are PostgrestError objects (not Error instances). Rendering
 // them via `String(e)` yields "[object Object]" and hides the real reason —
 // e.g. a duplicate-key constraint violation the reviewer needs to see.
+// A LEAD is a record that doesn't belong in the approval queue: no usable unit
+// count (the DB flagged it — null, 0, or a placeholder — or the count is null /
+// 0), or a lead_reason set on it (e.g. outside the search radius). Classified on
+// the STAGED values so a row doesn't jump sections while the reviewer types.
+// Leads start unselected: the queue's default commit is records with a count.
+function stagedAsLead(r: StagingRow): boolean {
+  return r.units_needs_review || r.lead_reason != null
+    || !(r.total_housing_units != null && r.total_housing_units > 0);
+}
+
 function toErrorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (typeof e === 'object' && e !== null) {
@@ -448,6 +463,29 @@ export default function ResearchRunApprovalModal({
   // "Leads — no unit count found": collapsed by default so the main list is the
   // mappable records. Still fully approvable from there.
   const [showLeads, setShowLeads] = useState(false);
+  // Post-run unit estimator spend (Gemini grounded search), summed over the
+  // run(s) on screen. Upper bound: every call is charged the grounding fee.
+  const [estimateCost, setEstimateCost] = useState<{ calls: number; cents: number } | null>(null);
+  const stagingRunKey = useMemo(
+    () => [...new Set(staging.map((r) => r.research_run_id))].sort().join(','),
+    [staging],
+  );
+  useEffect(() => {
+    if (!stagingRunKey) { setEstimateCost(null); return; }
+    let cancelled = false;
+    supabase
+      .from('research_run')
+      .select('unit_estimate_calls, unit_estimate_cost_cents')
+      .in('id', stagingRunKey.split(','))
+      .then(({ data, error: e }) => {
+        if (cancelled || e || !data) return;
+        setEstimateCost({
+          calls: data.reduce((n, r: any) => n + (r.unit_estimate_calls ?? 0), 0),
+          cents: data.reduce((n, r: any) => n + Number(r.unit_estimate_cost_cents ?? 0), 0),
+        });
+      });
+    return () => { cancelled = true; };
+  }, [stagingRunKey]);
   const [showDecided, setShowDecided] = useState(false);
   const [autoRes, setAutoRes] = useState<AutoResolutions>(NO_AUTO);
   const [autoResError, setAutoResError] = useState<string | null>(null);
@@ -572,6 +610,8 @@ export default function ResearchRunApprovalModal({
             muni_kind: r.muni_kind,
             units_needs_review: !!r.units_needs_review,
             units_review_reason: r.units_review_reason ?? null,
+            units_confidence: r.units_confidence ?? null,
+            lead_reason: r.lead_reason ?? null,
           }));
           const ar = await readAuto([...new Set(allSweepRows.map((r) => r.research_run_id as string))]);
           if (cancelled) return;
@@ -580,7 +620,7 @@ export default function ResearchRunApprovalModal({
           // by default is how the map gets a second pin for one project.
           const flaggedIds = new Set(ar.flagged.map((f) => f.id));
           setStaging(stagingNorm);
-          setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id)).map((s) => s.id)));
+          setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id) && !stagedAsLead(s)).map((s) => s.id)));
           return;
         }
 
@@ -607,7 +647,7 @@ export default function ResearchRunApprovalModal({
               permit_application_date, source, discovery_source, discovery_source_raw,
               reject_reason, duplicate_of_staging_id, notes,
               not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
-              units_needs_review, units_review_reason,
+              units_needs_review, units_review_reason, units_confidence, lead_reason,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -650,7 +690,7 @@ export default function ResearchRunApprovalModal({
         // Default: select all pending rows that don't match an existing record
         // (and aren't flagged as a possible copy of one).
         const defaultSelected = new Set(
-          stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id)).map((s) => s.id),
+          stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id) && !stagedAsLead(s)).map((s) => s.id),
         );
         setSelected(defaultSelected);
       } catch (e) {
@@ -1011,8 +1051,7 @@ export default function ResearchRunApprovalModal({
   // (units_needs_review — null, 0, or a placeholder) or the count is null / 0.
   // Classified on the STAGED values so a row doesn't jump sections while the
   // reviewer types a count into it.
-  const isLead = (r: StagingRow) =>
-    r.units_needs_review || !(r.total_housing_units != null && r.total_housing_units > 0);
+  const isLead = stagedAsLead;
   // What it will commit as: a lead whose reviewer typed a positive count commits
   // as a project (mirrors unitsFlagOnCommit / approve_research_staging_rows).
   const isLeadOnCommit = (r: StagingRow) => {
@@ -1723,6 +1762,19 @@ export default function ResearchRunApprovalModal({
                 style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
                 title={`Also staged by another run in this sweep${r.duplicate_of_project_name ? ` as "${r.duplicate_of_project_name}"` : ''}. Nothing is committed yet, so the committed-record dup check cannot see it. Resolve before approving both.`}>
             ⚠ DUP ACROSS RUNS{r.duplicate_of_chunk_index != null ? ` · chunk ${r.duplicate_of_chunk_index}` : ''}
+          </span>
+        )}
+        {r.units_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
+          <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title="Unit count was ESTIMATED after the run (Gemini web search, or acreage × zoning density). The source or math is in Notes. It commits tagged units_confidence = estimated.">
+            EST. UNITS
+          </span>
+        )}
+        {r.lead_reason && r.approval_state === 'pending' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C' }} title={r.lead_reason}>
+            LEAD: {r.lead_reason.length > 40 ? `${r.lead_reason.slice(0, 40)}…` : r.lead_reason}
           </span>
         )}
         {r.units_needs_review && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (() => {
@@ -2726,8 +2778,14 @@ export default function ResearchRunApprovalModal({
 
               {/* 3b. Leads — no unit count (collapsed by default). Below the mappable
                   records so a Deep run's list reads as what gets mapped. */}
+              {estimateCost && estimateCost.calls > 0 && (
+                <div className="text-xs px-1" style={{ color: '#4A6B94' }}
+                     title="Post-run unit estimator: Gemini 2.5 Flash with Google Search grounding, run on every record that came in without a unit count. Cost is an upper bound — grounding is free for the first 1,500 prompts/day.">
+                  Unit estimates: {estimateCost.calls} Gemini call{estimateCost.calls === 1 ? '' : 's'} · ${(estimateCost.cents / 100).toFixed(2)}
+                </div>
+              )}
               {triage.leads.length > 0 && sectionShell(
-                `Leads — no unit count found (${triage.leads.length})`
+                `Leads — no unit count / out of scope (${triage.leads.length})`
                   + (!isReadOnlyRun ? ` · ${leadsSelected} selected` : ''),
                 showLeads,
                 () => setShowLeads((v) => !v),
