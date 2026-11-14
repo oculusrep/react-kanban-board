@@ -138,7 +138,21 @@ export interface CountyWithoutParcelService {
   checkedOn: string; // YYYY-MM-DD
   reason: string;
 }
-export const COUNTIES_WITHOUT_PARCEL_SERVICE: CountyWithoutParcelService[] = [];
+export const COUNTIES_WITHOUT_PARCEL_SERVICE: CountyWithoutParcelService[] = [
+  {
+    // The county's own parcel layer (gis.ncboc.com/arcgis/rest/services/Public/
+    // Newton_Parcels/FeatureServer/0) and its whole Public folder answer
+    // 499 "Token Required"; only City_Limits, FEMA and public-works layers are
+    // anonymous. No county-published AGOL parcel layer exists. The only public
+    // copy is a third-party AGOL snapshot (services1.arcgis.com/qTQ6qYkHpxlu0G82/
+    // .../Newton_Parcels, owner mhackman_UofMD, last edited 2022-02-26,
+    // DXF_TEXT = "27-127") - stale, so not built. See docs/MUNICIPAL_PROJECT_PLACEMENT.md.
+    matches: (n) => /^newton county$/i.test(n),
+    label: 'Newton County',
+    checkedOn: '2026-11-14',
+    reason: 'County parcel service is token-gated (499 Token Required); only a stale 2022 third-party copy is public.',
+  },
+];
 
 /** 'adapter' = fetchable; 'none' = checked, no public service; 'missing' = not yet checked. */
 export const countyParcelStatus = (countyName: string | null | undefined): 'adapter' | 'none' | 'missing' => {

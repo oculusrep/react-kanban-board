@@ -406,3 +406,45 @@ The post-run pipeline is now dedupe → Gemini → dedupe → **parcel fetch** �
   - Senoia: 1 record. Georgian Pines' `172 1340 001` isn't in the current
     Coweta fabric, where map 172-1340 starts at 003, so it was likely
     re-platted.
+
+## Newton County: no public parcel service (2026-11-14)
+
+The task was to add an adapter for Newton County (Covington, Oxford and the
+unincorporated county) for sweep 607d4cc7, which staged 5 records with parcel
+IDs. **Not built:** Newton County publishes no anonymous parcel service.
+
+**What was checked:**
+
+- **County-run ArcGIS Server, `gis.ncboc.com`.** The parcel layer is
+  `/arcgis/rest/services/Public/Newton_Parcels/FeatureServer/0`, registered on
+  ArcGIS Online by GDITAdmin as "Parcels - GA - Newton County". It answers
+  **499 Token Required**.
+  - So does the whole `Public` folder, along with Zoning, FLUM, Overlays,
+    Hosted, Utilities and most others.
+  - Only `County/City_Limits`, `County/Newton_County_Boundary`,
+    `County_Public_Works/*`, `County_Stormwater` and `FEMA/FEMA_Flood` are
+    anonymous.
+- **ArcGIS Online.** There's no county-published parcel layer. The
+  "Newton County GIS" results belong to Newton County, **Texas** (DETCOG), and
+  `aroGeoAdmin/Newton_Parcels` is Newton County, **Missouri** (−94°, 36.7°).
+- **The county website and the permit portal** (`newtondevelopment.ncboc.com`).
+  Neither page or its scripts reference a parcel map service. qPublic is a
+  property viewer, not a service you can query.
+- **The only public Newton County, GA layer is a third-party snapshot:**
+  `services1.arcgis.com/qTQ6qYkHpxlu0G82/arcgis/rest/services/Newton_Parcels/FeatureServer/0`.
+  - Owner `mhackman_UofMD`, last edited **2022-02-26**, 45,755 parcels,
+    State Plane GA West (2240).
+  - `PARCEL_NO` is like `00270-00000-127-000`, and `DXF_TEXT` holds the short
+    form our records use, like `27-127`.
+  - Our 3 test IDs against it: `27-127` was found (36.08 ac, Covington),
+    `27-136` was found (1 ac, Covington), and `005-002` was **missing**. That
+    one has no map digits, so it is probably a Covington city-format ID, not
+    a county one.
+  - It's not built because it's 4+ years stale: a new subdivision's re-plat
+    would come back "missing" or show the pre-plat tract.
+
+**Recorded:** Newton County is in `COUNTIES_WITHOUT_PARCEL_SERVICE`
+(`supabase/functions/_shared/parcel-adapters.ts`), so the research run and
+sweep views stop flagging it. If the county ever publishes the layer
+anonymously, or grants OVIS a token, the adapter is a few lines: field
+`DXF_TEXT` (or `PARCEL_NO`), via `likeFromRuns`.
