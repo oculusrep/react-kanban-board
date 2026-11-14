@@ -266,3 +266,39 @@ Units are counted after dedupe, so rejected and merged copies are already gone.
     1-based.
 - **Single-run Needs review** is now at the top, collapsed to 3 lines, with
   Show all expanding to the full editable text.
+
+## Address dedupe (pass 2) and its street-only guard
+
+Migrations 20261114091739 and 20261114094321.
+
+**Pass 2** groups copies by the same `research_address_key` in the same
+municipality with the same unit count (within 5%), even when names or phases
+differ.
+- **Keeper:** a committed record, else the copy with a `permit_url`, else
+  firmness.
+- **Copied to the keeper:** whatever it's missing of permit_url, builder,
+  parcel IDs and acreage. The other copies' sources are appended to its source.
+- **Reject reasons:** "Duplicate (same address) — kept &lt;id&gt;", or
+  "… counts within 5% …" when the counts differ slightly.
+
+**Street-only guard.** When the address has no house number, same street plus
+same count isn't enough. The pair also needs one of:
+- a shared significant word in the names, from `research_sig_words`, which
+  ignores street and place words and generic ones like Road, Subdivision,
+  Phase, Mixed Use and Homes
+- a shared significant word in builder/developer
+- an overlapping parcel ID
+- an overlapping case number, from `research_guard_case_numbers`. That adds
+  plat, appeal and permit numbers like `PP23-000005` to the shared
+  `research_case_numbers`, which only knows rezoning prefixes.
+
+Without one of those, the pair is **flagged** instead of rejected: a duplicate
+pointer plus an `auto_dedupe_note`, which counts as "needs a decision".
+
+Re-checking Alcovy's 3 street-only pairs, all would still auto-clear:
+
+| Pair | Evidence |
+|---|---|
+| Point Grand / Hillpointe | name word "hillpointe", builder, PP24-4 |
+| Grand Reserve / Brown Bridge Road Mixed Use | builder (Thomas & Hutton / Reed Parker), PP23-5 and APP24-2. No shared name word. |
+| Anderson Signature Homes, Oxford Road ×2 | name words "anderson", "signature", builder |
