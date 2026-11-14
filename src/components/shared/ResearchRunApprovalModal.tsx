@@ -515,6 +515,62 @@ export default function ResearchRunApprovalModal({
       });
     return () => { cancelled = true; };
   }, [stagingRunKey]);
+
+  // "Fill missing units": rerun the post-run steps (dedupe → Gemini → acres ×
+  // density → dedupe) on the runs on screen, via research-fill-units. Preview
+  // first (count + estimated cost), then confirm; runs one research_run per
+  // call so no single call outlives the edge-function wall clock.
+  const [fillOpen, setFillOpen] = useState(false);
+  const [fillIncludeRejected, setFillIncludeRejected] = useState(false);
+  const [fillPreview, setFillPreview] = useState<{
+    records: number; pending_no_count: number; rejected_no_count: number;
+    est_cost_cents: number; avg_call_cents: number; runs_in_flight_skipped: number;
+  } | null>(null);
+  const [fillBusy, setFillBusy] = useState<string | null>(null);
+  const [fillResult, setFillResult] = useState<{
+    gemini: number; density: number; deduped: number; leads: number;
+    restored: number; put_back: number; errors: number; cost_cents: number; failures: string[];
+  } | null>(null);
+
+  const fillRunIds = useMemo(() => (stagingRunKey ? stagingRunKey.split(',') : []), [stagingRunKey]);
+
+  const loadFillPreview = async (includeRejected: boolean) => {
+    setFillPreview(null);
+    setFillBusy('Counting…');
+    try {
+      const { data, error: e } = await supabase.functions.invoke('research-fill-units', {
+        body: { mode: 'preview', run_ids: fillRunIds, include_rejected: includeRejected },
+      });
+      if (e) throw e;
+      setFillPreview(data);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setFillBusy(null);
+    }
+  };
+
+  const runFill = async () => {
+    const total = { gemini: 0, density: 0, deduped: 0, leads: 0, restored: 0, put_back: 0, errors: 0, cost_cents: 0, failures: [] as string[] };
+    for (let i = 0; i < fillRunIds.length; i++) {
+      setFillBusy(`Filling run ${i + 1} of ${fillRunIds.length}…`);
+      const { data, error: e } = await supabase.functions.invoke('research-fill-units', {
+        body: { mode: 'run', research_run_id: fillRunIds[i], include_rejected: fillIncludeRejected },
+      });
+      const d = (data ?? {}) as any;
+      if (e || d.failure || d.error) {
+        // In-flight runs are skipped, not failures.
+        if (d.error !== 'run_in_flight_or_missing') total.failures.push(d.failure ?? d.detail ?? d.error ?? toErrorMessage(e));
+      }
+      for (const k of ['gemini', 'density', 'deduped', 'leads', 'restored', 'put_back', 'errors', 'cost_cents'] as const) {
+        total[k] += Number(d[k] ?? 0);
+      }
+    }
+    setFillBusy(null);
+    setFillPreview(null);
+    setFillResult(total);
+    setReloadKey((k) => k + 1);
+  };
   const [showDecided, setShowDecided] = useState(false);
   const [autoRes, setAutoRes] = useState<AutoResolutions>(NO_AUTO);
   const [autoResError, setAutoResError] = useState<string | null>(null);
@@ -2557,6 +2613,16 @@ export default function ResearchRunApprovalModal({
             )}
           </div>
           <div className="flex items-center gap-2">
+            {canApprove && fillRunIds.length > 0 && !fillOpen && (
+              <button
+                onClick={() => { setFillOpen(true); setFillResult(null); loadFillPreview(fillIncludeRejected); }}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium border"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
+                title="Rerun only the post-run steps on this run/sweep: dedupe → Gemini unit backfill → acres × density → dedupe. No new research run."
+              >
+                Fill missing units
+              </button>
+            )}
             {canRerunGaps && !rerunConfirm && (
               <button
                 onClick={() => setRerunConfirm(true)}
@@ -2577,6 +2643,74 @@ export default function ResearchRunApprovalModal({
             </button>
           </div>
         </div>
+
+        {/* Fill missing units: preview → confirm → result */}
+        {fillOpen && (
+          <div className="px-5 py-3 border-b" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
+            {!fillResult ? (
+              <>
+                <div className="text-sm font-medium" style={{ color: '#002147' }}>Fill missing units</div>
+                <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
+                  Dedupe → Gemini unit backfill → acres × zoning density → dedupe. Anything still without a count stays a lead.
+                  Records that already have an estimated count are skipped. Committed records are never touched.
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-xs" style={{ color: '#002147' }}>
+                  <input type="checkbox" checked={fillIncludeRejected} disabled={!!fillBusy}
+                         onChange={(e) => { setFillIncludeRejected(e.target.checked); loadFillPreview(e.target.checked); }} />
+                  Include records rejected for no count
+                  <span style={{ color: '#8FA9C8' }}>
+                    (no reason, or the reason mentions no count / duplicate review; restored to pending first, and put back with the original reason if still no count)
+                  </span>
+                </label>
+                <div className="text-sm mt-2" style={{ color: '#002147' }}>
+                  {fillBusy && !fillPreview ? fillBusy : fillPreview ? (
+                    <>
+                      {fillPreview.records} record{fillPreview.records === 1 ? '' : 's'} to process
+                      {fillIncludeRejected ? ` (${fillPreview.pending_no_count} pending/leads + ${fillPreview.rejected_no_count} rejected)` : ''}
+                      {' '}· est. Gemini cost up to ${(fillPreview.est_cost_cents / 100).toFixed(2)}
+                      <span className="text-xs" style={{ color: '#8FA9C8' }}>
+                        {' '}(~{fillPreview.avg_call_cents.toFixed(1)}¢/record; the first dedupe may remove some before Gemini)
+                        {fillPreview.runs_in_flight_skipped > 0 ? ` · ${fillPreview.runs_in_flight_skipped} in-flight run(s) skipped` : ''}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button onClick={runFill} disabled={!!fillBusy || !fillPreview || fillPreview.records === 0}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium"
+                          style={{ backgroundColor: fillBusy || !fillPreview || fillPreview.records === 0 ? '#8FA9C8' : '#002147', color: '#FFFFFF' }}>
+                    {fillBusy && fillPreview ? fillBusy
+                      : fillPreview ? `Confirm — process ${fillPreview.records} (up to $${(fillPreview.est_cost_cents / 100).toFixed(2)})` : 'Confirm'}
+                  </button>
+                  <button onClick={() => setFillOpen(false)} disabled={!!fillBusy}
+                          className="px-3 py-1.5 rounded-lg text-sm border"
+                          style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-medium" style={{ color: '#002147' }}>
+                  Fill missing units — done · actual Gemini cost ${(fillResult.cost_cents / 100).toFixed(2)}
+                </div>
+                <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
+                  {fillResult.gemini} from Gemini · {fillResult.density} from acres × density · {fillResult.deduped} deduped · {fillResult.leads} still leads
+                  {fillResult.restored > 0 && ` · ${fillResult.restored} rejected restored, ${fillResult.put_back} put back (still no count)`}
+                  {fillResult.errors > 0 && ` · ${fillResult.errors} Gemini error(s)`}
+                </div>
+                {fillResult.failures.length > 0 && (
+                  <div className="text-xs mt-1" style={{ color: '#A27B5C' }}>Failed: {fillResult.failures.join(' | ')}</div>
+                )}
+                <button onClick={() => { setFillOpen(false); setFillResult(null); }}
+                        className="mt-2 px-3 py-1.5 rounded-lg text-sm border"
+                        style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                  Close
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Re-run gaps confirmation */}
         {canRerunGaps && rerunConfirm && (

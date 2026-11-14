@@ -231,6 +231,10 @@ export async function estimateMissingUnits(
   supabase: Supa,
   researchRunId: string,
   geminiApiKey: string,
+  // retryTried: re-ask rows that an earlier pass already tried and left as
+  // leads (the "Fill missing units" rerun, with the current prompt). Rows that
+  // got an estimated count never come back: they no longer lack a count.
+  opts: { retryTried?: boolean } = {},
 ): Promise<EstimateSummary> {
   const summary: EstimateSummary = {
     research_run_id: researchRunId, considered: 0, gemini: 0, density: 0, lead: 0,
@@ -257,7 +261,7 @@ export async function estimateMissingUnits(
   const today = easternDate();
 
   await pool(todo, CONCURRENCY, async (r) => {
-    if (triedIds.has(r.id)) { summary.skipped_already_tried++; return; }
+    if (!opts.retryTried && triedIds.has(r.id)) { summary.skipped_already_tried++; return; }
 
     let g: GeminiResult | null = null;
     let gErr: string | null = null;
