@@ -65,6 +65,7 @@ interface StagingRow {
   zoning: string | null;
   phase_label: string | null;
   notes: string | null;
+  source: string | null;
   total_housing_units: number | null;
   units_needs_review: boolean;
   boundary_municipality: { name: string; kind: string; state: string } | null;
@@ -135,6 +136,8 @@ function buildPrompt(r: StagingRow): string {
     r.location_description ? `Location / cross-streets: ${r.location_description}` : null,
     r.builder_developer ? `Builder / developer: ${r.builder_developer}` : null,
     r.zoning ? `Zoning: ${r.zoning}` : null,
+    r.source ? `What the research agent cited: ${r.source.slice(0, 800)}` : null,
+    r.notes ? `Research notes: ${r.notes.slice(0, 1200)}` : null,
   ].filter(Boolean).join('\n');
 
   return `Find the total number of housing units (lots, homes, townhomes or apartment units) in this residential development. Search the web: news, builder/developer sites, apartment listings, planning/zoning agendas and minutes, plats.
@@ -143,6 +146,8 @@ ${lines}
 
 Rules:
 - Only give a number if a source states a unit or lot count for THIS project (and this phase, if a phase is named). Do not guess, average, or derive one from acreage.
+- If the cited source or notes above already state a count for this project, use that.
+- Developments are often built in phases. If this record names a phase, the count must be for that phase. If it names no phase and sources give counts for different phases, return null rather than picking one.
 - If sources disagree, give the most recent planned total and say so.
 - If you cannot find a stated count, units must be null.
 
@@ -234,7 +239,7 @@ export async function estimateMissingUnits(
 
   const { data: rows, error } = await supabase
     .from('municipal_project_staging')
-    .select('id, project_name, address, location_description, parcel_boundary_notes, builder_developer, zoning, phase_label, notes, total_housing_units, units_needs_review, boundary_municipality(name, kind, state)')
+    .select('id, project_name, address, location_description, parcel_boundary_notes, builder_developer, zoning, phase_label, notes, source, total_housing_units, units_needs_review, boundary_municipality(name, kind, state)')
     .eq('research_run_id', researchRunId)
     .eq('approval_state', 'pending');
   if (error) throw new Error(`load staging: ${error.message}`);

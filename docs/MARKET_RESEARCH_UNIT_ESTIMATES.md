@@ -102,3 +102,63 @@ Things for the reviewer to check:
   build-to-rent sale listing and may be a different phase.
 - Neely Farm: Gemini found "110 homes" for the community, not Phase 1A, so it
   correctly stayed a lead.
+
+## Name dedupe at submit time (migration 20261114064143)
+
+`research_auto_dedupe_by_name(p_run_ids, p_dry_run)` runs from
+`ovis-research-mcp` on final submit **before** the Gemini estimator (so we
+don't pay to estimate a duplicate) and again after it (estimates can make two
+copies comparable). The existing open-time `auto_resolve_research_duplicates`
+still runs when the approval screen opens.
+
+**Group** = same `research_name_key(project_name, phase_label)` + same
+municipality, across pending staged rows (in runs not in flight) **and**
+committed `municipal_project` rows. The key normalizes case, punctuation,
+parentheticals (except ones naming a phase), "ph 2" → "phase 2", and a
+trailing "subdivision" / "community" / "development". Phases stay in the key:
+"Grove Park" ≠ "Grove Park Phase 2".
+
+Within a group that has at least one count:
+
+| Case | Action |
+|---|---|
+| Staged copy with no count | Rejected: "Duplicate without unit count — kept &lt;id&gt;" |
+| Counted copies, all the same count | Keeper = firmest (committed > approved > reported/NULL > estimated, then newest). Others rejected: "Duplicate — kept &lt;id&gt;" |
+| Counted copies with different counts | Nothing auto-resolved. Each staged counted copy gets `count_conflict` (a snapshot of every copy). The approval screen shows **≠ COUNT CONFLICT** and a side-by-side panel. |
+
+- It rejects and never deletes, so Undo works. Undo sets `auto_dedupe_skip`
+  so the row isn't re-rejected. Pairs the reviewer marked "not duplicates" are
+  left alone.
+- Nothing is merged into the keeper except a parcel ID or an acreage it
+  doesn't already have.
+- It doesn't match renamed projects ("NOVEL Turner Lake (formerly Render
+  Turner Lake)"), or the same case filed under two names (PP25-000004
+  Bellwood / McGiboney Manor).
+
+### Estimator prompt fix (same change)
+
+The estimator now sends the agent's cited source and notes to Gemini and
+refuses an unphased count when sources give per-phase counts. Before this,
+Covington Creek Springs (Phase 2, 71 lots in its own cited source) was given
+52, which is Phase 1's count (PP21-000002, build-to-rent, built 2024). That
+record was corrected to 71, Phase 2, `units_confidence = 'reported'`.
+
+### Applied to Alcovy Road, 2026-11-14
+
+Rejected 7. Six were by the rule:
+
+- Sinclair at Callaway Farm ×2
+- Pointe Grand Covington (Hillpointe)
+- Pickett Bridge Estates
+- Easthampton Development
+- Covington Creek Springs (the second Phase 2 copy)
+
+NOVEL Turner Lake was rejected by hand (rename), keeping Render Turner Lake.
+
+Flagged three count conflicts:
+
+- Access Road Townhomes: 144 vs 143
+- Grand Horizon Estates: 27/27/28/27
+- The Quarry at Neely Farms: 514 vs 1300
+
+No copies without a count needed rejecting.
