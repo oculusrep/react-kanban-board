@@ -162,3 +162,73 @@ Flagged three count conflicts:
 - The Quarry at Neely Farms: 514 vs 1300
 
 No copies without a count needed rejecting.
+
+## 5% tolerance (migration 20261114070306)
+
+Counts in a same-name group that are within 5% of each other (max ≤ 1.05 ×
+min) count as matching. The firmest copy is kept and the others are rejected
+with "Duplicate (counts within 5%) — kept &lt;id&gt;". Only a wider spread is a
+count conflict.
+
+On Alcovy Road, 2026-11-14:
+
+| Project | Result |
+|---|---|
+| Access Road Townhomes | 143 rejected; 144 kept (reported beats estimated) |
+| Grand Horizon Estates | 28 and two 27s rejected; reported 27 kept |
+| Quarry at Neely Farms | still flagged (514 vs 1,300) |
+
+## Agent usage on the approval screen
+
+`submit_research_report` takes optional `input_tokens`, `output_tokens` and
+`cost_usd` (dollars), or the older `estimated_cost_cents`. They are stored on
+`research_run`, and checkpoints don't wipe them. The approval screen shows
+"Research agent: Xk in / Yk out tokens · $Z" next to the Gemini line. If no
+run reported usage, it says "usage not reported", because none of the 120
+runs so far did.
+
+## Telegram (2026-11-14)
+
+The only messages now sent: chunk started, chunk finished with N staged,
+sweep ready for approval with N pending, and chunk failed with a one-line
+reason. A standalone (non-sweep) run that fails to start still gets one
+failure line. See `supabase/functions/_shared/research-telegram.ts`.
+
+## Fill missing units (button on the run / sweep approval view)
+
+This reruns only the post-run steps on an existing run or sweep, without
+starting a new research run:
+
+1. dedupe
+2. Gemini unit backfill (current prompt, with the phase fix; earlier leads
+   are re-asked)
+3. acres × density fallback
+4. dedupe again
+5. anything still without a count stays a lead
+
+The edge function is `research-fill-units` and it takes the caller's JWT. The
+caller needs `can_approve_market_research`.
+
+**Flow**
+
+- **Preview** returns the record count and an estimated Gemini cost: records
+  × the average cost per call from `research_unit_estimate`. It's an upper
+  bound, because the first dedupe may remove some records before Gemini.
+- **Confirm** runs one research_run per call, so no single call outlives the
+  edge-function wall clock.
+- **Result** shows how many got a count from Gemini, how many from
+  acres × density, how many were deduped, how many are still leads, and the
+  actual cost.
+
+**Scope**
+
+- Pending records (leads included) with no usable count. Records that already
+  have an `'estimated'` count are skipped, so it's safe to run twice.
+- **Include records rejected for no count** (checkbox) adds rejected records
+  with no count whose reason is empty, or mentions a missing count or
+  duplicate review. Auto-dedupe "Duplicate …" rejections are excluded.
+  - They're restored to pending first, with the original rejection parked in
+    `staging.fill_restored` (migration 20261114070813).
+  - If one still gets no count, it goes back to rejected with exactly that
+    reason. This also runs after a failure, so nothing is left half-restored.
+- Committed records are never touched.

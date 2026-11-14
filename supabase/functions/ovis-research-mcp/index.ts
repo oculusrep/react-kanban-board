@@ -23,6 +23,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { estimateMissingUnits } from '../_shared/research-unit-estimator.ts';
+import { notifyResearchTelegram, chunkLabel, getSweepInfo } from '../_shared/research-telegram.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -279,8 +280,47 @@ const TOOLS = [
           minimum: 0,
           description: 'OPTIONAL. Total output/completion tokens produced across this run.',
         },
+        cost_usd: {
+          type: ['number', 'null'],
+          minimum: 0,
+          description: 'OPTIONAL. Total model cost of this run in US DOLLARS (e.g. 18.43). Stored as estimated_cost_cents; if both are sent, cost_usd wins. Send cumulative totals on every call — a call that omits them keeps the last values.',
+        },
       },
       required: ['research_run_id', 'candidate_records'],
+    },
+  },
+  {
+    name: 'get_municipality_sources',
+    description:
+      'Before researching a municipality, read what earlier runs learned about its sources: permit portal, minutes, agendas, plat records — each with URL, status (works / blocked / none_exists), how to use it, and when it was last verified. effective_status is "unverified" for a blocked / none_exists entry older than 90 days: check that source ONCE more before skipping it, then record the result with set_municipality_source. A fresh blocked / none_exists entry can be skipped without re-checking. A "works" entry tells you the URL and the technique that worked (e.g. needs a browser, use firecrawl).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        municipality_ids: {
+          type: 'array',
+          items: { type: 'string', format: 'uuid' },
+          minItems: 1,
+          description: 'boundary_municipality.id values (as returned by get_municipalities_in_radius).',
+        },
+      },
+      required: ['municipality_ids'],
+    },
+  },
+  {
+    name: 'set_municipality_source',
+    description:
+      'Record what you found about ONE source for a municipality, so later runs (and later chunks of this sweep) do not rediscover it. Call it whenever a source works, is blocked, or turns out not to exist — and when you re-check an unverified entry. Upserts on (municipality, source_type, url) and stamps last_verified = now. Keep notes short and practical: what worked, what failed, how to get in.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boundary_municipality_id: { type: 'string', format: 'uuid' },
+        source_type: { type: 'string', enum: ['permit_portal', 'minutes', 'agendas', 'plat_records'] },
+        url: { type: ['string', 'null'], description: 'The source URL. Omit/null only for status none_exists.' },
+        status: { type: 'string', enum: ['works', 'blocked', 'none_exists'] },
+        notes: { type: ['string', 'null'], description: 'How to use it / why it failed (e.g. "403 to plain fetch, firecrawl works", "archive stops Apr 2023").' },
+        research_run_id: { type: ['string', 'null'], format: 'uuid', description: 'The run that verified this (your current research_run_id).' },
+      },
+      required: ['boundary_municipality_id', 'source_type', 'status'],
     },
   },
 ] as const;
@@ -369,7 +409,7 @@ async function toolUpdateChecklistStatus(args: any) {
 async function toolSubmitResearchReport(args: any) {
   const {
     research_run_id, candidate_records, needs_review, alt_avenues,
-    estimated_cost_cents, input_tokens, output_tokens, final,
+    estimated_cost_cents, input_tokens, output_tokens, final, cost_usd,
     signal_strength, signal_rationale, density_estimate, permit_volume, leads_not_pursued,
   } = args ?? {};
   if (typeof research_run_id !== 'string') throw new ToolError('research_run_id is required');
@@ -393,13 +433,18 @@ async function toolSubmitResearchReport(args: any) {
   // something. The rejection fails the whole call; the previous checkpoint stands.
   const signal = validateSignal({ signal_strength, signal_rationale, density_estimate, permit_volume, leads_not_pursued });
 
+  // cost_usd (dollars) wins over estimated_cost_cents when both are sent.
+  // Malformed values are dropped, never fatal (same rule as the token counts).
+  const usd = cost_usd === null || cost_usd === undefined || cost_usd === '' ? NaN : Number(cost_usd);
+  const costCents = Number.isFinite(usd) && usd >= 0 ? Math.round(usd * 100) : usageInt(estimated_cost_cents);
+
   const supabase = getSupabase();
   const { data, error } = await supabase.rpc('submit_research_report', {
     p_run_id: research_run_id,
     p_candidates: candidate_records,
     p_needs_review: needs_review ?? null,
     p_alt_avenues: alt_avenues ?? null,
-    p_estimated_cost_cents: usageInt(estimated_cost_cents),
+    p_estimated_cost_cents: costCents,
     p_input_tokens: usageInt(input_tokens),
     p_output_tokens: usageInt(output_tokens),
     p_final: isFinal,
@@ -416,6 +461,17 @@ async function toolSubmitResearchReport(args: any) {
   // Checkpoints REPLACE the staged set, so estimating before final would be
   // thrown away. Never blocks or fails the agent's submit.
   if (isFinal) {
+    // Telegram: "Chunk i/N finished — N records staged" (sweep chunks only).
+    try {
+      const { data: rr } = await supabase.from('research_run')
+        .select('sweep_id, sweep_chunk_index').eq('id', research_run_id).maybeSingle();
+      if (rr?.sweep_id != null && rr.sweep_chunk_index != null) {
+        const info = await getSweepInfo(supabase, rr.sweep_id);
+        const staged = (data as { staged_count?: number } | null)?.staged_count ?? candidate_records.length;
+        await notifyResearchTelegram(`${chunkLabel(rr.sweep_chunk_index, info.total)} finished — ${staged} records staged`);
+      }
+    } catch (e) { console.warn('chunk-finished telegram failed', e); }
+
     const geminiKey = Deno.env.get('GEMINI_API_KEY');
     if (geminiKey) {
       // Name dedupe FIRST, so Gemini isn't paid to estimate a duplicate; then
@@ -446,6 +502,77 @@ async function toolSubmitResearchReport(args: any) {
   // data = { staged_count, final, state } — echo it so the agent can confirm
   // whether the run is still open (state 'running') or closed for review.
   return { ...(data as Record<string, unknown>), research_run_id };
+}
+
+// ---- Municipality source memory (table municipality_source) ----
+
+const SOURCE_TYPES = ['permit_portal', 'minutes', 'agendas', 'plat_records'];
+const SOURCE_STATUSES = ['works', 'blocked', 'none_exists'];
+const DEAD_END_TTL_DAYS = 90;
+
+async function toolGetMunicipalitySources(args: any) {
+  const ids = args?.municipality_ids;
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every((x: unknown) => typeof x === 'string')) {
+    throw new ToolError('municipality_ids must be a non-empty array of uuids');
+  }
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('municipality_source')
+    .select('boundary_municipality_id, source_type, url, status, notes, last_verified, verified_by_run_id, boundary_municipality(name)')
+    .in('boundary_municipality_id', ids)
+    .order('source_type');
+  if (error) throw new ToolError(`get_municipality_sources failed: ${error.message}`);
+  const cutoff = Date.now() - DEAD_END_TTL_DAYS * 86_400_000;
+  const sources = (data ?? []).map((r: any) => {
+    const stale = r.status !== 'works' && new Date(r.last_verified).getTime() < cutoff;
+    return {
+      municipality: r.boundary_municipality?.name ?? null,
+      boundary_municipality_id: r.boundary_municipality_id,
+      source_type: r.source_type,
+      url: r.url,
+      status: r.status,
+      effective_status: stale ? 'unverified' : r.status,
+      recheck_before_skipping: stale,
+      notes: r.notes,
+      last_verified: r.last_verified,
+      verified_by_run_id: r.verified_by_run_id,
+    };
+  });
+  const known = new Set(sources.map((s: any) => s.boundary_municipality_id));
+  return {
+    sources,
+    municipalities_with_no_entries: ids.filter((id: string) => !known.has(id)),
+    rule: `blocked / none_exists older than ${DEAD_END_TTL_DAYS} days = unverified: check once more before skipping, then call set_municipality_source.`,
+  };
+}
+
+async function toolSetMunicipalitySource(args: any) {
+  const { boundary_municipality_id, source_type, url, status, notes, research_run_id } = args ?? {};
+  if (typeof boundary_municipality_id !== 'string') throw new ToolError('boundary_municipality_id is required');
+  if (!SOURCE_TYPES.includes(source_type)) throw new ToolError(`source_type must be one of ${SOURCE_TYPES.join(', ')}`);
+  if (!SOURCE_STATUSES.includes(status)) throw new ToolError(`status must be one of ${SOURCE_STATUSES.join(', ')}`);
+  const cleanUrl = typeof url === 'string' && url.trim() ? url.trim() : null;
+  if (!cleanUrl && status !== 'none_exists') throw new ToolError('url is required unless status is none_exists');
+
+  const supabase = getSupabase();
+  const row = {
+    boundary_municipality_id, source_type, url: cleanUrl, status,
+    notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+    last_verified: new Date().toISOString(),
+    verified_by_run_id: typeof research_run_id === 'string' ? research_run_id : null,
+  };
+  // The unique key is (municipality, source_type, coalesce(url,'')) — an
+  // expression index, which PostgREST upsert can't target. Find, then write.
+  let q = supabase.from('municipality_source').select('id')
+    .eq('boundary_municipality_id', boundary_municipality_id).eq('source_type', source_type);
+  q = cleanUrl ? q.eq('url', cleanUrl) : q.is('url', null);
+  const { data: existing, error: findErr } = await q.maybeSingle();
+  if (findErr) throw new ToolError(`set_municipality_source lookup failed: ${findErr.message}`);
+  const { data, error } = existing
+    ? await supabase.from('municipality_source').update(row).eq('id', existing.id).select().single()
+    : await supabase.from('municipality_source').insert(row).select().single();
+  if (error) throw new ToolError(`set_municipality_source failed: ${error.message}`);
+  return { ok: true, source: data, action: existing ? 'updated' : 'inserted' };
 }
 
 const SIGNAL_STRENGTHS = ['strong', 'moderate', 'weak'];
@@ -504,6 +631,8 @@ const TOOL_IMPLS: Record<string, (args: unknown) => Promise<unknown>> = {
   create_research_checklist:    toolCreateResearchChecklist,
   update_checklist_status:      toolUpdateChecklistStatus,
   submit_research_report:       toolSubmitResearchReport,
+  get_municipality_sources:     toolGetMunicipalitySources,
+  set_municipality_source:      toolSetMunicipalitySource,
 };
 
 // ----------------------------------------------------------------------------

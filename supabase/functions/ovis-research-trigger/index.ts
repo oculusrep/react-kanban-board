@@ -232,6 +232,16 @@ serve(async (req) => {
   const bearer = authHeader.replace(/^Bearer\s+/i, '');
   let userId: string | null;
 
+  // Telegram: a sweep chunk's start failure is reported by ovis-sweep-tick as
+  // "Chunk i/N failed — <reason>", so internal calls send nothing here. A
+  // standalone (non-sweep) run gets one failure line. Nothing else is sent.
+  const isSweepCall = (body as CommitRequest).internal === true;
+  const notifyFailure = async (site: string, reason: string) => {
+    if (isSweepCall) return;
+    const r = reason.replace(/\s+/g, ' ').trim().slice(0, 160);
+    await notifyTelegram(`Research failed — ${site}: ${r}`);
+  };
+
   if ((body as CommitRequest).internal === true) {
     if (!safeEqual(bearer, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)) {
       return jsonResponse({ error: 'unauthorized_internal' }, 401);
@@ -415,7 +425,7 @@ serve(async (req) => {
   if (!openclawUrl || !openclawToken) {
     // Mark the run as failed so it doesn't sit forever in 'running'.
     await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
-    await notifyTelegram(`⚠️ Research trigger FAILED for ${siteLabel}: OpenClaw secrets not configured`);
+    await notifyFailure(siteLabel, 'OpenClaw secrets not configured');
     return jsonResponse({
       error: 'openclaw_not_configured',
       detail: 'OPENCLAW_TRIGGER_URL and OPENCLAW_TRIGGER_TOKEN must be set as Supabase secrets',
@@ -454,7 +464,7 @@ serve(async (req) => {
     });
   } catch (e) {
     await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
-    await notifyTelegram(`⚠️ Research trigger FAILED for ${siteLabel}: OpenClaw unreachable (${String(e).slice(0, 200)})`);
+    await notifyFailure(siteLabel, `OpenClaw unreachable (${String(e)})`);
     return jsonResponse({ error: 'openclaw_unreachable', detail: String(e), research_run_id: researchRunId }, 502);
   }
 
@@ -464,7 +474,7 @@ serve(async (req) => {
 
   if (!openclawResp.ok) {
     await service.from('research_run').update({ state: 'failed' }).eq('id', researchRunId);
-    await notifyTelegram(`⚠️ Research trigger FAILED for ${siteLabel}: OpenClaw returned HTTP ${openclawResp.status}`);
+    await notifyFailure(siteLabel, `OpenClaw returned HTTP ${openclawResp.status}`);
     return jsonResponse({
       error: 'openclaw_rejected',
       status: openclawResp.status,
@@ -481,7 +491,8 @@ serve(async (req) => {
     }
   }
 
-  await notifyTelegram(`✅ Research started: ${siteLabel} — ${requested.length} ${requested.length === 1 ? 'municipality' : 'municipalities'}`);
+  // No "Research started" ping (dropped 2026-11-14): sweep chunks announce
+  // themselves from ovis-sweep-tick as "Chunk i/N started — <site>".
 
   return jsonResponse({
     ok: true,
