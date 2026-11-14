@@ -370,3 +370,39 @@ Each line has a **Copy cc prompt** button.
 - The prompt text is in [PARCEL_ADAPTER_CC_PROMPT.md](PARCEL_ADAPTER_CC_PROMPT.md),
   between the PROMPT START and PROMPT END markers. It's bundled with Vite
   `?raw`, so editing it needs a deploy but no code change.
+
+## Server-side parcel fetch as a post-run step (2026-11-14)
+
+The post-run pipeline is now dedupe → Gemini → dedupe → **parcel fetch** →
+"Sweep ready".
+
+- **Shared code.** The adapters and the fetch moved to
+  `supabase/functions/_shared/parcel-adapters.ts`. `src/services/parcelFabric.ts`
+  re-exports them, so the browser button and the server step use the same
+  code, including Henry's 75 s timeout and retry. **New adapters go in the
+  shared file.**
+- **Staging boundaries.** `municipal_project_staging` now has `geometry` and
+  the `geometry_*` columns, plus `parcel_fetch_status` / `_note` / `_at`
+  (migration 20261114081656).
+- **The rules** live in `set_staging_polygon_from_parcels`, a staging twin of
+  the button's RPCs:
+  - union of multi-parcel records
+  - valid MultiPolygon only
+  - acreage validation, flagged when outside tolerance
+  - partial-parcel flag
+  - never replace an existing boundary
+- **Fetch status** is one of `resolved`, `partial` (some IDs missing),
+  `none_resolved`, `no_adapter` or `error`. Records matched to a committed
+  record are skipped, because approve never carries geometry on that path.
+- **On approve** the boundary carries over and the pin is placed inside it
+  (`ST_PointOnSurface`, `centroid_source = 'polygon'`, ahead of any geocode).
+  It stays dashed until reviewed. On a fold-in, an existing project only takes
+  the boundary if it has none.
+- **The summary** adds "🗺 N of M ready records have boundaries" to the header
+  and the Telegram message.
+- **First run, 2026-11-14:**
+  - Alcovy: 5 records with parcel IDs, all in Newton County, which has no
+    adapter.
+  - Senoia: 1 record. Georgian Pines' `172 1340 001` isn't in the current
+    Coweta fabric, where map 172-1340 starts at 003, so it was likely
+    re-platted.
