@@ -65,6 +65,7 @@ export async function getSweepInfo(supabase: Supa, sweepId: string): Promise<{ t
  *   ✅ N ready to approve · X units (Y estimated)
  *   ⚠️ N need a decision · low–high units
  *   📋 N leads (no count)
+ *   🗺 N of M ready records have boundaries
  *
  * Callers: ovis-research-mcp when a chunk's post-run steps finish, and the
  * ovis-sweep-tick sweeper (backstop). The ready_notified_at claim makes it
@@ -107,6 +108,7 @@ export async function sendSweepReadyIfDone(supabase: Supa, sweepId: string): Pro
     `✅ ${n(s.ready?.records)} ready to approve · ${n(s.ready?.units)} units${est > 0 ? ` (${n(est)} estimated)` : ''}`,
     `⚠️ ${n(s.decision?.records)} need a decision · ${lo === hi ? n(lo) : `${n(lo)}–${n(hi)}`} units`,
     `📋 ${n(s.leads?.records)} leads (no count)`,
+    `🗺 ${n(s.ready?.with_boundary)} of ${n(s.ready?.records)} ready records have boundaries`,
   ].join('\n'));
   return 'sent';
 }

@@ -17,7 +17,7 @@ import { supabase } from '../../lib/supabaseClient';
 
 interface Summary {
   pending: number;
-  ready: { records: number; units: number; estimated_units: number };
+  ready: { records: number; units: number; estimated_units: number; with_boundary?: number };
   decision: { records: number; groups: number; units_low: number; units_high: number };
   leads: { records: number };
 }
@@ -50,6 +50,10 @@ export function ResearchSummaryHeader({ runIds, refreshKey }: { runIds: string[]
         <span className="font-semibold">✅ {n(s.ready.records)} ready to approve</span>
         <div className="text-xs" style={{ color: '#4A6B94' }}>
           {n(s.ready.units)} units{s.ready.estimated_units > 0 ? ` (${n(s.ready.estimated_units)} estimated)` : ''}
+        </div>
+        <div className="text-xs" style={{ color: '#4A6B94' }}
+             title="Parcel boundary fetched from the county fabric (post-run step); dashed on the map until reviewed">
+          🗺 {n(s.ready.with_boundary ?? 0)} of {n(s.ready.records)} have boundaries
         </div>
       </div>
       <div title="Open count conflicts, possible duplicates the rule couldn't resolve, distance / jurisdiction flags. Units: per group, smallest to largest count.">

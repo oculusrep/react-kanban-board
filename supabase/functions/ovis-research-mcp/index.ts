@@ -23,6 +23,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { estimateMissingUnits } from '../_shared/research-unit-estimator.ts';
+import { fetchBoundariesForRuns } from '../_shared/research-parcel-fetch.ts';
 import { notifyResearchTelegram, chunkLabel, getSweepInfo, sendSweepReadyIfDone } from '../_shared/research-telegram.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
@@ -507,6 +508,13 @@ async function toolSubmitResearchReport(args: any) {
           await dedupe('post');
         } catch (e) {
           console.error('[unit-estimate] failed', research_run_id, e);
+        }
+        // Last post-run step: parcel boundaries for the surviving records.
+        try {
+          const pf = await fetchBoundariesForRuns(supabase, [research_run_id]);
+          console.log('[parcel-fetch]', JSON.stringify(pf));
+        } catch (e) {
+          console.error('[parcel-fetch] failed', research_run_id, e);
         }
         // Post-run steps done (or failed): mark it, then send "Sweep ready" if
         // this was the last piece of a finished sweep.

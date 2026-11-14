@@ -4,7 +4,8 @@ import { supabase } from '../../lib/supabaseClient';
 /**
  * "Agent reports" for a Deep Sweep: one collapsible, read-only entry per chunk
  * with that run's needs_review (the agent puts its end-of-run coverage report
- * at the top of it). Labels: "Chunk 0 — undated sources", "Chunk 3 — May–Oct 2025".
+ * at the top of it). Labels are 1-based, matching Telegram: "Chunk 1 of 7 —
+ * undated sources", "Chunk 4 of 7 — May–Oct 2025".
  * A failed or never-run chunk shows "no report".
  */
 
@@ -33,9 +34,12 @@ export function chunkWindowLabel(c: { kind: string | null; window_start: string 
 export function SweepAgentReports({ sweepId }: { sweepId: string }) {
   const [rows, setRows] = useState<ChunkReport[]>([]);
   const [open, setOpen] = useState<Set<number>>(new Set());
+  const [total, setTotal] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    supabase.from('research_sweep').select('total_chunks').eq('id', sweepId).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setTotal(data?.total_chunks ?? null); });
     supabase
       .from('research_sweep_chunk')
       .select('chunk_index, kind, window_start, window_end, state, research_run:research_run_id(state, needs_review)')
@@ -69,7 +73,7 @@ export function SweepAgentReports({ sweepId }: { sweepId: string }) {
         {rows.map((c) => {
           const failed = c.state === 'failed' || !c.run_state || ['failed', 'cancelled'].includes(c.run_state);
           const text = (c.needs_review ?? '').trim();
-          const label = `Chunk ${c.chunk_index} — ${chunkWindowLabel(c)}`;
+          const label = `Chunk ${c.chunk_index + 1} of ${total ?? rows.length} — ${chunkWindowLabel(c)}`;
           const isOpen = open.has(c.chunk_index);
           return (
             <div key={c.chunk_index} className="px-3 py-1.5">
