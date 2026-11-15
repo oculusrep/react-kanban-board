@@ -63,7 +63,8 @@ serve(async (req) => {
     }
     const geminiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY not set' }, 500);
-    const result = await fillRun(service, body.research_run_id, includeRejected, geminiKey);
+    const result = await fillRun(service, body.research_run_id, includeRejected, geminiKey,
+      Deno.env.get('GOOGLE_GEOCODING_API_KEY') ?? null);
     return json(result, result.failure ? 500 : 200);
   } catch (e) {
     return json({ error: 'fill_failed', detail: e instanceof Error ? e.message : String(e) }, 500);

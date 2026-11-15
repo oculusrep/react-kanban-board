@@ -139,6 +139,9 @@ interface StagingRow {
   geometry_source_vintage?: string | null;
   parcel_fetch_status?: string | null;
   has_boundary?: boolean;
+  // Locate step: a pin found after the run (estimated until confirmed).
+  location_confidence?: string | null;
+  located_address?: string | null;
 }
 interface CountConflictMember {
   kind: 'staged' | 'committed';
@@ -527,20 +530,22 @@ export default function ResearchRunApprovalModal({
     return () => { cancelled = true; };
   }, [stagingRunKey]);
 
-  // "Fill missing units": rerun the post-run steps (dedupe → Gemini → acres ×
-  // density → dedupe) on the runs on screen, via research-fill-units. Preview
+  // "Fill missing units & locations": rerun the post-run steps (dedupe → Gemini
+  // units → acres × density → Gemini locate → dedupe → parcel fetch) on the runs on screen, via research-fill-units. Preview
   // first (count + estimated cost), then confirm; runs one research_run per
   // call so no single call outlives the edge-function wall clock.
   const [fillOpen, setFillOpen] = useState(false);
   const [fillIncludeRejected, setFillIncludeRejected] = useState(false);
   const [fillPreview, setFillPreview] = useState<{
-    records: number; pending_no_count: number; rejected_no_count: number;
+    records: number; pending_no_count: number; rejected_no_count: number; locate_records: number;
     est_cost_cents: number; avg_call_cents: number; runs_in_flight_skipped: number;
   } | null>(null);
   const [fillBusy, setFillBusy] = useState<string | null>(null);
   const [fillResult, setFillResult] = useState<{
     gemini: number; density: number; deduped: number; leads: number;
-    restored: number; put_back: number; errors: number; cost_cents: number; failures: string[];
+    restored: number; put_back: number; errors: number; cost_cents: number;
+    pins_placed: number; hints_improved: number; parcel_ids_found: number; moved_out_of_radius: number;
+    locate_cost_cents: number; failures: string[];
   } | null>(null);
 
   const fillRunIds = useMemo(() => (stagingRunKey ? stagingRunKey.split(',') : []), [stagingRunKey]);
@@ -576,7 +581,8 @@ export default function ResearchRunApprovalModal({
   };
 
   const runFill = async () => {
-    const total = { gemini: 0, density: 0, deduped: 0, leads: 0, restored: 0, put_back: 0, errors: 0, cost_cents: 0, failures: [] as string[] };
+    const total = { gemini: 0, density: 0, deduped: 0, leads: 0, restored: 0, put_back: 0, errors: 0, cost_cents: 0,
+      pins_placed: 0, hints_improved: 0, parcel_ids_found: 0, moved_out_of_radius: 0, locate_cost_cents: 0, failures: [] as string[] };
     for (let i = 0; i < fillRunIds.length; i++) {
       setFillBusy(`Filling run ${i + 1} of ${fillRunIds.length}…`);
       const { data, error: e } = await supabase.functions.invoke('research-fill-units', {
@@ -587,7 +593,8 @@ export default function ResearchRunApprovalModal({
         // In-flight runs are skipped, not failures.
         if (d.error !== 'run_in_flight_or_missing') total.failures.push(d.failure ?? d.detail ?? d.error ?? toErrorMessage(e));
       }
-      for (const k of ['gemini', 'density', 'deduped', 'leads', 'restored', 'put_back', 'errors', 'cost_cents'] as const) {
+      for (const k of ['gemini', 'density', 'deduped', 'leads', 'restored', 'put_back', 'errors', 'cost_cents',
+        'pins_placed', 'hints_improved', 'parcel_ids_found', 'moved_out_of_radius', 'locate_cost_cents'] as const) {
         total[k] += Number(d[k] ?? 0);
       }
     }
@@ -726,6 +733,8 @@ export default function ResearchRunApprovalModal({
             geometry_source_vintage: r.geometry_source_vintage ?? null,
             parcel_fetch_status: r.parcel_fetch_status ?? null,
             has_boundary: !!r.has_boundary,
+            location_confidence: r.location_confidence ?? null,
+            located_address: r.located_address ?? null,
           }));
           const ar = await readAuto([...new Set(allSweepRows.map((r) => r.research_run_id as string))]);
           if (cancelled) return;
@@ -762,7 +771,7 @@ export default function ResearchRunApprovalModal({
               reject_reason, duplicate_of_staging_id, notes,
               not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
               units_needs_review, units_review_reason, units_confidence, lead_reason, count_conflict,
-              geometry_source_vintage, parcel_fetch_status, geometry_source,
+              geometry_source_vintage, parcel_fetch_status, geometry_source, location_confidence, located_address,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -1906,6 +1915,13 @@ export default function ResearchRunApprovalModal({
             SNAPSHOT MISMATCH
           </span>
         )}
+        {r.location_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
+          <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title={`Pin placed by the locate step (Gemini web search, then a precise geocode)${r.located_address ? `: ${r.located_address}` : ''}. Sources are in Notes. It commits tagged EST. LOCATION until you confirm it on the project card.`}>
+            EST. LOCATION
+          </span>
+        )}
         {r.units_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
           <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
                 style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
@@ -2673,9 +2689,9 @@ export default function ResearchRunApprovalModal({
                 onClick={() => { setFillOpen(true); setFillResult(null); loadFillPreview(fillIncludeRejected); }}
                 className="px-3 py-1.5 rounded-lg text-sm font-medium border"
                 style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
-                title="Rerun only the post-run steps on this run/sweep: dedupe → Gemini unit backfill → acres × density → dedupe. No new research run."
+                title="Rerun only the post-run steps on this run/sweep: dedupe → Gemini unit backfill → acres × density → Gemini locate → dedupe → parcel fetch. No new research run."
               >
-                Fill missing units
+                Fill missing units &amp; locations
               </button>
             )}
             {canRerunGaps && !rerunConfirm && (
@@ -2699,15 +2715,16 @@ export default function ResearchRunApprovalModal({
           </div>
         </div>
 
-        {/* Fill missing units: preview → confirm → result */}
+        {/* Fill missing units & locations: preview → confirm → result */}
         {fillOpen && (
           <div className="px-5 py-3 border-b" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
             {!fillResult ? (
               <>
-                <div className="text-sm font-medium" style={{ color: '#002147' }}>Fill missing units</div>
+                <div className="text-sm font-medium" style={{ color: '#002147' }}>Fill missing units &amp; locations</div>
                 <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
-                  Dedupe → Gemini unit backfill → acres × zoning density → dedupe. Anything still without a count stays a lead.
-                  Records that already have an estimated count are skipped. Committed records are never touched.
+                  Dedupe → Gemini unit backfill → acres × zoning density → Gemini locate (records with no precise pin) → dedupe → parcel fetch.
+                  Anything still without a count stays a lead. Records that already have an estimated count, or were already located, are skipped.
+                  Committed records are never touched.
                 </div>
                 <label className="mt-2 flex items-center gap-2 text-xs" style={{ color: '#002147' }}>
                   <input type="checkbox" checked={fillIncludeRejected} disabled={!!fillBusy}
@@ -2720,8 +2737,9 @@ export default function ResearchRunApprovalModal({
                 <div className="text-sm mt-2" style={{ color: '#002147' }}>
                   {fillBusy && !fillPreview ? fillBusy : fillPreview ? (
                     <>
-                      {fillPreview.records} record{fillPreview.records === 1 ? '' : 's'} to process
+                      {fillPreview.records} record{fillPreview.records === 1 ? '' : 's'} without a count
                       {fillIncludeRejected ? ` (${fillPreview.pending_no_count} pending/leads + ${fillPreview.rejected_no_count} rejected)` : ''}
+                      {' '}· up to {fillPreview.locate_records ?? 0} to locate
                       {' '}· est. Gemini cost up to ${(fillPreview.est_cost_cents / 100).toFixed(2)}
                       <span className="text-xs" style={{ color: '#8FA9C8' }}>
                         {' '}(~{fillPreview.avg_call_cents.toFixed(1)}¢/record; the first dedupe may remove some before Gemini)
@@ -2731,11 +2749,11 @@ export default function ResearchRunApprovalModal({
                   ) : null}
                 </div>
                 <div className="mt-2 flex gap-2">
-                  <button onClick={runFill} disabled={!!fillBusy || !fillPreview || fillPreview.records === 0}
+                  <button onClick={runFill} disabled={!!fillBusy || !fillPreview || fillPreview.records + (fillPreview.locate_records ?? 0) === 0}
                           className="px-3 py-1.5 rounded-lg text-sm font-medium"
-                          style={{ backgroundColor: fillBusy || !fillPreview || fillPreview.records === 0 ? '#8FA9C8' : '#002147', color: '#FFFFFF' }}>
+                          style={{ backgroundColor: fillBusy || !fillPreview || fillPreview.records + (fillPreview.locate_records ?? 0) === 0 ? '#8FA9C8' : '#002147', color: '#FFFFFF' }}>
                     {fillBusy && fillPreview ? fillBusy
-                      : fillPreview ? `Confirm — process ${fillPreview.records} (up to $${(fillPreview.est_cost_cents / 100).toFixed(2)})` : 'Confirm'}
+                      : fillPreview ? `Confirm — process ${fillPreview.records + (fillPreview.locate_records ?? 0)} (up to $${(fillPreview.est_cost_cents / 100).toFixed(2)})` : 'Confirm'}
                   </button>
                   <button onClick={() => setFillOpen(false)} disabled={!!fillBusy}
                           className="px-3 py-1.5 rounded-lg text-sm border"
@@ -2747,12 +2765,17 @@ export default function ResearchRunApprovalModal({
             ) : (
               <>
                 <div className="text-sm font-medium" style={{ color: '#002147' }}>
-                  Fill missing units — done · actual Gemini cost ${(fillResult.cost_cents / 100).toFixed(2)}
+                  Fill missing units &amp; locations — done · actual cost ${((fillResult.cost_cents + fillResult.locate_cost_cents) / 100).toFixed(2)}
+                  {' '}(units ${(fillResult.cost_cents / 100).toFixed(2)} · locate ${(fillResult.locate_cost_cents / 100).toFixed(2)})
                 </div>
                 <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
                   {fillResult.gemini} from Gemini · {fillResult.density} from acres × density · {fillResult.deduped} deduped · {fillResult.leads} still leads
                   {fillResult.restored > 0 && ` · ${fillResult.restored} rejected restored, ${fillResult.put_back} put back (still no count)`}
                   {fillResult.errors > 0 && ` · ${fillResult.errors} Gemini error(s)`}
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: '#4A6B94' }}>
+                  📍 {fillResult.pins_placed} pin{fillResult.pins_placed === 1 ? '' : 's'} placed (EST. LOCATION) · {fillResult.hints_improved} pin hint{fillResult.hints_improved === 1 ? '' : 's'} improved
+                  {' '}· {fillResult.parcel_ids_found} with new parcel IDs · {fillResult.moved_out_of_radius} moved to leads (outside the radius)
                 </div>
                 {fillResult.failures.length > 0 && (
                   <div className="text-xs mt-1" style={{ color: '#A27B5C' }}>Failed: {fillResult.failures.join(' | ')}</div>

@@ -58,7 +58,7 @@ export async function getSweepInfo(supabase: Supa, sweepId: string): Promise<{ t
 
 /**
  * "Sweep ready" — sent once per sweep, after the sweep is finished AND every
- * chunk run's post-submit steps (dedupe → Gemini → dedupe) are done, so the
+ * chunk run's post-submit steps (dedupe → Gemini units → locate → dedupe → parcel fetch) are done, so the
  * numbers are final:
  *
  *   Sweep ready — <site>
@@ -66,6 +66,7 @@ export async function getSweepInfo(supabase: Supa, sweepId: string): Promise<{ t
  *   ⚠️ N need a decision · low–high units
  *   📋 N leads (no count)
  *   🗺 N of M ready records have boundaries
+ *   📍 N of M ready records have a precise pin
  *
  * Callers: ovis-research-mcp when a chunk's post-run steps finish, and the
  * ovis-sweep-tick sweeper (backstop). The ready_notified_at claim makes it
@@ -109,6 +110,7 @@ export async function sendSweepReadyIfDone(supabase: Supa, sweepId: string): Pro
     `⚠️ ${n(s.decision?.records)} need a decision · ${lo === hi ? n(lo) : `${n(lo)}–${n(hi)}`} units`,
     `📋 ${n(s.leads?.records)} leads (no count)`,
     `🗺 ${n(s.ready?.with_boundary)} of ${n(s.ready?.records)} ready records have boundaries`,
+    `📍 ${n(s.ready?.with_precise_pin)} of ${n(s.ready?.records)} ready records have a precise pin`,
   ].join('\n'));
   return 'sent';
 }
