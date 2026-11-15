@@ -47,7 +47,9 @@ export interface MunicipalProjectMapRow {
   // Where a PLACED record's pin came from. Null exactly when unplaced. Read by
   // the precision badge so a placed record reports provenance rather than a
   // precision tier it no longer needs.
-  centroid_source?: 'address_geocode' | 'polygon' | 'manual_pin' | null;
+  centroid_source?: 'address_geocode' | 'polygon' | 'manual_pin' | 'research_locate' | null;
+  // 'estimated' = pin placed by the research locate step, not yet confirmed.
+  location_confidence?: 'estimated' | 'confirmed' | null;
   // Polygon provenance + the acreage cross-check.
   geometry_source?: 'hand_drawn' | 'parcel_fetch' | 'parcel_fetch_adjusted' | null;
   geometry_source_parcels?: string[] | null;
@@ -117,10 +119,24 @@ export const PIN_HAS_POLYGON_COLOR = '#4A6B94';
 // bottom that anchors the visual point on the map. Intentionally different from
 // the property teardrop and the restaurant circle so users can distinguish at a
 // glance. Stage color fills the badge.
-function pinSvg(color: string, selected: boolean): string {
+function pinSvg(color: string, selected: boolean, estimated = false): string {
   const stroke = selected ? '#002147' : '#FFFFFF';
   const strokeWidth = selected ? 2.5 : 1.5;
   const scale = selected ? 1.1 : 1;
+  // EST. LOCATION: same badge, washed out with a dashed outline and a "?" corner
+  // tag, so an unconfirmed pin never reads like a surveyed one.
+  if (estimated) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${30 * scale}" height="${36 * scale}" viewBox="0 0 30 36">
+    <ellipse cx="15" cy="34.5" rx="4" ry="1.2" fill="rgba(0,0,0,0.2)"/>
+    <path d="M15 33 L11.5 28 L18.5 28 Z" fill="${color}" fill-opacity="0.55" stroke="${selected ? '#002147' : color}" stroke-width="1.5" stroke-linejoin="round"/>
+    <rect x="2" y="2" width="26" height="26" rx="5" ry="5"
+      fill="${color}" fill-opacity="0.55" stroke="${selected ? '#002147' : '#002147'}" stroke-width="${selected ? 2.5 : 1.5}" stroke-dasharray="3 2"/>
+    <path d="M15 8 L7.5 14.5 L9 14.5 L9 21.5 L13 21.5 L13 17 L17 17 L17 21.5 L21 21.5 L21 14.5 L22.5 14.5 Z"
+      fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="25" cy="5" r="4.5" fill="#FFFFFF" stroke="#002147" stroke-width="1"/>
+    <text x="25" y="7.6" font-size="7" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="#002147">?</text>
+  </svg>`;
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${30 * scale}" height="${36 * scale}" viewBox="0 0 30 36">
     <!-- soft shadow under the stem -->
     <ellipse cx="15" cy="34.5" rx="4" ry="1.2" fill="rgba(0,0,0,0.25)"/>
@@ -164,8 +180,8 @@ function polygonPathsFromGeoJson(
   return null;
 }
 
-function makeIcon(color: string, selected: boolean): google.maps.Icon {
-  const svg = pinSvg(color, selected);
+function makeIcon(color: string, selected: boolean, estimated = false): google.maps.Icon {
+  const svg = pinSvg(color, selected, estimated);
   const scale = selected ? 1.1 : 1;
   return {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
@@ -437,8 +453,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       if (!marker) {
         marker = new google.maps.Marker({
           position: { lat, lng },
-          icon: makeIcon(pinColor, isSelected || isBeingVerified),
-          title: row.project_name || row.address,
+          icon: makeIcon(pinColor, isSelected || isBeingVerified, row.location_confidence === 'estimated'),
+          title: row.location_confidence === 'estimated'
+            ? `${row.project_name || row.address} (EST. LOCATION — not confirmed)`
+            : row.project_name || row.address,
           map: showPin ? map : null,
           draggable: isBeingVerified,
           zIndex: isSelected || isBeingVerified ? 1000 : undefined,
@@ -456,7 +474,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         existing.set(row.id, marker);
       } else {
         marker.setPosition({ lat, lng });
-        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified));
+        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified, row.location_confidence === 'estimated'));
         marker.setMap(showPin ? map : null);
         marker.setDraggable(isBeingVerified);
         marker.setZIndex(isSelected || isBeingVerified ? 1000 : undefined);

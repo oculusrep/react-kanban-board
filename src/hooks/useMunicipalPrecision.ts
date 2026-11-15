@@ -21,7 +21,7 @@ export interface PrecisionSubject {
   is_unplaced?: boolean;
   geometry_geojson?: unknown;
   geometry_source?: 'hand_drawn' | 'parcel_fetch' | 'parcel_fetch_adjusted' | null;
-  centroid_source?: 'address_geocode' | 'polygon' | 'manual_pin' | null;
+  centroid_source?: 'address_geocode' | 'polygon' | 'manual_pin' | 'research_locate' | null;
 }
 
 export interface MunicipalPrecision {

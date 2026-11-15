@@ -34,6 +34,7 @@ interface Props {
     geometry_geojson?: MunicipalProjectMapRow['geometry_geojson'];
     geometry_source?: MunicipalProjectMapRow['geometry_source'];
     geometry_source_vintage?: MunicipalProjectMapRow['geometry_source_vintage'];
+    location_confidence?: MunicipalProjectMapRow['location_confidence'];
     centroid_lat?: number | null;
     centroid_lng?: number | null;
     is_unplaced?: boolean;
@@ -332,6 +333,27 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
       setUnitsError(errMessage(e));
     } finally {
       setSavingUnits(false);
+    }
+  }
+
+  // EST. LOCATION → confirmed. The pin stays where it is; only the tag changes.
+  const [confirmingLocation, setConfirmingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  async function confirmLocation() {
+    if (!project) return;
+    setConfirmingLocation(true);
+    setLocationError('');
+    try {
+      const { error } = await supabase
+        .from('municipal_project')
+        .update({ location_confidence: 'confirmed' })
+        .eq('id', project.id);
+      if (error) throw error;
+      onProjectUpdated?.({ id: project.id, location_confidence: 'confirmed' });
+    } catch (e) {
+      setLocationError(errMessage(e));
+    } finally {
+      setConfirmingLocation(false);
     }
   }
 
@@ -1009,6 +1031,25 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                   {project.geometry_computed_acres != null && (
                     <span style={{ color: BRAND.slate }}> · {project.geometry_computed_acres} ac</span>
                   )}
+                </div>
+              ) : project.location_confidence === 'estimated' ? (
+                <div className="text-xs mb-2 px-2 py-1.5 rounded"
+                     style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight, border: `1px dashed ${BRAND.steel}` }}>
+                  <span className="px-1.5 py-0.5 rounded-full border border-dashed text-[10px] whitespace-nowrap mr-1"
+                        style={{ borderColor: BRAND.steel, color: BRAND.steel }}>
+                    EST. LOCATION
+                  </span>
+                  Pin placed by the locate step{project.geocoded_address ? ` at ${project.geocoded_address}` : ''} —
+                  found by web search, not confirmed. Sources are in Notes.
+                  <div className="mt-1 flex items-center gap-2">
+                    <button onClick={confirmLocation} disabled={confirmingLocation}
+                            className="px-2 py-0.5 rounded text-xs font-medium"
+                            style={{ backgroundColor: BRAND.midnight, color: '#FFFFFF', opacity: confirmingLocation ? 0.6 : 1 }}>
+                      {confirmingLocation ? 'Confirming…' : 'Confirm location'}
+                    </button>
+                    <span style={{ color: BRAND.slate }}>Wrong? Drag the pin or draw the boundary below.</span>
+                  </div>
+                  {locationError && <div className="mt-1" style={{ color: BRAND.terracotta }}>{locationError}</div>}
                 </div>
               ) : (
                 <div className="text-xs mb-2" style={{ color: BRAND.slate }}>

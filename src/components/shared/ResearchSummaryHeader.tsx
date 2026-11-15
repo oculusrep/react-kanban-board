@@ -17,7 +17,7 @@ import { supabase } from '../../lib/supabaseClient';
 
 interface Summary {
   pending: number;
-  ready: { records: number; units: number; estimated_units: number; with_boundary?: number };
+  ready: { records: number; units: number; estimated_units: number; with_boundary?: number; with_precise_pin?: number };
   decision: { records: number; groups: number; units_low: number; units_high: number };
   leads: { records: number };
 }
@@ -54,6 +54,10 @@ export function ResearchSummaryHeader({ runIds, refreshKey }: { runIds: string[]
         <div className="text-xs" style={{ color: '#4A6B94' }}
              title="Parcel boundary fetched from the county fabric (post-run step); dashed on the map until reviewed">
           🗺 {n(s.ready.with_boundary ?? 0)} of {n(s.ready.records)} have boundaries
+        </div>
+        <div className="text-xs" style={{ color: '#4A6B94' }}
+             title="Boundary, an address that geocodes precisely (rooftop / interpolated / intersection), or a pin the locate step placed (EST. LOCATION)">
+          📍 {n(s.ready.with_precise_pin ?? 0)} of {n(s.ready.records)} have a precise pin
         </div>
       </div>
       <div title="Open count conflicts, possible duplicates the rule couldn't resolve, distance / jurisdiction flags. Units: per group, smallest to largest count.">

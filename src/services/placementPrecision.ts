@@ -131,7 +131,7 @@ export interface PrecisionInput {
   /** Live geocode granularity, or null while loading / if it failed. */
   granularity: Granularity | null;
   geometrySource?: 'hand_drawn' | 'parcel_fetch' | 'parcel_fetch_adjusted' | null;
-  centroidSource?: 'address_geocode' | 'polygon' | 'manual_pin' | null;
+  centroidSource?: 'address_geocode' | 'polygon' | 'manual_pin' | 'research_locate' | null;
   hasGeometry: boolean;
 }
 
@@ -153,6 +153,10 @@ function placedBadge(i: PrecisionInput): PrecisionBadge {
         return { tier: 'placed', label: 'Drawn', detail: 'by hand',
           hint: 'Boundary drawn by hand.' };
     }
+  }
+  if (i.centroidSource === 'research_locate') {
+    return { tier: 'placed', label: 'Located pin', detail: 'web search',
+      hint: 'Pin placed by the research locate step: Gemini web search found the address or intersection, which geocoded precisely. Sources are in Notes.' };
   }
   if (i.centroidSource === 'manual_pin') {
     return { tier: 'placed', label: 'Pin dropped', detail: 'by hand',

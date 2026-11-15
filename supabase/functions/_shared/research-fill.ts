@@ -1,11 +1,13 @@
 /**
- * "Fill missing units" on an existing run or sweep. Shared by the
+ * "Fill missing units & locations" on an existing run or sweep. Shared by the
  * research-fill-units edge function (button on the approval view) and
  * one-off scripts.
  *
  * Reruns only the post-run steps, with no new research run:
  *   dedupe → Gemini unit backfill (current prompt, earlier leads re-asked) →
- *   acres × density → dedupe → anything still without a count stays a lead.
+ *   acres × density → Gemini locate (records with no precise pin; earlier
+ *   locate attempts are NOT re-asked) → dedupe → parcel fetch → anything still
+ *   without a count stays a lead.
  *
  * Scope:
  *   - Pending records with no usable count, skipping any that already carry an
@@ -21,6 +23,8 @@
  */
 
 import { estimateMissingUnits, lacksUnitCount } from './research-unit-estimator.ts';
+import { locateRun } from './research-locate.ts';
+import { fetchBoundariesForRuns } from './research-parcel-fetch.ts';
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -36,10 +40,10 @@ const FALLBACK_CALL_CENTS = 3.8;
 async function loadRows(service: Supa, runIds: string[]): Promise<Row[]> {
   const { data, error } = await service
     .from('municipal_project_staging')
-    .select('id, research_run_id, project_name, approval_state, total_housing_units, units_needs_review, units_confidence, reject_reason, rejected_at, rejected_by_id, auto_resolved_at, duplicate_of_staging_id, duplicate_of_project_id, fill_restored')
+    .select('id, research_run_id, project_name, approval_state, total_housing_units, units_needs_review, units_confidence, reject_reason, rejected_at, rejected_by_id, auto_resolved_at, duplicate_of_staging_id, duplicate_of_project_id, fill_restored, geometry_source, location_precision, located_lat, locate_status')
     .in('research_run_id', runIds);
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map((r: Row) => ({ ...r, has_geometry: r.geometry_source != null }));
 }
 
 const pendingTarget = (r: Row) =>
@@ -59,6 +63,11 @@ export async function previewFill(service: Supa, runIds: string[], includeReject
   const rows = ok.length ? await loadRows(service, ok) : [];
   const pending = rows.filter(pendingTarget).length;
   const rejected = includeRejected ? rows.filter(rejectedTarget).length : 0;
+  // Locate targets: pending, no precise pin, not tried yet. Upper bound — rows
+  // not classified yet may turn out to geocode precisely.
+  const locate = rows.filter((r: Row) => r.approval_state === 'pending' && !r.has_geometry
+    && !['boundary', 'precise'].includes(r.location_precision ?? '') && r.located_lat == null
+    && (!r.locate_status || r.locate_status === 'error')).length;
   const { data: hist } = await service.from('research_unit_estimate')
     .select('cost_cents').neq('method', 'error').order('created_at', { ascending: false }).limit(200);
   const avg = hist && hist.length
@@ -66,13 +75,14 @@ export async function previewFill(service: Supa, runIds: string[], includeReject
     : FALLBACK_CALL_CENTS;
   return {
     records: pending + rejected,
+    locate_records: locate,
     pending_no_count: pending,
     rejected_no_count: rejected,
     runs: ok.length,
     runs_in_flight_skipped: runIds.length - ok.length,
     avg_call_cents: Math.round(avg * 100) / 100,
     // Upper bound: the first dedupe pass may remove some before Gemini.
-    est_cost_cents: Math.round((pending + rejected) * avg * 100) / 100,
+    est_cost_cents: Math.round((pending + rejected + locate) * avg * 100) / 100,
   };
 }
 
@@ -87,11 +97,16 @@ export interface FillRunResult {
   considered: number;
   errors: number;
   cost_cents: number;
+  pins_placed: number;
+  hints_improved: number;
+  parcel_ids_found: number;
+  moved_out_of_radius: number;
+  locate_cost_cents: number;
   failure: string | null;
 }
 
 export async function fillRun(
-  service: Supa, runId: string, includeRejected: boolean, geminiKey: string,
+  service: Supa, runId: string, includeRejected: boolean, geminiKey: string, geocodeKey: string | null = null,
 ): Promise<FillRunResult> {
   // 1. Restore rejected-for-no-count rows, parking the original rejection.
   let restored = 0;
@@ -122,11 +137,14 @@ export async function fillRun(
   // 2-4. dedupe → estimate (earlier leads re-asked with the current prompt) → dedupe
   let deduped = 0;
   let est = null;
+  let loc = null;
   let failure: string | null = null;
   try {
     deduped += await dedupe();
     est = await estimateMissingUnits(service, runId, geminiKey, { retryTried: true });
+    if (geocodeKey) loc = await locateRun(service, runId, { gemini: geminiKey, geocode: geocodeKey });
     deduped += await dedupe();
+    await fetchBoundariesForRuns(service, [runId]);
   } catch (e) {
     failure = e instanceof Error ? e.message : String(e);
   }
@@ -160,6 +178,11 @@ export async function fillRun(
     considered: est?.considered ?? 0,
     errors: est?.error ?? 0,
     cost_cents: est?.cost_cents ?? 0,
+    pins_placed: loc?.pins_placed ?? 0,
+    hints_improved: loc?.hints_improved ?? 0,
+    parcel_ids_found: loc?.parcel_ids_found ?? 0,
+    moved_out_of_radius: loc?.moved_out_of_radius ?? 0,
+    locate_cost_cents: loc ? Math.round((loc.gemini_cost_cents + loc.geocode_cost_cents) * 100) / 100 : 0,
     failure,
   };
 }
