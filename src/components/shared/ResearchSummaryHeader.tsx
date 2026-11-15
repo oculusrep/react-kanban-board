@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabaseClient';
 interface Summary {
   pending: number;
   ready: { records: number; units: number; estimated_units: number; with_boundary?: number; with_precise_pin?: number };
+  recent?: { records: number; units: number; without_count: number; outside_radius: number };
   decision: { records: number; groups: number; units_low: number; units_high: number };
   leads: { records: number };
 }
@@ -72,6 +73,14 @@ export function ResearchSummaryHeader({ runIds, refreshKey }: { runIds: string[]
         <span className="font-semibold">📋 {n(s.leads.records)} leads</span>
         <div className="text-xs" style={{ color: '#4A6B94' }}>no count</div>
       </div>
+      {s.recent && (s.recent.records > 0 || s.recent.outside_radius > 0) && (
+        <div className="sm:col-span-3 text-xs pt-1 border-t" style={{ borderColor: '#E2E8F0', color: '#0F766E' }}
+             title="Recently built pass: communities completed since 2021 (Gemini web search). Kept out of the pipeline counts above.">
+          <span className="font-semibold">🏘 {n(s.recent.records)} recently built · {n(s.recent.units)} units</span>
+          {s.recent.without_count > 0 && <span style={{ color: '#4A6B94' }}> · {n(s.recent.without_count)} without a count</span>}
+          {s.recent.outside_radius > 0 && <span style={{ color: '#4A6B94' }}> · {n(s.recent.outside_radius)} outside the radius</span>}
+        </div>
+      )}
     </div>
   );
 }

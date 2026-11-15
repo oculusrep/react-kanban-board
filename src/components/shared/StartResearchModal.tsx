@@ -253,6 +253,24 @@ export default function StartResearchModal({
   // Off by default until the agent prompt handles research_scope.
   // Plan: docs/DEEP_SWEEP_EVERGREEN_CHUNK_PLAN.md
   const [includeEvergreen, setIncludeEvergreen] = useState(false);
+  // "Recently built (since 2021)" pass — OVIS + Gemini, once per run or sweep.
+  // Doc: docs/MARKET_RESEARCH_RECENTLY_BUILT.md
+  const [includeRecent, setIncludeRecent] = useState(true);
+  // Started by the same click; it runs server-side in the background. A failure
+  // here never blocks the research itself.
+  const startRecentBuilt = async (sweepId: string | null) => {
+    if (!includeRecent) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('research-recent-built', {
+        body: { mode: 'run', site_id: siteSubmitId, radius_miles: radius, ...(sweepId ? { sweep_id: sweepId } : {}) },
+      });
+      if (error || (data && typeof data === 'object' && 'error' in data)) {
+        console.warn('[recent-built] not started', error ?? data);
+      }
+    } catch (e) {
+      console.warn('[recent-built] not started', e);
+    }
+  };
 
   const [coverage, setCoverage] = useState<CoverageSegment[]>([]);
   const [coverageLoading, setCoverageLoading] = useState(false);
@@ -438,6 +456,7 @@ export default function StartResearchModal({
       const runId = (data as { research_run_id?: string })?.research_run_id;
       const selCount = (data as { selected_count?: number })?.selected_count ?? selected.size;
       if (!runId) throw new Error('Trigger succeeded but no research_run_id returned.');
+      await startRecentBuilt(null);
       onStarted({ research_run_id: runId, selected_count: selCount });
       onClose();
     } catch (e) {
@@ -463,6 +482,7 @@ export default function StartResearchModal({
       if (error) throw new Error(error.message);
       const sweepId = data as string;
       if (!sweepId) throw new Error('Sweep created but no id returned.');
+      await startRecentBuilt(sweepId); // once per sweep, not per chunk
       onSweepStarted?.(sweepId, windows.length + (includeEvergreen ? 1 : 0));
       onClose();
     } catch (e) {
@@ -750,6 +770,21 @@ export default function StartResearchModal({
                   One chunk covers builder sites, news, community pages and known subdivisions for the whole sweep;
                   the {chunkPlan.count} window chunks then search only minutes, agendas, permits and plats.
                   Needs the agent prompt that understands research_scope.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {(!needsChunkConfirm || confirmStep) && (
+            <label className="flex items-start gap-2 text-sm" style={{ color: '#002147' }}>
+              <input type="checkbox" className="mt-1" checked={includeRecent} disabled={submitting}
+                     onChange={(e) => setIncludeRecent(e.target.checked)} />
+              <span>
+                Include recently built (since 2021)
+                <span className="block text-xs" style={{ color: '#4A6B94' }}>
+                  OVIS asks Gemini (live search) once per municipality for communities of 25+ homes completed since 2021,
+                  then dedupes against OVIS, locates them and checks the radius. ~5¢ per municipality plus locating.
+                  {needsChunkConfirm ? ' Runs once for the sweep, not per chunk.' : ''}
                 </span>
               </span>
             </label>

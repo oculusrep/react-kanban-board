@@ -104,7 +104,15 @@ interface Props {
   // While the user is editing a polygon, hide this project's baked polygon so
   // the terra-draw editable polygon is the only one on the map.
   hidePolygonForProjectId?: string | null;
+  // 'pipeline' (default): everything except Recently Completed — what's coming.
+  // 'recent': only Recently Completed — built since 2021 — in its own color,
+  // on its own layer toggle ('municipal_recent').
+  variant?: 'pipeline' | 'recent';
 }
+
+export const RECENTLY_COMPLETED_STAGE = 'Recently Completed';
+// Teal: distinct from every stage color and from the navy agent pins.
+export const RECENT_PIN_COLOR = '#0F766E';
 
 const DEFAULT_STAGE_COLOR = '#8FA9C8'; // brand slate
 // Agent-generated projects (source_research_run_id set) render in brand midnight
@@ -287,7 +295,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   onProjectsLoaded,
   selectedProjectId,
   hidePolygonForProjectId,
+  variant = 'pipeline',
 }) => {
+  const layerId = variant === 'recent' ? 'municipal_recent' : 'municipal_projects';
+  const isRecentVariant = variant === 'recent';
   const {
     setLayerCount,
     setLayerLoading,
@@ -325,8 +336,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   }, [map]);
 
   const fetchRows = useCallback(async () => {
-    setLayerLoading('municipal_projects', true);
-    setLayerError('municipal_projects', false);
+    setLayerLoading(layerId, true);
+    setLayerError(layerId, false);
     try {
       const { data, error } = await supabase
         .from('municipal_project_v')
@@ -351,16 +362,18 @@ const MunicipalProjectLayer: React.FC<Props> = ({
           : null;
       }
 
-      setRows(typed);
-      setLayerCount('municipal_projects', typed.length);
-      onProjectsLoaded?.(typed.length);
+      // Pipeline vs recently built: split on the effective stage.
+      const mine = typed.filter((r) => (r.effective_stage_name === RECENTLY_COMPLETED_STAGE) === isRecentVariant);
+      setRows(mine);
+      setLayerCount(layerId, mine.length);
+      onProjectsLoaded?.(mine.length);
     } catch (e) {
       console.error('MunicipalProjectLayer fetch failed:', e);
-      setLayerError('municipal_projects', true);
+      setLayerError(layerId, true);
     } finally {
-      setLayerLoading('municipal_projects', false);
+      setLayerLoading(layerId, false);
     }
-  }, [setLayerCount, setLayerLoading, setLayerError, onProjectsLoaded]);
+  }, [setLayerCount, setLayerLoading, setLayerError, onProjectsLoaded, layerId, isRecentVariant]);
 
   // Fetch when layer becomes visible (or on initial mount if visible by default).
   useEffect(() => {
@@ -369,7 +382,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   }, [isVisible, rows.length, fetchRows]);
 
   // Refetch when LayerManager bumps the refresh trigger (e.g. after a status override save).
-  const mpRefreshTrigger = refreshTrigger['municipal_projects'] ?? 0;
+  // Both layers refresh on either trigger: a status change moves a record between them.
+  const mpRefreshTrigger = (refreshTrigger['municipal_projects'] ?? 0) + (refreshTrigger['municipal_recent'] ?? 0);
   useEffect(() => {
     if (mpRefreshTrigger === 0) return;
     void fetchRows();
@@ -416,7 +430,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const lat = row.centroid_lat;
       const lng = row.centroid_lng;
       if (lat == null || lng == null) continue;
-      const stageHidden = municipalProjectsHiddenStageIds.has(row.effective_stage_id ?? null);
+      // The stage filter belongs to the pipeline layer; the recent layer is one stage.
+      const stageHidden = !isRecentVariant && municipalProjectsHiddenStageIds.has(row.effective_stage_id ?? null);
       const muniHidden = municipalProjectsHiddenMunicipalityIds.has(row.municipality_id);
       let unitsHidden = false;
       if (unitsFilterActive) {
@@ -435,10 +450,13 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       // Pin color: agent rows override to navy so they're spot-able at a glance.
       // Polygon color: always use the stage color chain so agent polygons blend in
       // with manually-entered ones (the navy signal on the pin is enough).
-      const stageColor = row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
+      const stageColor = isRecentVariant
+        ? RECENT_PIN_COLOR
+        : row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
       const pinColor =
         municipalProjectsPinColorMode === 'polygon'
           ? (polygonPathsFromGeoJson(row.geometry_geojson) ? PIN_HAS_POLYGON_COLOR : PIN_NEEDS_POLYGON_COLOR)
+          : isRecentVariant ? RECENT_PIN_COLOR
           : row.source_research_run_id ? AGENT_PIN_COLOR : stageColor;
       const polyColor = stageColor;
       // Stroke color precedence: global override (user pref) > per-stage line_color > fill color.

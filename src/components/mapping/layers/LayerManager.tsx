@@ -293,6 +293,17 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     isSystemLayer: true,
   },
   {
+    // Same records, split by stage: Recently Completed only (built since 2021),
+    // in teal, so "built" and "coming" can be shown separately.
+    id: 'municipal_recent',
+    name: 'Recently Built (since 2021)',
+    type: 'municipal_project',
+    icon: '🏘️',
+    description: 'Municipal projects with status Recently Completed — built since 2021, separate from the pipeline',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
     id: 'cached_demographics',
     name: 'Cached Demographics',
     type: 'cached_demographics',

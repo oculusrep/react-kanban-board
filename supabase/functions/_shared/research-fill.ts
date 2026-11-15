@@ -40,14 +40,15 @@ const FALLBACK_CALL_CENTS = 3.8;
 async function loadRows(service: Supa, runIds: string[]): Promise<Row[]> {
   const { data, error } = await service
     .from('municipal_project_staging')
-    .select('id, research_run_id, project_name, approval_state, total_housing_units, units_needs_review, units_confidence, reject_reason, rejected_at, rejected_by_id, auto_resolved_at, duplicate_of_staging_id, duplicate_of_project_id, fill_restored, geometry_source, location_precision, located_lat, locate_status')
+    .select('id, research_run_id, project_name, approval_state, total_housing_units, units_needs_review, units_confidence, reject_reason, rejected_at, rejected_by_id, auto_resolved_at, duplicate_of_staging_id, duplicate_of_project_id, fill_restored, geometry_source, location_precision, located_lat, locate_status, discovery_source')
     .in('research_run_id', runIds);
   if (error) throw new Error(error.message);
   return (data ?? []).map((r: Row) => ({ ...r, has_geometry: r.geometry_source != null }));
 }
 
 const pendingTarget = (r: Row) =>
-  r.approval_state === 'pending' && lacksUnitCount(r) && r.units_confidence !== 'estimated';
+  r.approval_state === 'pending' && lacksUnitCount(r) && r.units_confidence !== 'estimated'
+  && r.discovery_source !== 'gemini_recent';
 const rejectedTarget = (r: Row) =>
   r.approval_state === 'rejected' && lacksUnitCount(r) && isRestorableReason(r.reject_reason);
 
@@ -145,6 +146,8 @@ export async function fillRun(
     if (geocodeKey) loc = await locateRun(service, runId, { gemini: geminiKey, geocode: geocodeKey });
     deduped += await dedupe();
     await fetchBoundariesForRuns(service, [runId]);
+    const { error: dcErr } = await service.rpc('research_distance_check', { p_run_ids: [runId] });
+    if (dcErr) throw new Error(`distance check: ${dcErr.message}`);
   } catch (e) {
     failure = e instanceof Error ? e.message : String(e);
   }
