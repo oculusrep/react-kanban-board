@@ -48,6 +48,13 @@ export interface CountyAdapter {
   /** Retries after a timeout / 5xx / server-side wait timeout. Default 0. */
   retries?: number;
   /**
+   * The county's parcel-number shape, tested on the id with separators
+   * collapsed to single spaces. Used to accept parcel ids found by web search
+   * (locate step): anything else — land lots, districts, another county's
+   * format — is not written. Shapes from ids that resolved in this fabric.
+   */
+  idPattern: RegExp;
+  /**
    * Set for a LOW-TRUST source (e.g. '2022 third-party snapshot'). Every boundary
    * it draws carries this label (geometry_source_vintage, the record's notes, a
    * tag on the record card).
@@ -79,6 +86,8 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     layerUrl: 'https://geo.forsythco.com/gis/rest/services/Public/Tax_Parcel/FeatureServer/0',
     idField: 'PARCELID',
     whereFor: (id) => likeFromRuns('PARCELID', id),
+    // "220-017", "C14-043", "178-899", "102-010-001"
+    idPattern: /^[A-Z]?\d{1,3}[A-Z]? \d{3}( \d{1,3})?$/i,
     extraFields: ['STATEDAREA'],
   },
   {
@@ -94,6 +103,8 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     layerUrl: 'https://arcgis.co.henry.ga.us/server/rest/services/Parcels/MapServer/12',
     idField: 'PARCEL_NO',
     whereFor: (id) => likeFromRuns('PARCEL_NO', id),
+    // "101-01001000", "079-01015005", "H04A01001000" (3–4 + 8)
+    idPattern: /^[A-Z0-9]{3,4} ?\d{8}$/i,
     timeoutMs: 75_000,
     retries: 1,
   },
@@ -110,6 +121,8 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     layerUrl: 'https://services1.arcgis.com/3t0UAc8xSMWWaD2c/arcgis/rest/services/parcel_owner_public/FeatureServer/0',
     idField: 'PIN',
     whereFor: (id) => likeFromRuns('PIN', id),
+    // "10081 000099", "15043D000069", optional 1–2 letter suffix
+    idPattern: /^\d{5}[A-Z]? ?\d{6}[A-Z]{0,2}$/i,
     retries: 1,
   },
   {
@@ -128,6 +141,8 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     layerUrl: 'https://services1.arcgis.com/AaPyNbrJpNGryRqh/ArcGIS/rest/services/WeeklyUpdate_WinGapParcels/FeatureServer/0',
     idField: 'ParcelNumber',
     whereFor: (id) => likeFromRuns('ParcelNumber', id),
+    // "162-1259-001", "163 1261 002", "163 1262 003D", "075A 012"
+    idPattern: /^\d{3}[A-Z]?( \d{4})? \d{3}[A-Z]?$/i,
     retries: 1,
   },
   {
@@ -144,6 +159,8 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     layerUrl: 'https://services1.arcgis.com/qTQ6qYkHpxlu0G82/arcgis/rest/services/Newton_Parcels/FeatureServer/0',
     idField: 'DXF_TEXT',
     whereFor: (id) => likeFromRuns('DXF_TEXT', id),
+    // DXF_TEXT short form: "27-127", "82-4A", "CO1-1-1"
+    idPattern: /^([A-Z]{1,2}\d{1,2}|\d{1,3}[A-Z]?)( \d{1,4}[A-Z]?){1,2}$/i,
     extraFields: ['TotalAcres'],
     retries: 1,
     sourceVintage: '2022 third-party snapshot',
@@ -151,6 +168,12 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     requireStatedAcres: true,
   },
 ];
+
+/** Does a parcel id have this county's shape? Separators collapse to one space. */
+export function idMatchesAdapter(adapter: CountyAdapter, id: string): boolean {
+  const s = id.trim().replace(/[\s\-_.\/]+/g, ' ');
+  return adapter.idPattern.test(s);
+}
 
 export const adapterFor = (municipalityName: string | null | undefined): CountyAdapter | null =>
   COUNTY_ADAPTERS.find((a) => a.matches((municipalityName ?? '').trim())) ?? null;

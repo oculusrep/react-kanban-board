@@ -76,6 +76,12 @@ text echoed back) are dropped.
     and no more than 10 IDs (more than that is a subdivision's lots, not the tract);
   - acreage under 2 is ignored (lot-size), and is skipped when the notes already
     state one.
+- **Committed records** (added 2026-11-15): parcel IDs are written too, but only
+  IDs in the record's county adapter format (`idPattern` on each adapter in
+  `parcel-adapters.ts`; no adapter → none). Then the server-side parcel fetch
+  (`fetchBoundariesForProjects`, same RPC and rules as the Fetch button) runs on
+  them. Newton's adapter is the 2022 snapshot's short DXF id ("27-127"), so
+  padded ("0013-144") and long qPublic ids ("0051000000075000") are rejected.
 - **Sources** go in notes as `[Locate YYYY-MM-DD — Gemini web search] …` with facts
   and URLs.
 
@@ -122,3 +128,19 @@ calls.
 Flag, not fixed: "DRB Group Old Kelleytown Road Subdivision" — the parcel fetch drew
 a 1.01 ac partial boundary against 165.91 ac stated (101-01001006 missing from the
 fabric). It's flagged for review by the existing variance rule.
+
+## Follow-ups (2026-11-15, second pass)
+
+- DRB Old Kelleytown: the 1.01 ac partial boundary was removed ("partial parcel —
+  boundary removed" in notes). `parcel_fetch_status` stays `partial` so the fetch
+  doesn't redraw it. Its EST. LOCATION pin (Kibbee Rd & Kelleytown Rd) stays.
+- Committed parcel IDs from logged answers (no new calls):
+  - Bellwood: 27-100A written, but not in the 2022 snapshot.
+  - Grand Reserves: 0013-144 rejected (format).
+  - Serenity Lake: Upson has no adapter, so nothing was written.
+  - Keg Creek Landing: 4 Coweta IDs written. The fetch drew a **partial** boundary,
+    72.88 ac against 247.93 ac stated (162 1280 002 missing), flagged for review.
+  - Freedom Land Holdings (both records): 29 IDs, over the 10-ID cap, so none
+    were written.
+  - Five Newton records: padded IDs rejected.
+  - Robins Royal: Houston County has no adapter.

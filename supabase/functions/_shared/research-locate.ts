@@ -37,6 +37,9 @@
  *     for a resolved intersection. $5 / 1,000 requests.
  */
 
+import { adapterFor, idMatchesAdapter } from './parcel-adapters.ts';
+import { fetchBoundariesForProjects, type ProjectFetchResult } from './research-parcel-fetch.ts';
+
 // deno-lint-ignore no-explicit-any
 type Supa = any;
 // deno-lint-ignore no-explicit-any
@@ -140,6 +143,7 @@ interface Rec {
   source: string | null;
   lead_reason?: string | null;
   parcel_fetch_status?: string | null;
+  municipality?: { name: string } | null;
 }
 
 function buildPrompt(r: Rec, city: string | null, county: string | null): string {
@@ -326,6 +330,17 @@ export function hasStatedAcres(t: string | null): boolean {
 /** Under 2 acres is a lot or a building pad, not the development tract. */
 export const tractAcres = (a: number | null) => (a != null && a >= 2 ? a : null);
 
+/**
+ * Committed records: only ids in the shape of the record's county adapter
+ * (no adapter → none). Land lots / districts are already gone (validParcelIds).
+ */
+export function committedParcelIds(municipalityName: string | null | undefined, ids: string[]): { ok: string[]; rejected: string[]; adapter: string | null } {
+  const adapter = adapterFor(municipalityName);
+  const valid = validParcelIds(ids);
+  const ok = adapter ? valid.filter((id) => idMatchesAdapter(adapter, id)) : [];
+  return { ok, rejected: ids.filter((id) => !ok.includes(id.replace(/\(\s*portion\s*\)/i, '').trim())), adapter: adapter?.label ?? null };
+}
+
 export function parcelLine(ids: string[], acres: number | null): string | null {
   if (ids.length === 0 && acres == null) return null;
   return [ids.length ? `Parcel IDs: ${ids.join(', ')}` : null, acres != null ? `approx ${acres} acres` : null]
@@ -347,12 +362,15 @@ export interface LocateSummary {
   gemini_cost_cents: number;
   geocode_cost_cents: number;
   details: Row[];
+  /** Committed records that got new parcel ids (the parcel fetch runs on these). */
+  committed_parcel_ids: string[];
+  parcel_fetch?: ProjectFetchResult[];
 }
 
 const emptySummary = (): LocateSummary => ({
   classified: 0, already_precise: 0, asked: 0, pins_placed: 0, hints_improved: 0, parcel_ids_found: 0,
   moved_out_of_radius: 0, guard_failed: 0, nothing_found: 0, errors: 0, skipped_already_tried: 0,
-  gemini_cost_cents: 0, geocode_cost_cents: 0, details: [],
+  gemini_cost_cents: 0, geocode_cost_cents: 0, details: [], committed_parcel_ids: [],
 });
 
 /** Locate one record (staged or committed). Mutates `sum`. */
@@ -416,14 +434,18 @@ async function locateOne(
     const hint = a && !suspect ? hintText(a) : null;
     if (!placed && hint && addsInformation(hint, [r.location_description, r.address, r.notes])) newHint = hint;
 
-    // 3. Parcel IDs / acreage (staged only: committed gets pins and hints only).
+    // 3. Parcel IDs / acreage. Committed records: only ids in the county
+    //    adapter's format (committedParcelIds).
     const known = new Set((r.parcel_numbers ?? []).map((p) => p.replace(/[^0-9a-z]/gi, '').toUpperCase()));
     // More than 10 ids is a whole subdivision's lots, not the rezoning tract:
     // kept in notes, not handed to the parcel fetch.
-    const allIds = suspect ? [] : validParcelIds(a?.parcel_ids ?? []);
+    const allIds = suspect ? []
+      : r.kind === 'committed' ? committedParcelIds(r.municipality?.name, a?.parcel_ids ?? []).ok
+      : validParcelIds(a?.parcel_ids ?? []);
     const newIds = (allIds.length > 10 ? [] : allIds).filter((p) => !known.has(p.replace(/[^0-9a-z]/gi, '').toUpperCase()));
     const acres = suspect || hasStatedAcres(r.parcel_boundary_notes) ? null : tractAcres(a?.acreage ?? null);
-    const pLine = r.kind === 'staged' ? parcelLine(newIds, acres) : null;
+    // Committed: acreage only alongside ids (it validates the fetched boundary).
+    const pLine = r.kind === 'staged' || newIds.length ? parcelLine(newIds, acres) : null;
     if (newIds.length) sum.parcel_ids_found++;
     before = {
       location_description: r.location_description, notes: r.notes, parcel_boundary_notes: r.parcel_boundary_notes,
@@ -475,6 +497,14 @@ async function locateOne(
         if (newHint) upd.location_description = newHint;
         const { error } = await supabase.from('municipal_project').update(upd).eq('id', r.id);
         if (error) throw new Error(error.message);
+      }
+      if (pLine && newIds.length) {
+        const { error } = await supabase.from('municipal_project').update({
+          parcel_boundary_notes: [pLine, r.parcel_boundary_notes?.trim()].filter(Boolean).join(' | '),
+          parcel_numbers: [...(r.parcel_numbers ?? []), ...newIds],
+        }).eq('id', r.id);
+        if (error) throw new Error(error.message);
+        sum.committed_parcel_ids.push(r.id);
       }
     }
 
@@ -624,6 +654,7 @@ export async function locateCommitted(
   }
   if (!opts.dryRun) {
     await pool(targets, CONCURRENCY, (r) => locateOne(supabase, { ...r, kind: 'committed', research_run_id: null }, keys, sum));
+    if (sum.committed_parcel_ids.length) sum.parcel_fetch = await fetchBoundariesForProjects(supabase, sum.committed_parcel_ids);
   }
   sum.gemini_cost_cents = Math.round(sum.gemini_cost_cents * 100) / 100;
   sum.geocode_cost_cents = Math.round(sum.geocode_cost_cents * 100) / 100;

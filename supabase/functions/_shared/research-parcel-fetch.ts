@@ -94,3 +94,64 @@ export async function fetchBoundariesForRuns(supabase: Supa, runIds: string[]): 
   }
   return sum;
 }
+
+// ---------------------------------------------------------------------------
+// Committed municipal_project records (locate step's parcel ids)
+// ---------------------------------------------------------------------------
+
+export interface ProjectFetchResult {
+  id: string;
+  name: string | null;
+  status: 'resolved' | 'partial' | 'none_resolved' | 'no_adapter' | 'has_boundary' | 'snapshot_mismatch' | 'no_stated_acres' | 'error';
+  computed_acres?: number | null;
+  stated_acres?: number | null;
+  variance_pct?: number | null;
+  needs_review?: boolean;
+  missing?: string[];
+  note?: string;
+}
+
+/**
+ * Same fetch + rules as the "Fetch from parcels" button, server-side, through
+ * set_municipal_project_polygon_from_parcels (union, acreage validation from
+ * parcel_boundary_notes, partial flag, dashed until reviewed). Never replaces
+ * an existing boundary.
+ */
+export async function fetchBoundariesForProjects(supabase: Supa, projectIds: string[]): Promise<ProjectFetchResult[]> {
+  const out: ProjectFetchResult[] = [];
+  if (projectIds.length === 0) return out;
+  const { data, error } = await supabase.from('municipal_project')
+    .select('id, project_name, parcel_numbers, geometry_source, municipality(name)').in('id', projectIds);
+  if (error) throw new Error(`load projects for parcel fetch: ${error.message}`);
+  // deno-lint-ignore no-explicit-any
+  for (const p of (data ?? []) as any[]) {
+    const base = { id: p.id as string, name: p.project_name as string | null };
+    if (p.geometry_source) { out.push({ ...base, status: 'has_boundary' }); continue; }
+    const adapter = adapterFor(p.municipality?.name ?? null);
+    if (!adapter) { out.push({ ...base, status: 'no_adapter', note: `no parcel adapter for ${p.municipality?.name}` }); continue; }
+    const ids = ((p.parcel_numbers ?? []) as string[]).map((x) => x.trim()).filter(Boolean);
+    try {
+      const { resolved, missing } = await fetchParcelPolygons(adapter, ids);
+      if (resolved.length === 0) { out.push({ ...base, status: 'none_resolved', missing }); continue; }
+      const { data: res, error: rpcErr } = await supabase.rpc('set_municipal_project_polygon_from_parcels', {
+        p_id: p.id,
+        p_parts: resolved.map((x) => x.geometry),
+        p_parcels: resolved.map((x) => x.parcelId),
+        p_fetched_at: new Date().toISOString(),
+        p_source_vintage: adapter.sourceVintage ?? null,
+        p_max_variance_pct: adapter.maxAcreageVariancePct ?? null,
+        p_require_stated: adapter.requireStatedAcres ?? false,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      if (res?.skipped) { out.push({ ...base, status: res.skipped, computed_acres: res.computed_acres, stated_acres: res.stated_acres ?? null, variance_pct: res.variance_pct ?? null, missing }); continue; }
+      out.push({
+        ...base, status: missing.length ? 'partial' : 'resolved', missing,
+        computed_acres: res?.computed_acres ?? null, stated_acres: res?.stated_acres ?? null,
+        variance_pct: res?.variance_pct ?? null, needs_review: res?.needs_review ?? null,
+      });
+    } catch (e) {
+      out.push({ ...base, status: 'error', note: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+    }
+  }
+  return out;
+}
