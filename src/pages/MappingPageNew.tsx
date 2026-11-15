@@ -3396,6 +3396,34 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     </div>
 )}
 
+{/* Recently Built system layer — Recently Completed municipal projects, apart from the pipeline */}
+{canAccess('can_view_layer_municipal_projects') && (
+<div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('municipal_recent')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.municipal_recent?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.municipal_recent?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>🏘️</span>
+                          <span className="text-sm font-medium text-gray-900">Recently Built (since 2021)</span>
+                          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#0F766E' }} />
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.municipal_recent?.count ?? 0}
+                        </span>
+                      </div>
+                    </div>
+)}
+
 {/* Comp Database system layer — comparable leases / sales / OMs */}
 {canAccess('can_view_layer_comp_database') && (
 <div className="p-2 border-b border-gray-200">
@@ -3913,6 +3941,19 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   setVerifyingMunicipalProjectId(null);
                 }
               }}
+            />
+
+            {/* Recently Built layer — same component, Recently Completed only, teal pins */}
+            <MunicipalProjectLayer
+              variant="recent"
+              map={mapInstance}
+              isVisible={canAccess('can_view_layer_municipal_projects') && (layerState.municipal_recent?.isVisible || false)}
+              selectedProjectId={selectedMunicipalProject?.id ?? null}
+              hidePolygonForProjectId={drawingMunicipalProjectId}
+              onPinClick={(project) => setSelectedMunicipalProject(project)}
+              onPinRightClick={(project, x, y) =>
+                setMunicipalProjectContextMenu({ isVisible: true, x, y, project })
+              }
             />
 
             {/* Starbucks Layer — confidential, permission-gated */}

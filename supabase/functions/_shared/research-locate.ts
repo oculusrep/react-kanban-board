@@ -359,6 +359,7 @@ export interface LocateSummary {
   nothing_found: number;
   errors: number;
   skipped_already_tried: number;
+  skipped_deadline: number;
   gemini_cost_cents: number;
   geocode_cost_cents: number;
   details: Row[];
@@ -369,7 +370,7 @@ export interface LocateSummary {
 
 const emptySummary = (): LocateSummary => ({
   classified: 0, already_precise: 0, asked: 0, pins_placed: 0, hints_improved: 0, parcel_ids_found: 0,
-  moved_out_of_radius: 0, guard_failed: 0, nothing_found: 0, errors: 0, skipped_already_tried: 0,
+  moved_out_of_radius: 0, guard_failed: 0, nothing_found: 0, errors: 0, skipped_already_tried: 0, skipped_deadline: 0,
   gemini_cost_cents: 0, geocode_cost_cents: 0, details: [], committed_parcel_ids: [],
 });
 
@@ -550,7 +551,7 @@ async function locateOne(
 // Staged records (one run)
 // ---------------------------------------------------------------------------
 
-const STAGED_COLS = 'id, research_run_id, project_name, phase_label, builder_developer, address, location_description, parcel_boundary_notes, parcel_numbers, parcel_fetch_status, notes, source, lead_reason, geometry_source, location_precision, located_lat, locate_status, boundary_municipality(name, kind)';
+const STAGED_COLS = 'id, research_run_id, project_name, phase_label, builder_developer, address, location_description, parcel_boundary_notes, parcel_numbers, parcel_fetch_status, notes, source, lead_reason, geometry_source, location_precision, located_lat, locate_status, address_lat, boundary_municipality(name, kind)';
 
 /** Classify pending rows that have no location_precision yet. Returns the rows needing a locate. */
 async function classifyRun(supabase: Supa, runId: string, geocodeKey: string, sum: LocateSummary): Promise<Row[]> {
@@ -559,8 +560,11 @@ async function classifyRun(supabase: Supa, runId: string, geocodeKey: string, su
   if (error) throw new Error(`load staging: ${error.message}`);
 
   for (const r of rows ?? []) {
-    if (r.location_precision) continue;
+    // Classified once; a 'precise' row from before address points were stored
+    // is geocoded again for its point (the distance check needs it).
+    if (r.location_precision && !(r.location_precision === 'precise' && r.address_lat == null)) continue;
     let p: string;
+    let pt: { lat: number; lng: number } | null = null;
     if (r.geometry_source) p = 'boundary';
     else if (!r.address?.trim()) p = 'no_address';
     else {
@@ -570,11 +574,14 @@ async function classifyRun(supabase: Supa, runId: string, geocodeKey: string, su
         const g = await geocode(withPlace(r.address, place, null), geocodeKey);
         sum.geocode_cost_cents += CENTS_PER_GEOCODE;
         p = !g ? 'failed' : isPrecise(g) && !isRoadOnly(r.address) ? 'precise' : 'imprecise';
+        if (p === 'precise') pt = { lat: g!.lat, lng: g!.lng };
       } catch { p = 'failed'; }
     }
     sum.classified++;
     r.location_precision = p;
-    await supabase.from('municipal_project_staging').update({ location_precision: p }).eq('id', r.id).eq('approval_state', 'pending');
+    await supabase.from('municipal_project_staging')
+      .update({ location_precision: p, address_lat: pt?.lat ?? null, address_lng: pt?.lng ?? null })
+      .eq('id', r.id).eq('approval_state', 'pending');
   }
   return (rows ?? []).filter((r: Row) => {
     if (['boundary', 'precise'].includes(r.location_precision) || r.located_lat != null) { sum.already_precise++; return false; }
@@ -587,7 +594,10 @@ async function classifyRun(supabase: Supa, runId: string, geocodeKey: string, su
  * an earlier locate attempt is skipped unless retryTried.
  */
 export async function locateRun(
-  supabase: Supa, runId: string, keys: { gemini: string; geocode: string }, opts: { retryTried?: boolean } = {},
+  supabase: Supa, runId: string, keys: { gemini: string; geocode: string },
+  // deadlineMs: stop starting new Gemini calls after this (edge-function wall clock);
+  // the rest are picked up by Fill missing units & locations.
+  opts: { retryTried?: boolean; deadlineMs?: number } = {},
 ): Promise<LocateSummary> {
   const sum = emptySummary();
   const todo = await classifyRun(supabase, runId, keys.geocode, sum);
@@ -595,7 +605,10 @@ export async function locateRun(
     if (!opts.retryTried && r.locate_status && r.locate_status !== 'error') { sum.skipped_already_tried++; return false; }
     return true;
   });
-  await pool(ask, CONCURRENCY, (r) => locateOne(supabase, { ...r, kind: 'staged' }, keys, sum));
+  await pool(ask, CONCURRENCY, async (r) => {
+    if (opts.deadlineMs && Date.now() > opts.deadlineMs) { sum.skipped_deadline++; return; }
+    await locateOne(supabase, { ...r, kind: 'staged' }, keys, sum);
+  });
 
   const { data: all } = await supabase.from('research_location_estimate')
     .select('cost_cents, geocode_cost_cents').eq('research_run_id', runId);

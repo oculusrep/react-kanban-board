@@ -67,6 +67,7 @@ export async function getSweepInfo(supabase: Supa, sweepId: string): Promise<{ t
  *   📋 N leads (no count)
  *   🗺 N of M ready records have boundaries
  *   📍 N of M ready records have a precise pin
+ *   🏘 N recently built · X units          (only when the sweep ran the recently built pass)
  *
  * Callers: ovis-research-mcp when a chunk's post-run steps finish, and the
  * ovis-sweep-tick sweeper (backstop). The ready_notified_at claim makes it
@@ -111,6 +112,9 @@ export async function sendSweepReadyIfDone(supabase: Supa, sweepId: string): Pro
     `📋 ${n(s.leads?.records)} leads (no count)`,
     `🗺 ${n(s.ready?.with_boundary)} of ${n(s.ready?.records)} ready records have boundaries`,
     `📍 ${n(s.ready?.with_precise_pin)} of ${n(s.ready?.records)} ready records have a precise pin`,
+    ...(Number(s.recent?.records ?? 0) > 0 || Number(s.recent?.outside_radius ?? 0) > 0
+      ? [`🏘 ${n(s.recent?.records)} recently built · ${n(s.recent?.units)} units${Number(s.recent?.without_count ?? 0) > 0 ? ` (${n(s.recent?.without_count)} without a count)` : ''}`]
+      : []),
   ].join('\n'));
   return 'sent';
 }

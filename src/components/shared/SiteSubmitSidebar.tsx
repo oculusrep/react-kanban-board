@@ -32,6 +32,7 @@ import { getDropboxPropertySyncService } from '../../services/dropboxPropertySyn
 import OpenTasksPanel from '../tasks/OpenTasksPanel';
 import StartResearchModal from './StartResearchModal';
 import PastResearchRunsPanel from './PastResearchRunsPanel';
+import { RecentlyBuiltButton } from './RecentlyBuiltButton';
 import ResearchRunApprovalModal from './ResearchRunApprovalModal';
 import SiteStoryPanel from './SiteStoryPanel';
 import { resolveSiteCoordinate } from '../../utils/resolveSiteCoordinate';
@@ -1682,6 +1683,14 @@ export default function SiteSubmitSidebar({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
+                    {researchPanelExpanded && canStartResearch && hasPermission('can_approve_market_research') && (
+                      <div className="mb-2">
+                        <RecentlyBuiltButton
+                          siteSubmitId={siteSubmit.id}
+                          onStarted={() => setResearchRunsRefresh((n) => n + 1)}
+                        />
+                      </div>
+                    )}
                     {researchPanelExpanded && (
                       <PastResearchRunsPanel
                         siteSubmitId={siteSubmit.id}

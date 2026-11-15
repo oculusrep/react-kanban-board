@@ -68,6 +68,7 @@ interface StagingRow {
   source: string | null;
   total_housing_units: number | null;
   units_needs_review: boolean;
+  discovery_source?: string | null;
   boundary_municipality: { name: string; kind: string; state: string } | null;
 }
 
@@ -243,7 +244,7 @@ export async function estimateMissingUnits(
 
   const { data: rows, error } = await supabase
     .from('municipal_project_staging')
-    .select('id, project_name, address, location_description, parcel_boundary_notes, builder_developer, zoning, phase_label, notes, source, total_housing_units, units_needs_review, boundary_municipality(name, kind, state)')
+    .select('id, project_name, address, location_description, parcel_boundary_notes, builder_developer, zoning, phase_label, notes, source, discovery_source, total_housing_units, units_needs_review, boundary_municipality(name, kind, state)')
     .eq('research_run_id', researchRunId)
     .eq('approval_state', 'pending');
   if (error) throw new Error(`load staging: ${error.message}`);
@@ -256,7 +257,8 @@ export async function estimateMissingUnits(
   if (triedErr) throw new Error(`load prior estimates: ${triedErr.message}`);
   const triedIds = new Set((tried ?? []).map((t: any) => t.staging_id));
 
-  const todo = (rows as StagingRow[]).filter(lacksUnitCount);
+  // Recently built rows keep a blank count unless a source states one.
+  const todo = (rows as StagingRow[]).filter((r) => lacksUnitCount(r) && r.discovery_source !== 'gemini_recent');
   summary.considered = todo.length;
   const today = easternDate();
 

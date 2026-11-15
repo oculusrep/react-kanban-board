@@ -529,6 +529,14 @@ async function toolSubmitResearchReport(args: any) {
         } catch (e) {
           console.error('[parcel-fetch] failed', research_run_id, e);
         }
+        // Distance check: boundary / located pin / precise address outside the radius → lead.
+        try {
+          const { data: dc, error: dcErr } = await supabase.rpc('research_distance_check', { p_run_ids: [research_run_id] });
+          if (dcErr) throw new Error(dcErr.message);
+          console.log('[distance-check]', JSON.stringify({ moved_to_leads: (dc as unknown[] | null)?.length ?? 0 }));
+        } catch (e) {
+          console.error('[distance-check] failed', research_run_id, e);
+        }
         // Post-run steps done (or failed): mark it, then send "Sweep ready" if
         // this was the last piece of a finished sweep.
         await supabase.from('research_run').update({ post_run_done_at: new Date().toISOString() }).eq('id', research_run_id);

@@ -142,6 +142,8 @@ interface StagingRow {
   // Locate step: a pin found after the run (estimated until confirmed).
   location_confidence?: string | null;
   located_address?: string | null;
+  // Recently built pass (discovery_source 'gemini_recent'): year completed/opened.
+  year_completed?: number | null;
 }
 interface CountConflictMember {
   kind: 'staged' | 'committed';
@@ -735,6 +737,7 @@ export default function ResearchRunApprovalModal({
             has_boundary: !!r.has_boundary,
             location_confidence: r.location_confidence ?? null,
             located_address: r.located_address ?? null,
+            year_completed: r.year_completed ?? null,
           }));
           const ar = await readAuto([...new Set(allSweepRows.map((r) => r.research_run_id as string))]);
           if (cancelled) return;
@@ -771,7 +774,7 @@ export default function ResearchRunApprovalModal({
               reject_reason, duplicate_of_staging_id, notes,
               not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
               units_needs_review, units_review_reason, units_confidence, lead_reason, count_conflict,
-              geometry_source_vintage, parcel_fetch_status, geometry_source, location_confidence, located_address,
+              geometry_source_vintage, parcel_fetch_status, geometry_source, location_confidence, located_address, year_completed,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -1913,6 +1916,13 @@ export default function ResearchRunApprovalModal({
                 style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
                 title="The snapshot's acreage was more than 15% off the stated acreage, so no boundary was saved. Likely re-platted since 2022.">
             SNAPSHOT MISMATCH
+          </span>
+        )}
+        {r.discovery_source === 'gemini_recent' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#0F766E', color: '#0F766E', backgroundColor: '#F0FDFA' }}
+                title="Found by the recently built pass (Gemini web search): completed or substantially built out since 2021. Commits as Recently Completed; shown on its own map layer, not the pipeline.">
+            🏘 RECENTLY BUILT{r.year_completed ? ` · ${r.year_completed}` : ''}
           </span>
         )}
         {r.location_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
