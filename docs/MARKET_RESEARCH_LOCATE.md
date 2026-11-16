@@ -66,9 +66,17 @@ text echoed back) are dropped.
 - **Site distance (staged only):** after a pin is placed, it's checked against the
   run's radius. Outside it, `lead_reason` = "Outside the N-mile radius: estimated
   location … is X mi from the site". Committed records are never moved.
-- **Pin hint:** with no pin, landmarks / directions / side of road go to
-  `location_description` ("Pin hint: …"). This only happens when they add at least
-  3 significant words the record didn't already have. The old text goes to notes.
+- **Directions and landmarks** (since 2026-11-16): the prompt asks for driving
+  directions to the entrance (`directions`) and a list of landmarks to look for
+  (`landmarks`: school, church, entrance sign, water tower, creek, power lines…) as
+  separate fields. They're added **under** the record's own `location_description`
+  as `Directions: …` and `Look for: …` lines, pin or no pin. With no pin, a
+  `Pin hint: near <intersection>; <side of road>` line comes first. Nothing replaces
+  the record's own text; a re-ask replaces only earlier Directions / Look for lines.
+  Written only when the lines add at least 3 significant words the record didn't
+  already have. (Before 2026-11-16 the hint replaced the text and the old text went
+  to notes.) Directions come from web sources and aren't checked; treat them as a
+  starting point.
 - **Parcel IDs / acreage (staged only):** `parcel_boundary_notes` is prefixed
   "Parcel IDs: a, b; approx N acres", `parcel_numbers` gets the new IDs, and
   `parcel_fetch_status` is reset so the parcel fetch tries them. Filters:
@@ -144,3 +152,21 @@ fabric). It's flagged for review by the existing variance rule.
     were written.
   - Five Newton records: padded IDs rejected.
   - Robins Royal: Houston County has no adapter.
+
+## Forced re-ask (2026-11-16)
+
+`relocateRecords(supabase, keys, [{ kind: 'staged' | 'committed', id }])` asks again
+for the given records, even ones tried before. Edge entry: `research-fill-units`
+with `{ mode: 'relocate', records: [...] }` (≤ 20 per call). A record that already
+has a pin keeps it (`keepPin`): no geocoding, only directions / landmarks / parcel
+IDs. A record with no pin can get one by the usual rules. Records with a boundary
+and non-pending staged rows are skipped.
+
+First run, 2026-11-16: the 8 "not on map" records, plus pinned records without a
+boundary from the Senoia, Covington (Alcovy Road) and Locust Grove sites (committed,
+and pending staged non-leads): 30 records, $1.48.
+
+- 2 pins placed (EST. LOCATION, at the intersection Gemini gave): Pickett Bridge
+  Estates (GA-212 & Pickett Bridge Rd), Grand Horizon Estates (GA-20 & Bailey Creek Rd).
+- 15 records got directions and/or landmarks (Dobbs Landing included).
+- 1 parcel-ID write (White Oak Farms); 14 found nothing new.

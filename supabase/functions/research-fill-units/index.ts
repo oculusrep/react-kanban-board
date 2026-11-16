@@ -8,6 +8,10 @@
  *   { mode: 'run', research_run_id: uuid, include_rejected: boolean }
  *       → per-run result. The UI loops over a sweep's runs one call at a time
  *         so no single call outlives the edge-function wall clock.
+ *   { mode: 'relocate', records: [{ kind: 'staged'|'committed', id: uuid }] }  (≤ 20 per call)
+ *       → forced locate re-ask (driving directions + landmarks to look for),
+ *         even for records tried before. Pinned records keep their pin.
+ *         Doc: docs/MARKET_RESEARCH_LOCATE.md
  *
  * Auth: the caller's JWT; requires can_approve_market_research.
  * Doc: docs/MARKET_RESEARCH_UNIT_ESTIMATES.md (Fill missing units)
@@ -16,6 +20,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { fillRun, previewFill, reviewableRuns } from '../_shared/research-fill.ts';
+import { relocateRecords } from '../_shared/research-locate.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -54,6 +59,15 @@ serve(async (req) => {
       const runIds: string[] = Array.isArray(body.run_ids) ? body.run_ids : [];
       if (runIds.length === 0) return json({ error: 'run_ids required' }, 400);
       return json(await previewFill(service, runIds, includeRejected));
+    }
+    if (body?.mode === 'relocate') {
+      const recs = (Array.isArray(body.records) ? body.records : [])
+        .filter((r: { kind?: string; id?: string }) => (r?.kind === 'staged' || r?.kind === 'committed') && typeof r.id === 'string');
+      if (recs.length === 0 || recs.length > 20) return json({ error: 'records: 1..20 of { kind, id }' }, 400);
+      const gemini = Deno.env.get('GEMINI_API_KEY');
+      const geocode = Deno.env.get('GOOGLE_GEOCODING_API_KEY');
+      if (!gemini || !geocode) return json({ error: 'GEMINI_API_KEY and GOOGLE_GEOCODING_API_KEY required' }, 500);
+      return json(await relocateRecords(service, { gemini, geocode }, recs));
     }
     if (body?.mode !== 'run' || typeof body.research_run_id !== 'string') {
       return json({ error: 'mode must be preview (run_ids) or run (research_run_id)' }, 400);

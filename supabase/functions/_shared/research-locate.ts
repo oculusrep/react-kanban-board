@@ -17,13 +17,17 @@
  *      of the record's municipality boundary, it becomes the pin
  *      (location_confidence='estimated'). Staged rows: the site distance is
  *      re-checked; outside the radius → lead_reason.
- *    - otherwise landmarks / directions → location_description becomes
- *      "Pin hint: …"; the old text is kept in notes.
+ *    - driving directions + landmarks to look for → added UNDER the record's
+ *      location_description ("Directions: … / Look for: …"), never replacing it
+ *      (since 2026-11-16; before that the hint replaced the text).
  *    - parcel IDs / acreage → parcel_boundary_notes in the "Parcel IDs: …"
  *      format (staged only), so the parcel fetch picks them up.
  *    - sources → notes.
  * Committed records (locateCommitted): pins and hints only, never moved to
  * leads, never over a boundary or hand-placed pin.
+ * Forced re-ask (relocateRecords): a given list of staged/committed records,
+ * asked again even if tried before. A record that already has a pin keeps it
+ * (keepPin): only directions / landmarks / parcel ids are added.
  *
  * Every Gemini call is logged to research_location_estimate (answer, sources,
  * tokens, cost, outcome, old/new hint).
@@ -38,7 +42,7 @@
  */
 
 import { adapterFor, idMatchesAdapter } from './parcel-adapters.ts';
-import { fetchBoundariesForProjects, type ProjectFetchResult } from './research-parcel-fetch.ts';
+import { fetchBoundariesForProjects, fetchBoundariesForRuns, type ProjectFetchResult } from './research-parcel-fetch.ts';
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -113,7 +117,8 @@ interface LocateAnswer {
   street_address: string | null;
   intersection: string | null;
   side_of_road: string | null;
-  landmarks_directions: string | null;
+  directions: string | null;
+  landmarks: string[];
   parcel_ids: string[];
   acreage: number | null;
   facts: { fact: string; source: string }[];
@@ -159,19 +164,21 @@ function buildPrompt(r: Rec, city: string | null, county: string | null): string
     r.notes ? `Research notes: ${r.notes.slice(0, 1200)}` : null,
   ].filter(Boolean).join('\n');
 
-  return `Where exactly is ${name}${builder} in ${where || 'Georgia'}, GA being built? Give the street address or nearest intersection, which side of the road, and nearby landmarks or directions. If a rezoning or plat record lists parcel IDs or acreage, include them. Cite the source for each fact.
+  return `Where exactly is ${name}${builder} in ${where || 'Georgia'}, GA being built? Give the street address or nearest intersection, which side of the road, driving directions to the entrance, and the landmarks someone driving there should look for. If a rezoning or plat record lists parcel IDs or acreage, include them. Cite the source for each fact.
 
 Context from our record:
 ${ctx || '(none)'}
 
 Rules:
 - Only report what a source states for THIS project. Do not guess an address.
-- The project may be built in phases. Do not pick between phases: if phases are at different locations and our record names no phase, describe the location that covers the whole project, or say where each phase is in landmarks_directions.
+- The project may be built in phases. Do not pick between phases: if phases are at different locations and our record names no phase, describe the location that covers the whole project, or say where each phase is in directions.
+- directions: how to drive to the entrance from the nearest well-known road, intersection or town center, e.g. "From the Hwy 36 / Hwy 212 intersection in Covington, head south on Hwy 36 about 2 miles; the entrance is on the left past the church." Null if no source supports it.
+- landmarks: things to look for near the site, each short, e.g. a school, a church, the subdivision entrance sign, a water tower, a creek, power lines, a gas station, a neighboring subdivision. Only what a source or map listing supports; [] if none.
 - street_address must be a real street address with a house number; otherwise null. intersection is two named roads ("Alcovy Rd & Underwood Dr"); otherwise null.
 - parcel_ids: exactly as written in the source (e.g. "C123-0045"); [] if none.
 
 Reply with ONLY a JSON object, no prose around it:
-{"street_address": <string or null>, "intersection": <string or null>, "side_of_road": <string or null>, "landmarks_directions": <string or null>, "parcel_ids": [<string>], "acreage": <number or null>, "facts": [{"fact": "<what>", "source": "<url>"}]}`;
+{"street_address": <string or null>, "intersection": <string or null>, "side_of_road": <string or null>, "directions": <string or null>, "landmarks": [<string>], "parcel_ids": [<string>], "acreage": <number or null>, "facts": [{"fact": "<what>", "source": "<url>"}]}`;
 }
 
 async function askGemini(prompt: string, apiKey: string): Promise<GeminiOut> {
@@ -213,7 +220,8 @@ async function askGemini(prompt: string, apiKey: string): Promise<GeminiOut> {
         street_address: str(p.street_address),
         intersection: str(p.intersection),
         side_of_road: str(p.side_of_road),
-        landmarks_directions: str(p.landmarks_directions),
+        directions: str(p.directions) ?? str(p.landmarks_directions),
+        landmarks: Array.isArray(p.landmarks) ? (p.landmarks.map(str).filter(Boolean) as string[]).slice(0, 12) : [],
         parcel_ids: Array.isArray(p.parcel_ids) ? p.parcel_ids.map(str).filter(Boolean) as string[] : [],
         acreage: p.acreage != null && Number.isFinite(acres) && acres > 0 ? acres : null,
         facts: Array.isArray(p.facts)
@@ -256,17 +264,30 @@ function sourcesNote(a: LocateAnswer | null, g: GeminiOut): string {
   return [facts ? `Facts:\n${facts}` : null, src ? `Sources: ${src}` : null].filter(Boolean).join('\n');
 }
 
-function hintText(a: LocateAnswer): string | null {
-  const parts = [
-    a.intersection ? `near ${a.intersection}` : null,
-    a.side_of_road,
-    a.landmarks_directions,
+/** Lines added under the record's own location text. */
+function hintText(a: LocateAnswer, placed: boolean): string | null {
+  const where = placed ? [] : [a.intersection ? `near ${a.intersection}` : null, a.side_of_road].filter(Boolean);
+  const lines = [
+    where.length ? `Pin hint: ${where.join('; ')}` : null,
+    a.directions ? `Directions: ${a.directions}` : null,
+    a.landmarks.length ? `Look for: ${a.landmarks.join('; ')}` : null,
   ].filter(Boolean);
-  return parts.length ? `Pin hint: ${parts.join('; ')}` : null;
+  return lines.length ? lines.join('\n') : null;
+}
+
+/**
+ * The record's own location text, then the new lines under it. Earlier
+ * Directions / Look for lines are replaced (a re-ask supersedes them); the
+ * record's own text and earlier pin hints stay.
+ */
+function withHint(existing: string | null, hint: string): string {
+  const kept = (existing ?? '').split('\n')
+    .filter((l) => l.trim() && !/^(Directions|Look for):/.test(l.trim()));
+  return [...kept, hint].join('\n');
 }
 
 const HINT_STOP = new Set(['the', 'and', 'for', 'with', 'pin', 'hint', 'near', 'along', 'located', 'project', 'property',
-  'side', 'road', 'county', 'unincorporated', 'georgia', 'from', 'this', 'that', 'into', 'its', 'are', 'was', 'has']);
+  'side', 'road', 'county', 'directions', 'look', 'unincorporated', 'georgia', 'from', 'this', 'that', 'into', 'its', 'are', 'was', 'has']);
 const words = (t: string) => new Set(t.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !HINT_STOP.has(w)));
 
 /** At least 3 significant words the record's own text doesn't already have. */
@@ -377,6 +398,7 @@ const emptySummary = (): LocateSummary => ({
 /** Locate one record (staged or committed). Mutates `sum`. */
 async function locateOne(
   supabase: Supa, r: Rec, keys: { gemini: string; geocode: string }, sum: LocateSummary,
+  opts: { keepPin?: boolean } = {},
 ): Promise<void> {
   const today = easternDate();
   const { data: geo0 } = await supabase.rpc('research_locate_geo', { p_kind: r.kind, p_id: r.id });
@@ -404,8 +426,9 @@ async function locateOne(
 
     // 1. A pin from the address or intersection — on a road the record names,
     //    when it names any.
+    // keepPin: the record already has a pin; this ask is for directions only.
     const roads = roadTokens(r.address, r.location_description);
-    for (const cand of [a?.street_address, a?.intersection].filter(Boolean) as string[]) {
+    for (const cand of (opts.keepPin ? [] : [a?.street_address, a?.intersection].filter(Boolean)) as string[]) {
       if (!onNamedRoad(cand, roads)) {
         guardNote = `${cand} is not on the road our record names (${roads.join(', ')}); not used, may be a different project`;
         continue;
@@ -431,9 +454,11 @@ async function locateOne(
     // about a different project, so its hint / parcels / acreage aren't used either.
     const suspect = !placed && guardNote != null;
 
-    // 2. Hint, if no pin — and only if it says something the record didn't.
-    const hint = a && !suspect ? hintText(a) : null;
-    if (!placed && hint && addsInformation(hint, [r.location_description, r.address, r.notes])) newHint = hint;
+    // 2. Directions / landmarks (and, with no pin, a pin hint) — only if they
+    //    say something the record didn't. Added under the record's own text.
+    const hint = a && !suspect ? hintText(a, !!placed || !!opts.keepPin) : null;
+    if (hint && addsInformation(hint, [r.location_description, r.address, r.notes])) newHint = hint;
+    const locText = newHint ? withHint(r.location_description, newHint) : null;
 
     // 3. Parcel IDs / acreage. Committed records: only ids in the county
     //    adapter's format (committedParcelIds).
@@ -456,14 +481,12 @@ async function locateOne(
     const head = `[Locate ${today} — Gemini web search]`;
     const found = [
       placed ? `Estimated location: ${placed.address}${a?.side_of_road ? ` (${a.side_of_road})` : ''}.` : null,
-      a?.landmarks_directions && placed ? `Landmarks: ${a.landmarks_directions}.` : null,
       guardNote ? `Rejected: ${guardNote}.` : null,
       newIds.length ? `Parcel IDs: ${newIds.join(', ')}.` : null,
       a?.acreage != null && !suspect ? `Acreage (as found): ${a.acreage}.` : null,
       !placed && !hint && !newIds.length ? 'No location found.' : null,
     ].filter(Boolean).join(' ');
-    let notes = appendNote(r.notes, `${head} ${found}\n${sourcesNote(a, g)}`.trim());
-    if (newHint && oldHint?.trim()) notes = appendNote(notes, `[Previous location text, replaced by the pin hint] ${oldHint.trim()}`);
+    const notes = appendNote(r.notes, `${head} ${found}\n${sourcesNote(a, g)}`.trim());
 
     if (r.kind === 'staged') {
       const upd: Row = { notes, locate_status: placed ? 'pin' : newHint ? 'hint' : 'nothing', locate_at: new Date().toISOString() };
@@ -471,7 +494,7 @@ async function locateOne(
         located_lat: placed.lat, located_lng: placed.lng, located_address: placed.address,
         location_confidence: 'estimated',
       });
-      if (newHint) upd.location_description = newHint;
+      if (locText) upd.location_description = locText;
       if (pLine) {
         upd.parcel_boundary_notes = [pLine, r.parcel_boundary_notes?.trim()].filter(Boolean).join(' | ');
         if (newIds.length) {
@@ -493,9 +516,13 @@ async function locateOne(
         if (error) throw new Error(error.message);
         if (before) before.pin = res?.old ?? null;
         if (!res?.updated) { placed = null; outcome = 'nothing'; }
+        if (locText) {
+          const { error: e2 } = await supabase.from('municipal_project').update({ location_description: locText }).eq('id', r.id);
+          if (e2) throw new Error(e2.message);
+        }
       } else {
         const upd: Row = { notes };
-        if (newHint) upd.location_description = newHint;
+        if (locText) upd.location_description = locText;
         const { error } = await supabase.from('municipal_project').update(upd).eq('id', r.id);
         if (error) throw new Error(error.message);
       }
@@ -672,4 +699,55 @@ export async function locateCommitted(
   sum.gemini_cost_cents = Math.round(sum.gemini_cost_cents * 100) / 100;
   sum.geocode_cost_cents = Math.round(sum.geocode_cost_cents * 100) / 100;
   return { ...sum, targets: targets.map((t) => ({ id: t.id, name: t.project_name, why: t.why, address: t.address })) };
+}
+
+// ---------------------------------------------------------------------------
+// Forced re-ask (a given list of records)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask again for these records, even if they were tried before — for driving
+ * directions and landmarks to look for. A record that already has a pin keeps
+ * it (only text and parcel ids are added); one with no pin can get one by the
+ * usual rules. Records with a boundary are skipped. Staged rows must be pending.
+ */
+export async function relocateRecords(
+  supabase: Supa, keys: { gemini: string; geocode: string },
+  records: { kind: 'staged' | 'committed'; id: string }[],
+): Promise<LocateSummary & { skipped: { id: string; why: string }[] }> {
+  const sum = emptySummary();
+  const skipped: { id: string; why: string }[] = [];
+  const stagedIds = records.filter((r) => r.kind === 'staged').map((r) => r.id);
+  const committedIds = records.filter((r) => r.kind === 'committed').map((r) => r.id);
+  const todo: { rec: Rec; keepPin: boolean }[] = [];
+
+  for (let i = 0; i < stagedIds.length; i += 200) {
+    const { data, error } = await supabase.from('municipal_project_staging')
+      .select(`${STAGED_COLS}, approval_state, located_lng`).in('id', stagedIds.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      if (r.approval_state !== 'pending') { skipped.push({ id: r.id, why: `staged row is ${r.approval_state}` }); continue; }
+      if (r.geometry_source) { skipped.push({ id: r.id, why: 'has a boundary' }); continue; }
+      todo.push({ rec: { ...r, kind: 'staged' }, keepPin: r.located_lat != null || r.address_lat != null });
+    }
+  }
+  for (let i = 0; i < committedIds.length; i += 200) {
+    const { data, error } = await supabase.from('municipal_project')
+      .select('id, project_name, phase_label, builder_developer, address, location_description, parcel_boundary_notes, parcel_numbers, notes, source, centroid_source, geometry_source, municipality(name)')
+      .in('id', committedIds.slice(i, i + 200)).is('geometry', null);
+    if (error) throw new Error(error.message);
+    const found = new Set((data ?? []).map((r: Row) => r.id));
+    for (const id of committedIds.slice(i, i + 200)) if (!found.has(id)) skipped.push({ id, why: 'not found or has a boundary' });
+    for (const r of data ?? []) {
+      todo.push({ rec: { ...r, kind: 'committed', research_run_id: null }, keepPin: r.centroid_source != null });
+    }
+  }
+
+  await pool(todo, CONCURRENCY, (t) => locateOne(supabase, t.rec, keys, sum, { keepPin: t.keepPin }));
+  if (sum.committed_parcel_ids.length) sum.parcel_fetch = await fetchBoundariesForProjects(supabase, sum.committed_parcel_ids);
+  const runIds = [...new Set(todo.filter((t) => t.rec.kind === 'staged').map((t) => t.rec.research_run_id).filter(Boolean))] as string[];
+  if (runIds.length) await fetchBoundariesForRuns(supabase, runIds);
+  sum.gemini_cost_cents = Math.round(sum.gemini_cost_cents * 100) / 100;
+  sum.geocode_cost_cents = Math.round(sum.geocode_cost_cents * 100) / 100;
+  return { ...sum, skipped };
 }
