@@ -213,6 +213,11 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setMarkingReviewed(false);
   }, [project?.id]);
 
+  // EST. LOCATION confirm state. Above the early return like every hook here
+  // (React #310: it was once declared below it and blanked the Mapping page).
+  const [confirmingLocation, setConfirmingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
+
   if (!isOpen || !project) return null;
 
   const computedStage = stages.find((s) => s.id === project.status_stage_id) ?? null;
@@ -337,8 +342,6 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   }
 
   // EST. LOCATION → confirmed. The pin stays where it is; only the tag changes.
-  const [confirmingLocation, setConfirmingLocation] = useState(false);
-  const [locationError, setLocationError] = useState('');
   async function confirmLocation() {
     if (!project) return;
     setConfirmingLocation(true);
