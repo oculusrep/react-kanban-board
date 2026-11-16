@@ -15,7 +15,7 @@
 
 import {
   buildGeneratorRow, GENERATOR_SIZE_UNITS, GENERATORS_COLUMNS,
-  type GeneratorsRow, generatorSort, toCsv,
+  type GeneratorsRow, generatorSort, numberPins, toCsv,
 } from '../csv.ts';
 import { haversineMiles, round1 } from './geo.ts';
 import { isAncillarySubListing, nameMatchesBrand, normalizeForMatch } from '../merchant-brand-guards.ts';
@@ -497,6 +497,7 @@ export function buildGeneratorsCsv(
     }));
   }
   rows.sort(generatorSort);
+  numberPins(rows);
   return {
     csv: toCsv(GENERATORS_COLUMNS, rows),
     rows,

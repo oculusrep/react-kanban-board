@@ -16,7 +16,7 @@
 import {
   buildCompetitorRow, buildEmployerRow, buildSchoolRow, byDistance, COMPETITOR_OPERATOR_TYPES,
   COMPETITORS_COLUMNS, type CompetitorsRow, csvBytes, DENSITY_COUNTING_TYPES, EMPLOYERS_COLUMNS, type EmployersRow,
-  FLAG_CHECK, SCHOOLS_COLUMNS, type SchoolFill, type SchoolsRow, toCsv,
+  FLAG_CHECK, numberPins, SCHOOLS_COLUMNS, type SchoolFill, type SchoolsRow, toCsv,
 } from '../csv.ts';
 import { haversineMiles, ringFor, round1 } from './geo.ts';
 import { censusGeocode, distanceIfExact, type GeocodeMatch } from './geocode.ts';
@@ -853,6 +853,7 @@ export function buildSchoolsCsv(
       return row;
     })
     .sort(byDistance);
+  numberPins(all);
   return {
     csv: toCsv(SCHOOLS_COLUMNS, all),
     rows: all,
@@ -873,6 +874,7 @@ export function buildEmployersCsv(recorded: RecordedEmployer[]): { csv: string; 
     }));
   }
   all.sort(byDistance);
+  numberPins(all);
   return {
     csv: toCsv(EMPLOYERS_COLUMNS, all),
     rows: all,

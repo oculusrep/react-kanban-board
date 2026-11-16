@@ -93,7 +93,7 @@ Deno.test('generators.csv exports the researched categories only — retail is r
     [], () => '5min')
   assertEquals(built.rows.length, 0, 'those retailers are already in Sites USA; a row here is a duplicate')
   assertEquals(built.retailResearchedNotExported, 2, 'but they were still researched and handed to the model')
-  assertEquals(built.csv.split('\r\n')[0].split(',')[0], 'flag')
+  assertEquals(built.csv.split('\r\n')[0].split(',').slice(0, 2), ['pin', 'flag'])
 })
 
 Deno.test('generators.csv: CHECK rows sort first, and nothing is filtered out', async () => {

@@ -220,6 +220,9 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0, canRu
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Latest completed deep pass on any thread of this site: what the Generators slide is built from.
+  const [latestDeepPassAt, setLatestDeepPassAt] = useState<string | null>(null);
+  const [downloadingSlide, setDownloadingSlide] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // ---- data loaders ----
@@ -234,7 +237,21 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0, canRu
       setThreads((prev) => prev ?? []);
       return;
     }
-    setThreads((data ?? []) as unknown as ThreadRow[]);
+    const rows = (data ?? []) as unknown as ThreadRow[];
+    setThreads(rows);
+    if (rows.length === 0) {
+      setLatestDeepPassAt(null);
+      return;
+    }
+    const { data: dp } = await supabase
+      .from('research_thread_run')
+      .select('finished_at')
+      .in('thread_id', rows.map((t) => t.id))
+      .eq('kind', 'deep_pass')
+      .eq('state', 'complete')
+      .order('finished_at', { ascending: false })
+      .limit(1);
+    setLatestDeepPassAt((dp?.[0] as { finished_at: string } | undefined)?.finished_at ?? null);
   }, [siteSubmitId]);
 
   const loadOpenThread = useCallback(async (threadId: string, showSpinner = false) => {
@@ -414,6 +431,44 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0, canRu
     }
   };
 
+  /** The edge function returns the .pptx itself; read it as a blob and hand it to the browser. */
+  const handleGeneratorsSlide = async () => {
+    setError(null);
+    setDownloadingSlide(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ovis-site-research`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'generators_slide', site_submit_id: siteSubmitId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error((body as { detail?: string; error?: string } | null)?.detail ?? (body as { error?: string } | null)?.error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'Generators.pptx';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setDownloadingSlide(false);
+    }
+  };
+
   const handleBrief = async () => {
     if (!openThreadId) return;
     setError(null);
@@ -472,6 +527,19 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0, canRu
         >
           {error}
         </div>
+      )}
+
+      {canRun && latestDeepPassAt && (
+        <button
+          type="button"
+          onClick={handleGeneratorsSlide}
+          disabled={downloadingSlide}
+          className="mb-2 px-2 py-0.5 rounded text-[11px] font-medium disabled:opacity-60"
+          style={{ backgroundColor: 'transparent', color: NAVY, border: `1px solid ${NAVY}` }}
+          title={`One 16:9 slide from the latest deep pass (${formatTimestamp(latestDeepPassAt)}): a placeholder for the Sites USA map, a callout for every schools / employers / generators.csv row, and totals computed from those rows`}
+        >
+          {downloadingSlide ? 'Building slide…' : 'Download Generators Slide'}
+        </button>
       )}
 
       {/* ---- thread list ---- */}

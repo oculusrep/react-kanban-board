@@ -33,6 +33,12 @@
  *   6. { action: 'ask_record', thread_id, question } -> { thread_id, run_id, seq }
  *      Answers a question from the stored record, citing the section. No tools, no search.
  *
+ *   7. { action: 'generators_slide', site_submit_id } -> application/vnd.openxmlformats-officedocument.presentationml.presentation
+ *      One 16:9 "Generators" slide from the site's LATEST completed deep pass: a picture placeholder for
+ *      the Sites USA map, a totals box, and one callout per schools/employers/generators.csv row,
+ *      rebuilt with the same builders the exports used (pins match the files). No model call, no spend.
+ *      Design: docs/GENERATORS_SLIDE.md.
+ *
  * The gate (Starbucks account family + can_run_site_story) is re-checked here on
  * every call. The UI gate is a convenience, not a control.
  */
@@ -47,6 +53,8 @@ import { buildDemographics, dataQualityFor } from '../_shared/site-research/snap
 import {
   BRIEF_PROMPT_KEY, briefOpening, RECORD_QA_PROMPT_KEY, type RecordForBrief, recordQaOpening,
 } from '../_shared/site-research/brief.ts';
+import { supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
+import { buildGeneratorsSlide, rebuildExportRows, slideFilename } from '../_shared/site-research/generators-slide.ts';
 
 // Gates research to the Starbucks account family: the Starbucks client itself OR any
 // client whose parent_id is Starbucks (child accounts like "Starbucks - JW (Coastal GA)").
@@ -243,6 +251,7 @@ serve(async (req: Request) => {
     if (action === 'start_deep_pass') return await startDeepPass(service, body, userId);
     if (action === 'start_brief') return await startBrief(service, body, userId);
     if (action === 'ask_record') return await askRecord(service, body, userId);
+    if (action === 'generators_slide') return await generatorsSlide(service, body);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -702,4 +711,59 @@ async function askRecord(service: SupabaseClient, body: Record<string, unknown>,
   }
   const kicked = await kick(service, runId as string);
   return jsonResponse({ thread_id: thread.id, run_id: runId, seq: nextSeq, state: 'queued', kicked }, 202);
+}
+
+// ---------------------------------------------------------------------------
+// Generators slide — read-only, no model, no spend
+// ---------------------------------------------------------------------------
+async function generatorsSlide(service: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+  const siteSubmitId = body.site_submit_id;
+  if (typeof siteSubmitId !== 'string' || !siteSubmitId) return jsonResponse({ error: 'site_submit_id is required' }, 400);
+
+  const { data: ss, error: ssErr } = await service
+    .from('site_submit')
+    .select('id, site_submit_name, client_id, property:property_id (property_name, address, city, state, zip)')
+    .eq('id', siteSubmitId).maybeSingle();
+  if (ssErr) throw new Error(`site submit lookup failed: ${ssErr.message}`);
+  if (!ss) return jsonResponse({ error: 'site_submit_not_found' }, 404);
+  const site = ss as unknown as {
+    site_submit_name: string | null; client_id: string | null;
+    property: { property_name: string | null; address: string | null; city: string | null; state: string | null; zip: string | null } | null;
+  };
+  await assertStarbucksFamily(service, site.client_id);
+
+  // The latest completed deep pass on ANY thread of this site.
+  const { data: threads, error: tErr } = await service.from('research_thread').select('id').eq('site_submit_id', siteSubmitId);
+  if (tErr) throw new Error(`thread lookup failed: ${tErr.message}`);
+  const threadIds = ((threads ?? []) as Array<{ id: string }>).map((t) => t.id);
+  const { data: runs, error: rErr } = threadIds.length
+    ? await service.from('research_thread_run').select('id, phase_state, finished_at')
+      .in('thread_id', threadIds).eq('kind', 'deep_pass').eq('state', 'complete')
+      .order('finished_at', { ascending: false }).limit(1)
+    : { data: [], error: null };
+  if (rErr) throw new Error(`deep pass lookup failed: ${rErr.message}`);
+  const run = (runs as Array<{ id: string; phase_state: Record<string, unknown> | null; finished_at: string }> | null)?.[0];
+  if (!run) {
+    return jsonResponse({ error: 'no_deep_pass', detail: 'This site has no completed deep pass yet, so there are no rows to put on the slide.' }, 409);
+  }
+
+  const rows = await rebuildExportRows(run, supabaseDeepPassDb(service as never).committedToolOutputs);
+  const p = site.property;
+  const siteName = site.site_submit_name ?? p?.property_name ?? 'Site';
+  const address = [p?.address, p?.city, [p?.state, p?.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const slide = await buildGeneratorsSlide({ siteName, address, rows });
+  const filename = slideFilename(siteName);
+  console.log(`[site-research] generators_slide site=${siteSubmitId} run=${run.id} callouts=${slide.callouts} offSlide=${slide.offSlide} merged=${slide.mergedGenerators.length}`);
+  return new Response(new Blob([slide.pptx as BlobPart]), {
+    status: 200,
+    headers: {
+      ...CORS,
+      'Access-Control-Expose-Headers': 'Content-Disposition, X-Slide-Callouts, X-Slide-Off-Slide, X-Deep-Pass-Run',
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'Content-Disposition': `attachment; filename="${filename.replace(/[^\x20-\x7e]/g, '_')}"`,
+      'X-Slide-Callouts': String(slide.callouts),
+      'X-Slide-Off-Slide': String(slide.offSlide),
+      'X-Deep-Pass-Run': run.id,
+    },
+  });
 }

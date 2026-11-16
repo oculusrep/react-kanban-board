@@ -100,12 +100,23 @@ export function byDistance<T extends { distance_mi: CsvCell; name: CsvCell }>(a:
   return da - db || String(a.name ?? '').localeCompare(String(b.name ?? ''))
 }
 
+/**
+ * `pin` column: 1..N by distance, nearest first, so Sites USA can label each pin with the same
+ * number the Generators slide and the file carry. Numbered by distance regardless of the file's row
+ * order (generators.csv sorts CHECK rows first). Rows with no distance number last, by name.
+ * Each file is numbered on its own: schools 1..N, employers 1..N, generators 1..N.
+ */
+export function numberPins<T extends { pin: CsvCell; distance_mi: CsvCell; name: CsvCell }>(rows: T[]): T[] {
+  ;[...rows].sort((a, b) => byDistance(a, b)).forEach((r, i) => { r.pin = i + 1 })
+  return rows
+}
+
 // ---------------------------------------------------------------------------
 // schools.csv
 // ---------------------------------------------------------------------------
 
 /**
- * First column of every export. Blank when the row needs nothing; CHECK when a value the mapper will
+ * Column after `pin` in every export. Blank when the row needs nothing; CHECK when a value the mapper will
  * care about is missing or unverified (no enrollment or headcount on file, an address NCES could not
  * confirm as physical, a competitor that would not geocode). NOTHING is ever filtered out of an
  * export because of it — filtering happens at the mapping step, not here (decided 2026-09-25).
@@ -113,7 +124,7 @@ export function byDistance<T extends { distance_mi: CsvCell; name: CsvCell }>(a:
 export const FLAG_CHECK = 'CHECK'
 
 export const SCHOOLS_COLUMNS = [
-  'flag', 'name', 'street', 'city', 'state', 'zip', 'full_address', 'enrollment',
+  'pin', 'flag', 'name', 'street', 'city', 'state', 'zip', 'full_address', 'enrollment',
   'school_level', 'grade_low', 'grade_high', 'public_private', 'distance_mi',
   'band', 'school_year', 'enrollment_source', 'address_source', 'notes',
 ] as const
@@ -173,6 +184,7 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
     .filter(Boolean).join('; ')
 
   return {
+    pin: null, // numbered by numberPins once the file's rows are final
     // CHECK when the mapper needs to look: no enrollment on file, or no confirmed physical street.
     flag: enrollment === null || street === null ? FLAG_CHECK : null,
     name: blankToNull(s.name),
@@ -200,7 +212,7 @@ export function buildSchoolRow(s: SchoolInput, fill?: SchoolFill): SchoolsRow {
 // ---------------------------------------------------------------------------
 
 export const EMPLOYERS_COLUMNS = [
-  'flag', 'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
+  'pin', 'flag', 'name', 'employer_type', 'street', 'city', 'state', 'zip', 'full_address', 'headcount',
   'distance_mi', 'band', 'source', 'source_year', 'notes',
 ] as const
 export type EmployersColumn = (typeof EMPLOYERS_COLUMNS)[number]
@@ -228,6 +240,7 @@ export function buildEmployerRow(e: EmployerInput): EmployersRow {
   const zip = blankToNull(e.zip)
   const headcount = typeof e.headcount === 'number' && Number.isInteger(e.headcount) && e.headcount >= 0 ? e.headcount : null
   return {
+    pin: null, // numbered by numberPins once the file's rows are final
     flag: headcount === null ? FLAG_CHECK : null,
     name: blankToNull(e.name),
     employer_type: blankToNull(e.employer_type),
@@ -386,7 +399,7 @@ export function pipelineSort(a: PipelineRow, b: PipelineRow): number {
 // ---------------------------------------------------------------------------
 
 export const GENERATORS_COLUMNS = [
-  'flag', 'name', 'category', 'size_value', 'size_unit', 'street', 'city', 'state', 'zip',
+  'pin', 'flag', 'name', 'category', 'size_value', 'size_unit', 'street', 'city', 'state', 'zip',
   'lat', 'lng', 'distance_mi', 'drive_time_band', 'source', 'notes',
 ] as const
 export type GeneratorsColumn = (typeof GENERATORS_COLUMNS)[number]
@@ -435,6 +448,7 @@ export function buildGeneratorRow(g: GeneratorInput): GeneratorsRow {
   const located = typeof g.latitude === 'number' && typeof g.longitude === 'number'
   const street = blankToNull(g.street)
   return {
+    pin: null, // numbered by numberPins once the file's rows are final
     flag: (g.size_expected !== false && size === null) || !located || blankToNull(g.check_reason) ? FLAG_CHECK : null,
     name: blankToNull(g.name),
     category: blankToNull(String(g.category ?? '')),
