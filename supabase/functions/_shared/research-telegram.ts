@@ -82,7 +82,7 @@ export async function sendSweepReadyIfDone(supabase: Supa, sweepId: string): Pro
   if (sweep.ready_notified_at) return 'already_sent';
 
   const { data: runs } = await supabase.from('research_run')
-    .select('state, post_run_done_at, updated_at').eq('sweep_id', sweepId);
+    .select('id, state, post_run_done_at, updated_at').eq('sweep_id', sweepId);
   const staleBefore = Date.now() - 10 * 60_000;
   const pendingPostRun = (runs ?? []).some((r: { state: string; post_run_done_at: string | null; updated_at: string }) =>
     ['awaiting_review', 'approved', 'archived'].includes(r.state)
@@ -102,6 +102,12 @@ export async function sendSweepReadyIfDone(supabase: Supa, sweepId: string): Pro
     return 'sent';
   }
   const n = (x: number) => Number(x ?? 0).toLocaleString('en-US');
+  // Recently built: unit-count replace suggestions on existing records.
+  const runIds = (runs ?? []).map((r: { id: string }) => r.id);
+  const { count: replaceCount } = runIds.length
+    ? await supabase.from('research_recent_log').select('id', { count: 'exact', head: true })
+        .in('research_run_id', runIds).eq('state', 'pending')
+    : { count: 0 };
   const est = Number(s.ready?.estimated_units ?? 0);
   const lo = Number(s.decision?.units_low ?? 0);
   const hi = Number(s.decision?.units_high ?? 0);
@@ -115,6 +121,7 @@ export async function sendSweepReadyIfDone(supabase: Supa, sweepId: string): Pro
     ...(Number(s.recent?.records ?? 0) > 0 || Number(s.recent?.outside_radius ?? 0) > 0
       ? [`🏘 ${n(s.recent?.records)} recently built · ${n(s.recent?.units)} units${Number(s.recent?.without_count ?? 0) > 0 ? ` (${n(s.recent?.without_count)} without a count)` : ''}`]
       : []),
+    ...(Number(replaceCount ?? 0) > 0 ? [`🔁 ${n(Number(replaceCount))} unit-count replace suggestion${replaceCount === 1 ? '' : 's'} (recently built)`] : []),
   ].join('\n'));
   return 'sent';
 }

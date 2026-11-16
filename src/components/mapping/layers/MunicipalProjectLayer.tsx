@@ -105,7 +105,7 @@ interface Props {
   // the terra-draw editable polygon is the only one on the map.
   hidePolygonForProjectId?: string | null;
   // 'pipeline' (default): everything except Recently Completed — what's coming.
-  // 'recent': only Recently Completed — built since 2021 — in its own color,
+  // 'recent': only Recently Completed — built since 2020 — in its own color,
   // on its own layer toggle ('municipal_recent').
   variant?: 'pipeline' | 'recent';
 }

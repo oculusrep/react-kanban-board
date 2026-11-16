@@ -81,7 +81,7 @@ export function RecentlyBuiltButton({ siteSubmitId, onStarted }: { siteSubmitId:
         onClick={() => { setOpen(true); setDone(null); loadPreview(radius); }}
         className="px-2 py-1 rounded text-xs font-medium border"
         style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
-        title="Ask Gemini (live search) for communities of 25+ homes completed since 2021 in each municipality in the radius, then dedupe, locate and check the radius. No agent run."
+        title="Ask Gemini (live search) for communities of 25+ homes completed since 2020 in each municipality in the radius, then dedupe, locate and check the radius. No agent run."
       >
         🏘 Recently built only
       </button>
@@ -90,7 +90,7 @@ export function RecentlyBuiltButton({ siteSubmitId, onStarted }: { siteSubmitId:
 
   return (
     <div className="rounded-md border p-2 text-xs space-y-1" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC', color: '#002147' }}>
-      <div className="font-semibold">Recently built only (since 2021)</div>
+      <div className="font-semibold">Recently built only (since 2020)</div>
       {done ? (
         <div style={{ color: '#4A6B94' }}>{done}</div>
       ) : (

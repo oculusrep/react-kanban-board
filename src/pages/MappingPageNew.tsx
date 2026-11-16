@@ -3414,7 +3414,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                             />
                           </button>
                           <span>🏘️</span>
-                          <span className="text-sm font-medium text-gray-900">Recently Built (since 2021)</span>
+                          <span className="text-sm font-medium text-gray-900">Recently Built (since 2020)</span>
                           <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#0F766E' }} />
                         </div>
                         <span className="text-xs text-gray-400">

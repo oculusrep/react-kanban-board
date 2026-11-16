@@ -75,7 +75,7 @@ export function ResearchSummaryHeader({ runIds, refreshKey }: { runIds: string[]
       </div>
       {s.recent && (s.recent.records > 0 || s.recent.outside_radius > 0) && (
         <div className="sm:col-span-3 text-xs pt-1 border-t" style={{ borderColor: '#E2E8F0', color: '#0F766E' }}
-             title="Recently built pass: communities completed since 2021 (Gemini web search). Kept out of the pipeline counts above.">
+             title="Recently built pass: communities completed since 2020 (Gemini web search). Kept out of the pipeline counts above.">
           <span className="font-semibold">🏘 {n(s.recent.records)} recently built · {n(s.recent.units)} units</span>
           {s.recent.without_count > 0 && <span style={{ color: '#4A6B94' }}> · {n(s.recent.without_count)} without a count</span>}
           {s.recent.outside_radius > 0 && <span style={{ color: '#4A6B94' }}> · {n(s.recent.outside_radius)} outside the radius</span>}

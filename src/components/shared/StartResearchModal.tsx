@@ -253,7 +253,7 @@ export default function StartResearchModal({
   // Off by default until the agent prompt handles research_scope.
   // Plan: docs/DEEP_SWEEP_EVERGREEN_CHUNK_PLAN.md
   const [includeEvergreen, setIncludeEvergreen] = useState(false);
-  // "Recently built (since 2021)" pass — OVIS + Gemini, once per run or sweep.
+  // "Recently built (since 2020)" pass — OVIS + Gemini, once per run or sweep.
   // Doc: docs/MARKET_RESEARCH_RECENTLY_BUILT.md
   const [includeRecent, setIncludeRecent] = useState(true);
   // Started by the same click; it runs server-side in the background. A failure
@@ -780,9 +780,9 @@ export default function StartResearchModal({
               <input type="checkbox" className="mt-1" checked={includeRecent} disabled={submitting}
                      onChange={(e) => setIncludeRecent(e.target.checked)} />
               <span>
-                Include recently built (since 2021)
+                Include recently built (since 2020)
                 <span className="block text-xs" style={{ color: '#4A6B94' }}>
-                  OVIS asks Gemini (live search) once per municipality for communities of 25+ homes completed since 2021,
+                  OVIS asks Gemini (live search) once per municipality for communities of 25+ homes completed since April 2020 (the 2020 Census) with real completion evidence,
                   then dedupes against OVIS, locates them and checks the radius. ~5¢ per municipality plus locating.
                   {needsChunkConfirm ? ' Runs once for the sweep, not per chunk.' : ''}
                 </span>

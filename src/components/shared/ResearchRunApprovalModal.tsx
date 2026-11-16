@@ -5,6 +5,7 @@ import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../servi
 import { usePermissions } from '../../hooks/usePermissions';
 import { ResearchSignalPanel, type ResearchSignal } from './ResearchSignalPanel';
 import { ParcelAdapterNotice } from './ParcelAdapterNotice';
+import { RecentUnitSuggestions } from './RecentUnitSuggestions';
 import { ResearchSummaryHeader } from './ResearchSummaryHeader';
 import { SweepAgentReports } from './SweepAgentReports';
 
@@ -1921,7 +1922,7 @@ export default function ResearchRunApprovalModal({
         {r.discovery_source === 'gemini_recent' && (
           <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
                 style={{ borderColor: '#0F766E', color: '#0F766E', backgroundColor: '#F0FDFA' }}
-                title="Found by the recently built pass (Gemini web search): completed or substantially built out since 2021. Commits as Recently Completed; shown on its own map layer, not the pipeline.">
+                title="Found by the recently built pass (Gemini web search): completed since April 2020 (2020 Census), with completion evidence. Commits as Recently Completed; shown on its own map layer, not the pipeline.">
             🏘 RECENTLY BUILT{r.year_completed ? ` · ${r.year_completed}` : ''}
           </span>
         )}
@@ -2845,6 +2846,9 @@ export default function ResearchRunApprovalModal({
           {loading && <div className="text-sm" style={{ color: '#8FA9C8' }}>Loading…</div>}
           {!loading && summaryRunIds.length > 0 && (
             <ResearchSummaryHeader runIds={summaryRunIds} refreshKey={summaryRefreshKey} />
+          )}
+          {!loading && summaryRunIds.length > 0 && (
+            <RecentUnitSuggestions runIds={summaryRunIds} canApprove={canApprove} />
           )}
           {/* Agent reports (sweep, read-only) / Needs review (single run). The
               agent's end-of-run coverage report sits at the top of needs_review. */}
