@@ -28,6 +28,8 @@
  */
 
 import { locateRun } from './research-locate.ts';
+import { isListingUrl, resolveUrl } from './source-rules.ts';
+import { estimateMissingUnits } from './research-unit-estimator.ts';
 import { fetchBoundariesForRuns } from './research-parcel-fetch.ts';
 import { notifyResearchTelegram, sendSweepReadyIfDone } from './research-telegram.ts';
 
@@ -63,24 +65,29 @@ export async function municipalitiesFor(supabase: Supa, siteId: string, radiusMi
 /** Preview: municipalities and an estimated cost (search is per municipality; locating depends on what comes back). */
 export async function previewRecent(supabase: Supa, siteId: string, radiusMiles: number) {
   const munis = await municipalitiesFor(supabase, siteId, radiusMiles);
+  const builders = await Promise.all(munis.map((m) => buildersFor(supabase, m).catch(() => [] as string[])));
+  const searchCalls = munis.length * 2 + builders.filter((b) => b.length > 0).length;
   const { data: hist } = await supabase.from('research_run')
-    .select('recent_calls, recent_cost_cents, locate_calls, locate_cost_cents')
+    .select('recent_calls, recent_cost_cents, recent_muni_ids, locate_calls, locate_cost_cents, unit_estimate_calls, unit_estimate_cost_cents')
     .eq('research_scope', 'recent_built').not('recent_calls', 'is', null).limit(50);
-  const calls = (hist ?? []).reduce((n: number, h: Row) => n + Number(h.recent_calls ?? 0), 0);
-  const searchCents = calls ? (hist ?? []).reduce((n: number, h: Row) => n + Number(h.recent_cost_cents ?? 0), 0) / calls : EST_SEARCH_CENTS;
-  const locCalls = (hist ?? []).reduce((n: number, h: Row) => n + Number(h.locate_calls ?? 0), 0);
-  const locateCents = locCalls ? (hist ?? []).reduce((n: number, h: Row) => n + Number(h.locate_cost_cents ?? 0), 0) / locCalls : EST_LOCATE_CENTS;
-  // Records needing a locate, per municipality: from history, else a guess of 4.
-  const locPerMuni = calls ? locCalls / calls : 4;
-  const search = munis.length * searchCents;
-  const locate = munis.length * locPerMuni * locateCents;
+  const h = (hist ?? []) as Row[];
+  const sumOf = (f: (r: Row) => number) => h.reduce((n, r) => n + f(r), 0);
+  const calls = sumOf((r) => Number(r.recent_calls ?? 0));
+  const muniRuns = sumOf((r) => (r.recent_muni_ids ?? []).length);
+  const searchCents = calls ? sumOf((r) => Number(r.recent_cost_cents ?? 0)) / calls : EST_SEARCH_CENTS;
+  // Per municipality, from history: locate + unit-count spend. Fallback: ~4 locates.
+  const followPerMuni = muniRuns
+    ? sumOf((r) => Number(r.locate_cost_cents ?? 0) + Number(r.unit_estimate_cost_cents ?? 0)) / muniRuns
+    : 4 * EST_LOCATE_CENTS;
+  const search = searchCalls * searchCents;
+  const follow = munis.length * followPerMuni;
   return {
-    municipalities: munis.map((m) => ({ id: m.boundary_municipality_id, name: m.name, kind: m.kind, distance_mi: m.distance_mi })),
-    search_calls: munis.length,
+    municipalities: munis.map((m, i) => ({ id: m.boundary_municipality_id, name: m.name, kind: m.kind, distance_mi: m.distance_mi, builders: builders[i] })),
+    search_calls: searchCalls,
     search_cents_each: Math.round(searchCents * 100) / 100,
     est_search_cents: Math.round(search * 100) / 100,
-    est_locate_cents: Math.round(locate * 100) / 100,
-    est_total_cents: Math.round((search + locate) * 100) / 100,
+    est_locate_cents: Math.round(follow * 100) / 100,
+    est_total_cents: Math.round((search + follow) * 100) / 100,
     basis: calls ? `averages from ${calls} earlier searches` : 'first run: ~5¢ per search, ~4 locates per municipality at ~4.5¢',
   };
 }
@@ -105,21 +112,70 @@ interface Community {
   type: string | null;
 }
 
-function prompt(m: Muni): string {
-  const place = m.kind === 'county' ? `unincorporated ${m.name}` : m.name;
-  return `List residential communities of ${MIN_UNITS}+ homes or units in ${place}, GA completed since April 2020 (after the 2020 Census). For each: name, builder, when it was completed, total homes/units, street address or nearest intersection, and the evidence that it is complete. Cite a source for each.
+export type SearchKind = 'single_family' | 'rental' | 'builder';
 
-Rules:
-- Include single-family subdivisions, townhome communities and apartment complexes.
+const RULES = (m: Muni) => `Rules:
 - Completed means real evidence, one of: sold out / builder closeout; certificate of occupancy for the final building; final-phase plat recorded; apartments in lease-up or fully leased. "Now selling", "coming soon", groundbreaking, zoning or plat approval for an earlier phase, or street/utility work are NOT completion — skip those communities.
 - ${m.kind === 'county' ? `Only communities outside city limits (unincorporated ${m.name}).` : `Only communities in or immediately around ${m.name}.`}
 - total_units only when a source states the community's total; otherwise null. Never estimate. Listing or aggregator pages (Zillow, Redfin, Realtor.com, Homes.com, Trulia, Apartments.com, NewHomeSource, Livabl, rental listing sites) never count as a total-units source. units_source = the URL that states the total.
 - completed = "YYYY-MM" when the month is known, else "YYYY".
 - street_address needs a house number; intersection is two named roads. null when unknown.
-- Every community needs at least one source URL.
+- Every community needs at least one source URL. Search the web before answering.
 
 Reply with ONLY a JSON object, no prose around it:
-{"communities": [{"name": "<name>", "builder": <string or null>, "completed": "<YYYY-MM or YYYY or null>", "completion_evidence": "<sold_out | closeout | certificate_of_occupancy | final_plat_recorded | lease_up | none>", "evidence_detail": "<one line: what the source says>", "evidence_source": <url or null>, "total_units": <integer or null>, "units_source": <url or null>, "street_address": <string or null>, "intersection": <string or null>, "type": "<single-family | townhomes | apartments | mixed>", "sources": ["<url>"]}]}`;
+{"communities": [{"name": "<name>", "builder": <string or null>, "completed": "<YYYY-MM or YYYY or null>", "completion_evidence": "<sold_out | closeout | certificate_of_occupancy | final_plat_recorded | lease_up | none>", "evidence_detail": "<one line: what the source says>", "evidence_source": <url or null>, "total_units": <integer or null>, "units_source": <url or null>, "street_address": <string or null>, "intersection": <string or null>, "type": "<single-family | townhomes | apartments | build-to-rent | mixed>", "sources": ["<url>"]}]}`;
+
+/** Three searches per municipality, merged: single-family; rental (apartments,
+ *  townhomes, build-to-rent); and builder-led for the builders OVIS already has
+ *  in that area. */
+export function prompt(m: Muni, kind: SearchKind, builders: string[] = []): string {
+  const place = m.kind === 'county' ? `unincorporated ${m.name}` : m.name;
+  const ask = 'For each: name, builder, when it was completed, total homes/units, street address or nearest intersection, and the evidence that it is complete. Cite a source for each.';
+  if (kind === 'single_family') {
+    return `List single-family subdivisions of ${MIN_UNITS}+ homes in ${place}, GA completed (sold out or built out) since April 2020, after the 2020 Census. ${ask}\n\n${RULES(m)}`;
+  }
+  if (kind === 'rental') {
+    return `List apartment complexes, townhome communities and build-to-rent communities of ${MIN_UNITS}+ units in ${place}, GA completed or leased up since April 2020, after the 2020 Census. ${ask}\n\n${RULES(m)}`;
+  }
+  return `List the communities of ${MIN_UNITS}+ homes or units these builders have in ${place}, GA that were completed (sold out, closed out or leased up) since April 2020: ${builders.join('; ')}. Search each builder ("<builder> communities in ${m.name} GA"), including sold-out and closeout communities. ${ask}\n\n${RULES(m)}`;
+}
+
+/** Builders OVIS already has in a municipality (committed + staged), most
+ *  frequent first. Names are messy (", LLC, Atlanta GA (agent: …)"), so they are
+ *  cut to the company and grouped; people and land/holding entities are dropped. */
+const BUILDER_WORD = /homes|home builders|communities|horton|\bdrb\b|\blgi\b|pulte|lennar|ashton woods|century|stanley martin|smith douglas|meritage|taylor morrison|weekley|kb home|starlight|rangewater|continental|residential|properties|\bnvr\b|ryan|toll|mungo|rockhaven|trophy|mattamy|eastwood|chafin|brock built|piedmont|liberty communities/i;
+const NOT_BUILDER = /applicant|agent|engineer|representative|attorney|\bpc\b|land company|land,|acquisitions|holdings|investors|capital|\bland\b/i;
+export function builderKey(n: string): string {
+  return n.toLowerCase().replace(/\b(inc|llc|lp|co|company|group|homes?|of [a-z ]+|the)\b/g, ' ').replace(/[^a-z0-9]+/g, '');
+}
+export async function buildersFor(supabase: Supa, m: Muni, max = 8): Promise<string[]> {
+  const [{ data: staged }, { data: committed }] = await Promise.all([
+    supabase.from('municipal_project_staging').select('builder_developer')
+      .eq('boundary_municipality_id', m.boundary_municipality_id).in('approval_state', ['pending', 'approved'])
+      .not('builder_developer', 'is', null).limit(1000),
+    supabase.from('municipal_project').select('builder_developer, municipality!inner(name)')
+      .eq('municipality.name', m.name).not('builder_developer', 'is', null).limit(1000),
+  ]);
+  const counts = new Map<string, { name: string; n: number }>();
+  for (const r of [...(staged ?? []), ...(committed ?? [])]) {
+    for (const part of String(r.builder_developer).split(/\s\/\s|;/)) {
+      const name = part.split(/[,(]/)[0].replace(/\b(inc|llc)\.?$/i, '').trim();
+      if (!name || !BUILDER_WORD.test(name) || NOT_BUILDER.test(part.split('(')[0])) continue;
+      const k = builderKey(name);
+      if (!k) continue;
+      const e = counts.get(k);
+      if (e) { e.n++; if (name.length < e.name.length) e.name = name; } else counts.set(k, { name, n: 1 });
+    }
+  }
+  return [...counts.values()].sort((a, b) => b.n - a.n).slice(0, max).map((e) => e.name);
+}
+
+/** Retry once when Gemini answers empty without actually searching. */
+async function askWithRetry(text: string, apiKey: string) {
+  const first = await askGemini(text, apiKey);
+  if (first.searched || first.list.length > 0) return { ...first, retried: false };
+  const second = await askGemini(text, apiKey);
+  return { ...second, cost: first.cost + second.cost, retried: true };
 }
 
 async function askGemini(text: string, apiKey: string) {
@@ -181,7 +237,7 @@ async function askGemini(text: string, apiKey: string) {
   // Ungrounded → nothing. Each community needs its own source.
   const grounded = chunks.length > 0 || searched;
   const kept = grounded ? list.filter((c) => c.sources.length > 0 || c.units_source) : [];
-  return { answer, chunks, list: kept, dropped_unsourced: list.length - kept.length, input, output, cost };
+  return { answer, chunks, searched: grounded, list: kept, dropped_unsourced: list.length - kept.length, input, output, cost };
 }
 
 const EVIDENCE = new Set(['sold_out', 'closeout', 'certificate_of_occupancy', 'final_plat_recorded', 'lease_up']);
@@ -190,15 +246,13 @@ const EVIDENCE_LABEL: Record<string, string> = {
   final_plat_recorded: 'final-phase plat recorded', lease_up: 'lease-up',
 };
 
-/** Listing and aggregator sites: never a total-units source. Builder, developer,
- *  property-management, government and news sites are fine. */
-const LISTING_HOST = /(^|\.)(zillow|redfin|realtor|trulia|homes|movoto|homesnap|point2homes|compass|remax|century21|coldwellbankerhomes|kw|bhhs|har|homefinder|fmls|georgiamls|newhomesource|newhomeguide|livabl|newhomesdirectory|apartments|apartmentlist|apartmentguide|apartmentfinder|apartmenthomeliving|rent|rentcafe|rentable|rentals|rentlingo|zumper|hotpads|padmapper|forrent|niche|neighborhoods|realestate|yelp|after55|seniorly|seniorcarefinder|caring|aplaceformom|seniorhousingnet|forsalebyowner|loopnet|crexi)\.(com|net|org)$/i;
-
 /** Gemini labels evidence loosely ("move-in ready homes available" → closeout).
  *  The label stands only when its own one-line detail says the thing. */
 const SOLD_OUT_TEXT = /sold[\s-]?out|close[\s-]?out|final (home|homes|phase|lots?)|last (home|homes|lots?)|only (\d+|one|two|three|a few) (homes?|lots?|homesites?)( are)? (remain|left)|model (home )?(closed|sold)|fully built|built[\s-]?out|build[\s-]?out (is )?complete/i;
 const STILL_SELLING_TEXT = /now selling|coming soon|grand opening|launch|move[\s-]?in ready|under construction|homes? available|lots? available|new phase/i;
 const RENTAL_TEXT = /lease|leasing|for rent|occupan|opened|completed|built in \d{4}|certificate of occupancy/i;
+
+export { isListingUrl };
 
 export function evidenceHolds(kind: string, detail: string | null, type: string | null): boolean {
   const d = detail ?? '';
@@ -208,31 +262,6 @@ export function evidenceHolds(kind: string, detail: string | null, type: string 
   if (kind === 'certificate_of_occupancy') return /certificate of occupancy|\bC\.?O\.?\b/.test(d) || (rental && RENTAL_TEXT.test(d) && !STILL_SELLING_TEXT.test(d));
   if (kind === 'lease_up') return RENTAL_TEXT.test(d);
   return false;
-}
-
-export function isListingUrl(u: string | null): boolean {
-  if (!u) return false;
-  try { return LISTING_HOST.test(new URL(u).hostname.replace(/^www\./, '')); } catch { return false; }
-}
-
-/** Gemini cites vertexaisearch grounding-api-redirect links; resolve them to the
- *  real page (they also expire). Unresolvable → null. */
-async function resolveUrl(u: string, cache: Map<string, string | null>): Promise<string | null> {
-  if (cache.has(u)) return cache.get(u)!;
-  let out: string | null = u;
-  if (/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect/.test(u)) {
-    out = null;
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 10_000);
-      const res = await fetch(u, { method: 'GET', redirect: 'manual', signal: ctrl.signal });
-      clearTimeout(t);
-      out = res.headers.get('location');
-      await res.body?.cancel();
-    } catch { out = null; }
-  }
-  cache.set(u, out);
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +290,21 @@ export async function createRecentRun(
   return { runId: data.id, munis };
 }
 
+/** Fill the first-seen copy's gaps from a later copy (another search found it too). */
+function mergeCommunity(a: Community, b: Community) {
+  a.builder ??= b.builder;
+  a.address ??= b.address;
+  a.intersection ??= b.intersection;
+  a.type ??= b.type;
+  if (a.year_completed == null) { a.year_completed = b.year_completed; a.month_completed = b.month_completed; }
+  if (a.total_units == null && b.total_units != null) { a.total_units = b.total_units; a.units_source = b.units_source; }
+  const aHolds = a.evidence && evidenceHolds(a.evidence, a.evidence_detail, a.type);
+  if (!aHolds && b.evidence && evidenceHolds(b.evidence, b.evidence_detail, b.type)) {
+    a.evidence = b.evidence; a.evidence_detail = b.evidence_detail; a.evidence_source = b.evidence_source;
+  }
+  a.sources = [...new Set([...a.sources, ...b.sources])];
+}
+
 export interface RecentSummary {
   research_run_id: string;
   municipalities: number;
@@ -282,6 +326,10 @@ export interface RecentSummary {
   recent_units: number;
   without_count: number;
   search_cost_cents: number;
+  search_calls: number;
+  searches: { municipality: string; kind: string; found: number; retried: boolean; note: string }[];
+  units_found: number;
+  unit_cost_cents: number;
   locate_cost_cents: number;
   errors: string[];
 }
@@ -295,24 +343,38 @@ export async function processRecentRun(
     duplicates_in_list: 0, staged: 0, no_evidence: 0, count_from_listing: 0, already_in_ovis: 0,
     replace_suggestions: [], dropped_known: 0, deduped: 0, located: { pins: 0, hints: 0, parcel_ids: 0 },
     boundaries: 0, outside_radius: 0, recent_records: 0, recent_units: 0, without_count: 0,
-    search_cost_cents: 0, locate_cost_cents: 0, errors: [],
+    search_cost_cents: 0, search_calls: 0, searches: [], units_found: 0, unit_cost_cents: 0,
+    locate_cost_cents: 0, errors: [],
   };
   const today = easternDate();
   const { data: run } = await supabase.from('research_run').select('site_submit_id, sweep_id, radius_miles, site_submit(site_submit_name)').eq('id', runId).single();
   const { data: stage } = await supabase.from('project_stage').select('id').eq('name', 'Recently Completed').single();
 
-  // 1. One search per municipality (parallel: they're independent).
-  const results = await Promise.all(munis.map(async (m) => {
+  // 1. Three searches per municipality (single-family, rental, builder-led),
+  //    all in parallel. Builder-led is skipped when OVIS has no builders there.
+  const jobs: { m: Muni; kind: SearchKind; text: string }[] = [];
+  for (const m of munis) {
+    const builders = await buildersFor(supabase, m).catch(() => [] as string[]);
+    jobs.push({ m, kind: 'single_family', text: prompt(m, 'single_family') });
+    jobs.push({ m, kind: 'rental', text: prompt(m, 'rental') });
+    if (builders.length) jobs.push({ m, kind: 'builder', text: prompt(m, 'builder', builders) });
+    sum.searches.push({ municipality: m.name, kind: 'builders', found: builders.length, retried: false, note: builders.join('; ') });
+  }
+  const results = await Promise.all(jobs.map(async (j) => {
     try {
-      return { m, r: await askGemini(prompt(m), keys.gemini) };
+      const r = await askWithRetry(j.text, keys.gemini);
+      sum.search_calls += r.retried ? 2 : 1;
+      sum.searches.push({ municipality: j.m.name, kind: j.kind, found: r.list.length, retried: r.retried, note: r.searched ? '' : 'no search' });
+      return { m: j.m, r };
     } catch (e) {
-      sum.errors.push(`${m.name}: ${e instanceof Error ? e.message : String(e)}`);
-      return { m, r: null };
+      sum.search_calls++;
+      sum.errors.push(`${j.m.name} ${j.kind}: ${e instanceof Error ? e.message : String(e)}`);
+      return { m: j.m, r: null };
     }
   }));
 
   // 2. Filter + de-duplicate the list itself (a county answer repeats the city ones).
-  const seen = new Map<string, true>();
+  const seen = new Map<string, Community>();
   const cands: { m: Muni; c: Community; src: string[]; units: number | null; unitsSrc: string | null }[] = [];
   const logs: Row[] = [];
   const urlCache = new Map<string, string | null>();
@@ -332,8 +394,10 @@ export async function processRecentRun(
         continue;
       }
       const k = nameKey(c.name);
-      if (!k || seen.has(k)) { sum.duplicates_in_list++; continue; }
-      seen.set(k, true);
+      if (!k) continue;
+      const prev = seen.get(k);
+      if (prev) { sum.duplicates_in_list++; mergeCommunity(prev, c); continue; }
+      seen.set(k, c);
       cands.push({ m, c, src: [], units: null, unitsSrc: null });
     }
   }
@@ -423,7 +487,7 @@ export async function processRecentRun(
   }
   await supabase.from('research_run').update({
     state: 'awaiting_review', completed_at: new Date().toISOString(),
-    recent_calls: munis.length, recent_cost_cents: Math.round(sum.search_cost_cents * 10_000) / 10_000,
+    recent_calls: sum.search_calls, recent_cost_cents: Math.round(sum.search_cost_cents * 10_000) / 10_000,
   }).eq('id', runId);
 
   // 3. Post-run.
@@ -437,6 +501,12 @@ export async function processRecentRun(
       .reduce((n, k) => n + ((data as Row)?.[k]?.length ?? 0), 0);
   };
   await step('dedupe', dedupe);
+  // Gemini unit count (no acreage × density) for records still without a count.
+  await step('unit count', async () => {
+    const u = await estimateMissingUnits(supabase, runId, keys.gemini);
+    sum.units_found = u.gemini;
+    sum.unit_cost_cents = u.cost_cents;
+  });
   if (keys.geocode) {
     await step('locate', async () => {
       const l = await locateRun(supabase, runId, { gemini: keys.gemini, geocode: keys.geocode! }, { deadlineMs: opts.deadlineMs });
@@ -467,7 +537,7 @@ export async function processRecentRun(
   if (opts.notify !== false) {
     if (run?.sweep_id) await sendSweepReadyIfDone(supabase, run.sweep_id);
     else {
-      const total = (sum.search_cost_cents + sum.locate_cost_cents) / 100;
+      const total = (sum.search_cost_cents + sum.unit_cost_cents + sum.locate_cost_cents) / 100;
       await notifyResearchTelegram([
         `Recently built — ${run?.site_submit?.site_submit_name ?? 'site'}`,
         `🏘 ${sum.recent_records} recently built · ${sum.recent_units.toLocaleString('en-US')} units${sum.without_count ? ` (${sum.without_count} without a count)` : ''}`,

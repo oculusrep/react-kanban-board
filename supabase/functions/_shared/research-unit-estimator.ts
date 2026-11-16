@@ -28,6 +28,8 @@
  *   Pricing: https://ai.google.dev/gemini-api/docs/pricing
  */
 
+import { isListingHost, isListingUrl, resolveUrl } from './source-rules.ts';
+
 // deno-lint-ignore no-explicit-any
 type Supa = any;
 
@@ -140,6 +142,7 @@ function buildPrompt(r: StagingRow): string {
     r.source ? `What the research agent cited: ${r.source.slice(0, 800)}` : null,
     r.notes ? `Research notes: ${r.notes.slice(0, 1200)}` : null,
   ].filter(Boolean).join('\n');
+  const recent = r.discovery_source === 'gemini_recent';
 
   return `Find the total number of housing units (lots, homes, townhomes or apartment units) in this residential development. Search the web: news, builder/developer sites, apartment listings, planning/zoning agendas and minutes, plats.
 
@@ -150,13 +153,27 @@ Rules:
 - If the cited source or notes above already state a count for this project, use that.
 - Developments are often built in phases. If this record names a phase, the count must be for that phase. If it names no phase and sources give counts for different phases, return null rather than picking one.
 - If sources disagree, give the most recent planned total and say so.
-- If you cannot find a stated count, units must be null.
+- If you cannot find a stated count, units must be null.${recent ? `
+- This is a completed community. Listing or aggregator pages (Zillow, Redfin, Realtor.com, Homes.com, Trulia, Apartments.com, NewHomeSource, Livabl, after55, rental listing sites) never count as a source for the total. Use builder/developer, property-management, government or news sources. source_url = the page that states the total.` : ''}
 
 Reply with ONLY a JSON object, no prose around it:
-{"units": <integer or null>, "basis": "<one sentence: what the source says, quoted where possible>"}`;
+{"units": <integer or null>, "basis": "<one sentence: what the source says, quoted where possible>"${recent ? ', "source_url": "<url or null>"' : ''}}`;
 }
 
 async function askGemini(r: StagingRow, apiKey: string): Promise<GeminiResult> {
+  const g = await askGeminiRaw(r, apiKey);
+  if (r.discovery_source !== 'gemini_recent' || g.units == null) return g;
+  // Recently built: the count must rest on a non-listing page. Check the URL
+  // Gemini names (resolved from its redirect link), else the grounding domains.
+  let src: string | null = null;
+  try { src = JSON.parse(g.answer.match(/\{[\s\S]*\}/)?.[0] ?? '{}').source_url ?? null; } catch { /* none */ }
+  const real = src ? await resolveUrl(String(src)) : null;
+  const ok = real ? !isListingUrl(real) : g.sources.some((s) => s.title && !isListingHost(s.title));
+  if (ok) return { ...g, basis: real ? `${g.basis} (source: ${real})` : g.basis };
+  return { ...g, units: null, basis: `${g.basis} [discarded: count only from a listing/aggregator page${real ? ` — ${real}` : ''}]` };
+}
+
+async function askGeminiRaw(r: StagingRow, apiKey: string): Promise<GeminiResult> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), CALL_TIMEOUT_MS);
   let data: any;
@@ -257,8 +274,9 @@ export async function estimateMissingUnits(
   if (triedErr) throw new Error(`load prior estimates: ${triedErr.message}`);
   const triedIds = new Set((tried ?? []).map((t: any) => t.staging_id));
 
-  // Recently built rows keep a blank count unless a source states one.
-  const todo = (rows as StagingRow[]).filter((r) => lacksUnitCount(r) && r.discovery_source !== 'gemini_recent');
+  // Recently built rows are asked too (stricter sources, see askGemini) but
+  // never get an acreage × density count.
+  const todo = (rows as StagingRow[]).filter((r) => lacksUnitCount(r));
   summary.considered = todo.length;
   const today = easternDate();
 
@@ -287,7 +305,7 @@ export async function estimateMissingUnits(
       cost_cents: cost,
     };
 
-    const writeCount = async (units: number, note: string) => {
+    const writeCount = async (units: number, note: string, confidence: 'estimated' | 'reported' = 'estimated') => {
       const notes = [r.notes?.trim(), note].filter(Boolean).join('\n\n');
       // Flag columns set in the same statement, so the unit-count trigger
       // leaves them alone; units_confidence carries the "estimated" caveat.
@@ -295,7 +313,7 @@ export async function estimateMissingUnits(
         .from('municipal_project_staging')
         .update({
           total_housing_units: units,
-          units_confidence: 'estimated',
+          units_confidence: confidence,
           units_needs_review: false,
           units_review_reason: null,
           notes,
@@ -309,7 +327,8 @@ export async function estimateMissingUnits(
       if (g && g.units != null) {
         const src = g.sources.map((s) => `${s.title} <${s.uri}>`).join('; ');
         await writeCount(g.units,
-          `[Unit estimate ${today} — Gemini web search] ${g.units} units. ${g.basis}\nSources: ${src}`);
+          `[Unit estimate ${today} — Gemini web search] ${g.units} units. ${g.basis}\nSources: ${src}`,
+          r.discovery_source === 'gemini_recent' ? 'reported' : 'estimated');
         await supabase.from('research_unit_estimate').insert({ ...log, method: 'gemini', units: g.units });
         summary.gemini++;
         return;
@@ -320,7 +339,7 @@ export async function estimateMissingUnits(
       // Density only fills a genuinely missing count. A flagged count (e.g.
       // exactly 25) may still be sourced; only a stated one replaces it.
       const missing = r.total_housing_units == null || r.total_housing_units <= 0;
-      if (missing && acres != null && dens) {
+      if (missing && acres != null && dens && r.discovery_source !== 'gemini_recent') {
         const units = Math.max(1, Math.round(acres * dens.perAcre));
         const why = g ? ` Gemini found no stated count${g.basis ? ` (${g.basis})` : ''}.` : ` Gemini call failed: ${gErr}.`;
         await writeCount(units,

@@ -47,8 +47,7 @@ async function loadRows(service: Supa, runIds: string[]): Promise<Row[]> {
 }
 
 const pendingTarget = (r: Row) =>
-  r.approval_state === 'pending' && lacksUnitCount(r) && r.units_confidence !== 'estimated'
-  && r.discovery_source !== 'gemini_recent';
+  r.approval_state === 'pending' && lacksUnitCount(r) && r.units_confidence !== 'estimated';
 const rejectedTarget = (r: Row) =>
   r.approval_state === 'rejected' && lacksUnitCount(r) && isRestorableReason(r.reject_reason);
 

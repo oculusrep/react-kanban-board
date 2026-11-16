@@ -107,7 +107,7 @@ export function RecentlyBuiltButton({ siteSubmitId, onStarted }: { siteSubmitId:
           {preview && (
             <div style={{ color: '#4A6B94' }}>
               {preview.search_calls} Gemini search{preview.search_calls === 1 ? '' : 'es'} ({preview.municipalities.map((m) => m.name).join(', ')})
-              {' '}≈ {usd(preview.est_search_cents)} + locating ≈ {usd(preview.est_locate_cents)}
+              {' '}≈ {usd(preview.est_search_cents)} + counts &amp; locating ≈ {usd(preview.est_locate_cents)}
               {' '}= <span className="font-semibold" style={{ color: '#002147' }}>~{usd(preview.est_total_cents)}</span>
               <div style={{ color: '#8FA9C8' }}>Estimate ({preview.basis}). Locating depends on how many come back without a precise address.</div>
             </div>
