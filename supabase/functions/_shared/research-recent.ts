@@ -192,7 +192,23 @@ const EVIDENCE_LABEL: Record<string, string> = {
 
 /** Listing and aggregator sites: never a total-units source. Builder, developer,
  *  property-management, government and news sites are fine. */
-const LISTING_HOST = /(^|\.)(zillow|redfin|realtor|trulia|homes|movoto|homesnap|point2homes|compass|remax|century21|coldwellbankerhomes|kw|bhhs|har|homefinder|fmls|georgiamls|newhomesource|newhomeguide|livabl|newhomesdirectory|apartments|apartmentlist|apartmentguide|apartmentfinder|apartmenthomeliving|rent|rentcafe|rentable|rentals|rentlingo|zumper|hotpads|padmapper|forrent|niche|neighborhoods|realestate|yelp)\.(com|net|org)$/i;
+const LISTING_HOST = /(^|\.)(zillow|redfin|realtor|trulia|homes|movoto|homesnap|point2homes|compass|remax|century21|coldwellbankerhomes|kw|bhhs|har|homefinder|fmls|georgiamls|newhomesource|newhomeguide|livabl|newhomesdirectory|apartments|apartmentlist|apartmentguide|apartmentfinder|apartmenthomeliving|rent|rentcafe|rentable|rentals|rentlingo|zumper|hotpads|padmapper|forrent|niche|neighborhoods|realestate|yelp|after55|seniorly|seniorcarefinder|caring|aplaceformom|seniorhousingnet|forsalebyowner|loopnet|crexi)\.(com|net|org)$/i;
+
+/** Gemini labels evidence loosely ("move-in ready homes available" → closeout).
+ *  The label stands only when its own one-line detail says the thing. */
+const SOLD_OUT_TEXT = /sold[\s-]?out|close[\s-]?out|final (home|homes|phase|lots?)|last (home|homes|lots?)|only (\d+|one|two|three|a few) (homes?|lots?|homesites?)( are)? (remain|left)|model (home )?(closed|sold)|fully built|built[\s-]?out|build[\s-]?out (is )?complete/i;
+const STILL_SELLING_TEXT = /now selling|coming soon|grand opening|launch|move[\s-]?in ready|under construction|homes? available|lots? available|new phase/i;
+const RENTAL_TEXT = /lease|leasing|for rent|occupan|opened|completed|built in \d{4}|certificate of occupancy/i;
+
+export function evidenceHolds(kind: string, detail: string | null, type: string | null): boolean {
+  const d = detail ?? '';
+  const rental = /apartment|rental|senior|active adult|build[\s-]?to[\s-]?rent/i.test(type ?? '') || kind === 'lease_up';
+  if (kind === 'sold_out' || kind === 'closeout') return SOLD_OUT_TEXT.test(d) && !(/move[\s-]?in ready|now selling/i.test(d));
+  if (kind === 'final_plat_recorded') return /final/i.test(d) && /plat/i.test(d);
+  if (kind === 'certificate_of_occupancy') return /certificate of occupancy|\bC\.?O\.?\b/.test(d) || (rental && RENTAL_TEXT.test(d) && !STILL_SELLING_TEXT.test(d));
+  if (kind === 'lease_up') return RENTAL_TEXT.test(d);
+  return false;
+}
 
 export function isListingUrl(u: string | null): boolean {
   if (!u) return false;
@@ -367,10 +383,11 @@ export async function processRecentRun(
       });
       return;
     }
-    if (!c.evidence) {
+    if (!c.evidence || !evidenceHolds(c.evidence, c.evidence_detail, c.type)) {
       sum.no_evidence++;
       logs.push({ research_run_id: runId, name: c.name, outcome: 'dropped_no_evidence', gemini_units: x.units,
-                  gemini_source: src[0] ?? null, year_completed: c.year_completed, detail: c.evidence_detail });
+                  gemini_source: c.evidence_source ?? src[0] ?? null, year_completed: c.year_completed,
+                  detail: `${c.evidence ?? 'none'}: ${c.evidence_detail ?? 'no detail'}` });
       return;
     }
     const ev = `${EVIDENCE_LABEL[c.evidence]}${c.evidence_detail ? ` — ${c.evidence_detail}` : ''}${c.evidence_source ? ` (${c.evidence_source})` : ''}`;
