@@ -147,3 +147,30 @@ The first run's 11 pending rows were rejected as "Superseded" (reversible).
 **Known limitation:** one Gemini call per municipality gives a different list each
 run (21 / 9 / 1 communities on three runs of the same site). A single run
 under-reports.
+
+## Multi-search run — Locust Grove, 2026-11-16 (run 8e3f866b)
+
+8 searches (Jenkinsburg has no OVIS builders, so no builder-led search there).
+
+- **Found 13** (2 merged duplicates): Locust Grove rental 7, builder-led 5,
+  single-family 1. Henry County: 0 on all three. Gemini read 44 sources and
+  explained it: the big subdivisions are still selling or inside city limits.
+  Jenkinsburg: 0.
+- **Already in OVIS: 5, dropped silently.** Havenwood Grove Senior and Springs at
+  Locust Grove had equal counts. Bunn Farms had OVIS 109 vs Gemini 478, but the
+  478 came only from a listing page, so no suggestion. Station 75 and a
+  "Havenwood Grove" variant had no count.
+- **No completion evidence: 3, logged.**
+  - Avilla Holloway: opens mid-2026.
+  - Quinn Residences and The Levi: labelled lease-up, but the detail is listing
+    text that doesn't say they're leasing.
+- **Staged: 3.**
+  - Liberty Grove (build-to-rent, lease-up; no count, year or address).
+  - Heron Bay-Northridge (2021) and Heron Bay-The Summit (2020), both sold out
+    (D.R. Horton) but 6.0 mi out, so they're leads.
+- **Unit-count step:** 3 tried, none found a non-listing count.
+- **Cost: $0.60** ($0.43 search + $0.11 unit count + $0.06 locate).
+
+Unit-count step on the earlier run's records:
+- Havenwood Grove Senior: 56 (lchousing.com).
+- Station 75 Apartments: no non-listing source, so it stays without a count.
