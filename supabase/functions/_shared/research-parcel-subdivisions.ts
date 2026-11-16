@@ -253,7 +253,6 @@ export async function processParcelRun(
   const { data: est } = await supabase.from('established_subdivision').select('subdivision_key, name, county, year_built_out, year_majority');
   const urlCache = new Map<string, string | null>();
   const logs: Row[] = [];
-  const county = layers[0]?.county ?? 'unknown';
 
   // 2a. Union + OVIS lookup for every group first.
   const lookups = await pool(groups, CONCURRENCY, async (g) => {
@@ -312,12 +311,12 @@ export async function processParcelRun(
                  detail: `${m.name} (${m.kind}, ${ovis ?? 'no'} units, matched by ${m.how})` };
       }
 
-      const known = (est ?? []).find((e: Row) => e.county === county && e.name.toLowerCase() === g.name.toLowerCase());
+      const known = (est ?? []).find((e: Row) => e.county === g.county && e.name.toLowerCase() === g.name.toLowerCase());
       if (known) {
         return { ...r, outcome: 'established', year: known.year_built_out ?? known.year_majority, detail: 'already in the established layer' };
       }
 
-      const city = g.city ? g.city.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\B\w/g, (c) => c.toLowerCase()) : 'Henry County';
+      const city = g.city ? g.city.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\B\w/g, (c) => c.toLowerCase()) : g.county;
       const a = await askBuilt(g.name, city, keys.gemini, urlCache);
       sum.gemini_calls++;
       sum.cost_cents += a.cost;
@@ -335,7 +334,7 @@ export async function processParcelRun(
 
       if (cls === 'established') {
         const { error: uErr } = await supabase.rpc('upsert_established_subdivision', { p: {
-          county, name: g.name, source_layers: g.layers, boundary_municipality_id: lk.boundary_municipality_id, city,
+          county: g.county, name: g.name, source_layers: g.layers, boundary_municipality_id: lk.boundary_municipality_id, city,
           parcel_count: n, year_first_homes: a.first_homes_year, year_built_out: a.built_out_year, year_majority: a.majority_year,
           basis_detail: `${years}. ${a.evidence ?? ''}`.trim(), sources: a.sources, geojson: lk.geojson, research_run_id: runId,
         } });

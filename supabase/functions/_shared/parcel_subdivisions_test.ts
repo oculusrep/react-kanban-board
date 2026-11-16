@@ -1,11 +1,12 @@
 import { assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { classify } from './research-parcel-subdivisions.ts';
-import { groupSubdivisions, isResidentialName, isResidentialZoning, titleCase, type ParcelFeature, type SubdivisionLayer } from './subdivision-layers.ts';
+import { groupSubdivisions, isResidentialClass, isResidentialName, isResidentialZoning, titleCase, type ParcelFeature, type SubdivisionLayer } from './subdivision-layers.ts';
 
 const L1 = { label: 'city', county: 'Henry County', priority: 1 } as SubdivisionLayer;
+const L3 = { label: 'hall', county: 'Hall County', priority: 1 } as SubdivisionLayer;
 const L2 = { label: 'county', county: 'Henry County', priority: 2 } as SubdivisionLayer;
 const f = (no: string, sub: string, zoning: string | null, layer = L1): ParcelFeature =>
-  ({ parcelNo: no, subdivision: sub, zoning, city: 'LOCUST GROVE', geometry: {}, layer });
+  ({ parcelNo: no, subdivision: sub, zoning, propertyClass: null, city: 'LOCUST GROVE', geometry: {}, layer });
 
 Deno.test('classify: build-out year decides, then majority, then still building', () => {
   const s = ['https://x.gov'];
@@ -25,6 +26,12 @@ Deno.test('zoning and names', () => {
   for (const z of ['C1', 'C-2', 'OI', 'O-I', 'M-1', 'LI']) assertEquals(isResidentialZoning(z), false, z);
   assertEquals(isResidentialName('Grove Professional Center'), false);
   assertEquals(isResidentialName('Hawthorne at Linden Park'), true);
+  for (const n of ['Newnan City', 'Senoia City Secondary', 'MLK/Pinson', 'Acreage']) assertEquals(isResidentialName(n), false, n);
+  assertEquals(isResidentialName('Village @ Deaton Creek'), true);
+  assertEquals(isResidentialName('Piedmont Place T/h'), true);
+  assertEquals(isResidentialClass('Residential'), true);
+  assertEquals(isResidentialClass('Agricultural'), true);
+  assertEquals(isResidentialClass('Commercial'), false);
   assertEquals(titleCase('HAWTHORNE AT LINDEN PARK'), 'Hawthorne at Linden Park');
   assertEquals(titleCase('SKYLAND MHP'), 'Skyland MHP');
   assertEquals(titleCase('ELMSTONE COMMONS AT L G STATION'), 'Elmstone Commons at L G Station');
@@ -40,4 +47,12 @@ Deno.test('group: dedupe across layers, residential only, 25+ parcels', () => {
   const { groups, skipped } = groupSubdivisions(feats, 25);
   assertEquals(groups.map((g) => [g.name, g.parcels.length]), [['Big Sub', 30]]);
   assertEquals(skipped.map((s) => s.reason).sort(), ['mobile home park', 'non-residential name', 'under 25 parcels']);
+});
+
+Deno.test('group: Hall class filter, county per group, blank names skipped', () => {
+  const feats: ParcelFeature[] = [];
+  for (let i = 0; i < 30; i++) feats.push({ ...f(`H${i}`, 'STERLING ON THE LAKE', null, L3), propertyClass: i < 4 ? 'Commercial' : 'Residential' });
+  for (let i = 0; i < 30; i++) feats.push(f(`X${i}`, '', null, L3));
+  const { groups } = groupSubdivisions(feats, 25);
+  assertEquals(groups.map((g) => [g.name, g.county, g.parcels.length]), [['Sterling on the Lake', 'Hall County', 26]]);
 });

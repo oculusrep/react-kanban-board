@@ -101,7 +101,24 @@ by internal users (RLS `is_internal_user()`). Only the service role writes it.
 | City of Locust Grove | `arcgis.co.henry.ga.us/…/Locust_Grove/Locust_Grove/MapServer/1` | Answers even when the county layer hangs |
 | Henry County | `arcgis.co.henry.ga.us/…/Parcels/MapServer/12` | Same Imperva-fronted server as the parcel adapter. Every query returned 503 "Wait timeout" for about an hour on 2026-11-16, then it recovered. A layer that doesn't answer is reported in the summary and in Telegram, and the run continues without it. |
 
-No other county is registered yet. Butts County (Jenkinsburg) has no layer.
+| Hall County | Hall's public AGOL `parcel_owner_public/FeatureServer/0` | `SUBD_NAME` is filled on ~33% of parcels (298 subdivisions of 25+). Residential test is `DIGCLASS_DESC`; Hall classes apartments as Commercial, so apartment complexes drop out. |
+| Coweta County | Coweta's weekly AGOL `WeeklyUpdate_WinGapParcels/FeatureServer/0` | `SubdivisionName` is filled on ~74% (502 of 25+). Appraisal catch-alls ("Newnan City", "MLK/Pinson") are dropped by name. There's no zoning or class field. It also has `YearBuilt` (not used yet). |
+
+Each layer maps its own field names (`fields` in `SUBDIVISION_LAYERS`). Hall
+and Coweta are matched to the same municipalities as their parcel adapters.
+
+**Checked 2026-11-16 and not registered:**
+- **Forsyth:** no subdivision name field, though it has year built (`RESYRBLT`).
+- **Newton** (2022 snapshot): has a `Subdivisio` field, but it's blank on every
+  parcel.
+- **Clayton:** has `SUBDNAME`, blank on every parcel.
+- **Houston:** `PlaceName` is filled on ~5% of parcels.
+- **Cobb:** `NAME` is filled on ~4% (mostly condos).
+- **Paulding:** `SubdivID` is a code, not a name.
+- **Barrow:** the layer has the parcel number only.
+
+Houston, Cobb, Paulding, Clayton and Barrow have no parcel adapter either.
+Butts County (Jenkinsburg) has no layer.
 
 ## First run — Pad Sites (Locust Grove), 5 mi, 2026-11-16
 
