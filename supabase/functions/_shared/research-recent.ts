@@ -115,7 +115,7 @@ interface Community {
 export type SearchKind = 'single_family' | 'rental' | 'builder';
 
 const RULES = (m: Muni) => `Rules:
-- Completed means real evidence, one of: sold out / builder closeout; certificate of occupancy for the final building; final-phase plat recorded; apartments in lease-up or fully leased. "Now selling", "coming soon", groundbreaking, zoning or plat approval for an earlier phase, or street/utility work are NOT completion — skip those communities.
+- List every community that looks completed or mostly built out since April 2020, even if you are unsure. For each, report the strongest completion evidence you find: sold_out / closeout; certificate_of_occupancy (final building); final_plat_recorded (final phase); lease_up (apartments leasing or fully leased). If you find none, use "none" — still list it. Be honest: "now selling", "coming soon", groundbreaking, early-phase plats or street work are not completion evidence.
 - ${m.kind === 'county' ? `Only communities outside city limits (unincorporated ${m.name}).` : `Only communities in or immediately around ${m.name}.`}
 - total_units only when a source states the community's total; otherwise null. Never estimate. Listing or aggregator pages (Zillow, Redfin, Realtor.com, Homes.com, Trulia, Apartments.com, NewHomeSource, Livabl, rental listing sites) never count as a total-units source. units_source = the URL that states the total.
 - completed = "YYYY-MM" when the month is known, else "YYYY".
@@ -482,7 +482,8 @@ export async function processRecentRun(
     if (error) sum.errors.push(`stage: ${error.message}`); else sum.staged = rows.length;
   }
   if (logs.length) {
-    const { error } = await supabase.from('research_recent_log').insert(logs);
+    // Every row carries every column it sets (a batch insert nulls missing keys).
+    const { error } = await supabase.from('research_recent_log').insert(logs.map((l) => ({ state: 'logged', ...l })));
     if (error) sum.errors.push(`log: ${error.message}`);
   }
   await supabase.from('research_run').update({
