@@ -6,6 +6,10 @@ existing records. Residential communities of 25+ homes or units, per municipalit
 in a site's radius. OVIS runs it with Gemini (live Google search); the OpenClaw
 agent is not involved.
 
+See also: [parcel subdivisions pass](MARKET_RESEARCH_PARCEL_SUBDIVISIONS.md),
+which finds built-out neighborhoods from the county parcel layer instead of a
+search list, and keeps pre-2020 ones on the Established (pre-2020) layer.
+
 Code:
 - `supabase/functions/_shared/research-recent.ts`
 - edge function `research-recent-built`

@@ -368,6 +368,8 @@ const DISCOVERY_SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: 'activity_pdf',  label: 'Permit activity PDF' },
   { value: 'builder_site',  label: 'Builder / developer site' },
   { value: 'econ_dev',      label: 'Econ dev / open records' },
+  { value: 'gemini_recent', label: 'Recently built pass (Gemini)' },
+  { value: 'parcel_layer',  label: 'County parcel layer (subdivision)' },
   { value: 'other',         label: 'Other' },
 ];
 
@@ -1924,6 +1926,13 @@ export default function ResearchRunApprovalModal({
                 style={{ borderColor: '#0F766E', color: '#0F766E', backgroundColor: '#F0FDFA' }}
                 title="Found by the recently built pass (Gemini web search): completed since April 2020 (2020 Census), with completion evidence. Commits as Recently Completed; shown on its own map layer, not the pipeline.">
             🏘 RECENTLY BUILT{r.year_completed ? ` · ${r.year_completed}` : ''}
+          </span>
+        )}
+        {r.discovery_source === 'parcel_layer' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#0F766E', color: '#0F766E', backgroundColor: '#F0FDFA' }}
+                title="Found by the parcel subdivisions pass: a subdivision in the county parcel layer (units = parcel count, boundary = union of its parcels); year from a Gemini web search. Sources are in Notes.">
+            🧱 PARCEL LAYER{r.year_completed ? ` · built out ${r.year_completed}` : ''}
           </span>
         )}
         {r.location_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
