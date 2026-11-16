@@ -72,6 +72,10 @@ export interface Callout {
 }
 
 const fmt = (n: number) => n.toLocaleString('en-US');
+/** Names recorded from web pages sometimes carry a literal entity ("Baymont Inn &amp; Suites"): show the character. */
+export const decodeEntities = (t: string) =>
+  t.replace(/&(amp|lt|gt|quot|apos|#39);/g, (_m, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" })[e]!);
+const label = (v: unknown, fallback: string) => decodeEntities(String(v ?? fallback));
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const pinOf = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback);
 
@@ -111,12 +115,12 @@ export function buildCallouts(rows: ExportRows): { callouts: Callout[]; mergedGe
   const callouts: Callout[] = [];
   byPin(rows.schools).forEach((r, i) => {
     const n = num(r.enrollment);
-    callouts.push({ group: 'school', pin: pinOf(r.pin, i + 1), line1: String(r.name ?? '(unnamed school)'),
+    callouts.push({ group: 'school', pin: pinOf(r.pin, i + 1), line1: label(r.name, '(unnamed school)'),
       line2: n === null ? '(Students not on file)' : `(${fmt(n)} Students)` });
   });
   byPin(rows.employers).forEach((r, i) => {
     const n = num(r.headcount);
-    callouts.push({ group: 'employer', pin: pinOf(r.pin, i + 1), line1: String(r.name ?? '(unnamed employer)'),
+    callouts.push({ group: 'employer', pin: pinOf(r.pin, i + 1), line1: label(r.name, '(unnamed employer)'),
       line2: n === null ? '(Employees not on file)' : `(${fmt(n)} Employees)` });
   });
   const mergedGenerators: string[] = [];
@@ -127,7 +131,7 @@ export function buildCallouts(rows: ExportRows): { callouts: Callout[]; mergedGe
     }
     const n = num(r.size_value);
     const unit = r.size_unit ? UNIT_LABEL[String(r.size_unit)] ?? String(r.size_unit) : null;
-    callouts.push({ group: 'generator', pin: pinOf(r.pin, i + 1), line1: String(r.name ?? '(unnamed generator)'),
+    callouts.push({ group: 'generator', pin: pinOf(r.pin, i + 1), line1: label(r.name, '(unnamed generator)'),
       line2: n === null || !unit ? '(Size not on file)' : `(${fmt(n)} ${unit})` });
   });
   return { callouts, mergedGenerators };

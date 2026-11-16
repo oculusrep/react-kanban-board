@@ -102,3 +102,9 @@ Deno.test('pptx: picture placeholder first in the tree, Aptos 8pt, fills, 1pt bl
   const layouts = await Promise.all(Object.keys(zip.files).filter((n) => /slideLayout\d+\.xml$/.test(n)).map((n) => zip.file(n)!.async('string')));
   assert(layouts.some((l) => l.includes('type="pic"') && l.includes('Paste Sites USA map')));
 });
+
+Deno.test('a literal HTML entity in a recorded name is shown as its character', () => {
+  const r = rows();
+  r.generators = numberPins([generator('Baymont Inn &amp; Suites Covington', 'hotel', 50, 'rooms', 1)]);
+  assertEquals(buildCallouts(r).callouts.at(-1)!.line1, 'Baymont Inn & Suites Covington');
+});
