@@ -8,6 +8,7 @@ import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../components/mapping/layers/MunicipalProjectLayer';
+import { EstablishedSubdivisionLayer } from '../components/mapping/layers/EstablishedSubdivisionLayer';
 import InterstateExitLayer from '../components/mapping/layers/InterstateExitLayer';
 import TruckStopLayer from '../components/mapping/layers/TruckStopLayer';
 import CustomLayerShapeList from '../components/mapping/CustomLayerShapeList';
@@ -3424,6 +3425,34 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     </div>
 )}
 
+{/* Established (pre-2020) system layer — parcel subdivisions built out before 2020; not in pipeline totals */}
+{canAccess('can_view_layer_municipal_projects') && (
+<div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('established_subdivisions')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.established_subdivisions?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.established_subdivisions?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>🏡</span>
+                          <span className="text-sm font-medium text-gray-900">Established (pre-2020)</span>
+                          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#6B7280' }} />
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.established_subdivisions?.count ?? 0}
+                        </span>
+                      </div>
+                    </div>
+)}
+
 {/* Comp Database system layer — comparable leases / sales / OMs */}
 {canAccess('can_view_layer_comp_database') && (
 <div className="p-2 border-b border-gray-200">
@@ -3954,6 +3983,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               onPinRightClick={(project, x, y) =>
                 setMunicipalProjectContextMenu({ isVisible: true, x, y, project })
               }
+            />
+
+            {/* Established (pre-2020) — parcel subdivisions built before 2020, grey outlines */}
+            <EstablishedSubdivisionLayer
+              map={mapInstance}
+              isVisible={canAccess('can_view_layer_municipal_projects') && (layerState.established_subdivisions?.isVisible || false)}
             />
 
             {/* Starbucks Layer — confidential, permission-gated */}

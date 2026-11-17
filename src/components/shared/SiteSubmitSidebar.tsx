@@ -33,6 +33,7 @@ import OpenTasksPanel from '../tasks/OpenTasksPanel';
 import StartResearchModal from './StartResearchModal';
 import PastResearchRunsPanel from './PastResearchRunsPanel';
 import { RecentlyBuiltButton } from './RecentlyBuiltButton';
+import { ParcelSubdivisionsButton } from './ParcelSubdivisionsButton';
 import ResearchRunApprovalModal from './ResearchRunApprovalModal';
 import SiteStoryPanel from './SiteStoryPanel';
 import { resolveSiteCoordinate } from '../../utils/resolveSiteCoordinate';
@@ -1684,8 +1685,12 @@ export default function SiteSubmitSidebar({
                       </svg>
                     </button>
                     {researchPanelExpanded && canStartResearch && hasPermission('can_approve_market_research') && (
-                      <div className="mb-2">
+                      <div className="mb-2 flex flex-wrap gap-2 items-start">
                         <RecentlyBuiltButton
+                          siteSubmitId={siteSubmit.id}
+                          onStarted={() => setResearchRunsRefresh((n) => n + 1)}
+                        />
+                        <ParcelSubdivisionsButton
                           siteSubmitId={siteSubmit.id}
                           onStarted={() => setResearchRunsRefresh((n) => n + 1)}
                         />

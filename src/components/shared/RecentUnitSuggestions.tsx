@@ -18,6 +18,8 @@ interface Suggestion {
   gemini_units: number;
   gemini_source: string | null;
   year_completed: number | null;
+  basis: 'gemini' | 'parcels';
+  parcel_count: number | null;
 }
 
 const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return 'source'; } };
@@ -32,7 +34,7 @@ export function RecentUnitSuggestions({ runIds, canApprove, onChanged }: {
   const load = useCallback(async () => {
     if (runIds.length === 0) { setRows([]); return; }
     const { data, error: e } = await supabase.from('research_recent_log')
-      .select('id, name, known_kind, known_name, ovis_units, gemini_units, gemini_source, year_completed')
+      .select('id, name, known_kind, known_name, ovis_units, gemini_units, gemini_source, year_completed, basis, parcel_count')
       .in('research_run_id', runIds).eq('state', 'pending').order('name');
     if (e) { setError(e.message); return; }
     setRows((data ?? []) as Suggestion[]);
@@ -57,7 +59,7 @@ export function RecentUnitSuggestions({ runIds, canApprove, onChanged }: {
         🔁 Unit count — existing records ({rows.length})
       </div>
       <div className="text-xs mb-2" style={{ color: '#4A6B94' }}>
-        The recently built pass found a higher count for these records already in OVIS. Nothing changes unless you click Replace.
+        The recently built pass (Gemini) or the parcel subdivisions pass (county parcel count) found a higher count for these records already in OVIS. Nothing changes unless you click Replace.
       </div>
       <div className="space-y-1">
         {rows.map((r) => (
@@ -66,8 +68,11 @@ export function RecentUnitSuggestions({ runIds, canApprove, onChanged }: {
               <span className="font-medium">{r.known_name ?? r.name}</span>
               <span className="text-xs" style={{ color: '#8FA9C8' }}> {r.known_kind === 'staged' ? '(pending record)' : '(project)'}</span>
               {': '}
-              <span>OVIS {r.ovis_units ?? '—'} → <span className="font-semibold">Gemini {r.gemini_units}</span></span>
-              {r.gemini_source && (
+              <span>OVIS {r.ovis_units ?? '—'} → <span className="font-semibold">{r.basis === 'parcels' ? 'Parcels' : 'Gemini'} {r.gemini_units}</span></span>
+              {r.basis === 'parcels' && r.name !== r.known_name && (
+                <span className="text-xs" style={{ color: '#4A6B94' }}> (subdivision “{r.name}”)</span>
+              )}
+              {r.gemini_source && r.basis !== 'parcels' && (
                 <> (<a href={r.gemini_source} target="_blank" rel="noreferrer" className="underline" style={{ color: '#4A6B94' }}>{host(r.gemini_source)}</a>)</>
               )}
             </div>

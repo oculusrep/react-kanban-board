@@ -74,6 +74,8 @@ const DISCOVERY_SOURCE_LABELS: Record<string, string> = {
   activity_pdf: 'Permit activity PDF',
   builder_site: 'Builder / developer site',
   econ_dev: 'Econ dev / open records',
+  gemini_recent: 'Recently built pass (Gemini)',
+  parcel_layer: 'County parcel layer (subdivision)',
   other: 'Other',
 };
 

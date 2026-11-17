@@ -304,6 +304,17 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     isSystemLayer: true,
   },
   {
+    // Parcel subdivisions pass: neighborhoods built out before 2020. Reference
+    // only (established_subdivision), never in a pipeline / growth total.
+    id: 'established_subdivisions',
+    name: 'Established (pre-2020)',
+    type: 'municipal_project',
+    icon: '🏡',
+    description: 'Subdivisions built out before 2020 (county parcel layer + Gemini). Not in pipeline totals',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
     id: 'cached_demographics',
     name: 'Cached Demographics',
     type: 'cached_demographics',

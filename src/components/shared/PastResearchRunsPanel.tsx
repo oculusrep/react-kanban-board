@@ -267,6 +267,11 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
               </div>
             </div>
             <div className="mt-1 text-xs" style={{ color: '#4A6B94' }}>
+              {r.research_scope === 'parcel_subdivisions' && (
+                <span className="font-medium" style={{ color: '#0F766E' }}>
+                  🧱 Parcel subdivisions{r.post_run_done_at ? '' : ' (in progress)'} ·{' '}
+                </span>
+              )}
               {r.research_scope === 'recent_built' && (
                 <span className="font-medium" style={{ color: '#0F766E' }}>
                   🏘 Recently built{r.post_run_done_at ? '' : ' (in progress)'} ·{' '}
