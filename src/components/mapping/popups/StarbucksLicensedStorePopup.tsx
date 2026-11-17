@@ -5,6 +5,8 @@ import AddToTourButton from '../../tours/AddToTourButton';
 interface StarbucksLicensedStorePopupProps {
   store: StarbucksLicensedStore;
   onClose: () => void;
+  /** False on the client portal: clients don't build tours. */
+  allowAddToTour?: boolean;
 }
 
 const STARBUCKS_GREEN = '#00704A';
@@ -28,7 +30,7 @@ function fmtDate(v: string | null | undefined): string {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = ({ store, onClose }) => {
+const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = ({ store, onClose, allowAddToTour = true }) => {
   // Prefer verified coords if present (shows the actual pin position)
   const lat = store.verified_latitude ?? store.latitude;
   const lng = store.verified_longitude ?? store.longitude;
@@ -106,7 +108,7 @@ const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = 
           </div>
         )}
 
-        {lat != null && lng != null && (
+        {allowAddToTour && lat != null && lng != null && (
           <div style={{ marginTop: 8 }}>
             <AddToTourButton
               siteSubmitId={null}

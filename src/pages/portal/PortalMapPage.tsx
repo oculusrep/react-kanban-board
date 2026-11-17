@@ -22,6 +22,7 @@ import { boundaryService, FetchedBoundary } from '../../services/boundaryService
 import PlaceInfoLayer from '../../components/mapping/layers/PlaceInfoLayer';
 import StarbucksAtlasLogosLayer from '../../components/mapping/layers/StarbucksAtlasLogosLayer';
 import StarbucksLicensedStoreLayer from '../../components/mapping/layers/StarbucksLicensedStoreLayer';
+import StarbucksSlideout from '../../components/mapping/slideouts/StarbucksSlideout';
 import { supabase } from '../../lib/supabaseClient';
 
 // Client-visible stages (filtered view for portal users)
@@ -116,6 +117,7 @@ function PortalMapContent() {
   const [starbucksLayersAvailable, setStarbucksLayersAvailable] = useState(false);
   const [showSbuxAtlas, setShowSbuxAtlas] = useState(false);
   const [showSbuxLicensed, setShowSbuxLicensed] = useState(false);
+  const [trendsStore, setTrendsStore] = useState<any>(null); // Atlas "View Trends" slideout
   useEffect(() => {
     let cancelled = false;
     const clientIds = selectedClientId ? [selectedClientId] : accessibleClients.map(c => c.id);
@@ -138,6 +140,7 @@ function PortalMapContent() {
     if (!starbucksLayersAvailable) {
       setShowSbuxAtlas(false);
       setShowSbuxLicensed(false);
+      setTrendsStore(null);
     }
   }, [starbucksLayersAvailable]);
 
@@ -624,9 +627,19 @@ function PortalMapContent() {
         {/* Starbucks system layers — Starbucks portal users + authorized internal users */}
         {mapInstance && starbucksLayersAvailable && (
           <>
-            <StarbucksAtlasLogosLayer map={mapInstance} isVisible={showSbuxAtlas} />
-            <StarbucksLicensedStoreLayer map={mapInstance} isVisible={showSbuxLicensed} />
+            {/* View-only: no Add to tour, no verify / right-click handlers */}
+            <StarbucksAtlasLogosLayer
+              map={mapInstance}
+              isVisible={showSbuxAtlas}
+              allowAddToTour={false}
+              selectedStoreNumber={trendsStore?.store_number ?? null}
+              onPinClick={setTrendsStore}
+            />
+            <StarbucksLicensedStoreLayer map={mapInstance} isVisible={showSbuxLicensed} allowAddToTour={false} />
           </>
+        )}
+        {starbucksLayersAvailable && trendsStore && (
+          <StarbucksSlideout store={trendsStore} onClose={() => setTrendsStore(null)} />
         )}
 
         {/* Drawing Toolbar (brokers only) - Hidden when Street View is active */}

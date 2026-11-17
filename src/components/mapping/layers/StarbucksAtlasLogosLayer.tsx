@@ -20,6 +20,7 @@ export interface StarbucksAtlasLogosLayerProps {
     gridSize: number;
     maxZoom: number;
   };
+  allowAddToTour?: boolean;
 }
 
 const STARBUCKS_GREEN = '#00704A';
@@ -64,6 +65,7 @@ const StarbucksAtlasLogosLayer: React.FC<StarbucksAtlasLogosLayerProps> = ({
   onPinClick,
   selectedStoreNumber = null,
   clusterConfig,
+  allowAddToTour = true,
 }) => {
   const [stores, setStores] = useState<StarbucksStoreWithSnapshot[]>([]);
   const markersRef = useRef<google.maps.Marker[]>([]);
@@ -107,6 +109,7 @@ const StarbucksAtlasLogosLayer: React.FC<StarbucksAtlasLogosLayerProps> = ({
               store={store}
               onViewDetails={() => onPinClick?.(store)}
               onClose={() => this.onRemove()}
+              allowAddToTour={allowAddToTour}
             />
           );
           this.getPanes()?.floatPane.appendChild(this.containerDiv);
@@ -133,7 +136,7 @@ const StarbucksAtlasLogosLayer: React.FC<StarbucksAtlasLogosLayerProps> = ({
       }
       return new PopupOverlay(position);
     },
-    [onPinClick]
+    [onPinClick, allowAddToTour]
   );
 
   const fetchStores = useCallback(async (forceRefresh = false) => {

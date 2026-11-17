@@ -6,6 +6,8 @@ interface StarbucksPopupProps {
   store: StarbucksStoreWithSnapshot;
   onViewDetails?: () => void;
   onClose: () => void;
+  /** False on the client portal: clients don't build tours. */
+  allowAddToTour?: boolean;
 }
 
 const STARBUCKS_GREEN = '#00704A';
@@ -26,7 +28,7 @@ function formatDate(dateStr: string | null | undefined): string {
   return `${m}/${d}/${y}`;
 }
 
-const StarbucksPopup: React.FC<StarbucksPopupProps> = ({ store, onViewDetails, onClose }) => {
+const StarbucksPopup: React.FC<StarbucksPopupProps> = ({ store, onViewDetails, onClose, allowAddToTour = true }) => {
   const snap = store.latest_snapshot;
 
   return (
@@ -117,7 +119,7 @@ const StarbucksPopup: React.FC<StarbucksPopupProps> = ({ store, onViewDetails, o
           </button>
         )}
 
-        {store.latitude != null && store.longitude != null && (
+        {allowAddToTour && store.latitude != null && store.longitude != null && (
           <div style={{ marginTop: 8 }}>
             <AddToTourButton
               siteSubmitId={null}

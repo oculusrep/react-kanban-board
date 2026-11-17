@@ -88,3 +88,8 @@ That is the same function the `starbucks_store` / `starbucks_snapshot` /
 Adam Updike). Verified by impersonation: Jared reads 751 snapshots / 214 licensed stores,
 and a non-Starbucks portal user reads 0. On the portal they're view-only: no verify or
 right-click handlers.
+
+Follow-up (same day): on the portal, the store popups hide **Add to tour**
+(`allowAddToTour={false}` on both layers/popups; default true elsewhere). Atlas **View
+Trends** opens `StarbucksSlideout`, which reads only `starbucks_snapshot` (already
+RLS-gated by `user_has_starbucks_access()`). There's still no verify or right-click.
