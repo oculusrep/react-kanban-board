@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useDropboxFiles } from '../../hooks/useDropboxFiles';
+import DropboxService from '../../services/dropboxService';
 
 interface Comment {
   id: string;
@@ -511,10 +512,14 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
       // Determine if this is a property or deal file based on path
       const isPropertyFile = dropboxPath.toLowerCase().includes('/properties/');
       const isDealFile = dropboxPath.toLowerCase().includes('/opportunities/');
+      const isSiteSubmitFile = dropboxPath.toLowerCase().includes('/site submits/');
 
       let link: string | null = null;
 
-      if (isPropertyFile && propertyFiles.getSharedLink) {
+      if (isSiteSubmitFile && siteSubmitId) {
+        // Portal users need the site submit scope for the proxy to allow this path.
+        link = await new DropboxService({ entityType: 'site_submit', entityId: siteSubmitId }).getSharedLink(dropboxPath);
+      } else if (isPropertyFile && propertyFiles.getSharedLink) {
         console.log('📎 Getting shared link via property files hook...');
         link = await propertyFiles.getSharedLink(dropboxPath);
       } else if (isDealFile && dealFiles.getSharedLink) {

@@ -32,9 +32,14 @@ any logged-in account (portal clients included) could share or hide any file.
   - **portal users**: must send `scope: { entityType, entityId }`; the record is
     re-read through a user-scoped client (portal RLS decides), paths must be inside
     that record's `dropbox_mapping` folder, and only portal-visible entries are listed
-    or linked (same rule as `PortalFilesTab.isFileVisible`). Upload only into deal
-    folders, only with `contact.portal_can_upload_deal_files`; the proxy shares the
-    upload (`portal_file_visibility` row) itself.
+    or linked (same rule as `PortalFilesTab.isFileVisible`). Upload into deal or
+    site submit folders, only with `contact.portal_can_upload_deal_files`; the proxy
+    shares the upload (`portal_file_visibility` row) itself. Op
+    `ensure_site_submit_folder` creates the site submit's own folder + `dropbox_mapping`
+    server-side (portal users can't write the mapping), so a flagged client can drop
+    files on a site with no deal. Added 2026-11-17 for Jared Wright (Waycross had no
+    deal, so his deal-only permission gave him no drop target). The browser uses this
+    op for all site submit folder creation, internal users included.
   - **anyone else** (coach, no record): 403.
 - Uploads: the proxy returns a one-time Dropbox temporary upload link; the browser
   POSTs bytes straight to Dropbox (CORS `*`, tested 2026-10-16). The link only returns
@@ -75,3 +80,13 @@ leaked token).
    4. Revoke the old grant: `POST /2/auth/token/revoke` with an access token minted from
       the OLD refresh token — this disables that refresh token and all its access tokens.
    5. Re-test file listing in OVIS and one QBO attachment flow (`_shared/dropbox.ts`).
+
+## 2026-11-17: site submit sharing was silently broken
+
+`portal_file_visibility.entity_type` had a CHECK allowing only `property` and `deal`,
+so every broker eye-toggle "share" on a site submit file failed. The RPC error was
+swallowed client-side, so the client got a "shared a file" chat notice for a file they
+couldn't open. Zero site_submit rows existed. Migration `20261117102009` widens the
+CHECK and adds a site_submit branch to the portal SELECT policy. Files shared before
+then need to be re-toggled. The chat tab now also opens `/Site Submits/` links with a
+site_submit scope.

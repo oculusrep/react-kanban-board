@@ -18,9 +18,12 @@
  *                    listed or linked (same rule as PortalFilesTab.isFileVisible:
  *                    exact override, else longest parent-folder override, else
  *                    property = visible, deal / site_submit = hidden).
- *                    Upload: deal folders only, and only when the caller's contact
- *                    has portal_can_upload_deal_files. The upload is shared to the
- *                    portal (portal_file_visibility row) here, server-side.
+ *                    Upload: deal or site submit folders, and only when the caller's
+ *                    contact has portal_can_upload_deal_files. The upload is shared to
+ *                    the portal (portal_file_visibility row) here, server-side.
+ *                    ensure_site_submit_folder: creates the site submit's own folder +
+ *                    dropbox_mapping (portal users can't write dropbox_mapping) so a
+ *                    flagged client can upload to a site that has no deal yet.
  *   anyone else    — 403 (coach, users with no OVIS or portal record).
  *
  * Uploads never pass through this function: it returns a one-time Dropbox
@@ -295,6 +298,17 @@ serve(async (req) => {
     const { data: internal, error: rpcErr } = await asUser.rpc('is_internal_user');
     if (rpcErr) return json({ error: 'permission_check_failed' }, 403);
 
+    if (op === 'ensure_site_submit_folder') {
+      // Internal users always; portal users only with the upload opt-in. Either way the
+      // site submit must be visible to the caller under their own RLS.
+      if (internal !== true) {
+        const { data: contactId } = await asUser.rpc('portal_user_contact_id');
+        if (!contactId) return json({ error: 'forbidden' }, 403);
+        await requireUploadOptIn(service, contactId);
+      }
+      return json(await ensureSiteSubmitFolder(asUser, service, body.siteSubmitId));
+    }
+
     if (internal === true) return json(await internalOp(op, body));
 
     // Not internal: must be a portal user acting on a record they can see.
@@ -321,6 +335,54 @@ async function exists(path: string): Promise<boolean> {
     if (isNotFound(err)) return false;
     throw err;
   }
+}
+
+async function requireUploadOptIn(service: SupabaseClient, contactId: string) {
+  const { data: contact } = await service
+    .from('contact').select('portal_can_upload_deal_files').eq('id', contactId).maybeSingle();
+  if (!contact?.portal_can_upload_deal_files) throw new HttpError(403, 'forbidden');
+}
+
+/**
+ * The site submit's own folder, created with its dropbox_mapping row if missing.
+ * Mirrors the browser's createFolderForEntity('site_submit', siteSubmitFolderName(...)):
+ * "/Salesforce Documents/Site Submits/{name} - {id8}" with the same character cleaning,
+ * so internal and portal creation can never pick different folders.
+ */
+async function ensureSiteSubmitFolder(asUser: SupabaseClient, service: SupabaseClient, siteSubmitId: unknown) {
+  if (typeof siteSubmitId !== 'string' || !siteSubmitId) throw new HttpError(400, 'siteSubmitId required');
+  const { data: ss, error } = await asUser
+    .from('site_submit').select('id, site_submit_name').eq('id', siteSubmitId).maybeSingle();
+  if (error || !ss) throw new HttpError(403, 'forbidden');
+
+  const { data: existing } = await service
+    .from('dropbox_mapping').select('dropbox_folder_path')
+    .eq('entity_type', 'site_submit').eq('entity_id', ss.id).maybeSingle();
+  if (existing?.dropbox_folder_path) return { path: existing.dropbox_folder_path, created: false };
+
+  const base = String(ss.site_submit_name ?? '').trim() || 'Unnamed Site Submit';
+  const clean = `${base} - ${ss.id.slice(0, 8)}`.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
+  const parent = `${BASE}/Site Submits`;
+  const path = `${parent}/${clean}`;
+
+  if (!(await exists(parent))) await dbx('files/create_folder_v2', { path: parent, autorename: false });
+  if (!(await exists(path))) await dbx('files/create_folder_v2', { path, autorename: false });
+
+  const { error: insErr } = await service.from('dropbox_mapping').upsert({
+    entity_type: 'site_submit',
+    entity_id: ss.id,
+    dropbox_folder_path: path,
+    sf_id: `AUTO-${ss.id.substring(0, 13)}`,
+    sfdb_file_found: false,
+    last_verified_at: new Date().toISOString(),
+  }, { onConflict: 'entity_type,entity_id', ignoreDuplicates: true });
+  if (insErr) throw new HttpError(500, `Failed to save folder mapping: ${insErr.message}`);
+
+  // A concurrent caller may have won the race; return whatever is stored.
+  const { data: stored } = await service
+    .from('dropbox_mapping').select('dropbox_folder_path')
+    .eq('entity_type', 'site_submit').eq('entity_id', ss.id).maybeSingle();
+  return { path: stored?.dropbox_folder_path ?? path, created: true };
 }
 
 async function uploadLink(folder: string, rawName: string) {
@@ -430,27 +492,27 @@ async function portalOp(
     case 'shared_link':
       return { link: await sharedLink(openable(body.path)) };
     case 'upload_link': {
-      if (scope.entityType !== 'deal') throw new HttpError(403, 'forbidden');
-      const { data: contact } = await ctx.service
-        .from('contact').select('portal_can_upload_deal_files').eq('id', ctx.contactId).maybeSingle();
-      if (!contact?.portal_can_upload_deal_files) throw new HttpError(403, 'forbidden');
+      if (scope.entityType !== 'deal' && scope.entityType !== 'site_submit') throw new HttpError(403, 'forbidden');
+      await requireUploadOptIn(ctx.service, ctx.contactId);
 
       // Optional site submit for the "file shared" activity feed — only if the
       // caller can see it (portal RLS), since the trigger writes under its client.
       let siteSubmitId: string | null = null;
-      if (typeof body.siteSubmitId === 'string' && body.siteSubmitId) {
+      if (scope.entityType === 'site_submit') {
+        siteSubmitId = scope.entityId;
+      } else if (typeof body.siteSubmitId === 'string' && body.siteSubmitId) {
         const { data: ss } = await ctx.asUser
           .from('site_submit').select('id').eq('id', body.siteSubmitId).maybeSingle();
         siteSubmitId = ss?.id ?? null;
       }
 
       const result = await uploadLink(browsable(body.folder), body.name);
-      // Deal files are hidden from the portal by default; share the upload so it
+      // Deal and site submit files are hidden from the portal by default; share the upload so it
       // doesn't vanish from the uploader's own view. A new row only — never flips
       // an existing override (the free-name step means the path is new anyway).
       const { error } = await ctx.service.from('portal_file_visibility').upsert({
         dropbox_path: result.path,
-        entity_type: 'deal',
+        entity_type: scope.entityType,
         entity_id: scope.entityId,
         site_submit_id: siteSubmitId,
         is_visible: true,

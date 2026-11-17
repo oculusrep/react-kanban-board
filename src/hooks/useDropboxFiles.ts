@@ -300,6 +300,14 @@ export function useDropboxFiles(
 
       let newFolderPath: string;
 
+      // Site submits: the proxy creates the folder AND the mapping row, so this also works
+      // for portal clients with the upload opt-in (they can't write dropbox_mapping).
+      if (entityType === 'site_submit') {
+        newFolderPath = await dropboxService.ensureSiteSubmitFolder(entityId);
+        setFolderPath(newFolderPath);
+        return newFolderPath;
+      }
+
       // Special handling for property_unit - nest under parent property
       if (entityType === 'property_unit') {
         // Get the parent property info

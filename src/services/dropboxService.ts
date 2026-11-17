@@ -152,6 +152,16 @@ class DropboxService {
     };
   }
 
+  /**
+   * The site submit's own folder, created server-side (folder + dropbox_mapping) if
+   * missing. Works for portal users with the upload opt-in, who can't write
+   * dropbox_mapping themselves.
+   */
+  async ensureSiteSubmitFolder(siteSubmitId: string): Promise<string> {
+    const { path } = await this.call<{ path: string }>('ensure_site_submit_folder', { siteSubmitId });
+    return path;
+  }
+
   /** Create a new folder (no autorename) */
   async createFolder(folderPath: string): Promise<DropboxFile> {
     this.validatePath(folderPath);
