@@ -4,14 +4,28 @@
 when the site has at least one completed deep pass and the user has `can_run_site_story`. That is the
 edge function's gate for every action; this action reads stored data and spends nothing.
 
-**What it builds:** one 16:9 .pptx from the site's **latest completed deep pass** (on any thread):
+**What it builds:** one .pptx from the site's **latest completed deep pass** (on any thread), on
+Mike's **Starbucks slide template** (`supabase/functions/_shared/site-research/templates/starbucks-slide-template.pptx`):
+4:3, the template's master, theme and "1_Title Slide" layout as they are.
 
 | Part | Content |
 |---|---|
-| Header bar | "Generators", site submit name, property address (navy `#002147`) |
-| Totals box | Total students (K-12), college students (IPEDS) on their own line and **not added**, total employees. Each line says how many rows have no number ("· 3 not on file"). Summed from the rows, never entered by hand |
-| Map | A real **picture placeholder**, "Paste Sites USA map", filling the slide below the header. It sits first in the shape tree, so a pasted map goes behind the callouts |
+| Green bar | The template's bar (`#00704A`) and siren, from the layout |
+| Title | "Generators", in the layout's own title placeholder (white Calibri 21pt) |
+| Totals | In the bar, white: total students (K-12), college students (IPEDS) on their own line and **not added**, total employees. Each line says how many rows have no number ("· 3 not on file"). Summed from the rows, never entered by hand |
+| City / street | The template's right-aligned box beside the siren: "City, ST" over the property address. The template shows cross streets; OVIS has no cross-street field, so this is the address, editable on the slide |
+| Map | A real **picture placeholder**, "Paste Sites USA map", filling the slide below the bar. It sits first in the shape tree, so a pasted map goes behind the callouts |
 | Callouts | One per row of schools.csv, employers.csv and generators.csv. No cap |
+
+Two changes to the template's layout, in the output only: the hard-coded city box moves from the
+layout onto the slide (same position and format), and the map placeholder is added. The template's
+thumbnail (the Covington mock-up) is dropped; PowerPoint makes a new one on save.
+
+**Replacing the template:** overwrite the .pptx in `templates/`, then regenerate the inline copy (edge
+functions can't read sibling files reliably):
+`base64 -i templates/starbucks-slide-template.pptx | fold -w 120`, pasted into
+`starbucks-slide-template.ts`. A test fails if the two differ. The builder expects layout 12 to keep
+its "Rectangle 8" city box and title placeholder idx 13, and throws if they are gone.
 
 Callouts: `wedgeRoundRectCallout`, 1pt black outline, Aptos 8pt black, centred, two lines.
 
@@ -66,8 +80,9 @@ to fit text", so editing a callout in PowerPoint resizes it.
 ## Code
 
 - `supabase/functions/_shared/site-research/generators-slide.ts`: rows, callouts, totals, layout,
-  pptxgenjs build, and the XML fix-ups. pptxgenjs writes the placeholder untyped and last in the
-  tree, and it can't set callout pointer adjust values.
+  and the slide XML, written straight into the template with JSZip (no pptxgenjs).
+- `supabase/functions/_shared/site-research/templates/starbucks-slide-template.pptx` + its inline
+  copy `starbucks-slide-template.ts`.
 - `supabase/functions/ovis-site-research/index.ts`: action `generators_slide { site_submit_id }` → the
   .pptx (`Content-Disposition` filename `Generators - <site>.pptx`).
 - `src/components/shared/SiteStoryPanel.tsx`: the button.

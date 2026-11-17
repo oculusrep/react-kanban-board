@@ -1,5 +1,7 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import JSZip from 'npm:jszip@3.10.1';
+import { encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts';
+import { STARBUCKS_TEMPLATE_B64 } from './starbucks-slide-template.ts';
 import { buildEmployerRow, buildGeneratorRow, buildSchoolRow, numberPins } from '../csv.ts';
 import {
   buildCallouts, buildGeneratorsSlide, calloutWidth, computeTotals, type ExportRows, layoutCallouts, MAP_RECT, SLIDE_W,
@@ -88,7 +90,7 @@ Deno.test('callout width grows with its text; the font never shrinks', () => {
 });
 
 Deno.test('pptx: picture placeholder first in the tree, Aptos 8pt, fills, 1pt black outline, pointers set', async () => {
-  const r = await buildGeneratorsSlide({ siteName: 'SBUX Covington', address: 'John R. Williams Hwy, Covington, GA', rows: rows() });
+  const r = await buildGeneratorsSlide({ siteName: 'SBUX Covington', cityState: 'Covington, GA', street: 'John R. Williams Hwy & Alcovy Rd', rows: rows() });
   assertEquals(r.callouts, 8);
   const zip = await JSZip.loadAsync(r.pptx);
   const slide = await zip.file('ppt/slides/slide1.xml')!.async('string');
@@ -99,6 +101,14 @@ Deno.test('pptx: picture placeholder first in the tree, Aptos 8pt, fills, 1pt bl
   assert(slide.includes('sz="800"') && slide.includes('typeface="Aptos"'));
   assert(slide.includes('<a:ln w="12700"><a:solidFill><a:srgbClr val="000000"/>'));
   assert(!/\(\d+\)\s/.test(slide) && !slide.includes('#1 '), 'no pin numbers in callout text');
+  assert(slide.includes('<a:t>Covington, GA</a:t>') && slide.includes('<a:t>John R. Williams Hwy &amp; Alcovy Rd</a:t>'), 'city / street on the slide');
+  assert(slide.includes('<a:t>Generators</a:t>') && slide.includes('idx="13"'), 'title in the template placeholder');
+  // The template is kept: 4:3, green bar and siren in the layout, the mock-up's city box gone from it.
+  const pres = await zip.file('ppt/presentation.xml')!.async('string');
+  assert(pres.includes('<p:sldSz cx="9144000" cy="6858000"'));
+  const l12 = await zip.file('ppt/slideLayouts/slideLayout12.xml')!.async('string');
+  assert(l12.includes('00704A') && l12.includes('name="Picture 7"') && !l12.includes('Alcovy'), 'bar + siren kept, city box moved');
+  assert(zip.file('ppt/media/image1.png') && !zip.file('docProps/thumbnail.jpeg'));
   const layouts = await Promise.all(Object.keys(zip.files).filter((n) => /slideLayout\d+\.xml$/.test(n)).map((n) => zip.file(n)!.async('string')));
   assert(layouts.some((l) => l.includes('type="pic"') && l.includes('Paste Sites USA map')));
 });
@@ -107,4 +117,9 @@ Deno.test('a literal HTML entity in a recorded name is shown as its character', 
   const r = rows();
   r.generators = numberPins([generator('Baymont Inn &amp; Suites Covington', 'hotel', 50, 'rooms', 1)]);
   assertEquals(buildCallouts(r).callouts.at(-1)!.line1, 'Baymont Inn & Suites Covington');
+});
+
+Deno.test('the inline template matches templates/starbucks-slide-template.pptx byte for byte', async () => {
+  const file = await Deno.readFile(new URL('./templates/starbucks-slide-template.pptx', import.meta.url));
+  assertEquals(STARBUCKS_TEMPLATE_B64.replace(/\s+/g, ''), encodeBase64(file));
 });

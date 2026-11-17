@@ -750,8 +750,11 @@ async function generatorsSlide(service: SupabaseClient, body: Record<string, unk
   const rows = await rebuildExportRows(run, supabaseDeepPassDb(service as never).committedToolOutputs);
   const p = site.property;
   const siteName = site.site_submit_name ?? p?.property_name ?? 'Site';
-  const address = [p?.address, p?.city, [p?.state, p?.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-  const slide = await buildGeneratorsSlide({ siteName, address, rows });
+  // Header mirrors the template: "City, ST" over the street (the template shows cross streets; OVIS
+  // has no cross-street field, so it is the property address, editable on the slide).
+  const cityState = [p?.city, p?.state].filter(Boolean).join(', ');
+  const street = p?.address ?? '';
+  const slide = await buildGeneratorsSlide({ siteName, cityState, street, rows });
   const filename = slideFilename(siteName);
   console.log(`[site-research] generators_slide site=${siteSubmitId} run=${run.id} callouts=${slide.callouts} offSlide=${slide.offSlide} merged=${slide.mergedGenerators.length}`);
   return new Response(new Blob([slide.pptx as BlobPart]), {
