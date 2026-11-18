@@ -146,6 +146,30 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     retries: 1,
   },
   {
+    // Houston County publishes no queryable parcel layer of its own (its AGOL org
+    // "hcga" carries only a service-line inventory; the assessor links qPublic).
+    // This is the City of Warner Robins Planning & Engineering layer, Esri-hosted,
+    // covering ALL of Houston (71,012 parcels) and Peach (14,608), last edited
+    // 2026-11-02. Anonymous, CORS `*`; pages answer in 0.4–1.6 s (profiled
+    // 2026-11-17), so the default timeout and one retry.
+    // Parcel_No is stored single-spaced, 6 + 6 ("0W1330 039000"); qPublic pads it
+    // ("0W1330    039000"), which likeFromRuns ignores. Normalizing is lossless
+    // within Houston (70,773 distinct -> 70,773). Map prefix: 0W Warner Robins,
+    // 0P Perry, 0C Centerville, 00 unincorporated, so an id renumbered on
+    // annexation (001040 129000 -> 0W1330 089000) comes back "missing".
+    // Warner Robins (7.8%) and Perry (6.5%) straddle Peach County: a Peach-side
+    // parcel uses Peach's format, which the parser doesn't read. Byron and Fort
+    // Valley are Peach: not matched.
+    matches: (n) => /^(houston county|warner robins|perry|centerville)$/i.test(n),
+    label: 'Houston County',
+    layerUrl: 'https://services6.arcgis.com/wtKwyZlCD3bY8Zh4/arcgis/rest/services/Base_Map_Polygon/FeatureServer/0',
+    idField: 'Parcel_No',
+    whereFor: (id) => likeFromRuns('Parcel_No', id),
+    // "0W1330 039000", "00122A 105000", "0W68A0 05B000", "000340 001CEL"
+    idPattern: /^0[0-9WPC][0-9A-Z]{4} \d{2}[0-9A-Z](\d{3}|CEL)$/i,
+    retries: 1,
+  },
+  {
     // FALLBACK, low trust. Newton County's own layer (gis.ncboc.com/.../Public/
     // Newton_Parcels) is token-gated (499), so this is a third-party AGOL
     // snapshot: owner mhackman_UofMD, last edited 2022-02-26, 45,755 parcels,

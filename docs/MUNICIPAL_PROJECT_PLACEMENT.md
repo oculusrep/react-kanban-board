@@ -496,3 +496,138 @@ of 5 records with parcel IDs.
 - Its fetch note says "likely re-platted", the generic wording for a missing
   ID. The real cause is the format.
 - No converter has been built.
+
+## Houston County adapter (2026-11-17)
+
+Prompted by sweep `0b19edc4`, which staged 9 records with parcel IDs in Centerville, Houston County
+and Warner Robins.
+
+**Where the layer is.** Houston County doesn't publish a queryable parcel layer itself:
+- The county site's tax assessor page links only qPublic (Schneider), a viewer you can't query.
+- The county's AGOL org, `hcga.maps.arcgis.com` (`5Q1LCD0VQuwWFHKM`), has one public service, a
+  water service-line inventory.
+- No county-run ArcGIS Server answers (`gis.` / `maps.` on houstoncountyga.gov and .org).
+
+The public parcel fabric is the **City of Warner Robins Planning & Engineering** layer:
+
+| | |
+|---|---|
+| Layer | `services6.arcgis.com/wtKwyZlCD3bY8Zh4/arcgis/rest/services/Base_Map_Polygon/FeatureServer/0` (AGOL item `b31b9574…`, org "City of Warner Robins Planning & Engineering") |
+| Coverage | **All of Houston** (71,012 parcels) **and Peach** (14,608), with a `County` field |
+| Last edited | 2026-11-02 |
+| ID field | `Parcel_No`, stored single-spaced, 6 + 6: `0W1330 039000`, `00122A 105000`, `0W77C0 617000`, `0W1630 80A000`, `000340 001CEL` |
+| Map prefix | `0W` Warner Robins, `0P` Perry, `0C` Centerville, `00` unincorporated |
+| Access | Anonymous, no token; `Access-Control-Allow-Origin: *` |
+| Speed | 43 pages of 2,000 rows at a 0.39 s median, 1.6 s worst; single-record queries 15–420 ms |
+
+qPublic pads the same IDs (`0W1330    039000`). `likeFromRuns` splits on any separator run, so the
+padding never matters. Normalizing is lossless within Houston: 70,773 distinct IDs, 70,773
+normalized.
+
+Two other layers were not used:
+- **MGRC `Parcels_LitterSurvey`** (`services1.arcgis.com/Ug5xGQbHsD8zuZzM`) is a 2025-05-19 assessor
+  snapshot, 69,861 parcels. It was used only to trace the missing IDs below.
+- **`houston_gis/HoustonParcels`** is Houston County, **Minnesota**.
+
+**The three test IDs:**
+
+| ID | Result |
+|---|---|
+| `0W1330 039000` | Found. Polygon, 57.34 ac (record states 56.3) |
+| `0W67A0 027000` | Found. Polygon, 18.3 ac (one of a 24.22 ac pair) |
+| `001040 129000` | **Missing.** It's in neither the current layer nor the May 2025 snapshot. The 309.4 ac Moody / Woodard / Bob White Rd tract is now `0W1330 089000` (309.6 ac, Alexis Investments). That's a **renumber on annexation into Warner Robins**, not a re-plat. |
+
+**Parser.** Migration `20261117194114_parcel_id_houston_format` was built from the live
+definition, which includes Forsyth, Macon-Bibb, 5+6, Henry, Hall and Coweta.
+- 6+6 alphanumerics is too generic to read everywhere, so the Houston pattern is **scoped by a
+  county argument**:
+  - `extract_parcel_numbers(text, county)` is the full parser. It reads
+    `0[0-9WPC][0-9A-Z]{4}[ -]+[0-9]{2}[0-9A-Z]([0-9]{3}|CEL)` only when the county is
+    `'Houston County'`. That pattern matches 70,855 of the layer's 71,012 Houston rows. The rest are
+    `…PU` and `…L01` rows and non-parcels such as `DRAINAGE`.
+  - `extract_parcel_numbers(text)` passes NULL, so its output is unchanged by construction.
+  - `parcel_id_county(municipality name)` maps the adapter's own list to `'Houston County'`.
+  - `municipal_project_sync_parcel_numbers()` looks up the row's municipality (boundary
+    municipality first, then `municipality`) and passes the county.
+- **Grants:** none to PUBLIC or anon; authenticated and service_role only. An anonymous RPC call to
+  all three gets 42501.
+- **Regression check** (rolled back, 764 staged + 500 committed rows):
+  - The 1-argument output changed on 0 rows.
+  - The county-aware parse differs on 44 rows, all Houston, with no ID lost.
+  - The backfill changed 17 staged rows (+28 IDs) and 12 committed rows (+16 IDs), all Houston,
+    with no ID lost.
+- **Applied** with psql `--single-transaction` and recorded in `schema_migrations`. The backfill
+  rules match Hall and Coweta: superset-only, skip `parcel_fetch` boundaries, skip in-flight runs.
+
+**Adapter** (`supabase/functions/_shared/parcel-adapters.ts`):
+- `Parcel_No` via `likeFromRuns` plus the normalized compare.
+- `idPattern` is the same shape as the parser.
+- Default 30 s timeout and 1 retry. It's Esri-hosted and fast, unlike Henry.
+- It matches Houston County, Warner Robins, Perry and Centerville.
+- **Warner Robins (7.8% in Peach) and Perry (6.5% in Peach) straddle Peach County.** They're
+  matched anyway, as Haralson is for Coweta, because nearly all of each is in Houston. A Peach-side
+  parcel uses Peach's format (`052B 071`), which the parser doesn't read, though it is in this same
+  layer.
+- Byron and Fort Valley are Peach: not matched.
+- Union, acreage validation, partial flag, pin-in-shape, dashed until reviewed and never replace:
+  unchanged, all in the RPCs.
+
+**Resolution (all Houston records with IDs, after the backfill):**
+
+| | Records | IDs | Resolve | Missing | All resolve | Some | None |
+|---|---|---|---|---|---|---|---|
+| Committed | 19 | 26 | 16 | 10 | 10 | 1 | 8 |
+| Staged (non-rejected) | 22 | 32 | 21 | 11 | 12 | 1 | 9 |
+
+The same **10 distinct IDs** are missing in both tables. All but one are on annexation records, and
+**6 trace to a renumber on annexation.** Each was found in the May 2025 snapshot, with the same
+acreage on the same ground under a new city number:
+
+| Cited (county) | Snapshot ac | Now |
+|---|---|---|
+| `000720 001000` | 124.68 | `0C0120 033000` (124.7 ac, Centerville) |
+| `000730 032000` | 23.08 | `0W069A 063000` (23.1) |
+| `000770 101000` | 31.11 | `0W1000 248000` (31.1) |
+| `000770 102000` | 14.43 | `0W1000 249000` (14.4) |
+| `000780 227000` | 13.79 | `0W1000 250000` (13.8) |
+| `000770 013000` | 4.01 | `0W0750 102000` (4.0) |
+
+The other four:
+- `001040 129000`: renumbered by acreage and roads to `0W1330 089000`, but not in the snapshot.
+- `000510 36B000`: 7.66 ac in May 2025, gone now, with no single same-size successor. It was
+  probably re-platted.
+- `001030 015000`: in neither fabric. Not traced.
+- `0W1200 134000`: in neither fabric, and `0W1200 134`–`135` are a gap in the current sequence. A
+  re-plat before 2025.
+
+So in Houston, **"missing" usually means annexed, not re-platted**: research cites the
+pre-annexation county number from the annexation packet. Nothing remaps them. The fetch note's
+"likely re-platted" wording is wrong for these.
+
+**Acreage dry run** (rolled back) on the 10 committed records whose IDs all resolve and that have no
+boundary. All produce a MultiPolygon, the pin is inside, and every one is dashed (`parcel_fetch`,
+unreviewed):
+
+| Record | Fetched | Stated | Var. | Flag |
+|---|---|---|---|---|
+| Robins Royal Hospitality | 5.53 | 5.529 | 0.0% | — |
+| Alexis Investments / Woodlands | 309.64 | 309.4 | 0.1% | — |
+| Caleb Properties (Corder Rd) | 24.16 | 24.22 | 0.2% | — |
+| Castaway Self Storage | 7.40 | 7.44 | 0.5% | — |
+| Project Dev. & Mgmt / McCrory | 57.34 | 56.3 | 1.8% | — |
+| Irma Mondragon | 5.83 | 5.8 | 0.5% | flagged: partial parcel ("portion of property") |
+| 3V Investment / Elberta Rd | 3.31 | 3.6 | 8.1% | flagged |
+| CCCCT / West Wrasling Way | 8.33 | 9.11 | 8.6% | flagged |
+| Grimes/Kushinka (Peacock) | 5.79 | 6.34 | 8.7% | flagged ("including ROW") |
+| Orchard Investment PDR | 61.96 | 55.74 | 11.2% | flagged |
+
+That's 5 within tolerance and 5 flagged. Several of the flagged records state acreage "including
+right-of-ways", which a parcel union doesn't contain. Nothing was drawn: the fetch runs once, on
+request (the slideout button). Charles Randle / Lake Joy Rd already has a hand-drawn boundary and
+resolves 1 of 2 IDs. It was not touched.
+
+Data-quality flags, not fixed:
+- Two pairs of committed records look like duplicates:
+  - Alexis / Woodlands: `04a8b742` cites the old county ID, `023dd3f1` the new one.
+  - Patriot Development / William Drive: `c8bc36d6` and `5b1c13a9`.
+- Staged `c8e425e0` cites "Tax parcel 061006, lots 42 and 63", which isn't a parcel ID.
