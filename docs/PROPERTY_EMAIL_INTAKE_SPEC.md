@@ -1,11 +1,11 @@
 # Property Email Intake — Spec
 
-Status: **Phase 1 specced, not built.** Branch `feature/property-email-intake`.
+Status: **Phase 1 built, not deployed** (2026-11-19, branch `claude/nifty-brahmagupta-a4ubb9`). Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
 Scope of all phases: Mike's mailbox (`mike@oculusrep.com`) only.
 
 | Phase | What | Status |
 |---|---|---|
-| 1 | OVIS/Property state filter: keep GA/SC (or undeterminable) listings, move out-of-state listings aside, return non-listings to routing | This document |
+| 1 | OVIS/Property state filter: keep GA/SC (or undeterminable) listings, move out-of-state listings aside, return non-listings to routing | Built, not deployed |
 | 2 | Ingest + dedupe + geocode backfill of the 1,428 un-geocoded properties | Placeholder |
 | 3 | Client criteria matching | Placeholder, blocked |
 
@@ -346,6 +346,41 @@ These are deliberate and called out so they can be reversed:
 3. **`label-watcher` gets a change** (section 1.9.2), so the filter's archive isn't recorded as Mike's gesture.
 4. **Verification check 2 reads every OOS message, not a sample**, because the full set is cheap.
 5. **Added `owner_restored` as a decision value**, to make undo stick.
+
+
+### Phase 1 build notes (2026-11-19)
+
+**What was built**
+
+| Piece | Where |
+|---|---|
+| A table | `supabase/migrations/20261119160948_property_email_filter.sql` |
+| B function | `supabase/functions/property-email-filter/` (`index.ts`; pure logic in `classify.ts`, tests in `classify_test.ts`) |
+| C Gmail helpers | `_shared/gmail.ts`: `getMessageLabelIds`, `fetchGmailAttachment` (`modifyMessageLabels` already existed) |
+| D `decide()` | moved to `_shared/labelDecide.ts`, gains `property_filter`; `label-inbox` loads filter rows in the inbox, unknown-id and archived-window passes |
+| E watcher | `label-watcher` credits an INBOX removal to `ovis` when it matches `property_email_filter.archived_at` (or `email_auto_archive.archived_at`) within the window |
+| F cron | `supabase/migrations/20261119160949_property_email_filter_cron.sql` |
+
+Open questions kept at their defaults: Q1 model stays `claude-haiku-4-5`, Q2 tombstones are listings, Q3–Q7 as listed.
+
+**Deviations, beyond 1.16**
+
+1. **Undo scan on `not_listing` counts only an owner `OVIS/Property` add**, not an INBOX add. `OVIS/Junk` is now auto-archived (see EMAIL_TRIAGE_STATUS 2026-11-19 amendment), so a not-listing re-routed to Junk and pulled back into the inbox by the owner is a Junk rescue, not "this is Property".
+2. **Model output errors are final, API errors are not.** A refusal, truncation or unparseable reply is stored as `unknown` with `downgrade_reason = 'model_output:…'` (safe: it stays in Property, and is not re-billed every tick). A thrown API error writes no row, so the message is retried; a run stops after 3.
+3. **ZIP scan ignores numbers followed by a unit** (`30,000 SF`, `29500 VPD`). Otherwise almost every listing's square footage would block `out_of_state`. Still conservative-only.
+4. **Restore actions** run at most 500 rows per call; re-invoke `restore_all` until `restored` is 0.
+
+**Deploy order (do not reorder)**
+
+1. Apply `20261119160656_email_auto_archive.sql` and `20261119160948_property_email_filter.sql` (psql, `--single-transaction`, record in `schema_migrations`).
+2. Deploy `label-watcher`, then `label-inbox`. `label-inbox` now fails the run if `property_email_filter` is missing, which is why the table goes first.
+3. Deploy `property-email-filter`. It needs `ANTHROPIC_API_KEY_TRIAGE` (already set for `extract-commitments`).
+4. Smoke test: `{ "max": 3 }` once, then check the rows and the three messages in Gmail.
+5. Backlog: `{ "mode": "backlog" }`, re-invoked until `remaining` is 0 (~856 messages, ~35 per call).
+6. Apply `20261119160949_property_email_filter_cron.sql` last.
+7. Run section 1.13 verification.
+
+**Not verified here.** No database access or deploy from the build container: migrations were not round-trip tested, and the edge functions were type-checked only against stubbed remote modules. `classify.ts` tests pass.
 
 ---
 

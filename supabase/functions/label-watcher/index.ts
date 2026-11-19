@@ -238,32 +238,42 @@ serve(async (req) => {
         attribution = 'ovis';
         note = 'legacy OVIS-Linked label, applied by email-triage';
       } else if (ev.label === 'INBOX' && ev.event_type === 'removed') {
-        // label-inbox archives Reading/Junk mail itself. Its archive must not be
-        // read as the owner's "handled" gesture, so match it the same way a
-        // label write is matched: OVIS's record, within the window.
-        const { data: arch } = await supabase
-          .from('email_auto_archive')
-          .select('label, archived_at')
-          .eq('gmail_id', ev.gmail_id)
-          .eq('gmail_connection_id', ev.gmail_connection_id)
-          .limit(1);
-        const a = arch?.[0];
-        if (!a) {
-          note = 'archived out of the inbox; no OVIS auto-archive record';
-        } else if (!a.archived_at) {
+        // OVIS archives in two places: label-inbox (Reading/Junk auto-archive)
+        // and property-email-filter (out-of-state listings). Neither may be read
+        // as the owner's "handled" gesture, so match the event against OVIS's
+        // own archive stamps, within the same window as a label write.
+        const [{ data: arch }, { data: pef }] = await Promise.all([
+          supabase.from('email_auto_archive')
+            .select('label, archived_at')
+            .eq('gmail_id', ev.gmail_id)
+            .eq('gmail_connection_id', ev.gmail_connection_id)
+            .limit(1),
+          supabase.from('property_email_filter')
+            .select('archived_at')
+            .eq('gmail_id', ev.gmail_id)
+            .eq('gmail_connection_id', ev.gmail_connection_id)
+            .not('archived_at', 'is', null)
+            .limit(1),
+        ]);
+        const stamps: Array<{ at: string; what: string }> = [];
+        if (arch?.[0]?.archived_at) stamps.push({ at: arch[0].archived_at, what: `auto-archive of ${arch[0].label}` });
+        if (pef?.[0]?.archived_at) stamps.push({ at: pef[0].archived_at, what: 'property-email-filter archive' });
+        const deltas = stamps.map((st) => ({
+          ...st,
+          min: Math.abs((new Date(ev.observed_at).getTime() - new Date(st.at).getTime()) / 60000),
+        })).sort((a, b) => a.min - b.min);
+        const best = deltas[0];
+        if (best && best.min <= OVIS_MATCH_WINDOW_MINUTES) {
+          attribution = 'ovis';
+          note = `${best.what}, matched within ${best.min.toFixed(1)} min`;
+        } else if (arch?.[0] && !arch[0].archived_at) {
           attribution = 'ambiguous';
-          note = `OVIS auto-archive intent (${a.label}) with no archived_at; cannot say whose archive this was`;
+          note = `OVIS auto-archive intent (${arch[0].label}) with no archived_at; cannot say whose archive this was`;
+        } else if (best) {
+          // OVIS archives once; a later removal is the owner archiving again.
+          note = `archived out of the inbox; OVIS's ${best.what} was ${best.min.toFixed(0)} min away`;
         } else {
-          const deltaMin = Math.abs(
-            (new Date(ev.observed_at).getTime() - new Date(a.archived_at).getTime()) / 60000,
-          );
-          if (deltaMin <= OVIS_MATCH_WINDOW_MINUTES) {
-            attribution = 'ovis';
-            note = `auto-archive of ${a.label}, matched within ${deltaMin.toFixed(1)} min`;
-          } else {
-            // OVIS archives once; a later removal is the owner archiving again.
-            note = `archived out of the inbox; OVIS auto-archived it ${deltaMin.toFixed(0)} min away`;
-          }
+          note = 'archived out of the inbox; no OVIS archive record';
         }
       } else if (!ev.label.startsWith('OVIS/')) {
         // Outside the OVIS namespace, OVIS has never written it. Unambiguous.

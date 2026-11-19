@@ -1161,3 +1161,80 @@ export async function sendEmail(
     };
   }
 }
+
+/**
+ * Current label ids on one message (format=minimal, 5 quota units). Used to
+ * CONFIRM a write: a modify that returned 200 is not proof of the end state.
+ * Returns null when the message is gone (404).
+ * https://developers.google.com/gmail/api/reference/rest/v1/users.messages/get
+ */
+export async function getMessageLabelIds(
+  accessToken: string,
+  messageId: string,
+): Promise<string[] | null> {
+  try {
+    const m = await getMessage(accessToken, messageId, 'minimal');
+    return m.labelIds ?? [];
+  } catch (e: any) {
+    if (e?.status === 404) return null;
+    throw e;
+  }
+}
+
+export type AttachmentFetch =
+  | { ok: true; bytes: Uint8Array }
+  | { ok: false; reason: 'gone' | 'part_not_found' | 'fetch_failed'; detail?: string };
+
+/**
+ * Server-side attachment fetch with the connection's token (no user login).
+ *
+ * The stored gmail_attachment_id is NOT stable across fetches, so the part is
+ * re-found by filename + size on a fresh format=full read, then fetched by the
+ * id that read returns. Size is matched loosely (Gmail's part size and the
+ * stored size_bytes can differ by encoding overhead).
+ * https://developers.google.com/gmail/api/reference/rest/v1/users.messages.attachments/get
+ * Response: MessagePartBody { attachmentId, size, data } -- data is base64url.
+ */
+export async function fetchGmailAttachment(
+  accessToken: string,
+  gmailId: string,
+  filename: string,
+  sizeBytes: number | null,
+): Promise<AttachmentFetch> {
+  let msg: GmailMessage;
+  try {
+    msg = await getMessage(accessToken, gmailId, 'full');
+  } catch (e: any) {
+    if (e?.status === 404) return { ok: false, reason: 'gone' };
+    return { ok: false, reason: 'fetch_failed', detail: e?.message ?? String(e) };
+  }
+
+  const parts: GmailMessagePart[] = [];
+  const walk = (p?: GmailMessagePart[]) => {
+    for (const x of p ?? []) { parts.push(x); walk(x.parts); }
+  };
+  walk(msg.payload.parts);
+
+  const named = parts.filter((p) => p.filename === filename && p.body?.attachmentId);
+  const part = named.length > 1 && sizeBytes != null
+    ? named.reduce((a, b) =>
+        Math.abs((a.body?.size ?? 0) - sizeBytes) <= Math.abs((b.body?.size ?? 0) - sizeBytes) ? a : b)
+    : named[0];
+  if (!part?.body?.attachmentId) return { ok: false, reason: 'part_not_found' };
+
+  try {
+    const body = await gmailRequest<{ size: number; data?: string }>(
+      `/users/me/messages/${gmailId}/attachments/${part.body.attachmentId}`,
+      accessToken,
+    );
+    if (!body.data) return { ok: false, reason: 'fetch_failed', detail: 'empty data' };
+    const b64 = body.data.replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { ok: true, bytes };
+  } catch (e: any) {
+    if (e?.status === 404) return { ok: false, reason: 'gone' };
+    return { ok: false, reason: 'fetch_failed', detail: e?.message ?? String(e) };
+  }
+}

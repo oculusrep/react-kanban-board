@@ -42,8 +42,8 @@ as the owner's `handled` gesture. Every other label still stays in the inbox.
 Kill switch: `"auto_archive": false` in the `label-inbox` request body.
 Known trade-off: Junk's model demotions are unaudited, so a mis-Junked message now
 leaves the inbox unseen. Check `OVIS/Junk` in Gmail for misses.
-Still open: archiving out-of-Georgia `OVIS/Property` mail — see
-[PROPERTY_EMAIL_INTAKE_SPEC.md](PROPERTY_EMAIL_INTAKE_SPEC.md) (specced, not built).
+Out-of-state `OVIS/Property` mail (not GA/SC) is archived by `property-email-filter` —
+built 2026-11-19, not yet deployed; see [PROPERTY_EMAIL_INTAKE_SPEC.md](PROPERTY_EMAIL_INTAKE_SPEC.md).
 
 ## Running right now
 
