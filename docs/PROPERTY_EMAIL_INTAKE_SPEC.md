@@ -388,6 +388,14 @@ labeler health stayed healthy, and `label-watcher` attributed all 6 INBOX remova
 Filter smoke test `{max:3}`: plumbing fine, 0 rows written, all 3 calls refused with the API usage-limit 400. Backlog: 1,166.
 `extract-commitments` uses the same key and is affected too. **Not applied:** `20261119160949_property_email_filter_cron`.
 
+**Incident, 2026-11-19 backlog.** After two good batches (111 rows), 11 backlog calls re-classified the same ~70
+already-decided messages each (~800 paid model calls, ~$2–3, nothing written: `ON CONFLICT DO NOTHING`). Cause: the
+"already decided?" lookup put 200 RFC Message-IDs (~70 chars each) in one `IN()`; from inside the edge runtime that
+~16KB URL fails to send, and the error was not checked, so every message looked new. Fixed: 50 ids per `IN()` (also in
+`label-inbox`'s filter lookup), the lookup error now fails the run, a per-message existence check runs right before the
+model call, and a conflict with no row written is reported as an error instead of counted as classified.
+Lesson for this codebase: chunk `.in()` on long text keys at 50, and never drop the `error` from a read that gates spend.
+
 **Not verified before deploy.** No database access or deploy from the build container: migrations were not round-trip tested, and the edge functions were type-checked only against stubbed remote modules. `classify.ts` tests pass.
 
 ---

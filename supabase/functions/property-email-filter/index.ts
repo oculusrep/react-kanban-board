@@ -109,6 +109,7 @@ serve(async (req) => {
   try { body = await req.json(); } catch { /* empty body = one tick */ }
   const backlog = body?.mode === 'backlog';
   const maxNew = typeof body?.max === 'number' ? body.max : MAX_PER_RUN;
+  const debug = body?.debug === true;
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
@@ -125,6 +126,8 @@ serve(async (req) => {
     remaining: null as number | null,
     stopped_on_deadline: false,
     errors: [] as string[],
+    skipped_already_decided: 0,
+    debug: [] as unknown[],
   };
 
   try {
@@ -472,9 +475,14 @@ serve(async (req) => {
 
         const done = new Set<string>();
         const mids = withMid.map((r) => r.message_id);
-        for (let i = 0; i < mids.length; i += 200) {
-          const { data: ex } = await supabase.from('property_email_filter').select('message_id')
-            .in('message_id', mids.slice(i, i + 200));
+        // 50 per IN(): RFC Message-IDs are ~70 chars, and inside the edge
+        // runtime a ~16KB query string (200 ids) fails to send at all.
+        for (let i = 0; i < mids.length; i += 50) {
+          const { data: ex, error: exErr } = await supabase.from('property_email_filter').select('message_id')
+            .in('message_id', mids.slice(i, i + 50));
+          // An unchecked error here made every decided message look new, so the
+          // backlog re-billed the same emails (2026-11-19). Fail instead.
+          if (exErr) throw new Error(`done check: ${exErr.message}`);
           for (const x of ex ?? []) done.add(x.message_id as string);
         }
         for (const r of withMid) {
@@ -487,6 +495,11 @@ serve(async (req) => {
     };
 
     const classifyOne = async (c: { gmail_id: string; message_id: string; email_id: string | null }) => {
+      // Never pay twice for one message: re-check right before the model call.
+      const { data: already, error: alErr } = await supabase.from('property_email_filter')
+        .select('id').eq('message_id', c.message_id).limit(1);
+      if (alErr) throw new Error(`already check: ${alErr.message}`);
+      if (already?.length) { stats.skipped_already_decided++; if (debug) stats.debug.push({ skipped: c }); return; }
       let q = supabase.from('emails')
         .select('id, message_id, subject, sender_email, sender_name, body_text, body_html');
       q = c.email_id ? q.eq('id', c.email_id) : q.eq('message_id', c.message_id);
@@ -585,6 +598,7 @@ serve(async (req) => {
         gmail_synced_at: needsSync ? null : new Date().toISOString(),
       }, { onConflict: 'message_id', ignoreDuplicates: true }).select(ROW_COLS);
       if (insErr) { stats.errors.push(`insert ${c.message_id}: ${insErr.message}`); return; }
+      if (!inserted?.length) { stats.errors.push(`insert ${c.message_id}: conflict, no row written`); return; }
       stats.classified++;
       stats.decisions[fd.decision] = (stats.decisions[fd.decision] ?? 0) + 1;
       const row = (inserted ?? [])[0] as FilterRow | undefined;
@@ -595,6 +609,7 @@ serve(async (req) => {
     for (;;) {
       if (Date.now() - started > DEADLINE_MS) { stats.stopped_on_deadline = true; break; }
       const { candidates, remaining } = await pickCandidates(maxNew);
+      if (debug) stats.debug.push({ candidates: candidates.slice(0, 5) });
       stats.remaining = remaining + candidates.length;
       if (candidates.length === 0) break;
       for (const c of candidates) {

@@ -156,10 +156,11 @@ async function loadPropertyFilters(
 ): Promise<Map<string, PropertyFilterDecision>> {
   const out = new Map<string, PropertyFilterDecision>();
   const ids = [...new Set(messageIds.filter((m): m is string => !!m))];
-  for (let i = 0; i < ids.length; i += 200) {
+  // 50 per IN(): ~70-char Message-IDs; 200 of them overflow the request URL.
+  for (let i = 0; i < ids.length; i += 50) {
     const { data, error } = await supabase
       .from('property_email_filter').select('message_id, decision')
-      .in('message_id', ids.slice(i, i + 200));
+      .in('message_id', ids.slice(i, i + 50));
     // Fail the run rather than decide without it: deciding without the filter
     // would put Property back on every message the filter moved.
     if (error) throw new Error(`property_email_filter lookup: ${error.message}`);
