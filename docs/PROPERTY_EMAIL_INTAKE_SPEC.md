@@ -1,6 +1,6 @@
 # Property Email Intake — Spec
 
-Status: **Phase 1 built, not deployed** (2026-11-19, branch `claude/nifty-brahmagupta-a4ubb9`). Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
+Status: **Phase 1 deployed 2026-11-19, classifier blocked** — `ANTHROPIC_API_KEY_TRIAGE` hit its API spend limit (access returns 2026-12-01); cron migration not yet applied. Branch `claude/nifty-brahmagupta-a4ubb9`. Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
 Scope of all phases: Mike's mailbox (`mike@oculusrep.com`) only.
 
 | Phase | What | Status |
@@ -380,7 +380,15 @@ Open questions kept at their defaults: Q1 model stays `claude-haiku-4-5`, Q2 tom
 6. Apply `20261119160949_property_email_filter_cron.sql` last.
 7. Run section 1.13 verification.
 
-**Not verified here.** No database access or deploy from the build container: migrations were not round-trip tested, and the edge functions were type-checked only against stubbed remote modules. `classify.ts` tests pass.
+**Deploy log (2026-11-19, from a cloud session via the Supabase Management API — psql cannot reach the DB from there).**
+Applied + recorded in `schema_migrations`: `20261119160656_email_auto_archive`, `20261119160948_property_email_filter`
+(round-tripped in a rolled-back transaction first; anon has no access, authenticated read-only). Deployed `label-watcher`,
+`label-inbox`, `property-email-filter`. Verified live: first `label-inbox` tick archived 6 (5 Reading, 1 Junk), labels kept,
+labeler health stayed healthy, and `label-watcher` attributed all 6 INBOX removals `ovis` / `ovis_write`.
+Filter smoke test `{max:3}`: plumbing fine, 0 rows written, all 3 calls refused with the API usage-limit 400. Backlog: 1,166.
+`extract-commitments` uses the same key and is affected too. **Not applied:** `20261119160949_property_email_filter_cron`.
+
+**Not verified before deploy.** No database access or deploy from the build container: migrations were not round-trip tested, and the edge functions were type-checked only against stubbed remote modules. `classify.ts` tests pass.
 
 ---
 
