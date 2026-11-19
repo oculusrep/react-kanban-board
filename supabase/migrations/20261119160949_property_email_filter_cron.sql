@@ -4,7 +4,7 @@
 -- OVIS/Property back within 5 minutes (spec 1.9.1, deploy order).
 --
 -- 1-59/5: two minutes after label-inbox-tick (4-59/5 is three behind triage).
--- Same call shape as every other cron (20261105072413_cron_gateway_publishable_key).
+-- Same call shape as email-triage-job's live command (grace 4 min, 150s timeout).
 --
 -- Rollback step 1: select cron.alter_job(jobid, active := false) for this job.
 
@@ -28,7 +28,9 @@ BEGIN
         'X-Cron-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ovis_cron_secret'),
         'Content-Type', 'application/json'
       ),
-      '{}'::jsonb
+      '{}'::jsonb,
+      '00:04:00'::interval,
+      150000
     );
     $cmd$, v_url, v_publishable)
   );
