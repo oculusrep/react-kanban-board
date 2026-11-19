@@ -1,6 +1,6 @@
 # Property Email Intake — Spec
 
-Status: **Phase 1 deployed 2026-11-19, classifier blocked** — `ANTHROPIC_API_KEY_TRIAGE` hit its API spend limit (access returns 2026-12-01); cron migration not yet applied. Branch `claude/nifty-brahmagupta-a4ubb9`. Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
+Status: **Phase 1 live 2026-11-19.** Backlog done, `property-email-filter-tick` cron on (`1-59/5`). Branch `claude/nifty-brahmagupta-a4ubb9`. Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
 Scope of all phases: Mike's mailbox (`mike@oculusrep.com`) only.
 
 | Phase | What | Status |
@@ -387,6 +387,14 @@ Applied + recorded in `schema_migrations`: `20261119160656_email_auto_archive`, 
 labeler health stayed healthy, and `label-watcher` attributed all 6 INBOX removals `ovis` / `ovis_write`.
 Filter smoke test `{max:3}`: plumbing fine, 0 rows written, all 3 calls refused with the API usage-limit 400. Backlog: 1,166.
 `extract-commitments` uses the same key and is affected too. **Not applied:** `20261119160949_property_email_filter_cron`.
+
+**Backlog result (2026-11-19).** 1,171 decided: in_state 299, unknown 209, out_of_state 511, not_listing 152.
+6 sync failures, all `gone` (message deleted from Gmail; not retried). Check 3: 0 out_of_state rows with GA/SC in
+`states_found`, 0 whose subject/body names Georgia or South Carolina. Live after: 514 `OVIS/Property`, 506 `OVIS/Property-OOS`.
+Model spend on stored rows ≈ $2.60 (2.18M in / 90k out, Haiku 4.5), plus the incident below. The owner chose to let
+"site wanted" tenant requirements route as not_listing. Spend-limit block was lifted by the owner the same day.
+Cron migration applied and recorded. Checks 2, 4 and 6 (Gmail end-state sweep, 2-tick re-label check, human spot check)
+are still open.
 
 **Incident, 2026-11-19 backlog.** After two good batches (111 rows), 11 backlog calls re-classified the same ~70
 already-decided messages each (~800 paid model calls, ~$2–3, nothing written: `ON CONFLICT DO NOTHING`). Cause: the
