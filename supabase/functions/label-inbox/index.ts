@@ -2,8 +2,9 @@
  * label-inbox — put an OVIS label on the mail sitting in the Gmail inbox.
  *
  * Gmail stays the client. OVIS decides what each message is, writes a label,
- * and (later, only once the labels are trusted) removes INBOX so triaged mail
- * leaves the inbox. This function is the labelling half; it never archives.
+ * and removes INBOX for the labels in AUTO_ARCHIVE_LABELS (Reading, Junk), so
+ * that mail keeps its label but leaves the inbox. Everything else stays in the
+ * inbox for the owner to archive by hand.
  *
  * WHY IT ENUMERATES FROM GMAIL, NOT THE DATABASE
  * email_visibility.folder_label is written once at ingest and never refreshed,
@@ -29,6 +30,7 @@ import {
   applyLabelToMessage,
   removeLabelFromMessage,
   getOrCreateLabel,
+  modifyMessageLabels,
 } from '../_shared/gmail.ts';
 import { authorizeCaller } from '../_shared/caller-auth.ts';
 import { PERSONAL_SENDER_DOMAINS, PERSONAL_SENDER_ADDRESSES, matchesPersonalDomain } from '../_shared/tier1.ts';
@@ -83,6 +85,20 @@ const LABEL = {
 } as const;
 
 type LabelName = typeof LABEL[keyof typeof LABEL];
+
+/**
+ * Labels whose mail is archived after it is labelled (owner, 2026-11-19).
+ *
+ * Matched on the label Gmail currently shows, not on OVIS's decision, so a
+ * message the owner tags Reading by hand from the inbox leaves it too.
+ * Archived ONCE per message (email_auto_archive): pulling one back into the
+ * inbox is an override, and the next tick must not fight it.
+ *
+ * Every other label -- Property, Business, Events, Personal, Unsorted -- still
+ * stays in the inbox; the 2026-10-03 decision holds for those, because the
+ * owner's archive is the disposition signal the watcher learns from.
+ */
+const AUTO_ARCHIVE_LABELS: LabelName[] = [LABEL.reading, LABEL.junk];
 
 /** Listing vocabulary. Deliberately narrow: a false "property" costs more than
  *  an unsorted message, because unsorted is reviewable and mislabelled is not. */
@@ -291,6 +307,27 @@ async function listInboxIds(accessToken: string): Promise<string[]> {
   return ids;
 }
 
+/** Inbox message ids that also carry one label, following pageToken. */
+async function listInboxIdsWithLabel(accessToken: string, labelId: string): Promise<string[]> {
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({ maxResults: '500' });
+    params.append('labelIds', 'INBOX');
+    params.append('labelIds', labelId);
+    if (pageToken) params.set('pageToken', pageToken);
+    const res = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) throw new Error(`messages.list (label ${labelId}) failed (${res.status}): ${await res.text()}`);
+    const body = await res.json() as { messages?: Array<{ id: string }>; nextPageToken?: string };
+    for (const m of body.messages ?? []) ids.push(m.id);
+    pageToken = body.nextPageToken;
+  } while (pageToken);
+  return ids;
+}
+
 /**
  * Message-ID header for one Gmail message (format=metadata, 5 quota units).
  *
@@ -327,6 +364,7 @@ serve(async (req) => {
   let maxApplies = 250;
   let reconcile = false;
   let ensureLabelsOnly = false;
+  let autoArchive = true;
   try {
     const body = await req.json();
     // Writes require saying so. Anything else, including an empty body, is a dry run.
@@ -348,6 +386,8 @@ serve(async (req) => {
     reconcile = body?.reconcile === true;
     // Create the OVIS labels in the mailbox and stop. Touches no message.
     ensureLabelsOnly = body?.ensure_labels === true;
+    // Kill switch for the Reading/Junk archive step without a redeploy.
+    autoArchive = body?.auto_archive !== false;
   } catch {
     // no body — dry run
   }
@@ -628,6 +668,64 @@ serve(async (req) => {
       }
 
       // ----------------------------------------------------------------
+      // AUTO-ARCHIVE. Runs after labelling AND reconcile, so a message
+      // labelled Reading or Junk this tick leaves the inbox this tick, and a
+      // stale Junk label that reconcile just removed is not archived on it. Asks Gmail which inbox
+      // messages carry the label now, so hand-tagged mail is included.
+      // ----------------------------------------------------------------
+      const archiveCandidates: Record<string, number> = {};
+      let archived = 0;
+      let archiveFailed = 0;
+      let archiveSkippedPrior = 0;
+      if (autoArchive) {
+        for (const labelName of AUTO_ARCHIVE_LABELS) {
+          const labelId = await getOrCreateLabel(accessToken, labelName);
+          const ids = await listInboxIdsWithLabel(accessToken, labelId);
+
+          // Already archived once -> the owner brought it back. Leave it.
+          const prior = new Set<string>();
+          for (let i = 0; i < ids.length; i += 200) {
+            const { data: rows, error: priorErr } = await supabase
+              .from('email_auto_archive').select('gmail_id')
+              .eq('gmail_connection_id', connection.id)
+              .not('archived_at', 'is', null)
+              .in('gmail_id', ids.slice(i, i + 200));
+            if (priorErr) throw new Error(`email_auto_archive lookup: ${priorErr.message}`);
+            for (const r of rows ?? []) prior.add(r.gmail_id as string);
+          }
+
+          const todo = ids.filter((id) => !prior.has(id));
+          archiveSkippedPrior += ids.length - todo.length;
+          archiveCandidates[labelName] = todo.length;
+          if (dryRun) continue;
+
+          for (const gid of todo) {
+            if (archived + archiveFailed >= maxApplies) break;
+            // Intent row first, so label-watcher can never see the INBOX
+            // removal before OVIS's record of it exists.
+            await supabase.from('email_auto_archive').upsert({
+              gmail_connection_id: connection.id,
+              gmail_id: gid,
+              label: labelName,
+              archived_at: null,
+              archive_error: null,
+            }, { onConflict: 'gmail_id,gmail_connection_id' });
+            let err: string | null = null;
+            try {
+              await modifyMessageLabels(accessToken, gid, [], ['INBOX']);
+            } catch (e: any) {
+              err = e?.message ?? String(e);
+            }
+            if (err) archiveFailed++; else archived++;
+            await supabase.from('email_auto_archive').update({
+              archived_at: err ? null : new Date().toISOString(),
+              archive_error: err,
+            }).eq('gmail_id', gid).eq('gmail_connection_id', connection.id);
+          }
+        }
+      }
+
+      // ----------------------------------------------------------------
       // HEALTH. Asks of GMAIL's inbox, not of folder_label, which is a
       // write-once snapshot that would answer a different question.
       // ----------------------------------------------------------------
@@ -838,6 +936,9 @@ serve(async (req) => {
         archived_window_applied: windowApplied,
         archived_window_failed: windowFailed,
         stale_examples: staleExamples,
+        auto_archive: autoArchive
+          ? { candidates: archiveCandidates, archived, failed: archiveFailed, skipped_already_archived_once: archiveSkippedPrior }
+          : 'disabled',
       });
     }
 

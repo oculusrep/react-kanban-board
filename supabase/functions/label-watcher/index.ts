@@ -237,6 +237,34 @@ serve(async (req) => {
       if (ev.label === 'OVIS-Linked') {
         attribution = 'ovis';
         note = 'legacy OVIS-Linked label, applied by email-triage';
+      } else if (ev.label === 'INBOX' && ev.event_type === 'removed') {
+        // label-inbox archives Reading/Junk mail itself. Its archive must not be
+        // read as the owner's "handled" gesture, so match it the same way a
+        // label write is matched: OVIS's record, within the window.
+        const { data: arch } = await supabase
+          .from('email_auto_archive')
+          .select('label, archived_at')
+          .eq('gmail_id', ev.gmail_id)
+          .eq('gmail_connection_id', ev.gmail_connection_id)
+          .limit(1);
+        const a = arch?.[0];
+        if (!a) {
+          note = 'archived out of the inbox; no OVIS auto-archive record';
+        } else if (!a.archived_at) {
+          attribution = 'ambiguous';
+          note = `OVIS auto-archive intent (${a.label}) with no archived_at; cannot say whose archive this was`;
+        } else {
+          const deltaMin = Math.abs(
+            (new Date(ev.observed_at).getTime() - new Date(a.archived_at).getTime()) / 60000,
+          );
+          if (deltaMin <= OVIS_MATCH_WINDOW_MINUTES) {
+            attribution = 'ovis';
+            note = `auto-archive of ${a.label}, matched within ${deltaMin.toFixed(1)} min`;
+          } else {
+            // OVIS archives once; a later removal is the owner archiving again.
+            note = `archived out of the inbox; OVIS auto-archived it ${deltaMin.toFixed(0)} min away`;
+          }
+        }
       } else if (!ev.label.startsWith('OVIS/')) {
         // Outside the OVIS namespace, OVIS has never written it. Unambiguous.
         note = 'label outside the OVIS namespace';
