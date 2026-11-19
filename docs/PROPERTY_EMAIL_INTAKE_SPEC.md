@@ -388,6 +388,21 @@ Open questions kept at their defaults: Q1 model stays `claude-haiku-4-5`, Q2 tom
 
 _Placeholder._ Covers ingesting in-state listings into OVIS, dedupe against `property`, and the geocode backfill of the 1,428 properties without coordinates.
 
+**What Phase 1 leaves for it (2026-11-19).** Ingest does not need to read Gmail labels; it reads the database,
+which records the same thing and more:
+
+- **Selection:** `property_email_filter.decision IN ('in_state','unknown','owner_restored')` — the mail the
+  `OVIS/Property` label holds. Hand-tagged Property mail with no filter row is found through `email_label` /
+  `gmail_label_event` (owner `added OVIS/Property`).
+- **Already extracted per email:** `properties[]` (address, city, state, confidence), `evidence`, `states_found`.
+  Phase 1 extracted for a state call only, so price, SF, rent and broker are not there: ingest re-reads the email.
+- **Email content is in OVIS:** `emails.body_text` / `body_html`, PDFs via `fetchGmailAttachment()`. Ingest does
+  not depend on the message still being in the inbox (OOS and Junk are archived; labels stay).
+- **Sink:** the existing listing pipeline (`upsert_listing` → comp database, NNN Listings review queue,
+  [NNN_LISTING_INTAKE_SPEC_v2.md](NNN_LISTING_INTAKE_SPEC_v2.md)), which already normalises addresses, dedupes
+  and geocodes. A backlog run passes `create_va_task: false` so it does not create a task per listing.
+- **`unknown` rows** have no confirmed state: ingest them to the review queue flagged, or skip until reviewed.
+
 ## Phase 3 — Client criteria matching
 
 _Placeholder. Blocked:_ `assignment.site_criteria` is free text, populated on 29 of 202 assignments. It needs a structured criteria model before matching can be specced.
