@@ -703,7 +703,7 @@ which includes Forsyth, Macon-Bibb, 5+6, Henry, Hall, Coweta and Houston.
   are unchanged, all in the RPCs.
 
 **Resolution** (17 non-rejected staged Douglas records with IDs, after the backfill; none has a
-boundary and none is `parcel_fetch`). 14 records resolve fully and 3 partly, with **63 of 67 IDs
+boundary and none is `parcel_fetch`). 14 records resolve fully and 3 partly, with **52 of 56 cited IDs (43 of 47 distinct)
 resolving**. The 4 missing:
 
 | ID | Record | Why |
