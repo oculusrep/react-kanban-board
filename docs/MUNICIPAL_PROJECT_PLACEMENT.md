@@ -631,3 +631,121 @@ Data-quality flags, not fixed:
   - Alexis / Woodlands: `04a8b742` cites the old county ID, `023dd3f1` the new one.
   - Patriot Development / William Drive: `c8bc36d6` and `5b1c13a9`.
 - Staged `c8e425e0` cites "Tax parcel 061006, lots 42 and 63", which isn't a parcel ID.
+
+## Douglas County adapter (2026-11-23)
+
+Prompted by sweep `f0345346`, which staged 13 records with parcel IDs in Douglas County and
+Douglasville.
+
+**Where the layer is.** Douglas County runs its own ArcGIS Server, `maps.douglascountyga.gov`.
+Like Forsyth's, it isn't in the ArcGIS Online index. No Esri-hosted copy was needed.
+
+| | |
+|---|---|
+| Layer | `maps.douglascountyga.gov/arcgis/rest/services/CountyLayers/Parcels/MapServer/15` ("This layer displays land records for Douglas County Ga", Appraisal Department attributes) |
+| Coverage | 55,100 rows, 54,992 distinct `ParcelNo` |
+| Last edited | Not published. It's a MapServer with no `editingInfo`, and there's no date field. |
+| ID field | `ParcelNo`, stored with no separators. It's land lot (4) + district (2) + section (1) + parcel (4), plus an optional letter: `06461820001` (52,827 rows), `0016015A013` (letter in the parcel, 2,102), `04811820005B` (57) |
+| District+section | Always one of `015`, `025`, `035`, `013`, `182` |
+| Access | Anonymous, no token. CORS reflects the caller's origin (checked for `https://ovis.oculusrep.com` and `http://localhost:5173`). |
+| Speed | 28 pages of 2,000 rows at a 0.42 s median and 0.58 s worst. Single-ID queries take 0.36–0.62 s. |
+
+Sources write the ID dashed, as `0978-182-0001`. `likeFromRuns` plus the normalized compare handle
+both forms. Normalizing is lossless: 54,992 distinct IDs, 54,992 normalized. The layer also has
+`SUBDIVISION` and `totalacres` fields. The subdivisions pass doesn't use the layer yet.
+
+**The three test IDs.** All three were found, each as a single-ring Polygon.
+
+| ID | Result |
+|---|---|
+| `06471820001` | Found. 5 ac, 5118 Malone Rd. One of the six Malphrus parcels (21.32 ac union) |
+| `00110150222` | Found. 10.21 ac, matching the record's 10.21 |
+| `08101820055` | Found. 31.38 ac (DC Kensington LLC) |
+
+**Parser.** Migration `20261123053129_parcel_id_douglas_format` was built from the live definition,
+which includes Forsyth, Macon-Bibb, 5+6, Henry, Hall, Coweta and Houston.
+- The plain 11-digit form was already read everywhere by the Henry pattern. Cobb's IDs are also 11
+  digits, so the new Douglas forms are **scoped by county**, like Houston's.
+- `extract_parcel_numbers(text, 'Douglas County')` adds three forms:
+  - The dashed form (`0978-182-0001`).
+  - The letter forms (`0016015A013`, `04811820005B`).
+  - Tails written against the last ID: lists (`0022015C014/C015/C016`, `06461820001/02/03`) and
+    numeric ranges of at most 25 (`06461820001-003`, `0318-182-0014 through -0027`).
+- The district+section code must be one of the five above. IDs are emitted with no separators, as
+  the fabric stores them. The pattern matches 54,986 of the 55,100 rows. The rest are three 12-digit
+  oddities and non-parcels such as `15' ALLEY`.
+- `parcel_id_county()` maps Douglas County and Douglasville to `'Douglas County'`. The 1-argument
+  wrapper and the sync trigger are unchanged.
+- **Grants:** authenticated and service_role only. An anonymous call gets 42501, verified by
+  impersonation.
+- **Regression check** (rolled back, 800 staged + 515 committed rows):
+  - The 1-argument output changed on 0 rows.
+  - The county-aware parse differs on 6 rows, all Douglas, with no ID lost.
+  - The backfill changed 7 staged rows, all Douglas, with no ID lost: 0→3, 0→1, 0→2, 0→15, 1→9 and
+    3→6 IDs, plus one row (`eef56548`) whose IDs were only re-sorted.
+  - There are **no committed Douglas records**, because `municipality` has no Douglas entry.
+- **Applied** and recorded in `schema_migrations`. psql couldn't resolve the pooler host from the
+  cloud session, so the file went through the Supabase management API's query endpoint as one
+  explicit `BEGIN … COMMIT` with the `schema_migrations` insert inside it. That endpoint doesn't
+  stamp its own version, unlike `apply_migration`.
+
+**Adapter:**
+- `ParcelNo` via `likeFromRuns` plus the normalized compare, with `totalacres` as an extra field.
+- `idPattern` is the same shape as the parser.
+- The default 30 s timeout and 1 retry, because the server is fast.
+- It matches **Douglas County** and **Douglasville**, which is 100% inside the county.
+- Not matched:
+  - **Austell** (3% Douglas, mostly Cobb) and **Villa Rica** (32% Douglas, mostly Carroll) straddle
+    the county line.
+  - `Douglas` in `boundary_municipality` is the Coffee County city.
+  - Lithia Springs and Winston are unincorporated and have no row of their own.
+- Union, acreage validation, partial flag, pin-in-shape, dashed until reviewed and never replace
+  are unchanged, all in the RPCs.
+
+**Resolution** (17 non-rejected staged Douglas records with IDs, after the backfill; none has a
+boundary and none is `parcel_fetch`). 14 records resolve fully and 3 partly, with **63 of 67 IDs
+resolving**. The 4 missing:
+
+| ID | Record | Why |
+|---|---|---|
+| `03181820017`, `03181820022` | Lithia Investments | Gaps inside the cited range "0014 through -0027". The fabric has no 0017 or 0022 in land lot 318 (it skips 0008 and 0013 too). These are retired numbers, probably combined into neighbours. |
+| `08101820098` | Kensington Park | Not in the fabric. Land lot 810 runs only to 0072, and it now holds 18 Kensington Park lot parcels. This is probably the Phase 2B parent tract, **re-platted into lots** (plat approved Nov 2023). |
+| `09021820083` | Chestnut Grove | Not in the fabric. Land lot 902 runs only to 0030. The record's other ID, `09021820018`, is 13.83 ac, exactly the stated acreage, so 0083 looks like a mis-cited ID. Not traced. |
+
+**Acreage dry run** (rolled back, through `set_staging_polygon_from_parcels`). All 17 produce a
+MultiPolygon with `ST_PointOnSurface` inside. Every one is `parcel_fetch` and so dashed until
+reviewed.
+
+| Record | Fetched | Stated | Var. | Flag |
+|---|---|---|---|---|
+| South Burnt Hickory | 18.52 | 18.5 | 0.1% | — |
+| Mason Malphrus Townhomes | 21.32 | 21.3 | 0.1% | — |
+| Themis / Dorris Rd (`b88ec835`) | 79.34 | 79.4 | 0.1% | — |
+| Themis / Doris Rd (`1908f7fd`) | 79.34 | 79.6 | 0.3% | — |
+| DRB Group / Rose Ave & Bill Arp | 81.9 | 82.2 | 0.4% | — |
+| Malphrus Group / Malone Rd | 21.32 | 21.24 | 0.4% | — |
+| Timber Ridge / Prestley Mill | 82.92 | 83.3 | 0.5% | — |
+| Chestnut Grove | 13.94 | 13.83 | 0.8% | partial (1 of 2 IDs) |
+| Reserve at Douglasville | 11.07 | 10.93 | 1.3% | — |
+| Stewart Mill Holdings / Greenbrook | 10.04 | 10.21 | 1.7% | — |
+| Brian Howell / Stewart Mill Rd | 10.04 | 10.21 | 1.7% | — |
+| Traton / Chapel Hill Crossing | 32.69 | 33.26 | 1.7% | — |
+| Kensington Park | 18.2 | 18.67 | 2.5% | partial (1 of 2 IDs) |
+| Norhaven / Greystone | 8.21 | 7.39 | 11.1% | **flagged** |
+| Lithia Investments townhomes | 17.07 | 13.41 | 27.3% | **flagged**, partial (13 of 15) |
+| Richardson Family Trust | 51.04 | 85.8 | 40.5% | **flagged** (3 IDs cited over 5 land lots: the cited parcels don't cover the tract) |
+| Douglasville Town Green | 14.05 | — | — | no stated acres read |
+
+So 13 are within the 5% tolerance and 3 are flagged. Nothing was drawn: as with Houston, the fetch
+runs once, on request (the slideout button) or on the next post-run pass.
+
+Data-quality flags, not fixed:
+- Douglasville Town Green states "combined ~8.9 ac", which `extract_stated_acres` doesn't read. The
+  fabric has `0016015A013` at 5.80 ac (Southern Bell), not the 1.50 ac the record says.
+- Two pairs of staged records look like duplicates:
+  - Themis / Doris-Dorris Rd: `1908f7fd` and `b88ec835`.
+  - Stewart Mill Rd: `e471908c` and `1702bb37`.
+- The "Reserve at Douglasville" located pin is 2.4 km outside its parcel, and Timber Ridge's is
+  256 m outside. On approve the pin is placed inside the shape anyway.
+- 8 Douglas County records cite only "Land Lot X, District Y, Section Z, Parcel N". Composing an
+  ID from that isn't built: it's ambiguous when several land lots are cited.

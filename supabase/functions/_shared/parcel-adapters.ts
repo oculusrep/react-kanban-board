@@ -170,6 +170,28 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     retries: 1,
   },
   {
+    // Douglas County's own ArcGIS Server — not in the ArcGIS Online index.
+    // Anonymous, no token; CORS reflects the caller's origin. 55,100 parcels;
+    // pages of 2,000 answer in 0.4–0.6 s and single ids in ~0.5 s (profiled
+    // 2026-11-23), so the default timeout and one retry. The service publishes
+    // no edit date. ParcelNo is land lot + district + section + parcel with no
+    // separators: '06461820001', '0016015A013', '04811820005B'. Sources write it
+    // dashed ('0978-182-0001'); likeFromRuns + the normalized compare handle
+    // both (54,992 distinct -> 54,992 normalized). Austell (3% Douglas, mostly
+    // Cobb) and Villa Rica (32% Douglas, mostly Carroll) straddle: not matched.
+    // 'Douglas' is a Coffee County city, not this one.
+    matches: (n) => /^(douglas county|douglasville)$/i.test(n),
+    label: 'Douglas County',
+    layerUrl: 'https://maps.douglascountyga.gov/arcgis/rest/services/CountyLayers/Parcels/MapServer/15',
+    idField: 'ParcelNo',
+    whereFor: (id) => likeFromRuns('ParcelNo', id),
+    // "06461820001", "0978 182 0001", "0016015A013", "04811820005B";
+    // district+section is always 01-5, 01-3, 02-5, 03-5 or 18-2
+    idPattern: /^\d{4} ?(01 ?[35]|02 ?5|03 ?5|18 ?2) ?[0-9A-Z]\d{3}[A-Z]?$/i,
+    extraFields: ['totalacres'],
+    retries: 1,
+  },
+  {
     // FALLBACK, low trust. Newton County's own layer (gis.ncboc.com/.../Public/
     // Newton_Parcels) is token-gated (499), so this is a third-party AGOL
     // snapshot: owner mhackman_UofMD, last edited 2022-02-26, 45,755 parcels,
