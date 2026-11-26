@@ -961,3 +961,18 @@ and The Haven are drawn from the IDs that resolved, with the missing ones record
 The Cobb server returned HTTP 400 on every query, even `returnCountOnly`, from about 06:55Z. It was
 back at 07:06Z with the same 280,023 rows. This looks like its nightly refresh, which is one more
 reason the adapter has a retry.
+
+### Douglas committed records with cited IDs (2026-11-26)
+
+20 committed Douglas records have parcel IDs. They were committed after the Douglas adapter write-up.
+- 9 already had `parcel_fetch` boundaries, drawn on approval, and were left alone.
+- The other **11 were drawn** with the same `geometry IS NULL` gate: 10 within tolerance and 1
+  flagged. Norhaven is the flagged one, at 8.21 vs 7.39 ac (11.1%).
+- Town Green has no stated acreage.
+- Chestnut Grove is drawn from `09021820018` alone. `09021820083` is still missing.
+- All are MultiPolygons with the pin inside, dashed until reviewed.
+
+Data-quality flag, not fixed: committed Douglas has duplicates.
+- DRB Rose Ave appears 3 times: `45a38240`, `8eea9856`, `3c7cf13b`.
+- Chapel Hill Crossing appears twice: `f1957ddf`, `e7ecacac`.
+- Themis / Doris-Dorris Rd appears twice: `f6fde2be`, `8e0dda3f`.
