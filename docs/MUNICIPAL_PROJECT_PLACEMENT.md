@@ -848,3 +848,131 @@ Data-quality flags, not fixed:
 - Two pairs of records are staged/committed twins of each other.
 - Several Marietta records cite only "Land Lot X, District Y, Parcel NNNN". Composing an ID is
   deterministic for a single land lot (Hudson Road's matches `17043400180`), but it isn't built.
+
+## Parcel IDs inferred for Douglas and Cobb records with none (2026-11-26), proposed, not drawn
+
+There were 83 Douglas and Cobb records (non-rejected staged and committed) with no parcel IDs and no
+boundary. Two methods were tried, and **every candidate was checked against the live county layer**:
+does it exist, its acreage, and its distance to the record's pin. This was a one-off read-only pass
+plus a rolled-back dry run. **Nothing was written.** No parser change was made: both methods need a
+person to judge them, so they don't belong in `extract_parcel_numbers()`.
+
+**A. Composed from land-lot citations.**
+- Douglas: `LLLL` + `DD` + `S` + `PPPP`. One source wrote "D2 S18", which only makes a valid
+  district+section code (`182`) when swapped.
+- Cobb: `DD` + `LLLL` + `0` + parcel as 4 digits. "Land Lot 434, District 17, Parcel 0180" gives
+  `17043400180`, which is the ID Hudson Road cites itself. The section digit is `0` on 279,845 of
+  280,021 PINs, whatever "2nd Section" says.
+- When a citation lists several lots and parcels without pairing them, every lot × parcel
+  combination was built. Only the combinations near the pin, at a cited address and matching the
+  stated acreage were kept. The rest are real parcels up to 11 km away.
+- For Hope Creek, the 6 cited parcel numbers turned out to be exactly the 6 cited addresses, all
+  within 250 m and all owned by TPG AG EHC III.
+
+**B. Looked up by address**, using a site-address `LIKE` (`PropertyAddress` / `SITUS_ADDR`) with an
+exact house-number match. A hit was proposed only if the parcel is plausibly the **whole project**:
+- within acreage tolerance when the record states acres;
+- otherwise at least 1 ac, with a plausible density for the stated unit count;
+- and near the pin.
+
+Many Douglas records give a single house address inside an already-built subdivision. Those hits
+are one 0.1–0.4 ac home lot and were rejected.
+
+**Proposed: 22 projects, 44 rows (24 staged, 20 committed).** Every one unions to a MultiPolygon
+with `ST_PointOnSurface` inside, and every one would be `parcel_fetch`, dashed until reviewed. The
+dry run went through `set_staging_polygon_from_parcels` and `set_municipal_project_polygon_from_parcels`
+and was rolled back.
+
+| County | Project | Method | Parcels | Fetched | Stated | Var. |
+|---|---|---|---|---|---|---|
+| Cobb | PRE Powder Springs Rd / Hope Settlement | land lot | `19026100020` | 10.41 | 10.9 | 4.5% |
+| Cobb | Hope Creek / Traton (Z2025-17) | land lot = addresses | `17064800540` `17064800570` `17064800330` `16128100720` `16128100730` `17057700020` | 19.35 | 19.451 | 0.5% |
+| Cobb | 890 Canton Road Senior (3 rows) | land lot = address | `16101600060` | 2.15 | 2.18 | 1.4% |
+| Cobb | Horizon Lane / Wilshire Ave (4 rows) | land lot | `16106900190` | 38.65 | 38.64 / 38 | 0.0 / 1.7% |
+| Cobb | Piedmont Residential, Bells Ferry Rd | 4 addresses, all in the cited land lots | `16087000230` `16085900150` `16087000020` `16087100320` | 16.19 | — | — |
+| Cobb | Shallowford Pointe | address | `16047000040` | 13.00 | 13.89 | **6.4%** |
+| Cobb | Evergreen Senior Housing | address | `16121300260` | 2.71 | — | — |
+| Cobb | Accent Marietta / Marietta Crossing | address | `16123900270` | 14.65 | 19.25 | **23.9%** (LL1240 part not found) |
+| Cobb | High Street / former Mountasia | address | `16064400040` `16064400030` | 6.96 | — | — |
+| Cobb | Chapman Drive (Z-24-2025) | 4 addresses from the notes | `16051300040` `16051300030` `16051300070` `16051300010` | 17.24 | 17.6 | 2.0% |
+| Cobb | Campus Realty / Chastain Center | 2 addresses | `16043000060` `16043000070` | 6.56 | 6.4 | 2.5% |
+| Douglas | Meadow Hill | land lot (paired) | `04551820001` `05541820001` `05471820004` | 45.34 | 50 | **9.3%** |
+| Douglas | Shree Development Townhome PRD | land lot (P1 in each of 2 lots) | `09731820001` `09671820001` | 11.68 | 10.8 | **8.1%** |
+| Douglas | KMC Homes / St. Andrews Pkwy | land lot | `01210350135` | 16.64 | 16.6 | 0.2% |
+| Douglas | Walters Creek at Mt. Vernon Rd | land lot (paired, D/S swapped) | `09811820008` `09791820019` `10061820006` `09781820001` | 86.68 | 85.68 | 1.2% |
+| Douglas | David Pearson / Veterans Memorial | land lot (paired) | `03681820001` `…0026` `…0027` `…0028` `…0029` `03171820017` | 48.04 | 53.52 | **10.2%** |
+| Douglas | Autry Circle Subdivision | land lot | `07030130001` | 12.92 | 13.12 | 1.5% |
+| Douglas | Bright Star Road Senior Housing | land lot | `01310250004` `01310250005` | 46.46 | 44.85 | 3.6% |
+| Douglas | DRB Group / Fairburn Road PUD | land lot | `01090150133` `01090150134` | 12.90 | 12.89 | 0.1% |
+| Douglas | Reserve at Chapel Hill Phase II | address | `00760150034` | 20.98 | — | — |
+| Douglas | 8288 Chicago Avenue Multi-Family | address | `02240250034` | 8.96 | — | — |
+| Douglas | Peaks of Douglas | address | `00240150014` | 7.34 | — | — |
+
+By row: 22 are within tolerance, 9 are flagged (`geometry_needs_review`), and 13 have no stated
+acreage to check against (address matches only).
+
+**Not proposed (39 rows):**
+- **The address is one house lot** in a built subdivision: Tributary Village, Paces Estates,
+  Charlton Crossing, Tributary at New Manchester, Ashley Falls, East Cobb Walk Townhomes (0.07 ac)
+  and Greenhouse Phase 3A (0.08 ac, 1.5 km from its pin).
+- **The address parcel is too small for the stated acres:** GreenHouse by Beazer (14.9 vs 174 ac)
+  and Powder Springs Rd SW Single-Family. The latter is 4.44 vs 10.9 ac, and the parcel isn't in the
+  cited land lot 1076.
+- **Nothing to check against:** Bridlewood Townhomes (6.78 ac, no units or acres).
+- **The address isn't in the layer:** East Cobb Walk Senior Apartments, Chestnut Grove Townhomes,
+  Timber Ridge, Roseleigh Park, Ansley Trails, The View at Groover's Lake, Laurelwood, Heron Mill
+  Phases 1 and 2, NOVEL Douglasville and Fairhaven. Most are subdivision streets platted since, or a
+  leasing-office address.
+- **No address or land lot:** Shallowford Pointe (Toll Brothers, an intersection), Marietta Crossing
+  Townhomes and Town Green Apartments Phase 2.
+
+Data-quality flags, not fixed:
+- Walters Creek (`f323af15`) and Richardson Family Trust (`17da8205`) cite the same Mt. Vernon Rd
+  tract, so they're probably duplicates. Richardson's 40.5% shortfall is the missing
+  `09791820019` (35.64 ac).
+- 890 Canton Rd (`593cb94d` / `8a1c18e8`) and Horizon/Wilshire (`6f4c55cc` / `27d61da3`) are
+  duplicate staged pairs.
+- Since the Douglas adapter write-up, 38 Douglas records have been committed, 20 of them with
+  parcel IDs. Those weren't in that dry run.
+
+### Drawn (2026-11-26)
+
+On request, all **67** proposed and earlier-reported records were drawn from fresh county fetches:
+the 44 inferred-ID rows above, the 6 Cobb records with cited IDs and the 17 staged Douglas records.
+- Each is written with the standard RPCs, so it's `parcel_fetch` and dashed until reviewed, and the
+  committed pins are inside their shapes.
+- Every write was gated on `geometry IS NULL` at write time, because the committed RPC has no
+  never-replace guard. The two hand-drawn Cobb boundaries (`28e32547`, `1ce2954d`) are unchanged.
+- The inferred-ID staged rows carry "parcel ids inferred 2026-11-26 (…), not cited by the source"
+  in `parcel_fetch_note`. The IDs are in `geometry_source_parcels`; `parcel_numbers` (what the source
+  cited) was left alone.
+
+Outcome:
+
+| | Drawn | Within tolerance | Flagged (`geometry_needs_review`) | No stated acres |
+|---|---|---|---|---|
+| Douglas | 37 | 22 | 8: Meadow Hill ×2, Shree ×2, Veterans Memorial, Richardson, Norhaven, Lithia | 7 |
+| Cobb | 30 | 16 | 7: Shallowford ×2, Accent ×2, Haven ×2, Hudson Road | 7 |
+
+Accent Marietta (23.9%, only the land lot 1239 parcel was found) and The Haven (158.6%, the whole
+church tract) were drawn **flagged** as asked. Chestnut Grove, Lithia Investments, Kensington Park
+and The Haven are drawn from the IDs that resolved, with the missing ones recorded as `partial`.
+
+The Cobb server returned HTTP 400 on every query, even `returnCountOnly`, from about 06:55Z. It was
+back at 07:06Z with the same 280,023 rows. This looks like its nightly refresh, which is one more
+reason the adapter has a retry.
+
+### Douglas committed records with cited IDs (2026-11-26)
+
+20 committed Douglas records have parcel IDs. They were committed after the Douglas adapter write-up.
+- 9 already had `parcel_fetch` boundaries, drawn on approval, and were left alone.
+- The other **11 were drawn** with the same `geometry IS NULL` gate: 10 within tolerance and 1
+  flagged. Norhaven is the flagged one, at 8.21 vs 7.39 ac (11.1%).
+- Town Green has no stated acreage.
+- Chestnut Grove is drawn from `09021820018` alone. `09021820083` is still missing.
+- All are MultiPolygons with the pin inside, dashed until reviewed.
+
+Data-quality flag, not fixed: committed Douglas has duplicates.
+- DRB Rose Ave appears 3 times: `45a38240`, `8eea9856`, `3c7cf13b`.
+- Chapel Hill Crossing appears twice: `f1957ddf`, `e7ecacac`.
+- Themis / Doris-Dorris Rd appears twice: `f6fde2be`, `8e0dda3f`.
