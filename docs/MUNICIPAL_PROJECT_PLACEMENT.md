@@ -934,3 +934,30 @@ Data-quality flags, not fixed:
   duplicate staged pairs.
 - Since the Douglas adapter write-up, 38 Douglas records have been committed, 20 of them with
   parcel IDs. Those weren't in that dry run.
+
+### Drawn (2026-11-26)
+
+On request, all **67** proposed and earlier-reported records were drawn from fresh county fetches:
+the 44 inferred-ID rows above, the 6 Cobb records with cited IDs and the 17 staged Douglas records.
+- Each is written with the standard RPCs, so it's `parcel_fetch` and dashed until reviewed, and the
+  committed pins are inside their shapes.
+- Every write was gated on `geometry IS NULL` at write time, because the committed RPC has no
+  never-replace guard. The two hand-drawn Cobb boundaries (`28e32547`, `1ce2954d`) are unchanged.
+- The inferred-ID staged rows carry "parcel ids inferred 2026-11-26 (…), not cited by the source"
+  in `parcel_fetch_note`. The IDs are in `geometry_source_parcels`; `parcel_numbers` (what the source
+  cited) was left alone.
+
+Outcome:
+
+| | Drawn | Within tolerance | Flagged (`geometry_needs_review`) | No stated acres |
+|---|---|---|---|---|
+| Douglas | 37 | 22 | 8: Meadow Hill ×2, Shree ×2, Veterans Memorial, Richardson, Norhaven, Lithia | 7 |
+| Cobb | 30 | 16 | 7: Shallowford ×2, Accent ×2, Haven ×2, Hudson Road | 7 |
+
+Accent Marietta (23.9%, only the land lot 1239 parcel was found) and The Haven (158.6%, the whole
+church tract) were drawn **flagged** as asked. Chestnut Grove, Lithia Investments, Kensington Park
+and The Haven are drawn from the IDs that resolved, with the missing ones recorded as `partial`.
+
+The Cobb server returned HTTP 400 on every query, even `returnCountOnly`, from about 06:55Z. It was
+back at 07:06Z with the same 280,023 rows. This looks like its nightly refresh, which is one more
+reason the adapter has a retry.
