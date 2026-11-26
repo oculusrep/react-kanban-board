@@ -4,9 +4,11 @@
  * one-off scripts.
  *
  * Reruns only the post-run steps, with no new research run:
- *   dedupe → Gemini unit backfill (current prompt, earlier leads re-asked) →
- *   acres × density → Gemini locate (records with no precise pin; earlier
- *   locate attempts are NOT re-asked) → dedupe → parcel fetch → anything still
+ *   dedupe → unit count (parcel layer → cited documents → Gemini web search,
+ *   earlier leads re-asked → acres × density) → Gemini locate (records with no
+ *   precise pin; earlier locate attempts are NOT re-asked) → dedupe → parcel
+ *   fetch → distance check → put back restored rows → lead triage (rejects
+ *   out-of-radius / recently built / listing-only leads) → anything still
  *   without a count stays a lead.
  *
  * Scope:
@@ -25,6 +27,7 @@
 import { estimateMissingUnits, lacksUnitCount } from './research-unit-estimator.ts';
 import { locateRun } from './research-locate.ts';
 import { fetchBoundariesForRuns } from './research-parcel-fetch.ts';
+import { triageLeads } from './research-lead-triage.ts';
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -92,6 +95,9 @@ export interface FillRunResult {
   put_back: number;
   gemini: number;
   density: number;
+  parcel: number;
+  document: number;
+  triaged: number;
   deduped: number;
   leads: number;
   considered: number;
@@ -169,12 +175,25 @@ export async function fillRun(
     if (back) putBack++;
   }
 
+  // 6. Lead triage, after put-back so restored rows keep their own reason.
+  let triaged = 0;
+  if (!failure) {
+    try {
+      triaged = (await triageLeads(service, [runId])).rejected.length;
+    } catch (e) {
+      failure = `lead triage: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
   const after = await loadRows(service, [runId]);
   return {
     research_run_id: runId,
     restored, put_back: putBack,
     gemini: est?.gemini ?? 0,
     density: est?.density ?? 0,
+    parcel: est?.parcel ?? 0,
+    document: est?.document ?? 0,
+    triaged,
     deduped,
     leads: after.filter((r) => r.approval_state === 'pending' && lacksUnitCount(r)).length,
     considered: est?.considered ?? 0,

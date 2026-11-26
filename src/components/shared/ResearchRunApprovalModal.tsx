@@ -535,8 +535,9 @@ export default function ResearchRunApprovalModal({
     return () => { cancelled = true; };
   }, [stagingRunKey]);
 
-  // "Fill missing units & locations": rerun the post-run steps (dedupe → Gemini
-  // units → acres × density → Gemini locate → dedupe → parcel fetch) on the runs on screen, via research-fill-units. Preview
+  // "Fill missing units & locations": rerun the post-run steps (dedupe → parcel
+  // layer → cited documents → Gemini units → acres × density → Gemini locate →
+  // dedupe → parcel fetch → lead triage) on the runs on screen, via research-fill-units. Preview
   // first (count + estimated cost), then confirm; runs one research_run per
   // call so no single call outlives the edge-function wall clock.
   const [fillOpen, setFillOpen] = useState(false);
@@ -547,7 +548,7 @@ export default function ResearchRunApprovalModal({
   } | null>(null);
   const [fillBusy, setFillBusy] = useState<string | null>(null);
   const [fillResult, setFillResult] = useState<{
-    gemini: number; density: number; deduped: number; leads: number;
+    gemini: number; density: number; parcel: number; document: number; triaged: number; deduped: number; leads: number;
     restored: number; put_back: number; errors: number; cost_cents: number;
     pins_placed: number; hints_improved: number; parcel_ids_found: number; moved_out_of_radius: number;
     locate_cost_cents: number; failures: string[];
@@ -586,7 +587,7 @@ export default function ResearchRunApprovalModal({
   };
 
   const runFill = async () => {
-    const total = { gemini: 0, density: 0, deduped: 0, leads: 0, restored: 0, put_back: 0, errors: 0, cost_cents: 0,
+    const total = { gemini: 0, density: 0, parcel: 0, document: 0, triaged: 0, deduped: 0, leads: 0, restored: 0, put_back: 0, errors: 0, cost_cents: 0,
       pins_placed: 0, hints_improved: 0, parcel_ids_found: 0, moved_out_of_radius: 0, locate_cost_cents: 0, failures: [] as string[] };
     for (let i = 0; i < fillRunIds.length; i++) {
       setFillBusy(`Filling run ${i + 1} of ${fillRunIds.length}…`);
@@ -598,7 +599,7 @@ export default function ResearchRunApprovalModal({
         // In-flight runs are skipped, not failures.
         if (d.error !== 'run_in_flight_or_missing') total.failures.push(d.failure ?? d.detail ?? d.error ?? toErrorMessage(e));
       }
-      for (const k of ['gemini', 'density', 'deduped', 'leads', 'restored', 'put_back', 'errors', 'cost_cents',
+      for (const k of ['gemini', 'density', 'parcel', 'document', 'triaged', 'deduped', 'leads', 'restored', 'put_back', 'errors', 'cost_cents',
         'pins_placed', 'hints_improved', 'parcel_ids_found', 'moved_out_of_radius', 'locate_cost_cents'] as const) {
         total[k] += Number(d[k] ?? 0);
       }
@@ -1945,7 +1946,7 @@ export default function ResearchRunApprovalModal({
         {r.units_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
           <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
                 style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
-                title="Unit count was ESTIMATED after the run (Gemini web search, or acreage × zoning density). The source or math is in Notes. It commits tagged units_confidence = estimated.">
+                title="Unit count was ESTIMATED after the run (a proposed count or zoning cap from a cited document, a parcel-layer count, Gemini web search, or acreage × zoning density). The source or math is in Notes. It commits tagged units_confidence = estimated.">
             EST. UNITS
           </span>
         )}
@@ -2709,7 +2710,7 @@ export default function ResearchRunApprovalModal({
                 onClick={() => { setFillOpen(true); setFillResult(null); loadFillPreview(fillIncludeRejected); }}
                 className="px-3 py-1.5 rounded-lg text-sm font-medium border"
                 style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
-                title="Rerun only the post-run steps on this run/sweep: dedupe → Gemini unit backfill → acres × density → Gemini locate → dedupe → parcel fetch. No new research run."
+                title="Rerun only the post-run steps on this run/sweep: dedupe → unit count (parcel layer → cited documents → Gemini web search → acres × density) → Gemini locate → dedupe → parcel fetch → lead triage. No new research run."
               >
                 Fill missing units &amp; locations
               </button>
@@ -2742,7 +2743,7 @@ export default function ResearchRunApprovalModal({
               <>
                 <div className="text-sm font-medium" style={{ color: '#002147' }}>Fill missing units &amp; locations</div>
                 <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
-                  Dedupe → Gemini unit backfill → acres × zoning density → Gemini locate (records with no precise pin) → dedupe → parcel fetch.
+                  Dedupe → unit count (county parcel layer → cited documents → Gemini web search → acres × zoning density) → Gemini locate (records with no precise pin) → dedupe → parcel fetch → lead triage (rejects leads still without a count that are out of radius, recently built, or listing-only).
                   Anything still without a count stays a lead. Records that already have an estimated count, or were already located, are skipped.
                   Committed records are never touched.
                 </div>
@@ -2789,7 +2790,7 @@ export default function ResearchRunApprovalModal({
                   {' '}(units ${(fillResult.cost_cents / 100).toFixed(2)} · locate ${(fillResult.locate_cost_cents / 100).toFixed(2)})
                 </div>
                 <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
-                  {fillResult.gemini} from Gemini · {fillResult.density} from acres × density · {fillResult.deduped} deduped · {fillResult.leads} still leads
+                  {fillResult.parcel} from the parcel layer · {fillResult.document} from cited documents · {fillResult.gemini} from Gemini search · {fillResult.density} from acres × density · {fillResult.deduped} deduped · {fillResult.triaged} leads auto-rejected · {fillResult.leads} still leads
                   {fillResult.restored > 0 && ` · ${fillResult.restored} rejected restored, ${fillResult.put_back} put back (still no count)`}
                   {fillResult.errors > 0 && ` · ${fillResult.errors} Gemini error(s)`}
                 </div>

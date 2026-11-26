@@ -30,6 +30,7 @@
 import { locateRun } from './research-locate.ts';
 import { isListingUrl, resolveUrl } from './source-rules.ts';
 import { estimateMissingUnits } from './research-unit-estimator.ts';
+import { triageLeads } from './research-lead-triage.ts';
 import { fetchBoundariesForRuns } from './research-parcel-fetch.ts';
 import { notifyResearchTelegram, sendSweepReadyIfDone } from './research-telegram.ts';
 
@@ -322,6 +323,7 @@ export interface RecentSummary {
   located: { pins: number; hints: number; parcel_ids: number };
   boundaries: number;
   outside_radius: number;
+  triaged: number;
   recent_records: number;
   recent_units: number;
   without_count: number;
@@ -342,7 +344,7 @@ export async function processRecentRun(
     research_run_id: runId, municipalities: munis.length, found: 0, under_threshold_or_old: 0, unsourced: 0,
     duplicates_in_list: 0, staged: 0, no_evidence: 0, count_from_listing: 0, already_in_ovis: 0,
     replace_suggestions: [], dropped_known: 0, deduped: 0, located: { pins: 0, hints: 0, parcel_ids: 0 },
-    boundaries: 0, outside_radius: 0, recent_records: 0, recent_units: 0, without_count: 0,
+    boundaries: 0, outside_radius: 0, triaged: 0, recent_records: 0, recent_units: 0, without_count: 0,
     search_cost_cents: 0, search_calls: 0, searches: [], units_found: 0, unit_cost_cents: 0,
     locate_cost_cents: 0, errors: [],
   };
@@ -505,7 +507,7 @@ export async function processRecentRun(
   // Gemini unit count (no acreage × density) for records still without a count.
   await step('unit count', async () => {
     const u = await estimateMissingUnits(supabase, runId, keys.gemini);
-    sum.units_found = u.gemini;
+    sum.units_found = u.gemini + u.parcel + u.document;
     sum.unit_cost_cents = u.cost_cents;
   });
   if (keys.geocode) {
@@ -526,6 +528,9 @@ export async function processRecentRun(
     const { data, error } = await supabase.rpc('research_distance_check', { p_run_ids: [runId] });
     if (error) throw new Error(error.message);
     sum.outside_radius = (data ?? []).length;
+  });
+  await step('lead triage', async () => {
+    sum.triaged = (await triageLeads(supabase, [runId])).rejected.length;
   });
 
   const { data: s } = await supabase.rpc('get_research_summary', { p_run_ids: [runId] });

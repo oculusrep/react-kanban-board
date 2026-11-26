@@ -4,6 +4,13 @@
  * Runs after a research run closes for review (final submit_research_report).
  * For every PENDING staged row with no usable unit count:
  *
+ *   0a. County parcel layer (research-unit-parcels.ts): lots counted by
+ *       subdivision name, only when the lot numbers or build years show the
+ *       name isn't an older neighborhood. 'reported' / 'estimated'.
+ *   0b. Cited-document reader (research-unit-documents.ts): Gemini with
+ *       url_context opens the cited documents and the ones a link away, and
+ *       must quote the count. 'approved' / 'reported' / 'estimated' (proposed
+ *       or cap). Not for recently built rows or rows already out of radius.
  *   1. Gemini 2.5 Flash with Google Search grounding, given the project name,
  *      jurisdiction, address / location and builder. A count is accepted only
  *      when a source states one for this project. → units_confidence='estimated',
@@ -29,6 +36,8 @@
  */
 
 import { isListingHost, isListingUrl, resolveUrl } from './source-rules.ts';
+import { countFromParcelLayer } from './research-unit-parcels.ts';
+import { readCitedDocuments } from './research-unit-documents.ts';
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -45,12 +54,19 @@ const CENTS_PER_GROUNDED_PROMPT = 3.5;           // $35 / 1,000
 
 const CONCURRENCY = 4;
 const CALL_TIMEOUT_MS = 60_000;
+// The document reader is the slow step (it reads whole packets). Rows that
+// reach it after this budget skip it in this pass; "Fill missing units"
+// picks them up. Keeps the post-run job inside the edge-function wall clock.
+const DOCUMENT_BUDGET_MS = 150_000;
 
 export interface EstimateSummary {
   research_run_id: string;
   considered: number;
   gemini: number;
   density: number;
+  parcel: number;
+  document: number;
+  document_skipped_budget: number;
   lead: number;
   error: number;
   skipped_already_tried: number;
@@ -71,6 +87,8 @@ interface StagingRow {
   total_housing_units: number | null;
   units_needs_review: boolean;
   discovery_source?: string | null;
+  permit_url?: string | null;
+  lead_reason?: string | null;
   boundary_municipality: { name: string; kind: string; state: string } | null;
 }
 
@@ -230,6 +248,91 @@ async function askGeminiRaw(r: StagingRow, apiKey: string): Promise<GeminiResult
 // Run driver
 // ---------------------------------------------------------------------------
 
+type Confidence = 'approved' | 'reported' | 'estimated';
+
+async function writeUnitCount(supabase: Supa, r: StagingRow, units: number, note: string, confidence: Confidence) {
+  const notes = [r.notes?.trim(), note].filter(Boolean).join('\n\n');
+  // Flag columns set in the same statement, so the unit-count trigger
+  // leaves them alone; units_confidence carries the "estimated" caveat.
+  const { error: upErr } = await supabase
+    .from('municipal_project_staging')
+    .update({
+      total_housing_units: units,
+      units_confidence: confidence,
+      units_needs_review: false,
+      units_review_reason: null,
+      notes,
+    })
+    .eq('id', r.id)
+    .eq('approval_state', 'pending');
+  if (upErr) throw new Error(`update ${r.id}: ${upErr.message}`);
+  r.notes = notes;
+}
+
+const OUT_OF_RADIUS = /^\s*outside the/i;
+
+/**
+ * Steps 0a / 0b: parcel layer, then the cited documents. true = a count was
+ * written and the row is done. Each attempt is logged; a failure is logged as
+ * 'error' and the row carries on to the web search.
+ */
+async function countFromStatedSources(
+  supabase: Supa, runId: string, r: StagingRow, apiKey: string, today: string,
+  summary: EstimateSummary, documentDeadline: number,
+): Promise<boolean> {
+  const base = { research_run_id: runId, staging_id: r.id, project_name: r.project_name };
+  if (r.lead_reason && OUT_OF_RADIUS.test(r.lead_reason)) return false; // not worth reading
+
+  try {
+    const p = await countFromParcelLayer(r);
+    if (p) {
+      await supabase.from('research_unit_estimate').insert({
+        ...base, method: 'parcel', units: p.units, model: p.layer, answer: p.note, cost_cents: 0,
+      });
+      if (p.units != null && p.confidence) {
+        await writeUnitCount(supabase, r, p.units, `[Unit count ${today} — parcel layer] ${p.units} lots. ${p.note}.`, p.confidence);
+        summary.parcel++;
+        return true;
+      }
+      // No count, but what the layer shows helps the reviewer. Once per row.
+      if (p.matched > 0 && !(r.notes ?? '').includes('— parcel layer]')) {
+        const notes = [r.notes?.trim(), `[Unit check ${today} — parcel layer] ${p.note}.`].filter(Boolean).join('\n\n');
+        await supabase.from('municipal_project_staging').update({ notes }).eq('id', r.id).eq('approval_state', 'pending');
+        r.notes = notes;
+      }
+    }
+  } catch (e) {
+    await supabase.from('research_unit_estimate').insert({
+      ...base, method: 'error', answer: `[parcel layer] ${e instanceof Error ? e.message : String(e)}`, cost_cents: 0,
+    });
+  }
+
+  if (r.discovery_source === 'gemini_recent') return false; // listing-sourced: nothing to read
+  if (Date.now() > documentDeadline) { summary.document_skipped_budget++; return false; }
+  try {
+    const d = await readCitedDocuments(r, apiKey);
+    summary.cost_cents += d.cost_cents;
+    await supabase.from('research_unit_estimate').insert({
+      ...base, method: 'document', units: d.units, model: MODEL, answer: d.answer,
+      sources: { given: d.urls_given, read: d.urls_read, search: d.sources, url: d.url, page: d.page, quote: d.quote, status: d.status },
+      input_tokens: d.input_tokens, output_tokens: d.output_tokens, cost_cents: d.cost_cents,
+    });
+    if (d.units != null && d.confidence) {
+      const what = d.status === 'approved' ? 'approved' : d.status === 'proposed' ? 'PROPOSED' : d.status === 'cap' ? 'CAP (maximum allowed)' : 'stated';
+      await writeUnitCount(supabase, r, d.units,
+        `[Unit count ${today} — cited document] ${d.units} units, ${what}: "${d.quote.slice(0, 400)}" — ${d.url}${d.page ? ` p.${d.page}` : ''}. ${d.basis}`.trim(),
+        d.confidence);
+      summary.document++;
+      return true;
+    }
+  } catch (e) {
+    await supabase.from('research_unit_estimate').insert({
+      ...base, method: 'error', model: MODEL, answer: `[document reader] ${e instanceof Error ? e.message : String(e)}`, cost_cents: 0,
+    });
+  }
+  return false;
+}
+
 function easternDate(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
 }
@@ -252,16 +355,17 @@ export async function estimateMissingUnits(
   // retryTried: re-ask rows that an earlier pass already tried and left as
   // leads (the "Fill missing units" rerun, with the current prompt). Rows that
   // got an estimated count never come back: they no longer lack a count.
-  opts: { retryTried?: boolean } = {},
+  opts: { retryTried?: boolean; documentBudgetMs?: number } = {},
 ): Promise<EstimateSummary> {
   const summary: EstimateSummary = {
-    research_run_id: researchRunId, considered: 0, gemini: 0, density: 0, lead: 0,
-    error: 0, skipped_already_tried: 0, cost_cents: 0,
+    research_run_id: researchRunId, considered: 0, gemini: 0, density: 0, parcel: 0, document: 0,
+    document_skipped_budget: 0, lead: 0, error: 0, skipped_already_tried: 0, cost_cents: 0,
   };
+  const documentDeadline = Date.now() + (opts.documentBudgetMs ?? DOCUMENT_BUDGET_MS);
 
   const { data: rows, error } = await supabase
     .from('municipal_project_staging')
-    .select('id, project_name, address, location_description, parcel_boundary_notes, builder_developer, zoning, phase_label, notes, source, discovery_source, total_housing_units, units_needs_review, boundary_municipality(name, kind, state)')
+    .select('id, project_name, address, location_description, parcel_boundary_notes, builder_developer, zoning, phase_label, notes, source, permit_url, lead_reason, discovery_source, total_housing_units, units_needs_review, boundary_municipality(name, kind, state)')
     .eq('research_run_id', researchRunId)
     .eq('approval_state', 'pending');
   if (error) throw new Error(`load staging: ${error.message}`);
@@ -282,6 +386,8 @@ export async function estimateMissingUnits(
 
   await pool(todo, CONCURRENCY, async (r) => {
     if (!opts.retryTried && triedIds.has(r.id)) { summary.skipped_already_tried++; return; }
+
+    if (await countFromStatedSources(supabase, researchRunId, r, geminiApiKey, today, summary, documentDeadline)) return;
 
     let g: GeminiResult | null = null;
     let gErr: string | null = null;
@@ -305,23 +411,8 @@ export async function estimateMissingUnits(
       cost_cents: cost,
     };
 
-    const writeCount = async (units: number, note: string, confidence: 'estimated' | 'reported' = 'estimated') => {
-      const notes = [r.notes?.trim(), note].filter(Boolean).join('\n\n');
-      // Flag columns set in the same statement, so the unit-count trigger
-      // leaves them alone; units_confidence carries the "estimated" caveat.
-      const { error: upErr } = await supabase
-        .from('municipal_project_staging')
-        .update({
-          total_housing_units: units,
-          units_confidence: confidence,
-          units_needs_review: false,
-          units_review_reason: null,
-          notes,
-        })
-        .eq('id', r.id)
-        .eq('approval_state', 'pending');
-      if (upErr) throw new Error(`update ${r.id}: ${upErr.message}`);
-    };
+    const writeCount = (units: number, note: string, confidence: Confidence = 'estimated') =>
+      writeUnitCount(supabase, r, units, note, confidence);
 
     try {
       if (g && g.units != null) {

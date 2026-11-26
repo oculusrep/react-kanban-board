@@ -61,38 +61,106 @@ A "none found" below therefore means **"could not read the documents"**. It does
 - New Douglas Kensington parcels have no owner, address or acreage.
 - Ashley Falls 11.47 ac tract (01950250041) has no subdivision tag.
 
-## 3. Making this automatic — proposal (not built yet)
+## 3. Automation (built 2026-11-26)
 
-**Key point:** the edge functions run on Supabase's network, which is not restricted like a cloud
-Claude session. The documents this pass could not open are reachable from `ovis-research-mcp` and
-`research-fill-units`. Done in the pipeline, this step is more reliable than doing it by hand.
+Three steps were added to the post-run pipeline. The same code runs from all three entry points:
+- `ovis-research-mcp` after the final submit;
+- the **Fill missing units & locations** button (`research-fill-units`);
+- the recently built pass (`research-recent-built`).
 
-Proposed post-run order, which also becomes the order of the "Fill missing units" button:
+```
+dedupe
+→ unit count, per lead (research-unit-estimator.ts):
+    0a. parcel layer        research-unit-parcels.ts    (new, no LLM)
+    0b. cited documents     research-unit-documents.ts  (new, Gemini url_context)
+    1.  Gemini web search   (as before)
+    2.  acres × density     (as before)
+→ locate → dedupe → parcel fetch → distance check
+→ lead triage               research-lead-triage.ts     (new, last step)
+```
 
-1. dedupe (as today)
-2. **Parcel-layer count (new, no LLM).** For a lead in a county with a parcel adapter, search the
-   subdivision name in the subdivision field **and** the legal-description field. Hall's new plats
-   are only in `LEGAL_DESC`. Parse lot numbers and drop open space, HOA and amenity parcels.
-   - Contiguous 1..N → `reported`.
-   - Otherwise, the parcel count → `estimated` with the range in notes.
-   - Reuses `subdivision-layers.ts` / `parcel-adapters.ts`. Douglas needs adding (field `SUBDIVISION`).
-3. **Cited-document reader (new).**
-   - Gather URLs from `permit_url`, `source`, `notes` and the Gemini grounding sources.
-   - Fetch each PDF or page in the edge function.
-   - Pass PDFs to Gemini natively: inline under 20 MB, the File API for big packets like Peeksville's 17.5 MB one. Native PDF input reads scanned plats and lot-map images, which covers the "scanned plat" and "lot map not read" misses from the Nov 12 audit.
-   - Require a verbatim quote and a page number, and accept only if the quote contains the number.
-   - Label proposed / cap / approved. `reported` when approved or stated, `estimated` when only proposed.
-   - Cost: about 258 tokens per page, so a 100-page packet is about 1¢.
-4. Gemini web search (as today)
-5. acreage × density (as today)
-6. **Auto-triage (new).** Any record still without a count is rejected with a dated reason when:
-   - it has a distance `lead_reason` (out of radius), or
-   - it is `gemini_recent`, or all its sources are listing domains (`source-rules.ts`).
+### 0a. Parcel layer
 
-   It is rejected, never deleted, so Undo works. Everything else stays a lead.
-7. dedupe again (as today)
+| Layer | Name fields | What confirms the count |
+|---|---|---|
+| Hall | `SUBD_NAME`, `LEGAL_DESC` | lot numbers (`SUBD_LOT` / "LOT n") |
+| Coweta | `SubdivisionName`, `LegalDescription` | lot numbers, `SubdivisionPhase` / `Section`, `YearBuilt` |
+| Douglas | `SUBDIVISION` | `yr_built` |
+| Henry | `SUBDIVISIO` | none, so it only writes a note |
 
-Known gaps the pipeline still won't cover:
-- Hall Accela record attachments need a login, but step 2 covers Hall.
-- Coweta CivicClerk needs its own small adapter: Events → Meetings → `attachmentsList[].pdfVersionFullPath`.
+How a record is matched:
+- Name variants come from the project name, with "(formerly …)" aliases. Phase words and words like Subdivision or Homes are dropped.
+- Common areas are dropped: open space, amenity areas, detention ponds, and parcels owned by an HOA.
+- A phased record ("Phase 2B", "Unit 1", "V and VI", "new section") counts only the parcels tagged with every phase it names.
+
+A count is written only when it can't be an older neighborhood that shares the name:
+- **Lot numbers 1..N with no gaps** → N, `reported`.
+- **Every lot unbuilt or built in the last 3 years** (layers with year built) → the parcel count. Phased → `reported`, unphased → `estimated`.
+- **Anything else** → no count, and the parcel count goes into the record's notes for the reviewer.
+
+Checked live against today's records:
+
+| Record | Result |
+|---|---|
+| Falcon Landing | 148 |
+| Union Heights | 125 |
+| Fox Hall Ph 6 | 32 |
+| Fox Hall Ph V + VI | 64 |
+| Ponderosa | No count (lot-number gaps) |
+| Ashley Falls | No count: 148 of 206 built before 2023 |
+| Kensington Park 2B | No count: Phase 2 not tagged |
+| Charlton Crossing New Section | No count: section not identifiable |
+
+### 0b. Cited-document reader
+
+What it reads:
+- **URLs:** every link in `permit_url`, `source` and `notes`. Grounding redirects are resolved and listing sites dropped. At most 8, with PDFs and government pages first.
+- **One hop:** each cited HTML page is fetched from the edge function, and its document links (PDFs, showpublisheddocument, attachments, packets, staff reports, plats) are ranked by project words and case numbers. The top 6 are added. At most 20 URLs in all.
+
+The Gemini call:
+- Gemini 2.5 Flash with `url_context` + `google_search`. The search lets it find the primary document when none was cited.
+- If combining the two tools returns a 400, it retries with `url_context` alone.
+
+Acceptance:
+- A count is accepted only with a verbatim quote that contains the number, a non-listing URL that was given, read or searched, and a status.
+- The status sets the confidence:
+
+  | Status | `units_confidence` |
+  |---|---|
+  | approved | `approved` (first writer of this value) |
+  | stated | `reported` |
+  | proposed / cap | `estimated` (EST. badge; the note says PROPOSED or CAP) |
+
+When it doesn't run:
+- Skipped for recently built records, and for records already marked out of radius.
+- A run's first 150 s get document reads. Records that reach the step after that skip it in this pass, and Fill missing units picks them up. This keeps the post-run job inside the edge-function wall clock.
+
+Logging: each attempt goes to `research_unit_estimate` as method `document`, with `sources` = {given, read, search, url, page, quote, status}. Parcel attempts are method `parcel`, with `model` = the layer label. Migration `20261126021844` added both methods to the check constraint.
+
+API field names were checked against the `@google/genai` 1.30.0 type definitions, because ai.google.dev wasn't reachable from the build session:
+- `Tool.urlContext`
+- `candidates[0].urlContextMetadata.urlMetadata[].{retrievedUrl, urlRetrievalStatus}`
+- `URL_RETRIEVAL_STATUS_SUCCESS`
+
+**The reader hasn't made a live Gemini call yet.** The first real run is the check.
+
+### Lead triage (last step)
+
+A pending lead with no count, after at least one count step has tried it, is **rejected** when:
+- its `lead_reason` is a distance one ("Outside the …"), or
+- it is `gemini_recent`, or
+- every source domain it names is a listing site.
+
+How the rejection is recorded:
+- `reject_reason` starts with "Auto-triage:" and `auto_resolved_at` is set.
+- Undo (`unreject_research_staging_row`) sets `auto_dedupe_skip`, and triage never touches a row with that flag again.
+- Fill missing units with "include rejected" restores these rows and re-rejects any that still have no count.
+
+Leads from P&Z agendas, permit portals, news or activity PDFs that are inside the radius stay leads.
+
+### Still not covered
+
+- Hall Accela attachments need a login. The parcel step covers Hall instead.
+- The Coweta CivicClerk API (Events → Meetings → `attachmentsList[].pdfVersionFullPath`) has no adapter. Its attachment links are expiring SAS URLs.
 - JS-rendered builder sites (DRB, Zonda).
+- Newton has no parcel subdivision names (all blank). Houston and Cobb have barely any.

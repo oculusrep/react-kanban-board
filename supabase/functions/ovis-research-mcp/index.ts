@@ -23,6 +23,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { estimateMissingUnits } from '../_shared/research-unit-estimator.ts';
+import { triageLeads } from '../_shared/research-lead-triage.ts';
 import { fetchBoundariesForRuns } from '../_shared/research-parcel-fetch.ts';
 import { locateRun } from '../_shared/research-locate.ts';
 import { notifyResearchTelegram, chunkLabel, getSweepInfo, sendSweepReadyIfDone } from '../_shared/research-telegram.ts';
@@ -536,6 +537,14 @@ async function toolSubmitResearchReport(args: any) {
           console.log('[distance-check]', JSON.stringify({ moved_to_leads: (dc as unknown[] | null)?.length ?? 0 }));
         } catch (e) {
           console.error('[distance-check] failed', research_run_id, e);
+        }
+        // Last: reject leads that every count step tried and that can't be
+        // records anyway (out of radius, recently built, listing-only sources).
+        try {
+          const t = await triageLeads(supabase, [research_run_id]);
+          console.log('[lead-triage]', JSON.stringify({ rejected: t.rejected.length }));
+        } catch (e) {
+          console.error('[lead-triage] failed', research_run_id, e);
         }
         // Post-run steps done (or failed): mark it, then send "Sweep ready" if
         // this was the last piece of a finished sweep.
