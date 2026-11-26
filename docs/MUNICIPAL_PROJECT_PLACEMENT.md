@@ -749,3 +749,102 @@ Data-quality flags, not fixed:
   256 m outside. On approve the pin is placed inside the shape anyway.
 - 8 Douglas County records cite only "Land Lot X, District Y, Section Z, Parcel N". Composing an
   ID from that isn't built: it's ambiguous when several land lots are cited.
+
+## Cobb County adapter (2026-11-26)
+
+Prompted by sweep `4eafa7ca`, which staged 4 records with parcel IDs in Cobb County and Marietta.
+
+**Where the layer is.** Cobb County runs its own ArcGIS Server (ArcGIS 11.5) at
+`gis.cobbcounty.gov/gisserver/rest/services`; `gis.cobbcounty.org` serves the same directory. Like
+Forsyth's and Douglas's, it isn't in the ArcGIS Online index. An ArcGIS Online search for Cobb
+parcels returns only city and third-party layers (Kennesaw zoning, a Jacobs project layer). The
+county sells its parcel GIS data as a download, but the server layers are public.
+
+| | |
+|---|---|
+| Layer | `gis.cobbcounty.gov/gisserver/rest/services/tax/taxassessorsdaily/MapServer/0` (`CobbParcels`) |
+| Coverage | 280,023 rows, 268,965 distinct `PIN`. Condo footprints repeat, and the first one wins. |
+| Last edited | Not published. It's a MapServer with no `editingInfo`. The service name says it's the assessor's daily layer. |
+| ID field | `PIN`, 11 digits with no separators: district (2) + land lot (4) + section (1) + parcel (3) + suffix (1), e.g. `17079300040`. All but two `000` placeholder rows have that shape. Districts are 01, 07 and 15–21. |
+| Access | Anonymous, no token. CORS reflects the caller's origin. |
+| Speed | 281 pages of 1,000 rows at a 0.40 s median, 0.53 s p95 and 0.84 s worst. Single-ID queries take 0.1–0.3 s. |
+
+Sources also write the PIN dashed, as `17-0434-0-018-0`. `likeFromRuns` plus the normalized compare
+handle both forms. Normalizing is lossless: 268,965 distinct, 268,965 normalized.
+
+Two other layers were not used:
+- **`cobbpublic/Parcels/MapServer/3`** has more rows (283,363), but its first rows are `PIN = '000'`
+  placeholders.
+- **`cobbpublic/PropertySearch`** has 277,710 rows of zoning and district attributes.
+
+**The three test IDs.** All three were found, each as a single Polygon.
+
+| ID | Result |
+|---|---|
+| `17079300040` | Found. 15.55 ac, Eastside Baptist Church, 2450 Lower Roswell Rd |
+| `17089400020` | Found. 3.47 ac, matching the record's 3.47 (Branch Atlanta Road Associates) |
+| `17079300200` | Found. 0.44 ac, 385 Lucky Ct |
+
+**Parser.** Migration `20261126062723_parcel_id_cobb_format` was built from the live definition,
+which includes Forsyth, Macon-Bibb, 5+6, Henry, Hall, Coweta, Houston and Douglas.
+- The plain 11-digit form was already read everywhere by the Henry pattern. The Cobb pattern adds
+  the **dashed or spaced form** (`17-0434-0-018-0`, `17 0793 0 004 0`), emitted with no separators.
+- It's **scoped by county**, because Douglas's IDs are also 11 digits.
+- `parcel_id_county()` maps Cobb County, Marietta, Smyrna, Kennesaw, Acworth, Powder Springs and
+  Mableton to `'Cobb County'`. Each is 100% inside the county.
+- **Grants:** authenticated and service_role only. An anonymous call gets 42501, verified by
+  impersonation.
+- **Regression check** (rolled back, 836 staged + 553 committed rows):
+  - The 1-argument output changed on 0 rows.
+  - The county-aware parse differs on 2 rows, both Marietta, with no ID lost.
+  - The backfill changed 1 staged row, Davis Circle `f3b5cc9a`, from 0 to 4 IDs. It was empty
+    although its committed twin already had the same 4.
+  - There were 0 changes outside Cobb and no ID was lost.
+  - Hudson Road keeps its stored `17-0434-0-018-0`. The new parse (`17043400180`) isn't a literal
+    superset of it, and the fetch resolves the dashed form anyway.
+- **Applied** and recorded in `schema_migrations`, the same way as Douglas: one explicit
+  `BEGIN … COMMIT` through the management API, because psql can't resolve the pooler host here.
+
+**Adapter:**
+- `PIN` via `likeFromRuns` plus the normalized compare, with `ACRES` as an extra field.
+- `idPattern` is the same shape as the parser.
+- The default 30 s timeout and 1 retry, because the server is fast.
+- **Austell (97% Cobb, 3% Douglas) straddles the county line and is not matched.** Neither is
+  Atlanta (Fulton/DeKalb).
+- Union, acreage validation, partial flag, pin-in-shape, dashed until reviewed and never replace
+  are unchanged, all in the RPCs. See the gap below.
+
+**Resolution.** 5 staged + 5 committed records have IDs, and the committed ones are twins of the
+staged ones. In each table, 13 IDs are cited and **11 resolve**. 4 records have a usable fetch
+(3 full, 1 partial) and 1 resolves nothing. The 2 missing IDs:
+
+| ID | Record | Why |
+|---|---|---|
+| `1707930080` | The Haven at Eastside | Not a re-plat: it has **10 digits**. `17079300080` (0.45 ac, Eastside Baptist Church, Little Rd) exists, so the source dropped a zero. Not corrected. |
+| `222-226` | Crestridge Drive (Z2025-17) | Not a parcel ID. It's the address range "222-226 Herbert Drive", misread by the Forsyth pattern. The record cites land lots only. |
+
+**Acreage dry run** (rolled back, through the two `…_from_parcels` RPCs). Every result is a
+MultiPolygon with `ST_PointOnSurface` inside, and every one is `parcel_fetch`, dashed until
+reviewed.
+
+| Record | Fetched | Stated | Var. | Flag |
+|---|---|---|---|---|
+| Branch Properties (Z-21-2026) | 3.34 | 3.47 | 3.7% | — |
+| Davis Circle Townhomes | 6.52 | 6.8 | 4.1% | — |
+| Hudson Road Student Housing | 8.33 | 9.05 | 8.0% | **flagged** |
+| The Haven at Eastside (Z-22-2026) | 22.37 | 8.65 | 158.6% | **flagged**, partial (5 of 6). The cited church tract `17079300040` alone is 15.55 ac; the project is part of it. |
+
+So 2 are within the 5% tolerance and 2 are flagged, the same in both tables. Nothing was drawn.
+**Committed** Branch Properties (`28e32547`) and Hudson Road (`1ce2954d`) already have hand-drawn
+boundaries, so in practice their fetch is never offered.
+
+**Gap found, not changed.** `set_municipal_project_polygon_from_parcels` has **no never-replace
+guard**. In the dry run it overwrote both hand-drawn boundaries, and the rollback undid it. Only the
+slideout enforces the rule, by hiding the button when `geometry_geojson` is set. The staging RPC does
+refuse (`has_boundary`). The 141 South replacement above used this path on purpose, so adding a
+guard needs an explicit replace option.
+
+Data-quality flags, not fixed:
+- Two pairs of records are staged/committed twins of each other.
+- Several Marietta records cite only "Land Lot X, District Y, Parcel NNNN". Composing an ID is
+  deterministic for a single land lot (Hudson Road's matches `17043400180`), but it isn't built.

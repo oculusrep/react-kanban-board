@@ -192,6 +192,28 @@ export const COUNTY_ADAPTERS: CountyAdapter[] = [
     retries: 1,
   },
   {
+    // Cobb County's own ArcGIS Server (gisserver, ArcGIS 11.5) — not in the
+    // ArcGIS Online index, and the county publishes no Esri-hosted parcel layer.
+    // 'taxassessorsdaily' is the assessor's daily layer: 280,023 rows, 268,965
+    // distinct PINs (condo footprints repeat; first wins). Anonymous, no token,
+    // CORS reflects the caller's origin. Pages of 1,000 answer in 0.4 s median,
+    // 0.84 s worst; single ids ~0.3 s (profiled 2026-11-26): default timeout,
+    // one retry. PIN is district + land lot + section + parcel + suffix,
+    // unseparated ('17079300040'); sources also write '17-0434-0-018-0'.
+    // likeFromRuns + the normalized compare handle both (lossless: 268,965 ->
+    // 268,965). Austell straddles Cobb (97%) and Douglas: not matched.
+    matches: (n) =>
+      /^(cobb county|marietta|smyrna|kennesaw|acworth|powder springs|mableton)$/i.test(n),
+    label: 'Cobb County',
+    layerUrl: 'https://gis.cobbcounty.gov/gisserver/rest/services/tax/taxassessorsdaily/MapServer/0',
+    idField: 'PIN',
+    whereFor: (id) => likeFromRuns('PIN', id),
+    // "17079300040", "17 0434 0 018 0"; districts 01, 07, 15–21
+    idPattern: /^(0[17]|1[5-9]|2[01]) ?\d{4} ?\d ?\d{3} ?\d$/,
+    extraFields: ['ACRES'],
+    retries: 1,
+  },
+  {
     // FALLBACK, low trust. Newton County's own layer (gis.ncboc.com/.../Public/
     // Newton_Parcels) is token-gated (499), so this is a third-party AGOL
     // snapshot: owner mhackman_UofMD, last edited 2022-02-26, 45,755 parcels,
