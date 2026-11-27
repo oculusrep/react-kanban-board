@@ -984,8 +984,8 @@ and the project it was approved into don't count as a pair. Pairs were reported 
 overlap by 50% or more of the smaller one, or they share a parcel ID.
 - Staged duplicates noted earlier were already resolved: Richardson merged, 890 Canton merged, and
   the Stewart Mill pair rejected.
-- **6 sets of committed records remain, 14 records in all.** The duplicates look up only the 8
-  research-run tables; nothing else links to them.
+- **6 sets of committed records remain, 14 records in all.** Each record is linked only to the one
+  staged row it was approved from: no location estimates and no recent-log rows.
 - Records with no boundary and no parcel IDs can't be checked this way, except where noted.
 
 Two kinds of set:
