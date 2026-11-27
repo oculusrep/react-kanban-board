@@ -976,3 +976,35 @@ Data-quality flag, not fixed: committed Douglas has duplicates.
 - DRB Rose Ave appears 3 times: `45a38240`, `8eea9856`, `3c7cf13b`.
 - Chapel Hill Crossing appears twice: `f1957ddf`, `e7ecacac`.
 - Themis / Doris-Dorris Rd appears twice: `f6fde2be`, `8e0dda3f`.
+
+### Duplicate check by boundary overlap (2026-11-27), report only
+
+Read-only. It compared all non-rejected Douglas and Cobb records, committed and staged. A staged row
+and the project it was approved into don't count as a pair. Pairs were reported if their boundaries
+overlap by 50% or more of the smaller one, or they share a parcel ID.
+- Staged duplicates noted earlier were already resolved: Richardson merged, 890 Canton merged, and
+  the Stewart Mill pair rejected.
+- **6 sets of committed records remain, 14 records in all.** The duplicates look up only the 8
+  research-run tables; nothing else links to them.
+- Records with no boundary and no parcel IDs can't be checked this way, except where noted.
+
+Two kinds of set:
+
+**Same application recorded twice or more** (true duplicates):
+
+| Set | Records | Units | Note |
+|---|---|---|---|
+| Town Green / Norhaven, Douglasville | `858220bb` Douglasville Town Green (Approved 2025-10-20, both parcels), `1e000fd6` Norhaven Greystone Amphitheater (Phase 1 parcel only), `a88df3cc` Town Green Apartments Phase 2 (no boundary) | 257 each | One 257-unit project counted three times |
+| Shallowford Pointe, Cobb | `dc6fd899` (parcel boundary 13.0 ac, approval 2021-12-01), `447215ed` (hand-drawn 16.2 ac, takes in the ~3 ac stream buffer) | 75 each | — |
+| DRB Rose Ave, case 24-310 | `3c7cf13b` (493), `8eea9856` (482) | 493 / 482 | Same case number |
+
+**Same site, successive applications** (the later one supersedes):
+
+| Site | Earlier | Later |
+|---|---|---|
+| DRB Rose Ave & Bill Arp Rd | Case 24-310, 2024, tabled and withdrawn (the two rows above) | `45a38240` #26-018, 482 units, PC denied 2026-01-06, CC discussed 2026-01-15 |
+| Horizon Ln / Wilshire Ave, Marietta | `a5cc4067` Z2024-26, 192 townhomes, denied 2025 | `ccac5570` 136 SF homes, Council approved July 2026 |
+| Chapel Hill Crossing, Douglasville | `e7ecacac` #24-269, 58 lots, withdrawn 2024-11-15 | `f1957ddf` PRZ25-0003, R-2 to R-3, CC vote 2025-04-07. Its 116 units are **unsourced** ("unit count not confirmed"); MLS shows lots up to at least 45. |
+| Dorris / Doris Rd, Douglasville | `8e0dda3f` 2024 annexation, 317 lots (letter of intent) | `f6fde2be` PRZ25-0055 rezoning. Its 199 units are **unsourced** ("no source stated lot count"). |
+
+Nothing was merged or deleted.
