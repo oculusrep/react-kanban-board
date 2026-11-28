@@ -43,6 +43,8 @@ interface ResearchRunRow {
   state: 'pending' | 'running' | 'awaiting_review' | 'approved' | 'archived' | 'failed' | 'cancelled';
   needs_review: string | null;
   openclaw_run_id: string | null;
+  research_scope?: string | null;
+  post_run_done_at?: string | null;
   checklist_count: number;
   staging_count: number;
 }
@@ -126,7 +128,7 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
       // ---- Standalone runs (exclude sweep-child runs) ----
       const { data: runRows, error: runsErr } = await supabase
         .from('research_run')
-        .select('id, triggered_at, radius_miles, state, needs_review, openclaw_run_id')
+        .select('id, triggered_at, radius_miles, state, needs_review, openclaw_run_id, research_scope, post_run_done_at')
         .eq('site_submit_id', siteSubmitId)
         .is('sweep_id', null)
         .order('triggered_at', { ascending: false });
@@ -265,6 +267,16 @@ export default function PastResearchRunsPanel({ siteSubmitId, refreshTrigger = 0
               </div>
             </div>
             <div className="mt-1 text-xs" style={{ color: '#4A6B94' }}>
+              {r.research_scope === 'parcel_subdivisions' && (
+                <span className="font-medium" style={{ color: '#0F766E' }}>
+                  🧱 Parcel subdivisions{r.post_run_done_at ? '' : ' (in progress)'} ·{' '}
+                </span>
+              )}
+              {r.research_scope === 'recent_built' && (
+                <span className="font-medium" style={{ color: '#0F766E' }}>
+                  🏘 Recently built{r.post_run_done_at ? '' : ' (in progress)'} ·{' '}
+                </span>
+              )}
               {r.radius_miles}-mile radius
               {r.checklist_count > 0 && <> · {r.checklist_count} municipalities</>}
               {r.staging_count > 0 && <> · {r.staging_count} staged records</>}

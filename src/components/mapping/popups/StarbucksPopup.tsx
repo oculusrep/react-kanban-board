@@ -1,10 +1,13 @@
 import React from 'react';
 import { StarbucksStoreWithSnapshot } from '../layers/StarbucksLayer';
+import AddToTourButton from '../../tours/AddToTourButton';
 
 interface StarbucksPopupProps {
   store: StarbucksStoreWithSnapshot;
   onViewDetails?: () => void;
   onClose: () => void;
+  /** False on the client portal: clients don't build tours. */
+  allowAddToTour?: boolean;
 }
 
 const STARBUCKS_GREEN = '#00704A';
@@ -25,7 +28,7 @@ function formatDate(dateStr: string | null | undefined): string {
   return `${m}/${d}/${y}`;
 }
 
-const StarbucksPopup: React.FC<StarbucksPopupProps> = ({ store, onViewDetails, onClose }) => {
+const StarbucksPopup: React.FC<StarbucksPopupProps> = ({ store, onViewDetails, onClose, allowAddToTour = true }) => {
   const snap = store.latest_snapshot;
 
   return (
@@ -37,12 +40,13 @@ const StarbucksPopup: React.FC<StarbucksPopupProps> = ({ store, onViewDetails, o
         width: 260,
         fontFamily: 'system-ui, sans-serif',
         fontSize: 13,
-        overflow: 'hidden',
+        // Not overflow:hidden — the Add to tour dropdown must be able to extend past the card.
       }}
     >
       {/* Header */}
       <div
         style={{
+          borderRadius: '8px 8px 0 0',
           background: STARBUCKS_GREEN,
           color: 'white',
           padding: '10px 12px',
@@ -113,6 +117,26 @@ const StarbucksPopup: React.FC<StarbucksPopupProps> = ({ store, onViewDetails, o
           >
             View Trends →
           </button>
+        )}
+
+        {allowAddToTour && store.latitude != null && store.longitude != null && (
+          <div style={{ marginTop: 8 }}>
+            <AddToTourButton
+              siteSubmitId={null}
+              clientId={null}
+              store={{
+                kind: 'atlas_store',
+                store_number: store.store_number,
+                store_name: store.store_name ?? null,
+                address: null,
+                city: store.city ?? null,
+                market: store.market ?? null,
+                lat: store.latitude,
+                lng: store.longitude,
+                store_type: snap?.store_type ?? null,
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

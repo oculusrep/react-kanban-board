@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useOverlayStack } from '../../../hooks/useOverlayStack';
 import { supabase } from '../../../lib/supabaseClient';
 import { geocodingService } from '../../../services/geocodingService';
@@ -7,6 +7,8 @@ import { adapterFor, applyParcelBoundary } from '../../../services/parcelFabric'
 import type { MunicipalProjectMapRow } from '../layers/MunicipalProjectLayer';
 import { formatUnitsLabel } from '../../../utils/municipalProjectUnitsLabel';
 import UserByIdDisplay from '../../shared/UserByIdDisplay';
+import PrecisionBadge from '../PrecisionBadge';
+import { useMunicipalPrecision } from '../../../hooks/useMunicipalPrecision';
 
 interface ProjectStageOption {
   id: string;
@@ -31,12 +33,16 @@ interface Props {
     location_description?: string | null;
     geometry_geojson?: MunicipalProjectMapRow['geometry_geojson'];
     geometry_source?: MunicipalProjectMapRow['geometry_source'];
+    geometry_source_vintage?: MunicipalProjectMapRow['geometry_source_vintage'];
+    location_confidence?: MunicipalProjectMapRow['location_confidence'];
     centroid_lat?: number | null;
     centroid_lng?: number | null;
     is_unplaced?: boolean;
     unplaced_reason?: string | null;
     geometry_unreviewed?: boolean;
     geometry_needs_review?: boolean;
+    units_needs_review?: boolean;
+    units_review_reason?: string | null;
   }) => void;
   onProjectDeleted?: (id: string) => void;
   // Phase 3: invoked when the user clicks "Draw polygon" — the parent activates terra-draw
@@ -68,6 +74,8 @@ const DISCOVERY_SOURCE_LABELS: Record<string, string> = {
   activity_pdf: 'Permit activity PDF',
   builder_site: 'Builder / developer site',
   econ_dev: 'Econ dev / open records',
+  gemini_recent: 'Recently built pass (Gemini)',
+  parcel_layer: 'County parcel layer (subdivision)',
   other: 'Other',
 };
 
@@ -129,6 +137,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [fetchingParcel, setFetchingParcel] = useState(false);
   const [parcelNotice, setParcelNotice] = useState<string>('');
+  // Progress for slow county servers (Henry hangs 20–60 s). The fetch is async,
+  // so the rest of the slideout stays usable; this just says what's happening
+  // and offers Cancel.
+  const [parcelProgress, setParcelProgress] = useState<string>('');
+  const parcelAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => parcelAbortRef.current?.abort(), []);
   // Phase 3 is flagged off until the Forsyth adapter has been exercised on real
   // records. Offered only where a county adapter exists, the project has parcel
   // ids, and there is no boundary yet — re-fetching over an existing one is the
@@ -140,6 +154,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     && (project.parcel_numbers?.length ?? 0) > 0
     && !!adapterFor(project.municipality_name);
   const [polygonError, setPolygonError] = useState<string>('');
+
+  // How well-located this record is. The same hook the map overlay and the
+  // unplaced worklist use, so the badge here, the badge in the list and the
+  // shape drawn on the map cannot disagree. Kept above the early return — this
+  // file has a React #310 history, see the comment there.
+  const precision = useMunicipalPrecision(project);
 
   // Load project stages once for the override dropdown.
   useEffect(() => {
@@ -194,6 +214,11 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setFetchingParcel(false);
     setMarkingReviewed(false);
   }, [project?.id]);
+
+  // EST. LOCATION confirm state. Above the early return like every hook here
+  // (React #310: it was once declared below it and blanked the Mapping page).
+  const [confirmingLocation, setConfirmingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
 
   if (!isOpen || !project) return null;
 
@@ -276,16 +301,64 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setSavingUnits(true);
     setUnitsError('');
     try {
-      const { error } = await supabase
+      // The DB trigger clears an automatic unit-count flag when a real count is
+      // saved (and sets one if the count is cleared) — read the result back.
+      const { data, error } = await supabase
         .from('municipal_project')
         .update({ total_housing_units: next })
-        .eq('id', project.id);
+        .eq('id', project.id)
+        .select('units_needs_review, units_review_reason')
+        .single();
       if (error) throw error;
-      onProjectUpdated?.({ id: project.id, total_housing_units: next });
+      onProjectUpdated?.({
+        id: project.id,
+        total_housing_units: next,
+        units_needs_review: !!data?.units_needs_review,
+        units_review_reason: data?.units_review_reason ?? null,
+      });
     } catch (e) {
       setUnitsError(errMessage(e));
     } finally {
       setSavingUnits(false);
+    }
+  }
+
+  // "I've looked; the count is genuinely unknown." Clears the flag without
+  // inventing a number. Saving a count later re-evaluates it.
+  async function dismissUnitsFlag() {
+    if (!project) return;
+    setSavingUnits(true);
+    setUnitsError('');
+    try {
+      const { error } = await supabase
+        .from('municipal_project')
+        .update({ units_needs_review: false, units_review_reason: null })
+        .eq('id', project.id);
+      if (error) throw error;
+      onProjectUpdated?.({ id: project.id, units_needs_review: false, units_review_reason: null });
+    } catch (e) {
+      setUnitsError(errMessage(e));
+    } finally {
+      setSavingUnits(false);
+    }
+  }
+
+  // EST. LOCATION → confirmed. The pin stays where it is; only the tag changes.
+  async function confirmLocation() {
+    if (!project) return;
+    setConfirmingLocation(true);
+    setLocationError('');
+    try {
+      const { error } = await supabase
+        .from('municipal_project')
+        .update({ location_confidence: 'confirmed' })
+        .eq('id', project.id);
+      if (error) throw error;
+      onProjectUpdated?.({ id: project.id, location_confidence: 'confirmed' });
+    } catch (e) {
+      setLocationError(errMessage(e));
+    } finally {
+      setConfirmingLocation(false);
     }
   }
 
@@ -388,12 +461,21 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
     setFetchingParcel(true);
     setPolygonError('');
     setParcelNotice('');
+    setParcelProgress('');
+    const ctl = new AbortController();
+    parcelAbortRef.current = ctl;
     try {
       const r = await applyParcelBoundary({
         projectId: project.id,
         municipalityName: project.municipality_name ?? null,
         parcelNumbers: project.parcel_numbers ?? [],
         statedAcres: null,   // the RPC parses it from parcel_boundary_notes
+        signal: ctl.signal,
+        onProgress: (p) => setParcelProgress(
+          p.attempt === 1
+            ? 'Asking the county parcel map — some county servers take up to a minute…'
+            : `County server didn't answer (${p.retryReason}). Retrying — attempt ${p.attempt} of ${p.of}…`,
+        ),
       });
       const bits = [`Boundary set from ${r.parts} parcel${r.parts === 1 ? '' : 's'}`];
       if (r.computedAcres != null) bits.push(`${r.computedAcres} ac`);
@@ -403,14 +485,23 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
           + `no longer in the parcel map (${r.missing.join(', ')}) — usually re-platted`,
         );
       }
+      if (r.partialParcel) {
+        bits.push('a cited parcel is only partly in this project, so the boundary covers the whole parcel — trim it to the project');
+      }
       if (r.needsReview && r.variancePct != null) {
         bits.push(`acreage is ${r.variancePct > 0 ? '+' : ''}${r.variancePct}% against the ${r.statedAcres} ac stated — check it`);
       }
       setParcelNotice(bits.join(' · '));
       onProjectUpdated?.({ id: project.id, is_unplaced: false, unplaced_reason: null });
     } catch (e) {
-      setPolygonError(e instanceof Error ? e.message : String(e));
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setParcelNotice('Fetch cancelled — nothing was saved.');
+      } else {
+        setPolygonError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
+      if (parcelAbortRef.current === ctl) parcelAbortRef.current = null;
+      setParcelProgress('');
       setFetchingParcel(false);
     }
   }
@@ -506,6 +597,11 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
           <div className="min-w-0">
             <div className="text-xs uppercase tracking-wide" style={{ color: BRAND.slate }}>
               {project.municipality_name}, {project.municipality_state}
+            </div>
+            {/* Precision first: whether this record is worth going looking for
+                is the thing you need before you start, not after. */}
+            <div className="mt-1">
+              <PrecisionBadge badge={precision.badge} loading={precision.loading} size="md" />
             </div>
             <h2
               className="text-lg font-semibold mt-0.5 truncate"
@@ -627,6 +723,12 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
               <span className="font-semibold uppercase tracking-wide block mb-1"
                     style={{ color: BRAND.slate, fontSize: '0.65rem' }}>
                 Pin placement hint
+                {project.is_unplaced && precision.badge.tier === 'county' && (
+                  <span className="ml-1 normal-case font-normal"
+                        style={{ color: BRAND.terracotta }}>
+                    — this is the best locator we have for this record
+                  </span>
+                )}
               </span>
               <textarea
                 value={locDescDraft}
@@ -708,6 +810,27 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
             {unitsError && (
               <div className="mt-1 text-xs" style={{ color: BRAND.terracotta }}>
                 {unitsError}
+              </div>
+            )}
+            {project.units_needs_review && (
+              <div
+                className="mt-2 rounded px-2 py-1.5 text-xs"
+                style={{ border: `1px solid ${BRAND.terracotta}`, backgroundColor: '#FFF7F0', color: BRAND.midnight }}
+              >
+                <div className="font-semibold" style={{ color: BRAND.terracotta }}>⚠ Unit count needs review</div>
+                <div className="mt-0.5" style={{ color: BRAND.steel }}>
+                  {project.units_review_reason ?? 'The unit count is missing or unconfirmed.'} Enter a sourced count above to
+                  clear this, or dismiss it if the count is genuinely unknown.
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissUnitsFlag}
+                  disabled={savingUnits}
+                  className="mt-1 underline disabled:opacity-40"
+                  style={{ color: BRAND.steel }}
+                >
+                  Dismiss — count is unknown
+                </button>
               </div>
             )}
             <div className="mt-2 flex items-center gap-2">
@@ -878,6 +1001,19 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                               borderLeft: `3px solid ${BRAND.terracotta}` }}>
                   <span className="font-semibold">Not on the map yet.</span>{' '}
                   <span style={{ color: BRAND.steel }}>{unplacedLabel(project.unplaced_reason)}.</span>
+                  {/* Say what the shape on the map IS, so a circle around an
+                      intersection is never mistaken for a placement — and so a
+                      county outline is read as "we cannot see it", not as
+                      "there is nothing there". */}
+                  <div style={{ color: BRAND.slate }} className="mt-0.5">
+                    {precision.badge.tier === 'county'
+                      ? 'The map is showing the whole municipality — that\u2019s all we can '
+                        + 'narrow it to. Read the pin placement hint above and place it by hand.'
+                      : precision.geocode
+                        ? `The shaded circle is the approximate area around ${precision.geocode.formattedAddress}`
+                          + ' \u2014 orientation only, not a placement.'
+                        : null}
+                  </div>
                   <div style={{ color: BRAND.slate }} className="mt-0.5">
                     Draw the boundary below, or drop a pin if you only know roughly where it is.
                   </div>
@@ -890,9 +1026,35 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                       ? 'Boundary from the county parcel map, adjusted by hand'
                       : 'Boundary drawn by hand'}
                   {' — the pin sits inside the shape.'}
+                  {project.geometry_source_vintage && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full border text-[10px] whitespace-nowrap"
+                          style={{ borderColor: BRAND.terracotta, color: BRAND.terracotta }}
+                          title="Drawn from a low-trust parcel source. Verify against current plats.">
+                      {project.geometry_source_vintage}
+                    </span>
+                  )}
                   {project.geometry_computed_acres != null && (
                     <span style={{ color: BRAND.slate }}> · {project.geometry_computed_acres} ac</span>
                   )}
+                </div>
+              ) : project.location_confidence === 'estimated' ? (
+                <div className="text-xs mb-2 px-2 py-1.5 rounded"
+                     style={{ backgroundColor: '#F8FAFC', color: BRAND.midnight, border: `1px dashed ${BRAND.steel}` }}>
+                  <span className="px-1.5 py-0.5 rounded-full border border-dashed text-[10px] whitespace-nowrap mr-1"
+                        style={{ borderColor: BRAND.steel, color: BRAND.steel }}>
+                    EST. LOCATION
+                  </span>
+                  Pin placed by the locate step{project.geocoded_address ? ` at ${project.geocoded_address}` : ''} —
+                  found by web search, not confirmed. Sources are in Notes.
+                  <div className="mt-1 flex items-center gap-2">
+                    <button onClick={confirmLocation} disabled={confirmingLocation}
+                            className="px-2 py-0.5 rounded text-xs font-medium"
+                            style={{ backgroundColor: BRAND.midnight, color: '#FFFFFF', opacity: confirmingLocation ? 0.6 : 1 }}>
+                      {confirmingLocation ? 'Confirming…' : 'Confirm location'}
+                    </button>
+                    <span style={{ color: BRAND.slate }}>Wrong? Drag the pin or draw the boundary below.</span>
+                  </div>
+                  {locationError && <div className="mt-1" style={{ color: BRAND.terracotta }}>{locationError}</div>}
                 </div>
               ) : (
                 <div className="text-xs mb-2" style={{ color: BRAND.slate }}>
@@ -1008,6 +1170,16 @@ const MunicipalProjectSlideout: React.FC<Props> = ({
                       : `Fetch boundary from ${(project.parcel_numbers ?? []).length} parcel`
                         + `${(project.parcel_numbers ?? []).length === 1 ? '' : 's'}`}
                   </button>
+                  {fetchingParcel && (
+                    <button type="button" onClick={() => parcelAbortRef.current?.abort()}
+                            className="ml-2 px-2 py-1.5 rounded text-xs border"
+                            style={{ borderColor: BRAND.slate, color: BRAND.steel }}>
+                      Cancel
+                    </button>
+                  )}
+                  {fetchingParcel && parcelProgress && (
+                    <div className="text-xs mt-1" style={{ color: BRAND.steel }}>{parcelProgress}</div>
+                  )}
                   <div className="text-xs mt-0.5" style={{ color: BRAND.slate }}>
                     Fetched once, on request — never refreshed, so a re-plat can&rsquo;t overwrite it.
                   </div>

@@ -168,6 +168,13 @@ export default function ReportsPage() {
       description: "Market, priority, and Model Yr1 Sales for all GA target areas — sortable and filterable",
       route: "/reports/starbucks-target-areas",
       icon: "🎯"
+    },
+    {
+      id: "starbucks-pipeline",
+      name: "Starbucks Pipeline Report",
+      description: "Pre-Submittal through At Lease/PSA, ranked by which deal is next — drag to reorder, export to Excel",
+      route: "/reports/starbucks-pipeline",
+      icon: "📋"
     }
   ];
 

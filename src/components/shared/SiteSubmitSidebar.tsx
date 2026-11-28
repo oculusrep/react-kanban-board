@@ -21,6 +21,8 @@ import PortalFilesTab from '../portal/PortalFilesTab';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
 import { CopyMapLinkButton } from './CopyMapLinkButton';
 import AddToTourButton from '../tours/AddToTourButton';
+import PackageBadge from '../package/PackageBadge';
+import PackagePanel from '../package/PackagePanel';
 import { useSiteSubmitEmail } from '../../hooks/useSiteSubmitEmail';
 import EmailComposerModal from '../EmailComposerModal';
 import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
@@ -30,6 +32,8 @@ import { getDropboxPropertySyncService } from '../../services/dropboxPropertySyn
 import OpenTasksPanel from '../tasks/OpenTasksPanel';
 import StartResearchModal from './StartResearchModal';
 import PastResearchRunsPanel from './PastResearchRunsPanel';
+import { RecentlyBuiltButton } from './RecentlyBuiltButton';
+import { ParcelSubdivisionsButton } from './ParcelSubdivisionsButton';
 import ResearchRunApprovalModal from './ResearchRunApprovalModal';
 import SiteStoryPanel from './SiteStoryPanel';
 import { resolveSiteCoordinate } from '../../utils/resolveSiteCoordinate';
@@ -219,6 +223,8 @@ interface SiteSubmitSidebarProps {
   initialData?: InitialSiteSubmitData;
   // Tab to focus when sidebar opens (e.g. from a deep link in an alert email)
   initialTab?: TabType;
+  // Portal client opted in (contact.portal_can_upload_deal_files) to upload into the deal folder
+  portalDealUpload?: boolean;
 }
 
 // Broadcast when a sidebar edits a site submit, so other open instances stay in sync.
@@ -252,6 +258,7 @@ export default function SiteSubmitSidebar({
   siteSubmitRefreshTrigger,
   initialData,
   initialTab,
+  portalDealUpload = false,
 }: SiteSubmitSidebarProps) {
   const { zIndex, bringToFront } = useOverlayStack(isOpen);
   const navigate = useNavigate();
@@ -306,21 +313,35 @@ export default function SiteSubmitSidebar({
     && hasPermission('can_run_market_research')
     && (siteSubmit.property?.verified_latitude != null
         || siteSubmit.property?.latitude != null);
+  // Runs section visibility. Run and approve both imply view. Run-side controls
+  // (cancel, skip chunk) need can_run_market_research and are re-checked by their RPCs.
+  const canManageResearchRuns = hasPermission('can_run_market_research');
+  const canViewResearch =
+    !!siteSubmit
+    && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)
+    && (hasPermission('can_view_market_research')
+        || canManageResearchRuns
+        || hasPermission('can_approve_market_research'));
 
-  // Site research thread gate. Same client-family + permission checks as
-  // market research, but the coordinate test uses the FULL documented
-  // precedence rather than property-only — a site whose only coordinate is its
+  // Site Story gates. Same client-family check as market research, with its own
+  // permissions (can_view_site_story / can_run_site_story). The run gate's
+  // coordinate test uses the FULL documented precedence rather than property-only — a site whose only coordinate is its
   // own verified override is perfectly researchable. The edge function resolves
   // the coordinate again server-side and refuses with 422 if it can't; this
   // gate is convenience, not control.
   const resolvedCoordinate = siteSubmit
     ? resolveSiteCoordinate(siteSubmit, siteSubmit.property)
     : null;
-  const canStartResearchThread =
-    !!siteSubmit
-    && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)
-    && hasPermission('can_run_market_research')
+  const isStarbucksSite =
+    !!siteSubmit && isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id);
+  const canRunSiteStory =
+    isStarbucksSite
+    && hasPermission('can_run_site_story')
     && resolvedCoordinate != null;
+  // Run implies view. Viewing needs no coordinate — it only reads stored stories.
+  const canViewSiteStory =
+    isStarbucksSite
+    && (hasPermission('can_view_site_story') || hasPermission('can_run_site_story'));
   const [createFormKey, setCreateFormKey] = useState(0);
   const [editingHeaderField, setEditingHeaderField] = useState<'site_submit_name' | 'deal_name' | null>(null);
   const [headerEditValue, setHeaderEditValue] = useState('');
@@ -1282,6 +1303,23 @@ export default function SiteSubmitSidebar({
           </div>
         )}
 
+        {/* Starbucks slide package (Package Tracker) — any deal, incl. deal-direct mode; renders nothing off-family */}
+        {(context === 'map' || context === 'deal') && siteSubmit?.deal_id && (
+          <div className="mt-2">
+            <PackageBadge
+              dealId={siteSubmit.deal_id}
+              tone="dark"
+              onOpen={() => {
+                const id = siteSubmit.deal_id;
+                setActiveTab('data');
+                requestAnimationFrame(() =>
+                  document.getElementById(`package-panel-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                );
+              }}
+            />
+          </div>
+        )}
+
         {/* Address and unit info */}
         <div className="mt-2">
           {(() => {
@@ -1402,6 +1440,7 @@ export default function SiteSubmitSidebar({
                 {siteSubmit.property.address}
                 {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
                 {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
+                {siteSubmit.property.zip && ` ${siteSubmit.property.zip}`}
               </p>
               {/* View Property button */}
               {onViewProperty && siteSubmit.property.id && (
@@ -1606,12 +1645,16 @@ export default function SiteSubmitSidebar({
             {activeTab === 'data' && (
               <div className="flex-1 min-h-0 overflow-y-auto">
                 {siteSubmit.deal_id ? (
-                  <DealDataTab
-                    siteSubmit={siteSubmit}
-                    dealId={siteSubmit.deal_id}
-                    isEditable={isEditable}
-                    onUpdate={handleUpdate}
-                  />
+                  <>
+                    {/* Slide package first on Starbucks deals (collapsible); renders nothing off-family */}
+                    {(context === 'map' || context === 'deal') && <PackagePanel dealId={siteSubmit.deal_id} collapsible />}
+                    <DealDataTab
+                      siteSubmit={siteSubmit}
+                      dealId={siteSubmit.deal_id}
+                      isEditable={isEditable}
+                      onUpdate={handleUpdate}
+                    />
+                  </>
                 ) : (
                   <SiteSubmitDataTab
                     siteSubmit={siteSubmit}
@@ -1619,8 +1662,8 @@ export default function SiteSubmitSidebar({
                     onUpdate={handleUpdate}
                   />
                 )}
-                {/* Market research runs — only shown when the action is available, to keep the surface clean. */}
-                {canStartResearch && (
+                {/* Market research runs — shown with can_view_market_research (or run/approve). */}
+                {canViewResearch && (
                   <div className="px-4 pb-4 pt-2 border-t mt-4" style={{ borderColor: '#8FA9C8' }}>
                     <button
                       type="button"
@@ -1641,13 +1684,25 @@ export default function SiteSubmitSidebar({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
+                    {researchPanelExpanded && canStartResearch && hasPermission('can_approve_market_research') && (
+                      <div className="mb-2 flex flex-wrap gap-2 items-start">
+                        <RecentlyBuiltButton
+                          siteSubmitId={siteSubmit.id}
+                          onStarted={() => setResearchRunsRefresh((n) => n + 1)}
+                        />
+                        <ParcelSubdivisionsButton
+                          siteSubmitId={siteSubmit.id}
+                          onStarted={() => setResearchRunsRefresh((n) => n + 1)}
+                        />
+                      </div>
+                    )}
                     {researchPanelExpanded && (
                       <PastResearchRunsPanel
                         siteSubmitId={siteSubmit.id}
                         refreshTrigger={researchRunsRefresh}
                         onRunClick={(runId) => setOpenApprovalRunId(runId)}
                         onSweepClick={(sweepId) => setOpenApprovalSweepId(sweepId)}
-                        onCancelSweepClick={async (sweepId) => {
+                        onCancelSweepClick={!canManageResearchRuns ? undefined : async (sweepId) => {
                           if (!window.confirm('Cancel this Deep Sweep? Remaining chunks won\'t fire and the in-flight chunk (if any) will be stopped. Chunks already completed keep their staged records.')) return;
                           try {
                             const { data, error } = await supabase.rpc('cancel_sweep', { p_sweep_id: sweepId });
@@ -1662,7 +1717,7 @@ export default function SiteSubmitSidebar({
                             showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
                           }
                         }}
-                        onSkipChunkClick={async (sweepId) => {
+                        onSkipChunkClick={!canManageResearchRuns ? undefined : async (sweepId) => {
                           if (!window.confirm('Skip the chunk running now? Use this when you already know the agent is dead and don\'t want to wait out the stall cooldown. Its 6-month window is marked a GAP (recoverable later with Re-run gaps), and the next chunk fires on the next tick, within a minute. The rest of the sweep continues.')) return;
                           try {
                             const { data, error } = await supabase.rpc('skip_sweep_chunk', { p_sweep_id: sweepId });
@@ -1681,7 +1736,7 @@ export default function SiteSubmitSidebar({
                             showToast(e instanceof Error ? e.message : String(e), { type: 'error', duration: 5000 });
                           }
                         }}
-                        onCancelClick={async (runId) => {
+                        onCancelClick={!canManageResearchRuns ? undefined : async (runId) => {
                           if (!window.confirm('Cancel this run? Use this when a run is hung or stuck. The run will be marked as cancelled and kept for audit; no records will be staged.')) return;
                           try {
                             const { data, error } = await supabase.rpc('cancel_research_run', { p_run_id: runId });
@@ -1703,7 +1758,7 @@ export default function SiteSubmitSidebar({
                 {/* Site story — the in-app research thread (archetype call +
                     executive summary). Deliberately a section in the DATA tab,
                     not a sixth tab: the strip is full at 500px. */}
-                {canStartResearchThread && (
+                {canViewSiteStory && (
                   <div className="px-4 pb-4 pt-2 border-t mt-4" style={{ borderColor: '#8FA9C8' }}>
                     <button
                       type="button"
@@ -1724,7 +1779,7 @@ export default function SiteSubmitSidebar({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
-                    {siteStoryExpanded && <SiteStoryPanel siteSubmitId={siteSubmit.id} />}
+                    {siteStoryExpanded && <SiteStoryPanel siteSubmitId={siteSubmit.id} canRun={canRunSiteStory} />}
                   </div>
                 )}
               </div>
@@ -1744,6 +1799,7 @@ export default function SiteSubmitSidebar({
                 siteSubmitId={siteSubmit.id}
                 canUpload={isEditable}
                 isInternalUser={isEditable}
+                portalDealUpload={portalDealUpload}
               />
             )}
             {activeTab === 'contacts' && (context === 'map' || context === 'deal') && (
@@ -1838,6 +1894,7 @@ export default function SiteSubmitSidebar({
           propertyUnitId={siteSubmit.property_unit_id}
           onSuccess={handleDealConversionSuccess}
           triggerStage={conversionTriggerStage}
+          isStarbucks={isStarbucksFamily(siteSubmit.client_id, siteSubmit.client?.parent_id)}
         />
       )}
 

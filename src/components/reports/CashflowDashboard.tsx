@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
+import { computeHouseNet } from '../../lib/houseNet';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 // Broker IDs
@@ -135,6 +136,7 @@ export default function CashflowDashboard({ embedded = false }: CashflowDashboar
           )
         `)
         .eq('is_active', true)
+        .is('written_off_at', null) // written-off payments won't be collected
         .or('payment_received.eq.false,payment_received.is.null');
 
       if (paymentError) throw paymentError;
@@ -185,12 +187,8 @@ export default function CashflowDashboard({ embedded = false }: CashflowDashboar
           // Total broker amount across Mike/Arty/Greg specifically
           const brokerAmount = splits.mike + splits.arty + splits.greg;
 
-          // House net = GCI - AGCI (AGCI is the total broker split per the DB trigger)
-          const paymentAmount = p.payment_amount || 0;
-          const referralFee = p.referral_fee_usd || 0;
-          const gci = paymentAmount - referralFee;
-          const agci = p.agci || 0;
-          const houseNet = gci - agci;
+          // House net = GCI - AGCI via the shared helper, profit mode — see src/lib/houseNet.ts
+          const { paymentAmount, referralFee, gci, houseNet } = computeHouseNet(p, 'profit');
 
           return {
             id: p.id,

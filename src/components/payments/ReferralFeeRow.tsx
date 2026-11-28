@@ -141,15 +141,15 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
       if (result.success) {
         console.log(`Created QBO Bill #${result.qbDocNumber} for referral fee to ${result.referralPayee}`);
       } else if (result.error?.includes('No referral payee')) {
-        alert('QBO bill was not created: No referral payee is set on this deal. Please add a referral payee to the deal first.');
+        alert('QBO entry was not created: No referral payee is set on this deal. Please add a referral payee to the deal first.');
       } else if (result.error?.includes('No QuickBooks commission mapping configured')) {
-        alert(`QBO bill was not created: This referral partner needs to be set up in the QuickBooks section of OVIS Settings before a bill can be created.\n\n${result.error}`);
+        alert(`QBO entry was not created: This referral partner needs to be set up in the QuickBooks section of OVIS Settings before a bill can be created.\n\n${result.error}`);
       } else if (result.error?.includes('QuickBooks is not connected')) {
-        alert('QBO bill was not created: QuickBooks is not connected. Please connect QuickBooks in OVIS Settings.');
+        alert('QBO entry was not created: QuickBooks is not connected. Please connect QuickBooks in OVIS Settings.');
       } else if (result.error?.includes('Referral fee amount is 0')) {
-        alert('QBO bill was not created: The referral fee amount is $0 for this payment.');
+        alert('QBO entry was not created: The referral fee amount is $0 for this payment.');
       } else {
-        alert(`QBO bill was not created: ${result.error}`);
+        alert(`QBO entry was not created: ${result.error}`);
       }
     }
   };

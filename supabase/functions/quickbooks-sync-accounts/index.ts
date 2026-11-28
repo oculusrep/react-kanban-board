@@ -8,6 +8,7 @@ import {
   qbApiRequest,
   logSync
 } from '../_shared/quickbooks.ts'
+import { snapshotCashBalances } from '../_shared/cash-refresh.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -179,6 +180,16 @@ Deno.serve(async (req) => {
         .not('qb_account_id', 'in', `(${activeQbIds.join(',')})`)
     }
 
+    // Cash flow page: also snapshot Bank + Credit Card balances (qb_balance_snapshot).
+    // Kept out of qb_account so budget pages don't pick up balance-sheet accounts.
+    // A failure here must not fail the P&L account sync.
+    let cashSnapshot: { saved: number; fetchedAt: string; amexLinked: string | null } | null = null
+    try {
+      cashSnapshot = await snapshotCashBalances(supabaseClient, connection)
+    } catch (err: any) {
+      console.error('Cash balance snapshot failed:', err.message)
+    }
+
     // Log the sync
     await logSync(
       supabaseClient,
@@ -196,7 +207,8 @@ Deno.serve(async (req) => {
         success: true,
         message: `Synced ${upsertedCount} accounts from QuickBooks`,
         accountCount: upsertedCount,
-        errors: errorCount
+        errors: errorCount,
+        cashSnapshot
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

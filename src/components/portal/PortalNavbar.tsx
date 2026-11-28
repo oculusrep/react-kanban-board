@@ -33,7 +33,7 @@ const getUserInitials = (firstName?: string, lastName?: string): string => {
  */
 export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarProps) {
   const { user, signOut, userRole } = useAuth();
-  const { accessibleClients, selectedClientId, setSelectedClientId, isInternalUser: isInternalPortalUser, viewMode, setViewMode } = usePortal();
+  const { accessibleClients, selectedClientId, setSelectedClientId, isInternalUser: isInternalPortalUser, viewMode, setViewMode, showRemFilter, remOptions, remFilter, setRemFilter, contactId } = usePortal();
   const navigate = useNavigate();
   const location = useLocation();
   const [userProfile, setUserProfile] = useState<{ first_name?: string; last_name?: string } | null>(null);
@@ -388,6 +388,26 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
         {/* Right side - Client logo and user menu */}
         <div className="flex items-center space-x-4">
+          {/* Real Estate Manager filter — Starbucks only; display filter for pipeline + map */}
+          {showRemFilter && (
+            <select
+              value={remFilter}
+              onChange={(e) => setRemFilter(e.target.value)}
+              aria-label="Real Estate Manager"
+              title="Real Estate Manager"
+              className="text-sm rounded-md px-2 py-1.5 focus:outline-none"
+              style={{ backgroundColor: '#FFFFFF', color: '#002147', border: '1px solid #8FA9C8' }}
+            >
+              <option value="">All REMs</option>
+              {remOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {(o.name || 'Unnamed') + (o.id === contactId ? ' (me)' : '')}
+                </option>
+              ))}
+              <option value="__unassigned">Unassigned</option>
+            </select>
+          )}
+
           {/* Client Search/Switcher */}
           {isInternalPortalUser ? (
             // Internal users get a searchable client selector

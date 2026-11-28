@@ -28,6 +28,29 @@ export function ToursListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [slideoutTourId, setSlideoutTourId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  // Copies the tour, its days and its stops (live-day departures are not copied),
+  // then opens the copy so it can be renamed / re-dated.
+  const duplicate = async (t: TourRow) => {
+    const name = window.prompt('Name for the copy:', `Copy of ${t.tour_name}`);
+    if (name === null) return;
+    setDuplicatingId(t.id);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase.rpc('duplicate_tour', {
+        p_tour_id: t.id,
+        p_tour_name: name.trim() || null,
+      });
+      if (err) throw err;
+      await load();
+      if (data) setSlideoutTourId(data as string);
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to duplicate tour');
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -60,8 +83,8 @@ export function ToursListPage() {
     <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
       <h1 style={{ color: MIDNIGHT, fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Tours</h1>
       <p style={{ color: STEEL, fontSize: 13, marginBottom: 20 }}>
-        Stage site submits onto a tour with “Add to tour”, then open a tour to reorder stops and
-        set categories. Route optimization, map rendering, and PDF export come next.
+        Stage site submits onto a tour with “Add to tour”. Open a tour to schedule stops into days;
+        Map shows the driving route, drive times and arrivals, and optimizes each day’s order.
       </p>
 
       {error && (
@@ -109,11 +132,28 @@ export function ToursListPage() {
                 >
                   Open
                 </button>
+                <button
+                  type="button"
+                  onClick={() => duplicate(t)}
+                  disabled={duplicatingId !== null}
+                  title="Copy this tour with its days and stops"
+                  style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 12px', fontSize: 13, cursor: duplicatingId ? 'wait' : 'pointer', opacity: duplicatingId && duplicatingId !== t.id ? 0.5 : 1 }}
+                >
+                  {duplicatingId === t.id ? 'Duplicating…' : 'Duplicate'}
+                </button>
                 <Link
                   to={`/tours/${t.id}/map`}
                   style={{ border: `1px solid ${MIDNIGHT}`, color: '#fff', background: MIDNIGHT, borderRadius: 6, padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
                 >
                   Map
+                </Link>
+                {/* Opens the map, which exports once its routes are ready (uses the session route cache). */}
+                <Link
+                  to={`/tours/${t.id}/map?export=1`}
+                  title="Open the map and download a printable PDF once routes are ready"
+                  style={{ border: `1px solid ${MIDNIGHT}`, color: MIDNIGHT, background: 'white', borderRadius: 6, padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
+                >
+                  Export PDF
                 </Link>
               </div>
             </div>

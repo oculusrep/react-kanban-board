@@ -2,6 +2,7 @@
 // Uses local JWT verification with public keys for better performance
 
 import { decode, verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify as joseVerify } from "https://esm.sh/jose@5.9.6";
 
 interface JWTPayload {
   sub: string; // User ID
@@ -20,6 +21,13 @@ interface VerifyResult {
 
 // Cache for the crypto key to avoid recreating it on every request
 let cachedKey: CryptoKey | null = null;
+
+// Project signing keys for asymmetric (ES256/RS256) tokens; jose caches the fetched set.
+let cachedJWKS: ReturnType<typeof createRemoteJWKSet> | null = null;
+function getJWKS() {
+  cachedJWKS ??= createRemoteJWKSet(new URL(`${Deno.env.get('SUPABASE_URL')}/auth/v1/.well-known/jwks.json`));
+  return cachedJWKS;
+}
 
 /**
  * Get the JWT secret from environment and convert to CryptoKey
@@ -61,6 +69,17 @@ async function getJWTKey(): Promise<CryptoKey> {
  */
 export async function verifyJWT(token: string): Promise<VerifyResult> {
   try {
+    // Tokens signed with the project's asymmetric keys (ES256/RS256, after the JWT signing-key
+    // rotation) verify against the published JWKS. HS256 tokens keep the JWT_SECRET path below.
+    const alg = decodeProtectedHeader(token).alg;
+    if (alg && alg !== 'HS256') {
+      const { payload } = await joseVerify(token, getJWKS(), {
+        issuer: `${Deno.env.get('SUPABASE_URL')}/auth/v1`,
+      });
+      if (!payload.sub) throw new Error('Token missing subject (user ID)');
+      return { userId: payload.sub, email: payload.email as string | undefined, payload: payload as unknown as JWTPayload };
+    }
+
     const key = await getJWTKey();
 
     // Verify and decode the token

@@ -556,27 +556,6 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
     );
   }
 
-  // Dropbox token not configured - no file upload allowed (return early)
-  if (error && error.includes('VITE_DROPBOX_ACCESS_TOKEN')) {
-    return (
-      <div className="bg-white rounded-lg border border-gray-200 p-8">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Dropbox Not Configured</h3>
-          <p className="text-sm text-red-600 mb-4">{error}</p>
-          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left">
-            <p className="text-xs text-gray-700 font-semibold mb-2">Setup Instructions:</p>
-            <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
-              <li>Add <code className="bg-gray-100 px-1 rounded">VITE_DROPBOX_ACCESS_TOKEN</code> to your .env file</li>
-              <li>Get a token by running: <code className="bg-gray-100 px-1 rounded">npm run dropbox:auth</code></li>
-              <li>Restart the development server</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-white rounded-lg border border-gray-200">
       {/* Header */}

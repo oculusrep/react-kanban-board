@@ -53,7 +53,19 @@ export type TaskCategory =
   | 'personal'
   | 'other';
 
-export type TaskStatus = 'open' | 'in_progress' | 'completed' | 'cancelled';
+// 'paused': a package task whose package is paused (20261103144723) — out of every
+// queue until the package is resumed; not open, not overdue.
+export type TaskStatus = 'open' | 'in_progress' | 'completed' | 'cancelled' | 'paused';
+
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  open: 'open',
+  in_progress: 'in progress',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  paused: 'paused (package)',
+};
+export const taskStatusLabel = (s: string | null | undefined): string =>
+  (s && TASK_STATUS_LABEL[s as TaskStatus]) || s || '—';
 
 export type TaskSignalStrength = 'HOT' | 'WARM_PLUS' | 'WARM' | 'COOL';
 

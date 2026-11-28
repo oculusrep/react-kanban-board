@@ -20,6 +20,10 @@ import ShapeEditorPanel from '../../components/mapping/ShapeEditorPanel';
 import BoundaryBuilderPanel from '../../components/mapping/BoundaryBuilderPanel';
 import { boundaryService, FetchedBoundary } from '../../services/boundaryService';
 import PlaceInfoLayer from '../../components/mapping/layers/PlaceInfoLayer';
+import StarbucksAtlasLogosLayer from '../../components/mapping/layers/StarbucksAtlasLogosLayer';
+import StarbucksLicensedStoreLayer from '../../components/mapping/layers/StarbucksLicensedStoreLayer';
+import StarbucksSlideout from '../../components/mapping/slideouts/StarbucksSlideout';
+import { supabase } from '../../lib/supabaseClient';
 
 // Client-visible stages (filtered view for portal users)
 // Note: Stage names must match database format exactly (no spaces around dashes)
@@ -65,7 +69,7 @@ export default function PortalMapPage() {
  */
 function PortalMapContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh } = usePortal();
+  const { selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh, canUploadDealFiles, remFilterValue } = usePortal();
   const { trackEvent } = usePortalActivityTracker();
   const { refreshLayer } = useLayerManager();
 
@@ -104,6 +108,41 @@ function PortalMapContent() {
   // Determine which layers to show based on user type and view mode
   // In client view mode, show only shared layers (what client sees)
   const displayLayers = showBrokerFeatures ? allLayers : sharedLayers;
+
+  // Starbucks system layers (SBUX Atlas Logos, Licensed Stores). Shown only when the
+  // client being viewed has starbucks_layer_enabled AND the viewer passes
+  // user_has_starbucks_access() — the same function the store tables' RLS uses, so a
+  // portal user only gets them through an active portal_user_client_access row on a
+  // Starbucks-enabled client. The toggle is UI; RLS is the gate.
+  const [starbucksLayersAvailable, setStarbucksLayersAvailable] = useState(false);
+  const [showSbuxAtlas, setShowSbuxAtlas] = useState(false);
+  const [showSbuxLicensed, setShowSbuxLicensed] = useState(false);
+  const [trendsStore, setTrendsStore] = useState<any>(null); // Atlas "View Trends" slideout
+  useEffect(() => {
+    let cancelled = false;
+    const clientIds = selectedClientId ? [selectedClientId] : accessibleClients.map(c => c.id);
+    (async () => {
+      if (clientIds.length === 0) {
+        if (!cancelled) setStarbucksLayersAvailable(false);
+        return;
+      }
+      const [{ data: clients }, { data: hasAccess }] = await Promise.all([
+        supabase.from('client').select('id').in('id', clientIds).eq('starbucks_layer_enabled', true),
+        supabase.rpc('user_has_starbucks_access'),
+      ]);
+      if (!cancelled) setStarbucksLayersAvailable(!!hasAccess && (clients?.length ?? 0) > 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClientId, accessibleClients]);
+  useEffect(() => {
+    if (!starbucksLayersAvailable) {
+      setShowSbuxAtlas(false);
+      setShowSbuxLicensed(false);
+      setTrendsStore(null);
+    }
+  }, [starbucksLayersAvailable]);
 
   // Layer visibility state
   const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({});
@@ -215,6 +254,7 @@ function PortalMapContent() {
     return {
       mode: 'client-filtered',
       clientId: selectedClientId || (accessibleClients.length === 1 ? accessibleClients[0].id : null),
+      realEstateManagerId: remFilterValue,
       visibleStages,
       clusterConfig: {
         minimumClusterSize: 5,
@@ -226,7 +266,7 @@ function PortalMapContent() {
         useAdvancedMarkers: true,
       },
     };
-  }, [selectedClientId, visibleStages, isInternalUser, accessibleClients]);
+  }, [selectedClientId, visibleStages, isInternalUser, accessibleClients, remFilterValue]);
 
   // Handle site submit click - center map on pin and open sidebar
   const handleSiteSubmitClick = useCallback((siteSubmit: any) => {
@@ -584,6 +624,24 @@ function PortalMapContent() {
           />
         ))}
 
+        {/* Starbucks system layers — Starbucks portal users + authorized internal users */}
+        {mapInstance && starbucksLayersAvailable && (
+          <>
+            {/* View-only: no Add to tour, no verify / right-click handlers */}
+            <StarbucksAtlasLogosLayer
+              map={mapInstance}
+              isVisible={showSbuxAtlas}
+              allowAddToTour={false}
+              selectedStoreNumber={trendsStore?.store_number ?? null}
+              onPinClick={setTrendsStore}
+            />
+            <StarbucksLicensedStoreLayer map={mapInstance} isVisible={showSbuxLicensed} allowAddToTour={false} />
+          </>
+        )}
+        {starbucksLayersAvailable && trendsStore && (
+          <StarbucksSlideout store={trendsStore} onClose={() => setTrendsStore(null)} />
+        )}
+
         {/* Drawing Toolbar (brokers only) - Hidden when Street View is active */}
         {showBrokerFeatures && (isDrawMode || editingLayerId) && !isStreetViewActive && (
           <DrawingToolbar
@@ -725,7 +783,7 @@ function PortalMapContent() {
           )}
 
           {/* Layers Button */}
-          {displayLayers.length > 0 && (
+          {(displayLayers.length > 0 || starbucksLayersAvailable) && (
             <div className="relative">
               <button
                 onClick={() => setShowLayersPanel(!showLayersPanel)}
@@ -758,6 +816,30 @@ function PortalMapContent() {
                       )}
                     </div>
                   </div>
+                  {starbucksLayersAvailable && (
+                    <div className="border-b border-gray-100">
+                      {([
+                        { key: 'atlas', label: 'SBUX Atlas Logos', icon: '/Images/SBUX-ATLAS-CAFE.png', on: showSbuxAtlas, toggle: () => setShowSbuxAtlas(v => !v) },
+                        { key: 'licensed', label: 'Starbucks: Licensed Stores', icon: '/Images/LICENSE-CAFE.png', on: showSbuxLicensed, toggle: () => setShowSbuxLicensed(v => !v) },
+                      ]).map(l => (
+                        <div key={l.key} className="p-2 border-b border-gray-50 flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={l.toggle}
+                              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${l.on ? 'bg-green-700' : 'bg-gray-300'}`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${l.on ? 'translate-x-4' : 'translate-x-0'}`}
+                              />
+                            </button>
+                            <img src={l.icon} alt="" style={{ width: 18, height: 18 }} />
+                            <span className="text-sm font-medium text-gray-900">{l.label}</span>
+                          </div>
+                          <span className="text-xs text-gray-400">Confidential</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="max-h-64 overflow-y-auto">
                     {displayLayers.map(layer => (
                       <div
@@ -931,6 +1013,7 @@ function PortalMapContent() {
           onStatusChange={handleStatusChange}
           accessibleClients={accessibleClients}
           siteSubmitRefreshTrigger={siteSubmitRefreshTrigger}
+          portalDealUpload={!isInternalUser && canUploadDealFiles}
         />
 
         {/* Save Shape Modal - After quick draw (brokers only) */}

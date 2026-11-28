@@ -270,3 +270,16 @@ A reasonable cut for the first PR:
 7. Pipeline "Recent Changes" tab (read-only feed view, no map integration).
 
 Then a second PR for phase 2 (read state, map integration, audit view).
+
+## 2026-11-17: Resend 403 "testing emails only" — root cause
+
+The `RESEND_FROM_EMAIL` edge-function secret was `onboarding@resend.dev` (Resend's sandbox
+sender; identified by its `secrets list` digest `4e69d735…`). The sandbox sender delivers
+only to the account owner, so any alert with a recipient other than mike@ (e.g. Starbucks
+→ Mike + Arty) failed with HTTP 403. The queue row stays in place on failure, so it retried
+every 5 minutes. Set to `notifications@oculusrep.com` at 19:35 ET. The 19:40 drain sent
+Jared Wright's queued Waycross alert (`sent: 1`). The secret is shared, so critical-date,
+Friday CFO and ingestion alerts now also send from oculusrep.com.
+
+If this 403 comes back, check the digest first:
+`printf %s onboarding@resend.dev | shasum -a 256` → `4e69d735…`.

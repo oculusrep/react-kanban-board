@@ -20,6 +20,7 @@ interface PortalContextType {
   // User info
   isInternalUser: boolean;
   contactId: string | null;
+  canUploadDealFiles: boolean; // contact.portal_can_upload_deal_files
 
   // View mode (for brokers to preview client view)
   viewMode: PortalViewMode;
@@ -35,6 +36,16 @@ interface PortalContextType {
   // Site submit refresh trigger - increment to force refetch across portal pages
   siteSubmitRefreshTrigger: number;
   triggerSiteSubmitRefresh: () => void;
+
+  // Real Estate Manager filter (Starbucks only). Display filter, not access control.
+  // '' = all REMs, REM_UNASSIGNED, or a contact id. Defaults to the viewer's own sites
+  // when they are tagged as REM on any, else all.
+  showRemFilter: boolean;
+  remOptions: { id: string; name: string | null }[];
+  remFilter: string;
+  setRemFilter: (value: string) => void;
+  /** remFilter as a query value (null = no filter) for pipeline + map loaders. */
+  remFilterValue: string | null;
 }
 
 const PortalContext = createContext<PortalContextType | undefined>(undefined);
@@ -44,6 +55,8 @@ interface PortalProviderProps {
 }
 
 const PORTAL_SELECTED_CLIENT_KEY = 'portal_selected_client_id';
+const PORTAL_REM_FILTER_KEY = 'portal_rem_filter';
+const STARBUCKS_CLIENT_ID = '39933b5b-3e8c-438d-be2f-e48cd9228c00';
 
 export function PortalProvider({ children }: PortalProviderProps) {
   const { user, userRole } = useAuth();
@@ -63,10 +76,29 @@ export function PortalProvider({ children }: PortalProviderProps) {
     return null;
   });
   const [contactId, setContactId] = useState<string | null>(null);
+  const [canUploadDealFiles, setCanUploadDealFiles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<PortalViewMode>('broker');
   const [siteSubmitRefreshTrigger, setSiteSubmitRefreshTrigger] = useState(0);
+  const [hasMySites, setHasMySites] = useState(false);
+  const [remOptions, setRemOptions] = useState<{ id: string; name: string | null }[]>([]);
+  // null = viewer hasn't chosen yet → default (own sites if tagged, else all).
+  const [remChoice, setRemChoice] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(PORTAL_REM_FILTER_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const setRemFilter = useCallback((value: string) => {
+    setRemChoice(value);
+    try {
+      localStorage.setItem(PORTAL_REM_FILTER_KEY, value);
+    } catch {
+      /* storage unavailable — in-memory only */
+    }
+  }, []);
 
   const isInternalUser = userRole ? ['admin', 'broker_full', 'broker_limited', 'assistant'].includes(userRole) : false;
 
@@ -92,6 +124,51 @@ export function PortalProvider({ children }: PortalProviderProps) {
   };
 
   const selectedClient = accessibleClients.find(c => c.id === selectedClientId) || null;
+
+  // Does this portal user have any site submits tagged to them as Real Estate Manager?
+  useEffect(() => {
+    if (!contactId) {
+      setHasMySites(false);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from('site_submit')
+      .select('id', { count: 'exact', head: true })
+      .eq('real_estate_manager_id', contactId)
+      .then(({ count }) => {
+        if (!cancelled) setHasMySites((count ?? 0) > 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contactId]);
+
+  // The client in view: the selected one, or the only one this user can see.
+  const effectiveClientId = selectedClientId || (accessibleClients.length === 1 ? accessibleClients[0].id : null);
+  const showRemFilter = effectiveClientId === STARBUCKS_CLIENT_ID;
+
+  useEffect(() => {
+    if (!showRemFilter) {
+      setRemOptions([]);
+      return;
+    }
+    let cancelled = false;
+    supabase.rpc('client_real_estate_managers', { p_client_id: STARBUCKS_CLIENT_ID }).then(({ data, error: rpcErr }) => {
+      if (rpcErr) console.error('Error loading REMs:', rpcErr);
+      if (!cancelled) setRemOptions((data as { id: string; name: string | null }[]) || []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showRemFilter]);
+
+  const defaultRem = hasMySites && contactId && !isInternalUser ? contactId : '';
+  const rawRem = remChoice ?? defaultRem;
+  // A stored REM that is no longer an option falls back to all.
+  const remFilter =
+    rawRem === '' || rawRem === '__unassigned' || remOptions.length === 0 || remOptions.some((o) => o.id === rawRem) ? rawRem : '';
+  const remFilterValue = showRemFilter && remFilter ? remFilter : null;
 
   // Fetch accessible clients
   const refreshClients = async () => {
@@ -125,7 +202,7 @@ export function PortalProvider({ children }: PortalProviderProps) {
         // Portal users - find their contact and get accessible clients
         const { data: contactData, error: contactError } = await supabase
           .from('contact')
-          .select('id')
+          .select('id, portal_can_upload_deal_files')
           .ilike('email', user.email || '')
           .eq('portal_access_enabled', true)
           .single();
@@ -138,6 +215,7 @@ export function PortalProvider({ children }: PortalProviderProps) {
         }
 
         setContactId(contactData.id);
+        setCanUploadDealFiles(!!contactData.portal_can_upload_deal_files);
 
         // Get clients this contact has access to
         const { data: accessData, error: accessError } = await supabase
@@ -210,6 +288,7 @@ export function PortalProvider({ children }: PortalProviderProps) {
     setSelectedClientId,
     isInternalUser,
     contactId,
+    canUploadDealFiles,
     viewMode,
     setViewMode,
     loading,
@@ -217,6 +296,11 @@ export function PortalProvider({ children }: PortalProviderProps) {
     refreshClients,
     siteSubmitRefreshTrigger,
     triggerSiteSubmitRefresh,
+    showRemFilter,
+    remOptions,
+    remFilter,
+    setRemFilter,
+    remFilterValue,
   };
 
   return (

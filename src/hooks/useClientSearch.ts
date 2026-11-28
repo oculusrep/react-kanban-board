@@ -10,6 +10,118 @@ export interface ClientSearchResult {
   phone: string | null;
   deal_count: number;
   site_submit_count: number;
+  /**
+   * Set only on synthetic "All accounts" entries (see withFamilyEntries): the
+   * root account plus every descendant. Its `id` is `family:<rootId>` and is
+   * NOT a client id — use getClientIds() to filter.
+   */
+  family_clients?: { id: string; client_name: string }[];
+}
+
+/** Real client ids a selection covers: the whole family for an "All" entry. */
+export const getClientIds = (client: ClientSearchResult): string[] =>
+  client.family_clients?.length ? client.family_clients.map(c => c.id) : [client.id];
+
+const MAX_FAMILY_DEPTH = 5;
+
+/**
+ * For every result that belongs to a parent/child account family (e.g.
+ * Starbucks + "Starbucks - JW (Coastal GA)"), insert one "<Root> (All
+ * accounts)" entry ahead of the family's first result, so the whole family
+ * can be selected at once. Results that aren't in a family pass through.
+ */
+export async function withFamilyEntries(results: ClientSearchResult[]): Promise<ClientSearchResult[]> {
+  const real = results.filter(r => !r.family_clients);
+  if (real.length === 0) return results;
+
+  try {
+    // Walk each match up to its root account.
+    const known = new Map<string, { client_name: string; parent_id: string | null }>();
+    let pending = real.map(r => r.id);
+    for (let depth = 0; pending.length > 0 && depth < MAX_FAMILY_DEPTH; depth++) {
+      const { data, error } = await supabase
+        .from('client')
+        .select('id, client_name, parent_id')
+        .in('id', pending);
+      if (error) throw error;
+      (data || []).forEach(c => known.set(c.id, { client_name: c.client_name || 'Unnamed Client', parent_id: c.parent_id }));
+      pending = [...new Set((data || []).map(c => c.parent_id).filter((id): id is string => !!id && !known.has(id)))];
+    }
+    const rootOf = (id: string): string => {
+      let cur = id;
+      for (let i = 0; i < MAX_FAMILY_DEPTH; i++) {
+        const parent = known.get(cur)?.parent_id;
+        if (!parent || !known.has(parent)) return cur;
+        cur = parent;
+      }
+      return cur;
+    };
+    const roots = [...new Set(real.map(r => rootOf(r.id)))];
+
+    // Walk each root down to all of its descendants.
+    const members = new Map<string, { id: string; client_name: string }[]>(
+      roots.map(root => [root, [{ id: root, client_name: known.get(root)?.client_name || 'Unnamed Client' }]])
+    );
+    const rootByClient = new Map<string, string>(roots.map(r => [r, r]));
+    let frontier = roots;
+    for (let depth = 0; frontier.length > 0 && depth < MAX_FAMILY_DEPTH; depth++) {
+      const { data, error } = await supabase
+        .from('client')
+        .select('id, client_name, parent_id')
+        .in('parent_id', frontier)
+        .order('client_name');
+      if (error) throw error;
+      const next: string[] = [];
+      (data || []).forEach(c => {
+        const root = rootByClient.get(c.parent_id as string);
+        if (!root || rootByClient.has(c.id)) return;
+        rootByClient.set(c.id, root);
+        members.get(root)!.push({ id: c.id, client_name: c.client_name || 'Unnamed Client' });
+        next.push(c.id);
+      });
+      frontier = next;
+    }
+
+    const familyEntries = new Map<string, ClientSearchResult>();
+    await Promise.all(
+      roots
+        .filter(root => (members.get(root)?.length ?? 0) > 1)
+        .map(async root => {
+          const family = members.get(root)!;
+          const ids = family.map(c => c.id);
+          const [{ count: dealCount }, { count: siteSubmitCount }] = await Promise.all([
+            supabase.from('deal').select('*', { count: 'exact', head: true }).in('client_id', ids),
+            supabase.from('site_submit').select('*', { count: 'exact', head: true }).in('client_id', ids),
+          ]);
+          familyEntries.set(root, {
+            id: `family:${root}`,
+            client_name: `${family[0].client_name} (All accounts)`,
+            type: `${family.length} accounts`,
+            phone: null,
+            deal_count: dealCount || 0,
+            site_submit_count: siteSubmitCount || 0,
+            family_clients: family,
+          });
+        })
+    );
+    if (familyEntries.size === 0) return results;
+
+    const out: ClientSearchResult[] = [];
+    const emitted = new Set<string>();
+    results.forEach(r => {
+      const root = r.family_clients ? null : rootOf(r.id);
+      const entry = root ? familyEntries.get(root) : undefined;
+      if (root && entry && !emitted.has(root)) {
+        out.push(entry);
+        emitted.add(root);
+      }
+      out.push(r);
+    });
+    return out;
+  } catch (err) {
+    console.error('❌ Client family lookup failed:', err);
+    return results;
+  }
 }
 
 export const useClientSearch = () => {

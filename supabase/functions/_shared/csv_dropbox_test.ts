@@ -1,7 +1,7 @@
 import { assertEquals, assertThrows } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
   bandFor, buildCompetitorRow, buildEmployerRow, buildSchoolRow, byDistance, COMPETITORS_COLUMNS, csvEscape, EMPLOYERS_COLUMNS,
-  fullAddress, oneDecimal, SCHOOLS_COLUMNS, toCsv,
+  type CsvCell, fullAddress, numberPins, oneDecimal, SCHOOLS_COLUMNS, toCsv,
 } from './csv.ts'
 import {
   cleanFolderName, headerSafeJson, siteSubmitFolderName, siteSubmitFolderPath, validateDropboxPath,
@@ -84,7 +84,7 @@ Deno.test('a non-integer or negative web enrollment is rejected (no estimates)',
 })
 Deno.test('schools.csv header matches the spec exactly', () => {
   assertEquals(SCHOOLS_COLUMNS.join(','),
-    'flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
+    'pin,flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
 })
 
 // ---------------- employers.csv row ----------------
@@ -95,7 +95,16 @@ Deno.test('employer: headcount only as a stated integer; blank distance means un
   assertEquals(r.employer_type, 'hospital') // its own column, for map pins — not buried in notes
 })
 Deno.test('employers.csv header matches the spec exactly', () => {
-  assertEquals(EMPLOYERS_COLUMNS.join(','), 'flag,name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
+  assertEquals(EMPLOYERS_COLUMNS.join(','), 'pin,flag,name,employer_type,street,city,state,zip,full_address,headcount,headcount_source,distance_mi,band,source,source_year,notes')
+})
+Deno.test('numberPins: 1..N by distance whatever the row order, unknown distance last', () => {
+  const rows = [
+    { pin: null as unknown, name: 'flagged far', distance_mi: 3.2 },
+    { pin: null as unknown, name: 'unplaced', distance_mi: null },
+    { pin: null as unknown, name: 'near', distance_mi: 0.4 },
+  ] as Array<{ pin: CsvCell; name: CsvCell; distance_mi: CsvCell }>
+  numberPins(rows)
+  assertEquals(rows.map((r) => [r.name, r.pin]), [['flagged far', 2], ['unplaced', 3], ['near', 1]], 'row order kept, pins by distance')
 })
 Deno.test('sorted by distance ascending, unknown distance last', () => {
   const rows = [{ name: 'b', distance_mi: null }, { name: 'c', distance_mi: 2.1 }, { name: 'a', distance_mi: 0.4 }]

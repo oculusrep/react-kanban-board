@@ -76,3 +76,20 @@ Pins render at `verified_*` if non-null, otherwise the raw CSV `latitude` / `lon
 - No filters (by store_type / segment / state) — visually obvious in v1; add later if needed
 - No `starbucks_snapshot`-style time-series — Licensed Stores don't carry sales data
 - No GeoJSON / KML alternate format — CSV is the source of truth
+
+## 2026-11-17: on the client portal map
+
+SBUX Atlas Logos and Starbucks: Licensed Stores now appear in the portal map's Layers
+panel (`PortalMapPage`). They show only when the client being viewed has
+`client.starbucks_layer_enabled` and the viewer passes `user_has_starbucks_access()`.
+That is the same function the `starbucks_store` / `starbucks_snapshot` /
+`starbucks_licensed_store` RLS uses, so a portal user gets them only through an active
+`portal_user_client_access` row on a Starbucks-enabled client (as of today: Jared Wright and
+Adam Updike). Verified by impersonation: Jared reads 751 snapshots / 214 licensed stores,
+and a non-Starbucks portal user reads 0. On the portal they're view-only: no verify or
+right-click handlers.
+
+Follow-up (same day): on the portal, the store popups hide **Add to tour**
+(`allowAddToTour={false}` on both layers/popups; default true elsewhere). Atlas **View
+Trends** opens `StarbucksSlideout`, which reads only `starbucks_snapshot` (already
+RLS-gated by `user_has_starbucks_access()`). There's still no verify or right-click.

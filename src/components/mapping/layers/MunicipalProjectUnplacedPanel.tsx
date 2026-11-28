@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { unplacedLabel } from '../../../services/placementPrecision';
 import type { MunicipalProjectMapRow } from './MunicipalProjectLayer';
+import PrecisionBadge from '../PrecisionBadge';
+import { useMunicipalPrecision } from '../../../hooks/useMunicipalPrecision';
 
 const BRAND = {
   midnight: '#002147',
@@ -143,24 +145,7 @@ const MunicipalProjectUnplacedPanel: React.FC<Props> = ({ onSelect, selectedId, 
               <div className="px-2 py-1.5 text-xs" style={{ color: BRAND.slate }}>Loading…</div>
             )}
             {shown.map((r) => (
-              <button key={r.id} type="button" onClick={() => onSelect(r)}
-                      className="w-full text-left px-2 py-1.5 hover:bg-gray-50"
-                      style={{ backgroundColor: r.id === selectedId ? '#F8FAFC' : undefined }}>
-                <div className="text-xs font-medium truncate" style={{ color: BRAND.midnight }}>
-                  {r.project_name || '(unnamed)'}
-                </div>
-                <div className="text-xs truncate" style={{ color: BRAND.slate }}>
-                  {[r.municipality_name, r.total_housing_units != null ? `${r.total_housing_units} units` : null]
-                    .filter(Boolean).join(' · ')}
-                </div>
-                <div className="text-xs mt-0.5" style={{ color: BRAND.steel }}>
-                  {unplacedLabel(r.unplaced_reason)}
-                  {(r.parcel_numbers?.length ?? 0) > 0 && (
-                    <span style={{ color: BRAND.slate }}> · {r.parcel_numbers!.length} parcel
-                      {r.parcel_numbers!.length === 1 ? '' : 's'} on file</span>
-                  )}
-                </div>
-              </button>
+              <UnplacedRow key={r.id} row={r} selected={r.id === selectedId} onSelect={onSelect} />
             ))}
             {!loading && shown.length === 0 && (
               <div className="px-2 py-1.5 text-xs" style={{ color: BRAND.slate }}>
@@ -171,6 +156,50 @@ const MunicipalProjectUnplacedPanel: React.FC<Props> = ({ onSelect, selectedId, 
         </div>
       )}
     </div>
+  );
+};
+
+/**
+ * One worklist row.
+ *
+ * Its own component so it can call the precision hook — which is the point of
+ * the badge here: triaging the queue without opening every record. A "County
+ * only" row is one to read the pin-placement hint for, not to go hunting for,
+ * and that is worth knowing from the list.
+ */
+const UnplacedRow: React.FC<{
+  row: MunicipalProjectMapRow;
+  selected: boolean;
+  onSelect: (row: MunicipalProjectMapRow) => void;
+}> = ({ row, selected, onSelect }) => {
+  const { badge, loading } = useMunicipalPrecision(row);
+  return (
+    <button type="button" onClick={() => onSelect(row)}
+            className="w-full text-left px-2 py-1.5 hover:bg-gray-50"
+            style={{ backgroundColor: selected ? '#F8FAFC' : undefined }}>
+      <div className="text-xs font-medium truncate" style={{ color: BRAND.midnight }}>
+        {row.project_name || '(unnamed)'}
+      </div>
+      {/* On its own line, with the detail kept. The list is where triage
+          happens, so hiding the granularity here would be hiding it from the
+          one place it decides anything: a 195m circle around an intersection
+          and a 6km circle around a city are both "Intersection / road", and
+          only one of them is worth going to look at. */}
+      <div className="mt-0.5">
+        <PrecisionBadge badge={badge} loading={loading} size="sm" />
+      </div>
+      <div className="text-xs truncate" style={{ color: BRAND.slate }}>
+        {[row.municipality_name, row.total_housing_units != null ? `${row.total_housing_units} units` : null]
+          .filter(Boolean).join(' · ')}
+      </div>
+      <div className="text-xs mt-0.5" style={{ color: BRAND.steel }}>
+        {unplacedLabel(row.unplaced_reason)}
+        {(row.parcel_numbers?.length ?? 0) > 0 && (
+          <span style={{ color: BRAND.slate }}> · {row.parcel_numbers!.length} parcel
+            {row.parcel_numbers!.length === 1 ? '' : 's'} on file</span>
+        )}
+      </div>
+    </button>
   );
 };
 

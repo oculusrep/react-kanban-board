@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useMapLayers } from '../../hooks/useMapLayers';
 import { MapLayer } from '../../services/mapLayerService';
+import { PointIconEditor } from '../mapping/PointIconEditor';
+import { PointIconConfig } from '../mapping/utils/pointLayerIcons';
 
 interface EditLayerModalProps {
   isOpen: boolean;
@@ -18,6 +20,9 @@ export default function EditLayerModal({ isOpen, layer, onClose, onSuccess }: Ed
   const [defaultOpacity, setDefaultOpacity] = useState(0.35);
   const [defaultStrokeWidth, setDefaultStrokeWidth] = useState(2);
   const [isActive, setIsActive] = useState(true);
+  const [iconConfig, setIconConfig] = useState<PointIconConfig | null>(null);
+  const [iconDirty, setIconDirty] = useState(false);
+  const [showIconEditor, setShowIconEditor] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +35,21 @@ export default function EditLayerModal({ isOpen, layer, onClose, onSuccess }: Ed
       setDefaultOpacity(layer.default_opacity);
       setDefaultStrokeWidth(layer.default_stroke_width);
       setIsActive(layer.is_active);
+      setIconConfig(layer.icon_config);
+      setIconDirty(false);
+      setShowIconEditor(
+        !!layer.icon_config || !!layer.shapes?.some(s => s.shape_type === 'point')
+      );
     }
+  }, [layer]);
+
+  // Attribute keys across the layer's points, for the hover-label picker.
+  const attributeKeys = useMemo(() => {
+    const keys = new Set<string>();
+    layer?.shapes?.forEach(s => {
+      if (s.shape_type === 'point' && s.attributes) Object.keys(s.attributes).forEach(k => keys.add(k));
+    });
+    return [...keys].sort();
   }, [layer]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,6 +70,7 @@ export default function EditLayerModal({ isOpen, layer, onClose, onSuccess }: Ed
         default_opacity: defaultOpacity,
         default_stroke_width: defaultStrokeWidth,
         is_active: isActive,
+        ...(iconDirty ? { icon_config: iconConfig } : {}),
       });
 
       if (result.success) {
@@ -67,7 +87,7 @@ export default function EditLayerModal({ isOpen, layer, onClose, onSuccess }: Ed
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b">
           <h2 className="text-xl font-semibold text-gray-900">Edit Layer</h2>
         </div>
@@ -182,9 +202,31 @@ export default function EditLayerModal({ isOpen, layer, onClose, onSuccess }: Ed
             </label>
           </div>
 
+          {/* Point icon — layer-level; every point in the layer uses it */}
+          <div className="pt-4 border-t">
+            {showIconEditor ? (
+              <>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Point Icon</label>
+                <PointIconEditor
+                  value={iconConfig}
+                  onChange={next => { setIconConfig(next); setIconDirty(true); }}
+                  attributeKeys={attributeKeys}
+                />
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowIconEditor(true)}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Customize point icon
+              </button>
+            )}
+          </div>
+
           {/* Preview */}
           <div className="pt-4 border-t">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Preview</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Shape Preview</label>
             <div className="flex items-center justify-center p-4 bg-gray-100 rounded-lg">
               <div
                 className="w-24 h-16 rounded"

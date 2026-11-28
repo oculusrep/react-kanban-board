@@ -8,6 +8,7 @@ import { useProperty } from '../../../hooks/useProperty';
 import { useToast } from '../../../hooks/useToast';
 import { useAutosave } from '../../../hooks/useAutosave';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useBrokerLiteAccess } from '../../../hooks/useBrokerLiteAccess';
 import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
@@ -556,13 +557,15 @@ const SubmitsTabContent: React.FC<{
     <>
       <div className="space-y-3">
       {/* Add Site Submit Button */}
-      <button
+      {onCreateSiteSubmit && (
+<button
         onClick={() => onCreateSiteSubmit?.(propertyId)}
         className="w-full px-3 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
       >
         <FileText size={16} />
         New Site Submit
       </button>
+)}
 
       {/* Site Submits List */}
       {loading ? (
@@ -662,6 +665,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onOpenFullSiteSubmit
 }) => {
   const { zIndex, bringToFront } = useOverlayStack(isOpen);
+  const { canSeeAnySiteSubmits } = useBrokerLiteAccess();
   const [activeTab, setActiveTab] = useState<TabType>(
     initialTab || (type === 'site_submit' ? 'submit' : 'property')
   );
@@ -1820,7 +1824,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   };
 
-  const availableTabs = getAvailableTabs();
+  const availableTabs = getAvailableTabs().filter(tab => tab.id !== 'submits' || canSeeAnySiteSubmits);
 
   // Handle tab click - for site submits, clicking PROPERTY tab opens property sidebar
   const handleTabClick = (tabId: TabType) => {

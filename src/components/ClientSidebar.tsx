@@ -818,10 +818,19 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
           onContactModalChange?.(false);
         }}
         contactId={editingContactId}
-        clientId={clientId}
-        onSave={(newContact) => {
-          // Refresh contact relations after adding new contact
-          window.location.reload(); // Temporary - you can improve this with better state management
+        onSave={async (newContact) => {
+          // Attach the new contact to this client. ContactFormModal has no client
+          // prop (the clientId passed here used to be silently ignored), so the
+          // relation is ours to create — addContactRelation also refreshes the list.
+          try {
+            if (newContact?.id) await addContactRelation(newContact.id);
+          } catch (err) {
+            console.error('Failed to attach new contact to client:', err);
+            alert('The contact was created but could not be added to this client. Add it from the contacts list.');
+          }
+          setShowContactModal(false);
+          setEditingContactId(null);
+          onContactModalChange?.(false);
         }}
         onUpdate={(updatedContact) => {
           // Contact updated, sidebar will refresh automatically via useClientContacts

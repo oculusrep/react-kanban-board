@@ -124,6 +124,9 @@ interface SiteStoryPanelProps {
   siteSubmitId: string;
   /** Bump to force a re-fetch of the thread list. */
   refreshTrigger?: number;
+  /** can_run_site_story (+ a resolvable coordinate). False = read-only: every
+   *  control that calls ovis-site-research is hidden. The edge function re-checks. */
+  canRun?: boolean;
 }
 
 function formatTimestamp(iso: string): string {
@@ -200,7 +203,7 @@ function StatusBadge({ state }: { state: ThreadState | RunState }) {
   );
 }
 
-export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: SiteStoryPanelProps) {
+export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0, canRun = false }: SiteStoryPanelProps) {
   const [threads, setThreads] = useState<ThreadRow[] | null>(null);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -217,6 +220,9 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Latest completed deep pass on any thread of this site: what the Generators slide is built from.
+  const [latestDeepPassAt, setLatestDeepPassAt] = useState<string | null>(null);
+  const [downloadingSlide, setDownloadingSlide] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // ---- data loaders ----
@@ -231,7 +237,21 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
       setThreads((prev) => prev ?? []);
       return;
     }
-    setThreads((data ?? []) as unknown as ThreadRow[]);
+    const rows = (data ?? []) as unknown as ThreadRow[];
+    setThreads(rows);
+    if (rows.length === 0) {
+      setLatestDeepPassAt(null);
+      return;
+    }
+    const { data: dp } = await supabase
+      .from('research_thread_run')
+      .select('finished_at')
+      .in('thread_id', rows.map((t) => t.id))
+      .eq('kind', 'deep_pass')
+      .eq('state', 'complete')
+      .order('finished_at', { ascending: false })
+      .limit(1);
+    setLatestDeepPassAt((dp?.[0] as { finished_at: string } | undefined)?.finished_at ?? null);
   }, [siteSubmitId]);
 
   const loadOpenThread = useCallback(async (threadId: string, showSpinner = false) => {
@@ -411,6 +431,44 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
     }
   };
 
+  /** The edge function returns the .pptx itself; read it as a blob and hand it to the browser. */
+  const handleGeneratorsSlide = async () => {
+    setError(null);
+    setDownloadingSlide(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ovis-site-research`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'generators_slide', site_submit_id: siteSubmitId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error((body as { detail?: string; error?: string } | null)?.detail ?? (body as { error?: string } | null)?.error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'Generators.pptx';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setDownloadingSlide(false);
+    }
+  };
+
   const handleBrief = async () => {
     if (!openThreadId) return;
     setError(null);
@@ -471,6 +529,19 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
         </div>
       )}
 
+      {canRun && latestDeepPassAt && (
+        <button
+          type="button"
+          onClick={handleGeneratorsSlide}
+          disabled={downloadingSlide}
+          className="mb-2 px-2 py-0.5 rounded text-[11px] font-medium disabled:opacity-60"
+          style={{ backgroundColor: 'transparent', color: NAVY, border: `1px solid ${NAVY}` }}
+          title={`One 16:9 slide from the latest deep pass (${formatTimestamp(latestDeepPassAt)}): a placeholder for the Sites USA map, a callout for every schools / employers / generators.csv row, and totals computed from those rows`}
+        >
+          {downloadingSlide ? 'Building slide…' : 'Download Generators Slide'}
+        </button>
+      )}
+
       {/* ---- thread list ---- */}
       {!openThreadId && (
         <>
@@ -478,8 +549,9 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             <div className="text-xs" style={{ color: SLATE }}>Loading…</div>
           ) : threads.length === 0 ? (
             <div className="text-xs mb-2" style={{ color: STEEL }}>
-              No site story yet. Starting one makes the archetype call and writes an executive summary
-              from this site's frozen snapshot. It runs in the background — you can close this panel.
+              {canRun
+                ? "No site story yet. Starting one makes the archetype call and writes an executive summary from this site's frozen snapshot. It runs in the background — you can close this panel."
+                : 'No site story yet.'}
             </div>
           ) : (
             <div className="space-y-1.5 mb-2">
@@ -521,15 +593,17 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={starting}
-            className="px-3 py-1.5 rounded text-xs font-medium disabled:opacity-60"
-            style={{ backgroundColor: NAVY, color: '#FFFFFF' }}
-          >
-            {starting ? 'Starting…' : threads && threads.length > 0 ? 'New site story' : 'Start site story'}
-          </button>
+          {canRun && (
+            <button
+              type="button"
+              onClick={handleStart}
+              disabled={starting}
+              className="px-3 py-1.5 rounded text-xs font-medium disabled:opacity-60"
+              style={{ backgroundColor: NAVY, color: '#FFFFFF' }}
+            >
+              {starting ? 'Starting…' : threads && threads.length > 0 ? 'New site story' : 'Start site story'}
+            </button>
+          )}
         </>
       )}
 
@@ -567,7 +641,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                   ))}
                 </ul>
               )}
-              {openThread.archetype_primary && (
+              {canRun && openThread.archetype_primary && (
                 <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
@@ -604,6 +678,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 </span>
               </div>
               <div className="text-xs whitespace-pre-wrap break-words" style={{ color: '#1f2937' }}>{openThread.brief_text}</div>
+              {canRun && (
               <button
                 type="button"
                 onClick={handleBrief}
@@ -613,6 +688,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
               >
                 {writingBrief ? 'Rewriting…' : 'Rewrite brief from this record'}
               </button>
+              )}
             </div>
           )}
 
@@ -693,6 +769,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 {run.error && (
                   <div className="text-[11px] mt-0.5 break-words" style={{ color: TERRACOTTA }}>{run.error}</div>
                 )}
+                {canRun && (
                 <button
                   type="button"
                   onClick={handleRetry}
@@ -702,13 +779,14 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
                 >
                   {retrying ? 'Retrying…' : 'Retry'}
                 </button>
+                )}
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
           {/* Ask the record: answered from what is stored, with the section cited. No research. */}
-          {openThread?.brief_text && (
+          {canRun && openThread?.brief_text && (
             <div className="flex gap-1.5 mb-1.5">
               <input
                 value={question}
@@ -731,6 +809,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
             </div>
           )}
 
+          {canRun && (
           <div className="flex gap-1.5">
             <textarea
               value={draft}
@@ -757,6 +836,7 @@ export default function SiteStoryPanel({ siteSubmitId, refreshTrigger = 0 }: Sit
               {sending ? '…' : 'Send'}
             </button>
           </div>
+          )}
         </>
       )}
     </div>

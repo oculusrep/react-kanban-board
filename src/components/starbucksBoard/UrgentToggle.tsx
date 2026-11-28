@@ -5,7 +5,7 @@
 // Optimistic so it reflects immediately even before the board refetches.
 
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { updateBoardState } from '../../lib/boardWrites';
 import { BoardDeal, isUrgent, PALETTE, URGENT_TTL_DAYS } from '../../lib/starbucksBoard';
 
 export default function UrgentToggle({
@@ -28,7 +28,7 @@ export default function UrgentToggle({
     setUrgentUntil(next); // optimistic
     setSaving(true);
     try {
-      await supabase.from('deal_activity_state').update({ urgent_until: next }).eq('deal_id', deal.id);
+      await updateBoardState(deal, { urgent_until: next });
       onChanged();
     } catch (e) {
       console.error('UrgentToggle', e);

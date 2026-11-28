@@ -134,3 +134,11 @@ A custom map layer system for OVIS that allows brokers to create polygon-based t
 
 **Phase 3 (Later):**
 - City/county on-demand boundaries
+
+## Renaming shapes from the Layers menu (2026-11-13)
+
+Each custom layer in the map's Layers menu now has a collapsible **Shapes (N)** list
+(`src/components/mapping/CustomLayerShapeList.tsx`). Click ✏️ next to a shape, type the name, then
+Enter or ✓ saves it and Esc cancels. Clearing the box removes the name. The list is in creation
+order; unnamed shapes show as "Unnamed Polygon 3" etc. It writes through `mapLayerService.updateShape`.
+The older path (Edit layer → select shape → Format → Name) still works.

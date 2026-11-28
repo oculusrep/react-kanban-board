@@ -299,10 +299,10 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   const schools = sim.uploads.find((u) => u.name === 'schools.csv')!.text.split('\r\n')
   assert(sim.uploads.some((u) => u.name === 'competitors.csv'), 'competitors.csv is exported')
   const gens = sim.uploads.find((u) => u.name === 'generators.csv')!.text.split('\r\n')
-  assertEquals(gens[0], 'flag,name,category,size_value,size_unit,street,city,state,zip,lat,lng,distance_mi,drive_time_band,source,notes')
+  assertEquals(gens[0], 'pin,flag,name,category,size_value,size_unit,street,city,state,zip,lat,lng,distance_mi,drive_time_band,source,notes')
   // Researched categories only: the courthouse. The two retailers were researched and are in the
   // narrative, but they are already in Sites USA so they are not exported.
-  assertEquals(gens.slice(1, -1).map((l) => l.split(',')[1]), ['County Courthouse'])
+  assertEquals(gens.slice(1, -1).map((l) => [l.split(',')[0], l.split(',')[2]]), [['1', 'County Courthouse']])
   assertEquals(gens.filter((l) => l.includes('Kroger') || l.includes('Planet Fitness')).length, 0)
   const pipelineCsv = sim.uploads.find((u) => u.name === 'pipeline.csv')
   assert(pipelineCsv, 'pipeline.csv is exported')
@@ -310,11 +310,11 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assertEquals(pl[0], 'flag,name,units,phase,distance_mi,drive_time_band,street,city,state,zip,lat,lng,status_source,source,notes')
   assert(pl[1].startsWith('CHECK,Agent row,40,unreviewed'), pl[1]) // unreviewed sorts to the top, excluded from totals
   assert(pl[2].startsWith(',Barrington Hall,600,Under Construction,3,10min'), pl[2])
-  assertEquals(schools[0], 'flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
+  assertEquals(schools[0], 'pin,flag,name,street,city,state,zip,full_address,enrollment,school_level,grade_low,grade_high,public_private,distance_mi,band,school_year,enrollment_source,address_source,notes')
   // Tiny Montessori (42 pupils) is filtered OUT of the file but stays inside the band totals above.
   // Nothing is filtered now: the 42-pupil school is exported like every other row.
   // The higher-ed row sorts in by distance, in the same file, with the same enrollment unit.
-  assertEquals(schools.slice(1, -1).map((l) => l.split(',')[1]), ['Alpha ES', 'Tiny Montessori', 'Rim HS', 'Pine Academy', 'Bravo MS', 'Wesleyan College', 'Future ES', 'Quail School'])
+  assertEquals(schools.slice(1, -1).map((l) => l.split(',')[2]), ['Alpha ES', 'Tiny Montessori', 'Rim HS', 'Pine Academy', 'Bravo MS', 'Wesleyan College', 'Future ES', 'Quail School'])
   const wes = schools.find((l) => l.includes('Wesleyan College'))!
   assert(wes.includes(',1099,College,'), wes)
   assert(wes.includes('IPEDS'), wes)
@@ -323,7 +323,9 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   // Same source as the band totals: the file cannot disagree with the prose beside it.
   assert(deep.includes('"higher_education"'), 'the band totals carry higher ed as its own group')
   assert(deep.includes('"enrollment_total": 542'), 'the 1 mi total still counts the filtered school')
-  const row = (name: string) => schools.find((l) => l.split(',')[1] === name || l.startsWith(`,${name}`))!
+  // pin is 1..N in file order: schools.csv is already sorted by distance.
+  assertEquals(schools.slice(1, -1).map((l) => l.split(',')[0]), ['1', '2', '3', '4', '5', '6', '7', '8'])
+  const row = (name: string) => schools.find((l) => l.split(',')[2] === name)!
   assert(row('Rim HS').includes(',1,3,2023-2024,NCES,NCES,'), row('Rim HS')) // distance 1.0 → band 3 by membership
   assert(row('Bravo MS').includes(',812,') && row('Bravo MS').includes(',WEB,NCES,'), row('Bravo MS'))
   assert(row('Pine Academy').includes('900 PINE RD,MACON,GA,31211,"900 PINE RD, MACON, GA 31211"'), row('Pine Academy'))
@@ -331,12 +333,12 @@ Deno.test('deep pass end to end: phases, budgets, WEB fills, employers, CSVs, fi
   assert(row('Future ES').includes('planned (NCES status Future)'), row('Future ES'))
 
   const employers = sim.uploads.find((u) => u.name === 'employers.csv')!.text.split('\r\n')
-  assertEquals(employers[0], 'flag,name,employer_type,street,city,state,zip,full_address,headcount,headcount_source,distance_mi,band,source,source_year,notes')
+  assertEquals(employers[0], 'pin,flag,name,employer_type,street,city,state,zip,full_address,headcount,headcount_source,distance_mi,band,source,source_year,notes')
   // A headcount the deep pass recorded keeps its own source in headcount_source: the enrichment
   // adds to blanks and never overwrites, and no headcount reaches the file without a source.
-  assertEquals(employers[1], ',Navicent Hospital,hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,https://navicent.example,2,3,https://navicent.example,2025,')
+  assertEquals(employers[1], '1,,Navicent Hospital,hospital,777 Hemlock St,Macon,GA,,"777 Hemlock St, Macon, GA",4600,https://navicent.example,2,3,https://navicent.example,2025,')
   assertEquals(employers.filter((l) => l.toLowerCase().includes('kroger')), []) // retail rejected, never in the file
-  assert(employers[2].startsWith(`CHECK,"'=HYPERLINK(""x"")"`), employers[2]) // flag, then formula guard + quote doubling
+  assert(employers[2].startsWith(`2,CHECK,"'=HYPERLINK(""x"")"`), employers[2]) // flag, then formula guard + quote doubling
 
   const msg = sim.finalized[0]
   assertEquals(msg.parsed, false) // never touches the thread's archetype columns

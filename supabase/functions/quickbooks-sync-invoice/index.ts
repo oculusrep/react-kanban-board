@@ -126,6 +126,8 @@ serve(async (req) => {
         qb_invoice_id,
         qb_invoice_number,
         orep_invoice,
+        written_off_at,
+        qb_invoice_voided_at,
         deal:deal_id (
           id,
           deal_name,
@@ -169,6 +171,15 @@ serve(async (req) => {
           paymentId: paymentId
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      )
+    }
+
+    // Written-off payments are frozen in QBO: no create, resync or delete. Their invoice is only ever
+    // voided, by hand, through quickbooks-void-invoice (docs/CASH_FLOW_DASHBOARD_AUDIT.md "Payment write-off").
+    if ((payment as any).written_off_at || (payment as any).qb_invoice_voided_at) {
+      return new Response(
+        JSON.stringify({ error: 'This payment is written off — its QBO invoice is not synced. Undo the write-off first.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 409 }
       )
     }
 

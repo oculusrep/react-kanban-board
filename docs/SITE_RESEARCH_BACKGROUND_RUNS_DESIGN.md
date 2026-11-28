@@ -286,3 +286,37 @@ polling fallback. New comments appear only on refetch. Fix is one `ALTER PUBLICA
 5. Verify: a real run end to end; kill test (force a worker to throw mid-iteration and confirm the
    tick resumes from the persisted state); reaper test on a synthetic stuck run in a rolled-back
    transaction.
+
+## Checklist closes when a run ends (2026-11-12)
+
+When a run goes `failed` or `cancelled`, the trigger `research_run_close_checklist_on_end` closes any
+checklist item that is still live (migration `20261112205129`):
+
+| Status when the run ended | Becomes | Meaning |
+|---|---|---|
+| `in_progress` | `abandoned` | The agent started this municipality, then the run died |
+| `pending` | `not_reached` | The run died before reaching it |
+
+**Why new statuses:** `skipped` and `blocked` are the agent's own judgments, set through
+`update_checklist_status`. The new statuses keep "the agent decided" separate from "the run died".
+`get_research_coverage` counts only `complete`, so neither new status reads as covered.
+
+**Circuit breaker:** `advance_sweep` treats a dead chunk as one where no checklist item left `pending`.
+It now also treats `not_reached` as untouched, so closing a dead chunk's checklist doesn't hide the
+signal it trips on.
+
+**Backfill:** 21 failed or cancelled runs, 49 items in all, had a live checklist. The oldest was from
+June 29. They include Senoia Deep sweep chunk 5 (`b29e8327`).
+
+**Who fails a sweep chunk:** `reap_orphaned_research_runs`, which fails a run after 90 idle minutes,
+skips any run that belongs to a running sweep. Sweep chunks go through the sweep's own path instead,
+in `advance_sweep`, called from `ovis-sweep-tick`: stalled, then held for a cooldown, then orphaned and
+failed.
+
+Chunk 5 on 2026-11-12, all times ET:
+- **10:04:** last activity.
+- **10:50:** orphaned.
+- **11:10:** failed.
+- **11:11:** the sweep finished as `complete_with_failures`.
+
+The run's checklist still read `in_progress` / `pending` afterwards, which made it look live.

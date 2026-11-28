@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import HandoffBadge from './deals/HandoffBadge';
 import QuickAddTaskButton from './tasks/QuickAddTaskButton';
+import PackageBadge from './package/PackageBadge';
 import { CopyMapLinkButton } from './shared/CopyMapLinkButton';
 
 interface DealHeaderBarProps {
@@ -173,6 +174,11 @@ const DealHeaderBar: React.FC<DealHeaderBarProps> = ({ deal, onDelete, onRefresh
                 linkedObjectId={deal.id}
                 linkedObjectLabel={deal.deal_name || 'Deal'}
               />
+            )}
+            {/* Slide package for deals with no site submit (decision 2026-10-12); the
+                sidebar carries it too. Renders nothing for non-Starbucks deals. */}
+            {deal.id && !deal.site_submit_id && (
+              <PackageBadge dealId={deal.id} tone="dark" expandable />
             )}
             {onDelete && deal.id && (
               <button

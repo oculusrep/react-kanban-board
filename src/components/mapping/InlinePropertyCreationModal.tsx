@@ -7,8 +7,45 @@ interface InlinePropertyCreationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (property: any) => void;
-  coordinates: { lat: number; lng: number };
+  /**
+   * Where the property sits, when the caller knows (a dropped map pin). Optional:
+   * callers outside the map — e.g. the Intel panel creating a property named in a
+   * note — have no coordinates, and the property is created without them. Verify
+   * it on the map afterwards.
+   */
+  coordinates?: { lat: number; lng: number } | null;
+  /** Prefills Property Name, e.g. the name a note referred to. */
+  initialName?: string;
+  /**
+   * Prefills the address fields. Callers outside the map pass what a note stated
+   * literally; the reverse-geocode below is skipped when an address is supplied.
+   */
+  initialAddress?: string;
+  initialCity?: string;
+  initialState?: string;
+  initialZip?: string;
+  /**
+   * Google's precision for coordinates the CALLER geocoded (`location_type`).
+   * Shown in the header so a street-centroid match is obvious rather than looking
+   * as exact as a dropped pin. Undefined on the OSM fallback path.
+   */
+  geocodePrecision?: string | null;
+  /** Stacking override; the default sits in the map slideout band. */
+  zIndex?: number;
 }
+
+/**
+ * How to read Google's location_type. ROOFTOP / RANGE_INTERPOLATED are
+ * address-level; the other two are a street or region centroid, which puts every
+ * address on that road at one point — the user needs to see that difference.
+ */
+const PRECISION: Record<string, { label: string; color: string }> = {
+  ROOFTOP: { label: 'Geocoded from the note · exact address match', color: '#4A6B94' },
+  RANGE_INTERPOLATED: { label: 'Geocoded from the note · interpolated along the street', color: '#4A6B94' },
+  GEOMETRIC_CENTER: { label: 'Geocoded from the note · STREET CENTROID only — verify on the map', color: '#A27B5C' },
+  APPROXIMATE: { label: 'Geocoded from the note · APPROXIMATE (city/region) — verify on the map', color: '#A27B5C' },
+  UNKNOWN: { label: 'Geocoded from the note · precision unknown — verify on the map', color: '#A27B5C' },
+};
 
 interface PropertyFormData {
   property_record_type_id: string | null;
@@ -25,14 +62,21 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
   onClose,
   onSave,
   coordinates,
+  initialName,
+  initialAddress,
+  initialCity,
+  initialState,
+  initialZip,
+  geocodePrecision,
+  zIndex = 10001,
 }) => {
   const [formData, setFormData] = useState<PropertyFormData>({
     property_record_type_id: null,
-    property_name: '',
-    address: '',
-    city: '',
-    state: '',
-    zip: '',
+    property_name: initialName ?? '',
+    address: initialAddress ?? '',
+    city: initialCity ?? '',
+    state: initialState ?? '',
+    zip: initialZip ?? '',
     property_notes: '',
   });
 
@@ -42,6 +86,20 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
 
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
   const { createProperty } = useProperty();
+
+  // Prefill the name on open. Keyed on isOpen so re-opening with a different
+  // name works, without overwriting what the user types mid-edit.
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData((prev) => ({
+      ...prev,
+      property_name: prev.property_name || (initialName ?? ''),
+      address: prev.address || (initialAddress ?? ''),
+      city: prev.city || (initialCity ?? ''),
+      state: prev.state || (initialState ?? ''),
+      zip: prev.zip || (initialZip ?? ''),
+    }));
+  }, [isOpen]);
 
   // Auto-populate address from coordinates when modal opens
   useEffect(() => {
@@ -96,8 +154,10 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
         state: formData.state,
         zip: formData.zip,
         property_notes: formData.property_notes,
-        verified_latitude: coordinates.lat,
-        verified_longitude: coordinates.lng,
+        // Explicit nulls when the caller had no coordinates: that leaves the
+        // property unmapped, rather than pinning it at 0,0.
+        verified_latitude: coordinates ? coordinates.lat : null,
+        verified_longitude: coordinates ? coordinates.lng : null,
       };
 
       const createdProperty = await createProperty(propertyData);
@@ -142,17 +202,26 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[10001]" onClick={onClose} />
+      <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex }} onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed inset-4 bg-white rounded-lg shadow-xl z-[10002] flex flex-col max-w-2xl mx-auto">
+      <div className="fixed inset-4 bg-white rounded-lg shadow-xl flex flex-col max-w-2xl mx-auto" style={{ zIndex: zIndex + 1 }}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Create Property from Pin</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              {coordinates ? 'Create Property from Pin' : 'Create Property'}
+            </h3>
             <p className="text-sm text-gray-500 mt-1">
-              Location: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
+              {coordinates
+                ? `Location: ${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`
+                : 'No location yet — verify this property on the map afterwards.'}
             </p>
+            {coordinates && geocodePrecision !== undefined && (
+              <p className="text-xs mt-0.5" style={{ color: PRECISION[geocodePrecision ?? 'UNKNOWN']?.color ?? '#A27B5C' }}>
+                {PRECISION[geocodePrecision ?? 'UNKNOWN']?.label ?? 'Geocoded — precision unknown, verify on the map'}
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}
