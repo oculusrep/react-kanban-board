@@ -35,8 +35,11 @@ type Supa = any;
 type Row = any;
 
 const RESTORABLE_REASON = /no (unit )?count|without (a )?(unit )?count|missing (unit )?count|unit count|duplicate review/i;
+// Rejected for a reason a count doesn't fix: out of radius, or listing-only
+// sources. Restoring these just buys a count for a record that stays useless.
+const NOT_A_COUNT_PROBLEM = /outside (the )?(\d+-mile )?radius|out of radius|listing-site|only listing/i;
 export const isRestorableReason = (reason: string | null) =>
-  !reason || !reason.trim() || (!/^\s*duplicate\b/i.test(reason) && RESTORABLE_REASON.test(reason));
+  !reason || !reason.trim() || (!/^\s*duplicate\b/i.test(reason) && !NOT_A_COUNT_PROBLEM.test(reason) && RESTORABLE_REASON.test(reason));
 
 const FALLBACK_CALL_CENTS = 3.8;
 

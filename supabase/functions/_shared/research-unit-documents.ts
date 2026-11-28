@@ -260,6 +260,11 @@ export function judge(parsed: any, given: string[], read: string[], sources: { t
     sources.some((s) => s.title && host.endsWith(s.title.replace(/^www\./, '')));
   if (!known) return { units: null, status, why: `discarded: ${host} was neither given, read nor a search source` };
   if (!status) return { units: null, status: null, why: 'discarded: no status (approved / stated / proposed / cap)' };
+  // The model calls a request "approved" when the case was approved; the
+  // quoted number is still the applicant's. The quote decides.
+  if (status === 'approved' && /\b(propos|request|applicant|seeks|would (include|allow)|plans? (to|for)|concept)/i.test(quote)) {
+    return { units: n, status: 'proposed', why: 'status lowered to proposed: the quote describes the request' };
+  }
   return { units: n, status, why: '' };
 }
 
@@ -292,6 +297,10 @@ export async function readCitedDocuments(r: DocRow, apiKey: string): Promise<Doc
 
   let parsed: any = null;
   try { parsed = JSON.parse(answer.match(/\{[\s\S]*\}/)?.[0] ?? 'null'); } catch { parsed = null; }
+  // Grounding redirect links expire: store the real page.
+  if (typeof parsed?.url === 'string' && /vertexaisearch\.cloud\.google\.com/.test(parsed.url)) {
+    parsed.url = (await resolveUrl(parsed.url)) ?? parsed.url;
+  }
   const v = judge(parsed, urls, urls_read, sources);
   const basis = [typeof parsed?.basis === 'string' ? parsed.basis : '', v.why ? `[${v.why}]` : ''].filter(Boolean).join(' ');
   return {

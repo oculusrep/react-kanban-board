@@ -84,11 +84,24 @@ Deno.test('quoteHasNumber / judge', () => {
   assertEquals(judge({ units: 150, status: 'stated', quote: '150 homes', url: 'https://www.zillow.com/b/x' }, given, [], []).units, null);
   assertEquals(judge({ units: 150, status: 'stated', quote: '150 homes', url: 'https://made-up.example/x' }, given, [], []).units, null);
   assertEquals(judge({ units: 35, status: 'approved', quote: '35 lots', url: 'https://www.henrycounty-ga.com/f.pdf' }, [], [], [{ title: 'henrycounty-ga.com', uri: 'x' }]).units, 35);
+  const lib = judge({ units: 353, status: 'approved', quote: 'The proposed development includes a total of 353 residential units', url: 'https://henryga.news/x' }, [], ['https://henryga.news/x'], []);
+  assertEquals([lib.units, lib.status], [353, 'proposed']);
 });
 
 const T = (o: Partial<TriageRow>): TriageRow => ({
   id: 'x', approval_state: 'pending', total_housing_units: null, units_needs_review: false, lead_reason: null,
   discovery_source: 'pz_agenda', source: 'Henry County BOC minutes', permit_url: null, auto_dedupe_skip: false, fill_restored: null, ...o,
+});
+
+Deno.test('isRestorableReason', async () => {
+  const { isRestorableReason } = await import('./research-fill.ts');
+  assertEquals(isRestorableReason('Lead with no unit count, outside radius (lead cleanup 2026-11-26)'), false);
+  assertEquals(isRestorableReason('Auto-triage: lead with no unit count, outside the radius (Outside the 5-mile radius: x)'), false);
+  assertEquals(isRestorableReason('Lead with no unit count: Gemini backfill found no source stating a count; only listing-site sources (lead cleanup 2026-11-26)'), false);
+  assertEquals(isRestorableReason('Auto-triage: recently built lead with no unit count from the parcel layer, documents or web search'), true);
+  assertEquals(isRestorableReason('no units'), false);
+  assertEquals(isRestorableReason('no unit count'), true);
+  assertEquals(isRestorableReason(null), true);
 });
 
 Deno.test('triageReason', () => {
