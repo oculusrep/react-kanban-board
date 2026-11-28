@@ -181,3 +181,25 @@ Leads from P&Z agendas, permit portals, news or activity PDFs that are inside th
 - **Fixed: redirect links.** The source URL was a grounding redirect, which expires. It is now resolved before saving.
   Liberty's note still holds the redirect, because that host is blocked from the build session.
 - The locate step later placed Liberty 10.9 mi from the site, so it sits in "Needs a decision" despite the count.
+
+## 5. Big PDFs through the Gemini Files API (2026-11-28)
+
+`url_context` can't parse large agenda packets: Locust Grove's 17.5 MB one came back empty. The document reader now
+downloads PDFs itself and attaches them through the Files API:
+
+- **Pass 1:** cited and one-hop URLs that serve a PDF (by content type or a `%PDF` header) are uploaded and attached.
+  At most 3, each up to 50 MB (Gemini's PDF limit), with 75 s of downloads per record. The rest go to `url_context` as before.
+- **Pass 2, only when pass 1 found no count:** PDFs among the URLs Gemini tried, or found by search, are downloaded and
+  read as files in a second call with no tools.
+- Files are deleted after the call (they expire in 48 h anyway). The note lists the PDFs read and their sizes.
+- Cost: about 258 tokens per page, so a 300-page packet is about 2.3¢.
+
+The REST shape came from the `@google/genai` 1.30.0 source, because ai.google.dev wasn't reachable from the session:
+- Start: `POST /upload/v1beta/files`, resumable.
+- Upload: the bytes go to `x-goog-upload-url` with `upload, finalize`.
+- Poll: `GET /v1beta/{name}` until `ACTIVE`.
+- Attach: `file_data {mime_type, file_uri}`.
+
+The download was tested here on a 28 MB council packet. The upload and read can only be tested from the deployed function.
+
+Peeksville's notes now carry the four Locust Grove document links the 2026-11-26 search found, so pass 1 has the packet.
