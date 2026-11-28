@@ -15,7 +15,7 @@ const school = (name: string, enrollment: number | null, d: number, higherEd = f
   return r;
 };
 const employer = (name: string, headcount: number | null, d: number, street: string | null = null) =>
-  buildEmployerRow({ name, employer_type: 'hospital', street, city: null, state: null, zip: null, headcount, distance_miles: d, source: 'x', source_year: 2025 });
+  buildEmployerRow({ name, employer_type: 'hospital', street, city: null, state: null, zip: null, headcount, headcount_source: 'x', distance_miles: d, source: 'x', source_year: 2025 });
 const generator = (name: string, category: string, size: number | null, unit: string | null, d: number, street: string | null = null) =>
   buildGeneratorRow({ name, category, size_value: size, size_unit: unit, street, city: null, state: null, zip: null,
     latitude: 33.6, longitude: -83.8, distance_miles: d, drive_time_band: null, source: 'x' });

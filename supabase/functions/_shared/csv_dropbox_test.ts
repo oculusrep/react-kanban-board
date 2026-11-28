@@ -95,7 +95,7 @@ Deno.test('employer: headcount only as a stated integer; blank distance means un
   assertEquals(r.employer_type, 'hospital') // its own column, for map pins — not buried in notes
 })
 Deno.test('employers.csv header matches the spec exactly', () => {
-  assertEquals(EMPLOYERS_COLUMNS.join(','), 'pin,flag,name,employer_type,street,city,state,zip,full_address,headcount,distance_mi,band,source,source_year,notes')
+  assertEquals(EMPLOYERS_COLUMNS.join(','), 'pin,flag,name,employer_type,street,city,state,zip,full_address,headcount,headcount_source,distance_mi,band,source,source_year,notes')
 })
 Deno.test('numberPins: 1..N by distance whatever the row order, unknown distance last', () => {
   const rows = [

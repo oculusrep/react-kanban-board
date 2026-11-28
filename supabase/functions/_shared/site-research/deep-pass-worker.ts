@@ -28,6 +28,7 @@ import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentEr
 import { isPermanentApiError, MODEL } from './model.ts';
 import { dataQualityFor } from './snapshot.ts';
 import { buildPipelineCsv, fetchPipelineMatrix, householdsByBand } from './pipeline.ts';
+import { enrichHeadcounts, HEADCOUNT_PROMPT_KEY } from './employer-headcount.ts';
 
 export interface DeepPassDb {
   advancePhase(a: {
@@ -60,6 +61,8 @@ export interface DeepPassDeps extends Omit<IterationDeps, 'clientTools' | 'webSe
   merchantGenerators?: (site: { latitude: number; longitude: number }) => Promise<MerchantGenerator[]>;
   /** One KML per municipality within 10 mi, each carrying that municipality's whole project set. */
   municipalityKmls?: (site: { latitude: number; longitude: number }) => Promise<MunicipalityKml[]>;
+  /** The employer_headcount prompt body, resolved from prompt_template. Omitted = no enrichment. */
+  headcountPrompt?: () => Promise<string | null>;
   /** Upload the CSVs to the site submit's Dropbox folder; returns where they landed. */
   exportFiles: (siteSubmitId: string, files: Array<{ name: string; bytes: Uint8Array }>) => Promise<Array<{ name: string; path: string; size: number }>>;
 }
@@ -235,6 +238,23 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         const schoolRecords = (state.schools ?? []) as SchoolRecord[];
         const ipedsCount = schoolRecords.filter((s) => s.higher_ed).length;
         const schoolsCsv = buildSchoolsCsv(schoolRecords, fills);
+        // Site-level headcount is the one employer figure that is routinely unpublished: the deep
+        // pass leaves it blank whenever no source states it, correctly, and this fills what it can.
+        // A number is taken only with a source Google Search retrieved; otherwise the row stays
+        // blank and its notes say it was asked, so "nobody publishes this" reads differently from
+        // "nobody looked". Never overwrites a headcount the deep pass already sourced.
+        try {
+          const promptBody = await deps.headcountPrompt?.();
+          if (promptBody) {
+            const { asked, filled } = await enrichHeadcounts(
+              employers, promptBody, Deno.env.get('GEMINI_API_KEY') ?? null,
+            );
+            log(`${tag} employer headcount: asked ${asked}, filled ${filled}`);
+          }
+        } catch (e) {
+          // Enrichment is additive. A failure here leaves every headcount exactly as recorded.
+          log(`${tag} employer headcount enrichment unavailable: ${e instanceof Error ? e.message : String(e)}`);
+        }
         const employersCsv = buildEmployersCsv(employers);
         const competitorsCsv = buildCompetitorsCsv(atlas, competitors);
         // One isochrone for the whole export: the same cached pull pipeline.csv counted against.
