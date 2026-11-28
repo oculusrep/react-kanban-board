@@ -164,3 +164,20 @@ Leads from P&Z agendas, permit portals, news or activity PDFs that are inside th
 - The Coweta CivicClerk API (Events → Meetings → `attachmentsList[].pdfVersionFullPath`) has no adapter. Its attachment links are expiring SAS URLs.
 - JS-rendered builder sites (DRB, Zonda).
 - Newton has no parcel subdivision names (all blank). Houston and Cobb have barely any.
+
+## 4. First live test (2026-11-28, Fill missing units on the Pad Sites / Publix sweep + one other)
+
+- **Document reader works.** Liberty Communities Hwy 81 W: 353 units (202 SF + 151 TH) quoted from the Henry BOC
+  May 28 2025 minutes, p.11. It was found by search, since the record cited no URLs.
+- **Large packet not read.** Peeksville Rd: url_context reached the Locust Grove page but couldn't parse the
+  17.5 MB packet PDF. Packets this size need our own fetch plus the Gemini File API (not built).
+- **Fixed: Fill restored out-of-radius rejections.** "Include rejected" brought back Arrowhead, Newberry and Branch
+  Springs and bought them counts (149, 349, 1,632). Arrowhead and Newberry were re-rejected. `isRestorableReason`
+  now skips out-of-radius and listing-only rejections. Branch Springs (different sweep, its original reason was lost
+  when it got a count) is pending at 1,632, an acres × density estimate. Review it.
+- **Fixed: "approved" on a request.** The model labelled the Liberty quote "approved" because the case was approved,
+  but the quote is the application ("The proposed development includes…"). A quote that describes the request is now
+  stored as proposed (`estimated`). Liberty was corrected by hand.
+- **Fixed: redirect links.** The source URL was a grounding redirect, which expires. It is now resolved before saving.
+  Liberty's note still holds the redirect, because that host is blocked from the build session.
+- The locate step later placed Liberty 10.9 mi from the site, so it sits in "Needs a decision" despite the count.
