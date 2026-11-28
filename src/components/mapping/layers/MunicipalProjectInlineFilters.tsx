@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
+import { PIN_NEEDS_POLYGON_COLOR, PIN_HAS_POLYGON_COLOR } from './MunicipalProjectLayer';
 import { useMunicipalProjectPolygonStyle, DEFAULT_POLYGON_STYLE } from '../../../hooks/useMunicipalProjectPolygonStyle';
 import { useMunicipalProjectRecentColors, pushRecentColor } from '../../../hooks/useMunicipalProjectRecentColors';
 import MunicipalProjectExportModal from '../MunicipalProjectExportModal';
@@ -32,6 +33,8 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
     setMunicipalProjectsShowPolygons,
     municipalProjectsLabelMode,
     setMunicipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
+    setMunicipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     setMunicipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
@@ -419,6 +422,31 @@ const MunicipalProjectInlineFilters: React.FC<Props> = ({ onSelectSearchResult }
           />
           <span className="text-gray-800">Show polygons</span>
         </label>
+      </div>
+
+      {/* Pin fill color: polygon status (default) or stage */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-gray-800">Color pins by:</span>
+        <select
+          value={municipalProjectsPinColorMode}
+          onChange={(e) => setMunicipalProjectsPinColorMode(e.target.value as 'polygon' | 'stage')}
+          className="border border-gray-300 rounded px-1.5 py-0.5 text-gray-800"
+        >
+          <option value="polygon">Polygon status</option>
+          <option value="stage">Stage</option>
+        </select>
+        {municipalProjectsPinColorMode === 'polygon' && (
+          <span className="flex items-center gap-2 text-gray-700">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: PIN_NEEDS_POLYGON_COLOR }} />
+              Needs polygon
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: PIN_HAS_POLYGON_COLOR }} />
+              Has polygon
+            </span>
+          </span>
+        )}
       </div>
 
       {/* On-map pin label: none / total units number / composed units label */}

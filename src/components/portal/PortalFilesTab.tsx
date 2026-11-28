@@ -9,6 +9,7 @@ interface PortalFilesTabProps {
   siteSubmitId?: string | null;
   canUpload: boolean; // True for brokers/admins
   isInternalUser: boolean; // True for brokers/admins who can see/modify visibility
+  portalDealUpload?: boolean; // Portal client opted in (contact.portal_can_upload_deal_files) to upload into the deal / site submit folder
 }
 
 // Three Dropbox roots per site: the property's folder, the site submit's own folder
@@ -36,12 +37,23 @@ export default function PortalFilesTab({
   siteSubmitId,
   canUpload,
   isInternalUser,
+  portalDealUpload = false,
 }: PortalFilesTabProps) {
   // Property files hook
   const propertyFiles = useDropboxFiles('property', propertyId || '');
 
   // Deal files hook
   const dealFiles = useDropboxFiles('deal', dealId || '');
+
+  // Brokers can upload into any section. A portal client with portalDealUpload can
+  // upload into an existing deal folder, or into the site submit's own folder (the
+  // proxy creates that one server-side on first upload, so sites without a deal work).
+  // No new-folder, move, delete or visibility controls — those stay on canUpload /
+  // isInternalUser.
+  const canUploadTo = (section: FileSection) =>
+    canUpload ||
+    (portalDealUpload &&
+      ((section === 'deal' && !!dealFiles.folderPath) || (section === 'site_submit' && !!siteSubmitId)));
 
   // Site submit's own folder. Most site submits don't have one yet; the first upload
   // into this section creates it.
@@ -389,16 +401,29 @@ export default function PortalFilesTab({
     const currentPath = sectionCurrentPath[section];
     try {
       setSectionUploadError(section, null);
-      await hook.uploadFiles(fileList as any, currentPath);
+      const uploaded = await hook.uploadFiles(fileList as any, currentPath, siteSubmitId);
+      // Deal files are hidden by default. dropbox-proxy shares a portal client's upload
+      // server-side (portal users can't call set_portal_file_visibility); mirror that
+      // locally so the file shows without refetching the overrides.
+      if (!canUpload && (section === 'deal' || section === 'site_submit')) {
+        (section === 'deal' ? setDealVisibility : setSiteSubmitVisibility)(prev => {
+          const next = new Map(prev);
+          uploaded.forEach(f => next.set(f.path, true));
+          return next;
+        });
+      }
       await hook.refreshFiles();
-      if (section === 'site_submit') return;
-      if (siteSubmitId && hook.folderPath) {
-        for (const file of fileList) {
-          const filePath = `${hook.folderPath}${currentPath}/${file.name}`;
-          await addFileShareNotification(siteSubmitId, file.name, filePath);
+      // A broker's site submit upload stays hidden, so no notice. A client's upload is
+      // shared on upload, so it is announced like any other shared file.
+      if (section === 'site_submit' && canUpload) return;
+      // Use the paths the upload returned: the proxy may have renamed a file to avoid a
+      // collision, and on a first upload hook.folderPath is still the pre-creation value.
+      if (siteSubmitId) {
+        for (const f of uploaded) {
+          await addFileShareNotification(siteSubmitId, f.name, f.path);
         }
       } else {
-        console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
+        console.warn('⚠️ Cannot add notification - missing siteSubmitId');
       }
     } catch (err) {
       console.error('Upload error:', err);
@@ -411,7 +436,7 @@ export default function PortalFilesTab({
     e.stopPropagation();
     setSectionDragOver(section, false);
 
-    if (!canUpload) return;
+    if (!canUploadTo(section)) return;
 
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
@@ -642,7 +667,13 @@ export default function PortalFilesTab({
     // a site submit.
     if (entityType === 'site_submit') {
       if (!entityId) return null;
-      if (!isInternalUser && !filesHook.loading && !currentPath && folders.length + regularFiles.length === 0) {
+      if (
+        !isInternalUser &&
+        !canUploadTo('site_submit') &&
+        !filesHook.loading &&
+        !currentPath &&
+        folders.length + regularFiles.length === 0
+      ) {
         return null;
       }
     }
@@ -667,9 +698,9 @@ export default function PortalFilesTab({
         className={`border rounded-lg mb-4 overflow-hidden transition-all ${
           dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
         }`}
-        onDragOver={(e) => canUpload && handleDragOver(e, entityType)}
-        onDragLeave={(e) => canUpload && handleDragLeave(e, entityType)}
-        onDrop={(e) => canUpload && handleDrop(e, entityType)}
+        onDragOver={(e) => canUploadTo(entityType) && handleDragOver(e, entityType)}
+        onDragLeave={(e) => canUploadTo(entityType) && handleDragLeave(e, entityType)}
+        onDrop={(e) => canUploadTo(entityType) && handleDrop(e, entityType)}
       >
         {/* Section Header */}
         <div
@@ -698,7 +729,7 @@ export default function PortalFilesTab({
             )}
           </div>
           <div className="flex items-center space-x-2">
-            {canUpload && (
+            {canUploadTo(entityType) && (
               <>
                 <input
                   type="file"
@@ -719,6 +750,7 @@ export default function PortalFilesTab({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
                 </button>
+                {canUpload && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -734,6 +766,7 @@ export default function PortalFilesTab({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m-3-3h6m5 8H6a2 2 0 01-2-2V6a2 2 0 012-2h5l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2z" />
                   </svg>
                 </button>
+                )}
               </>
             )}
             <button
@@ -829,9 +862,9 @@ export default function PortalFilesTab({
                       : 'No site submit folder yet.'
                     : filesHook.error}
                 </p>
-                {canUpload && (
+                {canUploadTo(entityType) && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Drag & drop files here to create folder
+                    {canUpload ? 'Drag & drop files here to create folder' : 'Drag & drop files here to share them'}
                   </p>
                 )}
               </div>
@@ -1156,7 +1189,7 @@ export default function PortalFilesTab({
             )}
 
             {/* Drag overlay */}
-            {dragOver && canUpload && (
+            {dragOver && canUploadTo(entityType) && (
               <div className="absolute inset-0 bg-blue-500 bg-opacity-10 flex items-center justify-center pointer-events-none">
                 <div className="bg-white rounded-lg shadow-lg p-4 flex items-center space-x-2">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

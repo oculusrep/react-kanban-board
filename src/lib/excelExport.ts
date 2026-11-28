@@ -3,7 +3,7 @@ import ExcelJS from 'exceljs';
 // Oculus logo as base64 - will be loaded dynamically
 let cachedLogoBase64: string | null = null;
 
-async function getLogoBase64(): Promise<string | null> {
+export async function getLogoBase64(): Promise<string | null> {
   if (cachedLogoBase64) return cachedLogoBase64;
 
   try {
@@ -46,6 +46,7 @@ export interface ExcelExportOptions {
   title?: string;
   subtitle?: string;
   logoBase64?: string;  // Base64 encoded logo image
+  landscape?: boolean;  // Print landscape, fit all columns to one page wide
 }
 
 // ============================================
@@ -114,6 +115,7 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
     title,
     subtitle,
     logoBase64,
+    landscape,
   } = options;
 
   const workbook = new ExcelJS.Workbook();
@@ -227,7 +229,8 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
       else if (value instanceof Date) {
         cell.value = value;
         cell.numFmt = 'mm/dd/yyyy';
-      } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+      } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(value)) {
+        // Whole-value dates only — free text that merely starts with a date stays text
         // ISO date string - convert to date
         cell.value = new Date(value);
         cell.numFmt = 'mm/dd/yyyy';
@@ -274,6 +277,17 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
 
   // Freeze rows above data (header row and above)
   worksheet.views = [{ state: 'frozen', ySplit: headerRowNum }];
+
+  if (landscape) {
+    worksheet.pageSetup = {
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: `${headerRowNum}:${headerRowNum}`,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+    };
+  }
 
   // Generate and download the file
   const buffer = await workbook.xlsx.writeBuffer();

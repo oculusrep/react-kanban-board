@@ -9,6 +9,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { renderCommentAlertEmail, CommentAlertItem } from '../_shared/portalEmailTemplates.ts';
+import { authorizeCaller } from '../_shared/caller-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,11 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Caller authorization — see _shared/caller-auth.ts. pg_cron only (portal-comment-alert-drain). verify_jwt is back on in
+  // config.toml, and no person should ever be able to drain this queue.
+  const caller = await authorizeCaller(req, { allowService: true, allowInternalUser: false }, corsHeaders);
+  if (caller instanceof Response) return caller;
 
   try {
     const supabase = createClient(

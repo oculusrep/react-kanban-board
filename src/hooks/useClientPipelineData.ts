@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useId } from 'react';
+import { REM_UNASSIGNED } from '../components/shared/RealEstateManagerField';
 import { supabase } from '../lib/supabaseClient';
 
 export interface PipelineSiteSubmit {
@@ -12,6 +13,7 @@ export interface PipelineSiteSubmit {
   year_1_rent: number | null;
   competitor_data: string | null;
   property_unit_id: string | null;
+  real_estate_manager_id: string | null;
   property: {
     id: string;
     property_name: string | null;
@@ -51,6 +53,8 @@ interface UseClientPipelineDataOptions {
   visibleStageNames?: string[];
   refreshTrigger?: number;
   enabled?: boolean;
+  /** Portal REM filter: a contact id, '__unassigned' (no REM), or null = all. */
+  realEstateManagerId?: string | null;
 }
 
 interface UseClientPipelineDataResult {
@@ -66,6 +70,7 @@ export function useClientPipelineData({
   visibleStageNames,
   refreshTrigger,
   enabled = true,
+  realEstateManagerId = null,
 }: UseClientPipelineDataOptions): UseClientPipelineDataResult {
   const [siteSubmits, setSiteSubmits] = useState<PipelineSiteSubmit[]>([]);
   const [stages, setStages] = useState<PipelineSubmitStage[]>([]);
@@ -139,7 +144,7 @@ export function useClientPipelineData({
           return;
         }
 
-        const { data, error: fetchError } = await supabase
+        let submitQuery = supabase
           .from('site_submit')
           .select(
             `
@@ -153,6 +158,7 @@ export function useClientPipelineData({
             year_1_rent,
             competitor_data,
             property_unit_id,
+            real_estate_manager_id,
             property:property_id (
               id,
               property_name,
@@ -184,6 +190,9 @@ export function useClientPipelineData({
           )
           .in('client_id', clientIds)
           .in('submit_stage_id', visibleStageIds);
+        if (realEstateManagerId === REM_UNASSIGNED) submitQuery = submitQuery.is('real_estate_manager_id', null);
+        else if (realEstateManagerId) submitQuery = submitQuery.eq('real_estate_manager_id', realEstateManagerId);
+        const { data, error: fetchError } = await submitQuery;
 
         if (fetchError) throw fetchError;
 
@@ -207,7 +216,7 @@ export function useClientPipelineData({
     return () => {
       cancelled = true;
     };
-  }, [clientIdsKey, stageNamesKey, refreshTrigger, enabled]);
+  }, [clientIdsKey, stageNamesKey, refreshTrigger, enabled, realEstateManagerId]);
 
   useEffect(() => {
     if (!enabled || clientIds.length === 0) return;

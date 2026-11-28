@@ -7,6 +7,7 @@ import { format, parseISO } from 'date-fns';
 import RecordMetadata from './RecordMetadata';
 import PortalAccessSection from './portal/PortalAccessSection';
 import { getDropboxPropertySyncService } from '../services/dropboxPropertySync';
+import { PasteSignatureBox, applySignature, SIGNATURE_FIELD_MAP, type SignatureValues } from './contact/PasteSignatureBox';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -129,6 +130,44 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
     }
   };
 
+  // "Paste signature": same rules as ContactFormModal — a new contact takes
+  // every found field; an existing one only fills fields that are empty now.
+  // Existing contacts save the filled fields in one update (this screen
+  // auto-saves; there is no Save button to review behind).
+  const fillFromSignature = (values: SignatureValues) => {
+    const { next, filled, skipped } = applySignature(formData, values, isNewContact ? 'create' : 'edit');
+    const changes: Partial<Contact> = {};
+    for (const { field } of SIGNATURE_FIELD_MAP) {
+      if (next[field] !== formData[field]) {
+        (changes as Record<string, unknown>)[field] = next[field];
+        updateField(field, next[field]);
+      }
+    }
+    if (!isNewContact && contact?.id && Object.keys(changes).length > 0) {
+      void saveSignatureFields(contact.id, changes);
+    }
+    return { filled, skipped };
+  };
+
+  const saveSignatureFields = async (contactId: string, changes: Partial<Contact>) => {
+    setAutoSaveStatus('saving');
+    try {
+      const { data, error } = await supabase
+        .from('contact')
+        .update({ ...changes, updated_at: new Date().toISOString() })
+        .eq('id', contactId)
+        .select()
+        .single();
+      if (error) throw error;
+      setAutoSaveStatus('saved');
+      onSave(data);
+      setTimeout(() => setAutoSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error('Saving signature fields failed:', err);
+      setAutoSaveStatus('error');
+    }
+  };
+
   // Handle manual save for new contacts
   const handleCreateContact = async () => {
     // Validate using hook's validation
@@ -215,6 +254,8 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           </div>
         </div>
       )}
+
+      <PasteSignatureBox onFill={fillFromSignature} />
 
       {/* Basic Information Section */}
       <div className="bg-white shadow rounded-lg p-6 space-y-4">

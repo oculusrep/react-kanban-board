@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { computeHouseNet } from "../lib/houseNet";
 import { useAuth } from "../contexts/AuthContext";
 import CashflowDashboard from "../components/reports/CashflowDashboard";
+import CleanupTab from '../components/cashflow/CleanupTab';
+import CashTab from "../components/cashflow/CashTab";
 import {
   ArrowLeft,
   RefreshCw,
@@ -100,18 +103,25 @@ interface MonthlyForecast {
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 
-type TabKey = 'forecast' | 'splits';
+type TabKey = 'cash' | 'cleanup' | 'profit' | 'splits';
 
 export default function CashFlowForecastPage() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const activeTab: TabKey = searchParams.get('tab') === 'splits' ? 'splits' : 'forecast';
+  const tabParam = searchParams.get('tab');
+  // Cash is the default tab. 'forecast' is the old name for the Profit tab (kept for old links).
+  const activeTab: TabKey =
+    tabParam === 'splits' ? 'splits'
+    : tabParam === 'cleanup' ? 'cleanup'
+    : tabParam === 'profit' || tabParam === 'forecast' ? 'profit'
+    : 'cash';
   const setActiveTab = (key: TabKey) => {
     const next = new URLSearchParams(searchParams);
-    if (key === 'forecast') next.delete('tab');
+    if (key === 'cash') next.delete('tab');
     else next.set('tab', key);
+    if (key !== 'cleanup') next.delete('group');
     setSearchParams(next, { replace: true });
   };
 
@@ -128,7 +138,7 @@ export default function CashFlowForecastPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    document.title = "Cash Flow Forecast | OVIS Admin";
+    document.title = "Cash & Profit Forecast | OVIS Admin";
     fetchData();
   }, [selectedYear]);
 
@@ -156,6 +166,7 @@ export default function CashFlowForecastPage() {
           )
         `)
         .eq('is_active', true)
+        .is('written_off_at', null) // written-off payments won't be collected
         .or('payment_received.eq.false,payment_received.is.null');
 
       if (paymentError) throw paymentError;
@@ -200,11 +211,8 @@ export default function CashFlowForecastPage() {
             category = 'ucContingent';
           }
 
-          const paymentAmount = p.payment_amount || 0;
-          const referralFee = p.referral_fee_usd || 0;
-          const gci = paymentAmount - referralFee;
-          const agci = p.agci || 0;  // AGCI = GCI - House$ (calculated by DB trigger)
-          const houseNet = gci - agci;  // House$ = GCI - AGCI
+          // Shared helper, profit mode (all referral fees) — see src/lib/houseNet.ts
+          const { paymentAmount, referralFee, gci, agci, houseNet } = computeHouseNet(p, 'profit');
           const brokerSplits = agci;  // What brokers split = AGCI
           const mikeSplit = mikeSplitByPayment.get(p.id) || 0;
 
@@ -436,6 +444,35 @@ export default function CashFlowForecastPage() {
     });
   };
 
+  // Cash tab: dark "mission control" shell, scoped to this tab only (see components/cashflow/cf.css).
+  if (activeTab === 'cash' || activeTab === 'cleanup') {
+    const tabs: { key: TabKey; label: string }[] = [
+      { key: 'cash', label: 'Cash (45 days)' },
+      { key: 'cleanup', label: 'Cleanup' },
+      { key: 'profit', label: 'Profit Forecast' },
+      { key: 'splits', label: 'Broker Splits' },
+    ];
+    return (
+      <div className="cf cf-page">
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/admin/budget')} className="cf-btn" aria-label="Back to budget">
+            <ArrowLeft className="h-3 w-3" />
+          </button>
+          <h1>Cash &amp; Profit Forecast</h1>
+          <span className="cf-sub">Operating cash, money owed out, 45-day calendar, 12-month take-home</span>
+        </div>
+        <nav className="cf-tabs" aria-label="Tabs">
+          {tabs.map((t) => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)} className={`cf-tab ${activeTab === t.key ? 'on' : ''}`}>
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        {activeTab === 'cleanup' ? <CleanupTab /> : <CashTab />}
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -462,11 +499,11 @@ export default function CashFlowForecastPage() {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Cash Flow Forecast</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Cash &amp; Profit Forecast</h1>
               <p className="text-sm text-gray-500">Projected income vs budgeted expenses</p>
             </div>
           </div>
-          {activeTab === 'forecast' && (
+          {activeTab === 'profit' && (
             <div className="flex items-center gap-4">
               <select
                 value={selectedYear}
@@ -489,7 +526,7 @@ export default function CashFlowForecastPage() {
         </div>
 
         {/* Cash Position Answer Card — the primary question this page answers */}
-        {monthlyForecasts[answerMonthIdx] && (() => {
+        {activeTab === 'profit' && monthlyForecasts[answerMonthIdx] && (() => {
           const m = monthlyForecasts[answerMonthIdx];
           const companyColor = m.netCashFlow >= 0 ? '#002147' : '#A27B5C';
           return (
@@ -525,15 +562,32 @@ export default function CashFlowForecastPage() {
         <div className="mb-6 border-b border-gray-200">
           <nav className="-mb-px flex gap-6" aria-label="Tabs">
             <button
-              onClick={() => setActiveTab('forecast')}
+              onClick={() => setActiveTab('cash')}
               className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
-                activeTab === 'forecast'
+                (activeTab as TabKey) === 'cash'
                   ? 'border-blue-600 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
-              style={activeTab === 'forecast' ? { borderColor: '#002147', color: '#002147' } : undefined}
+              style={(activeTab as TabKey) === 'cash' ? { borderColor: '#002147', color: '#002147' } : undefined}
             >
-              Cash Flow Forecast
+              Cash (45 days)
+            </button>
+            <button
+              onClick={() => setActiveTab('cleanup')}
+              className="whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            >
+              Cleanup
+            </button>
+            <button
+              onClick={() => setActiveTab('profit')}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium ${
+                activeTab === 'profit'
+                  ? 'border-blue-600 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              style={activeTab === 'profit' ? { borderColor: '#002147', color: '#002147' } : undefined}
+            >
+              Profit Forecast
             </button>
             <button
               onClick={() => setActiveTab('splits')}
@@ -549,7 +603,9 @@ export default function CashFlowForecastPage() {
           </nav>
         </div>
 
-        {activeTab === 'splits' ? (
+        {(activeTab as TabKey) === 'cash' ? (
+          <CashTab />
+        ) : activeTab === 'splits' ? (
           <CashflowDashboard embedded />
         ) : (
         <>

@@ -62,6 +62,12 @@ export function buildPointIcon(input: PointIconConfig | null | undefined): googl
   };
 }
 
+// Same SVG as the map marker, as a data URI — for previews outside the map
+// (no google.maps dependency).
+export function pointIconDataUri(input: PointIconConfig | null | undefined): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderMarkerSvg(resolveIconConfig(input)))}`;
+}
+
 function renderMarkerSvg(cfg: Required<Omit<PointIconConfig, 'labelField'>>): string {
   const s = cfg.size;
   const half = s / 2;

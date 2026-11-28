@@ -93,7 +93,7 @@ export default function PortalDetailSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const { userRole } = useAuth();
-  const { isInternalUser, viewMode, siteSubmitRefreshTrigger, accessibleClients } = usePortal();
+  const { isInternalUser, viewMode, siteSubmitRefreshTrigger, accessibleClients, canUploadDealFiles } = usePortal();
 
   // Show broker features only when internal user AND in broker view mode
   const showBrokerFeatures = isInternalUser && viewMode === 'broker';
@@ -519,6 +519,7 @@ export default function PortalDetailSidebar({
                   siteSubmitId={siteSubmit.id}
                   canUpload={showBrokerFeatures}
                   isInternalUser={showBrokerFeatures}
+                  portalDealUpload={!isInternalUser && canUploadDealFiles}
                 />
               )}
             </>

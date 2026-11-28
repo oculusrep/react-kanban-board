@@ -1,9 +1,12 @@
 import React from 'react';
 import type { StarbucksLicensedStore } from '../layers/StarbucksLicensedStoreLayer';
+import AddToTourButton from '../../tours/AddToTourButton';
 
 interface StarbucksLicensedStorePopupProps {
   store: StarbucksLicensedStore;
   onClose: () => void;
+  /** False on the client portal: clients don't build tours. */
+  allowAddToTour?: boolean;
 }
 
 const STARBUCKS_GREEN = '#00704A';
@@ -27,7 +30,7 @@ function fmtDate(v: string | null | undefined): string {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = ({ store, onClose }) => {
+const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = ({ store, onClose, allowAddToTour = true }) => {
   // Prefer verified coords if present (shows the actual pin position)
   const lat = store.verified_latitude ?? store.latitude;
   const lng = store.verified_longitude ?? store.longitude;
@@ -42,12 +45,13 @@ const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = 
         width: 280,
         fontFamily: 'system-ui, sans-serif',
         fontSize: 13,
-        overflow: 'hidden',
+        // Not overflow:hidden — the Add to tour dropdown must be able to extend past the card.
       }}
     >
       {/* Header */}
       <div
         style={{
+          borderRadius: '8px 8px 0 0',
           background: STARBUCKS_GREEN,
           color: 'white',
           padding: '10px 12px',
@@ -101,6 +105,26 @@ const StarbucksLicensedStorePopup: React.FC<StarbucksLicensedStorePopupProps> = 
         {isVerified && (
           <div style={{ fontSize: 10, color: STARBUCKS_GREEN, marginTop: 6, textAlign: 'right', fontWeight: 600 }}>
             ✓ Verified location
+          </div>
+        )}
+
+        {allowAddToTour && lat != null && lng != null && (
+          <div style={{ marginTop: 8 }}>
+            <AddToTourButton
+              siteSubmitId={null}
+              clientId={null}
+              store={{
+                kind: 'licensed_store',
+                store_number: store.store_number,
+                store_name: store.store_name ?? null,
+                address: [store.address, store.suite].filter(Boolean).join(', ') || null,
+                city: store.city ?? null,
+                market: store.market_name ?? null,
+                lat,
+                lng,
+                store_type: store.store_type ?? null,
+              }}
+            />
           </div>
         )}
       </div>

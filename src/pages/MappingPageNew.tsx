@@ -3,14 +3,21 @@ import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
+import { useBrokerLiteAccess } from '../hooks/useBrokerLiteAccess';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import MunicipalProjectLayer, { type MunicipalProjectMapRow } from '../components/mapping/layers/MunicipalProjectLayer';
+import { EstablishedSubdivisionLayer } from '../components/mapping/layers/EstablishedSubdivisionLayer';
+import InterstateExitLayer from '../components/mapping/layers/InterstateExitLayer';
+import TruckStopLayer from '../components/mapping/layers/TruckStopLayer';
+import CustomLayerShapeList from '../components/mapping/CustomLayerShapeList';
 import MunicipalProjectInlineFilters from '../components/mapping/layers/MunicipalProjectInlineFilters';
 import MunicipalProjectDrawer from '../components/mapping/layers/MunicipalProjectDrawer';
 import MunicipalProjectSlideout from '../components/mapping/slideouts/MunicipalProjectSlideout';
 import MunicipalProjectUnplacedPanel from '../components/mapping/layers/MunicipalProjectUnplacedPanel';
+import CompUnplacedPanel from '../components/mapping/layers/CompUnplacedPanel';
+import MunicipalProjectOrientationOverlay from '../components/mapping/layers/MunicipalProjectOrientationOverlay';
 import MunicipalProjectContextMenu from '../components/mapping/MunicipalProjectContextMenu';
 import NewMunicipalProjectModal from '../components/mapping/NewMunicipalProjectModal';
 import StarbucksLayer from '../components/mapping/layers/StarbucksLayer';
@@ -19,6 +26,8 @@ import MerchantLayer, { type MerchantLocationWithBrand } from '../components/map
 import MerchantsDrawer from '../components/mapping/MerchantsDrawer';
 import MerchantContextMenu from '../components/mapping/MerchantContextMenu';
 import StarbucksLicensedStoreLayer, { type StarbucksLicensedStore } from '../components/mapping/layers/StarbucksLicensedStoreLayer';
+import SevenElevenLayer from '../components/mapping/layers/SevenElevenLayer';
+import { useSevenElevenAccess } from '../hooks/useSevenElevenAccess';
 import StarbucksLicensedStoreContextMenu from '../components/mapping/StarbucksLicensedStoreContextMenu';
 import StarbucksTargetAreaLayer from '../components/mapping/layers/StarbucksTargetAreaLayer';
 import type { TargetAreaRow } from '../components/mapping/layers/StarbucksTargetAreaLayer';
@@ -41,12 +50,12 @@ import CachedDemographicsLayer from '../components/mapping/layers/CachedDemograp
 import CompDatabaseLayer from '../components/mapping/layers/CompDatabaseLayer';
 import CompDetailSlideout from '../components/mapping/slideouts/CompDetailSlideout';
 import CompContextMenu from '../components/mapping/CompContextMenu';
-import { CompProperty } from '../lib/compTypes';
+import { CompProperty, compCoords } from '../lib/compTypes';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
 import ClientSelector from '../components/mapping/ClientSelector';
-import { ClientSearchResult } from '../hooks/useClientSearch';
+import { ClientSearchResult, getClientIds } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import DrawingToolbar from '../components/mapping/DrawingToolbarV2';
@@ -70,7 +79,7 @@ import PropertySearchResultsTable from '../components/advanced-search/PropertySe
 import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
 import ContactFormModal from '../components/ContactFormModal';
 import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { supportsRightClick, isTouchDevice } from '../utils/deviceDetection';
 import { supabase } from '../lib/supabaseClient';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -103,6 +112,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 }) => {
   const { userRole, userTableId } = useAuth();
   const { hasPermission } = usePermissions();
+  const hasSevenElevenAccess = useSevenElevenAccess();
+  const { canAccess, canSeeAnySiteSubmits } = useBrokerLiteAccess();
+  const canManageLayers = userRole === 'admin' || hasPermission('can_manage_map_layers');
   const starbucksTargetAreaStyles = useStarbucksTargetAreaStyles();
   const starbucksOpsAreaFilter = useStarbucksOpsAreaFilter();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
@@ -122,12 +134,13 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // point, which the slideout then confirms and writes.
   const [pinDropMunicipalProjectId, setPinDropMunicipalProjectId] = useState<string | null>(null);
   const [pinDropPoint, setPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
-  // Move the map to a municipal project so the user can see what just happened.
-  // Re-reads the row rather than trusting whatever the caller has in hand, because
-  // after a fetch or a draw the geometry is newer than any cached copy. An
-  // UNPLACED record has nothing to move to — panning somewhere plausible would be
-  // inventing a location, which is the whole thing this work removed — so it is a
-  // deliberate no-op until the record is actually placed.
+  // Move the map to a PLACED municipal project so the user can see what just
+  // happened. Re-reads the row rather than trusting whatever the caller has in
+  // hand, because after a fetch or a draw the geometry is newer than any cached
+  // copy. An UNPLACED record has nothing to move to — panning somewhere plausible
+  // would be inventing a location, which is the whole thing this work removed —
+  // so it is a deliberate no-op until the record is actually placed, and
+  // MunicipalProjectOrientationOverlay handles the "where do I look" problem.
   const focusMunicipalProject = useCallback(async (id: string) => {
     if (!mapInstance) return;
     const { data, error } = await supabase
@@ -161,29 +174,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       return;
     }
 
-    // Still unplaced: frame its municipality as orientation, so the reviewer can
-    // see roughly where to look while placing it. VIEW STATE ONLY — nothing is
-    // written, the record stays unplaced, and no coordinate is ever derived from
-    // this. The RPC returns nothing for a record that is already placed, so a
-    // placed project is never framed by its whole municipality.
-    // Cast: database-schema.ts predates this RPC, so the generated types infer {}.
-    const { data: rpcData } = await supabase
-      .rpc('municipal_project_orientation_bounds', { p_id: id })
-      .maybeSingle();
-    const b = rpcData as {
-      min_lat: number; min_lng: number; max_lat: number; max_lng: number;
-    } | null;
-    if (b
-        && typeof b.min_lat === 'number' && typeof b.min_lng === 'number'
-        && typeof b.max_lat === 'number' && typeof b.max_lng === 'number') {
-      mapInstance.fitBounds(
-        new google.maps.LatLngBounds(
-          { lat: b.min_lat, lng: b.min_lng },
-          { lat: b.max_lat, lng: b.max_lng },
-        ),
-        60,
-      );
-    }
+    // Still unplaced: it has nothing of its own to move to. Orienting on the
+    // municipality is MunicipalProjectOrientationOverlay's job now. Framing an
+    // area the reviewer cannot see is a viewport change they have to take on
+    // faith, so the outline and the fit belong in one place — and there the
+    // orientation fires on every path that opens an unplaced record, including
+    // a pin click and a deep link, which never reached this helper at all.
   }, [mapInstance]);
 
   // Bumped after a placement so the unplaced worklist re-reads itself.
@@ -229,8 +225,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
   // Comp Database slideout — independent of the shared pin-details state.
   const [selectedComp, setSelectedComp] = useState<CompProperty | null>(null);
+  // Comp Database: also draw comps the NNN listing intake created that await review.
+  const [showPendingComps, setShowPendingComps] = useState(false);
   const [compCreateAt, setCompCreateAt] = useState<{ lat: number; lng: number } | null>(null);
   const [verifyingCompId, setVerifyingCompId] = useState<string | null>(null);
+  // Placing an UNMAPPED comp by hand (Unmapped queue → Drop a pin), the comp twin of
+  // pinDropMunicipalProjectId: map clicks set the point, the temp marker drags it.
+  const [pinDropCompId, setPinDropCompId] = useState<string | null>(null);
+  const [compPinDropPoint, setCompPinDropPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [placingCompPin, setPlacingCompPin] = useState(false);
+  const [compUnplacedRefreshToken, setCompUnplacedRefreshToken] = useState(0);
   const [compContextMenu, setCompContextMenu] = useState<{
     isVisible: boolean; x: number; y: number; comp: CompProperty | null;
   }>({ isVisible: false, x: 0, y: 0, comp: null });
@@ -320,7 +324,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     return new Set(allStages);
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
-  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  // Start expanded when a client is already selected at mount (restored from a
+  // previous visit), matching what handleClientSelection does on a fresh pick.
+  const [isLegendExpanded, setIsLegendExpanded] = useState(() => !!selectedClient);
 
   // Clustering configuration
   const [clusterConfig, setClusterConfig] = useState({
@@ -512,6 +518,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // Same stale-listener problem as drawingMunicipalProjectId: the map click
   // handlers stack one closure per render, so the live value must come from a ref.
   const pinDropMunicipalProjectIdRef = useRef<string | null>(null);
+  const pinDropCompIdRef = useRef<string | null>(null);
   const createModeRef = useRef<typeof createMode>(null);
   useEffect(() => {
     drawingMunicipalProjectIdRef.current = drawingMunicipalProjectId;
@@ -519,6 +526,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   useEffect(() => {
     pinDropMunicipalProjectIdRef.current = pinDropMunicipalProjectId;
   }, [pinDropMunicipalProjectId]);
+  useEffect(() => {
+    pinDropCompIdRef.current = pinDropCompId;
+  }, [pinDropCompId]);
   useEffect(() => {
     createModeRef.current = createMode;
   }, [createMode]);
@@ -902,6 +912,75 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
     }
   }, [location.search, mapInstance, layerState.properties?.isVisible, toggleLayer, setVerifyingPropertyId]);
 
+  // ── Unmapped comp pin drop ─────────────────────────────────────────────
+  // Start: the comp slideout's "Drop a pin" (or ?place-comp=). A pending NNN listing is
+  // only drawn with "Show pending" on, so turn that on or the placed pin would vanish.
+  const startCompPinDrop = (compId: string) => {
+    setVerifyingCompId(null);
+    setCompPinDropPoint(null);
+    setPinDropCompId(compId);
+    setShowPendingComps(true);
+    if (!layerState.comp_database?.isVisible) toggleLayer('comp_database');
+  };
+  const cancelCompPinDrop = () => { setPinDropCompId(null); setCompPinDropPoint(null); };
+
+  // Save: set_comp_property_pin writes verified_lat/lng + geocode_status = 'manual'.
+  const saveCompPin = async () => {
+    if (!pinDropCompId || !compPinDropPoint) return;
+    setPlacingCompPin(true);
+    try {
+      const { error } = await supabase.rpc('set_comp_property_pin', {
+        p_id: pinDropCompId, p_lat: compPinDropPoint.lat, p_lng: compPinDropPoint.lng,
+      });
+      if (error) throw error;
+      const { data } = await supabase.from('comp_property').select('*').eq('id', pinDropCompId).maybeSingle();
+      if (data) setSelectedComp((prev) => (prev && prev.id === pinDropCompId ? (data as CompProperty) : prev));
+      cancelCompPinDrop();
+      refreshLayer('comp_database');
+      setCompUnplacedRefreshToken((n) => n + 1);
+      showToast('Pin placed', { type: 'success' });
+    } catch (e) {
+      showToast(`Couldn't place the pin: ${e instanceof Error ? e.message : String(e)}`, { type: 'error' });
+    } finally {
+      setPlacingCompPin(false);
+    }
+  };
+
+  // The pending pin: a draggable marker at the clicked point; dragging moves the point.
+  useEffect(() => {
+    if (!mapInstance || !pinDropCompId || !compPinDropPoint) return;
+    const marker = new google.maps.Marker({
+      map: mapInstance,
+      position: compPinDropPoint,
+      draggable: true,
+      zIndex: 5000,
+      title: 'Drag to adjust, then Place pin here',
+    });
+    marker.addListener('dragend', (e: google.maps.MapMouseEvent) => {
+      if (e.latLng) setCompPinDropPoint({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+    });
+    return () => marker.setMap(null);
+  }, [mapInstance, pinDropCompId, compPinDropPoint]);
+
+  // /mapping?place-comp=<id> (the review page's "Place on map"): open that comp and start
+  // its pin drop. The param is consumed so a refresh doesn't restart it.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const compId = params.get('place-comp');
+    if (!compId || !mapInstance) return;
+    params.delete('place-comp');
+    window.history.replaceState({}, '', `${location.pathname}${params.toString() ? '?' + params.toString() : ''}`);
+    supabase.from('comp_property').select('*').eq('id', compId).maybeSingle().then(({ data, error }) => {
+      if (error || !data) { showToast('That comp no longer exists', { type: 'error' }); return; }
+      if (!layerState.comp_database?.isVisible) toggleLayer('comp_database');
+      if ((data as CompProperty).review_status === 'pending_review') setShowPendingComps(true);
+      setCompCreateAt(null);
+      setSelectedComp(data as CompProperty);
+      if (!compCoords(data as CompProperty)) startCompPinDrop(compId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search, mapInstance]);
+
   // Handle property centering from URL parameter (without verify mode)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1059,6 +1138,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
       // must not also fall through to createMode and open the "new" modal.
       if (pinDropMunicipalProjectIdRef.current && event.latLng) {
         setPinDropPoint({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+        return;
+      }
+      // Same for an unmapped comp: the click sets (or moves) its pending pin.
+      if (pinDropCompIdRef.current && event.latLng) {
+        setCompPinDropPoint({ lat: event.latLng.lat(), lng: event.latLng.lng() });
         return;
       }
 
@@ -2506,7 +2590,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
   // This prevents showing random site submits when clearing the client filter
   const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
     mode: 'client-filtered',
-    clientId: selectedClient?.id || null,
+    clientIds: selectedClient ? getClientIds(selectedClient) : null,
     visibleStages: visibleStages,
     clusterConfig: clusterConfig,
     markerStyle: markerStyle
@@ -2664,7 +2748,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
               <div className="flex items-center space-x-4">
                 {/* Restaurant Sales Layer Toggle */}
-                <div className="flex items-center space-x-2">
+{canAccess('can_view_layer_restaurants') && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Restaurant Sales:</label>
                   <button
                     onClick={() => toggleLayer('restaurants')}
@@ -2679,9 +2764,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     />
                   </button>
                 </div>
+)}
 
-                {/* Properties Layer Toggle */}
-                <div className="flex items-center space-x-2">
+{/* Properties Layer Toggle */}
+{canAccess('can_view_layer_properties') && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">All Properties:</label>
                   <button
                     onClick={() => toggleLayer('properties')}
@@ -2696,9 +2783,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     />
                   </button>
                 </div>
+)}
 
-                {/* Traffic Counts Layer Toggle */}
-                <div className="flex items-center space-x-2">
+{/* Traffic Counts Layer Toggle */}
+{canAccess('can_view_traffic_data') && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Traffic Counts:</label>
                   <button
                     onClick={() => toggleLayer('traffic_counts')}
@@ -2713,10 +2802,11 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     />
                   </button>
                 </div>
+)}
 
-
-                {/* Client Selector */}
-                <div className="flex items-center space-x-2">
+{/* Client Selector */}
+{canSeeAnySiteSubmits && (
+<div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">Client:</label>
                   <div className="w-64">
                     <ClientSelector
@@ -2724,6 +2814,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       onClientSelect={handleClientSelection}
                       placeholder="Search active clients..."
                       className="text-sm"
+                      showFamilyOptions
                     />
                   </div>
                   {selectedClient && onSwitchToPipeline && (
@@ -2748,8 +2839,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                     </button>
                   )}
                 </div>
+)}
 
-                {/* Clear Session Pins Button (when available) */}
+{/* Clear Session Pins Button (when available) */}
                 {recentlyCreatedPropertyIds.size > 0 && (
                   <button
                     onClick={clearSessionPins}
@@ -3009,7 +3101,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               </button>
 
               {/* Merchants Button — opens floating drawer with category/brand filter */}
-              <button
+{canAccess('can_view_layer_merchants') && (
+<button
                 onClick={() => setShowMerchantsDrawer((v) => !v)}
                 className={`h-10 px-3 rounded shadow flex items-center space-x-1 text-sm font-medium ${
                   showMerchantsDrawer || layerState.merchants?.isVisible
@@ -3029,8 +3122,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                   </span>
                 )}
               </button>
+)}
 
-              {/* Layers Button */}
+{/* Layers Button */}
               <div className="relative">
                 <button
                   onClick={() => setShowCustomLayersMenu(!showCustomLayersMenu)}
@@ -3154,8 +3248,88 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                       />
                     )}
 
-                    {/* Municipal Projects system layer */}
+                    {/* 7-Eleven / Speedway stores — permission OR 7-Eleven client broker */}
+                    {hasSevenElevenAccess && (
+                      <div className="p-2 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => toggleLayer('seven_eleven_stores')}
+                              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                                layerState.seven_eleven_stores?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                  layerState.seven_eleven_stores?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                            <span className="text-base">⛽</span>
+                            <span className="text-sm font-medium text-gray-900">7-Eleven / Speedway</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Truck Stops — everyone can view */}
                     <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('truck_stops')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.truck_stops?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.truck_stops?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span className="text-base">🚛</span>
+                          <span className="text-sm font-medium text-gray-900">Truck Stops</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Interstate exit badges — public road data, visible to everyone */}
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('interstate_exits')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.interstate_exits?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.interstate_exits?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span
+                            className="inline-flex items-center justify-center rounded text-white font-bold"
+                            style={{ background: '#006B3F', border: '1px solid #fff', boxShadow: '0 0 0 1px #006B3F', fontSize: 8, padding: '1px 3px', lineHeight: 1 }}
+                          >
+                            EXIT
+                          </span>
+                          <span className="text-sm font-medium text-gray-900">Interstate Exits</span>
+                        </div>
+                        <span className="text-xs text-gray-400">I-85 · I-20</span>
+                      </div>
+                      {layerState.interstate_exits?.isVisible && (
+                        <div className="pl-11 pt-1 text-[11px] text-gray-500">
+                          Zoom in to see exit numbers · © OpenStreetMap contributors
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Municipal Projects system layer */}
+{canAccess('can_view_layer_municipal_projects') && (
+<div className="p-2 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <button
@@ -3221,9 +3395,67 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </div>
                       )}
                     </div>
+)}
 
-                    {/* Comp Database system layer — comparable leases / sales / OMs */}
-                    <div className="p-2 border-b border-gray-200">
+{/* Recently Built system layer — Recently Completed municipal projects, apart from the pipeline */}
+{canAccess('can_view_layer_municipal_projects') && (
+<div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('municipal_recent')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.municipal_recent?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.municipal_recent?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>🏘️</span>
+                          <span className="text-sm font-medium text-gray-900">Recently Built (since 2020)</span>
+                          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#0F766E' }} />
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.municipal_recent?.count ?? 0}
+                        </span>
+                      </div>
+                    </div>
+)}
+
+{/* Established (pre-2020) system layer — parcel subdivisions built out before 2020; not in pipeline totals */}
+{canAccess('can_view_layer_municipal_projects') && (
+<div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleLayer('established_subdivisions')}
+                            className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                              layerState.established_subdivisions?.isVisible ? 'bg-[#002147]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                layerState.established_subdivisions?.isVisible ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span>🏡</span>
+                          <span className="text-sm font-medium text-gray-900">Established (pre-2020)</span>
+                          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#6B7280' }} />
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {layerState.established_subdivisions?.count ?? 0}
+                        </span>
+                      </div>
+                    </div>
+)}
+
+{/* Comp Database system layer — comparable leases / sales / OMs */}
+{canAccess('can_view_layer_comp_database') && (
+<div className="p-2 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <button
@@ -3245,16 +3477,44 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                           {layerState.comp_database?.count ?? 0}
                         </span>
                       </div>
+
+                      {/* Unmapped worklist — OUTSIDE the isVisible guard, like the
+                          municipal one: these comps have no pin, so the count must
+                          show with the layer off or the queue grows unnoticed. */}
+                      <div className="pl-11 pr-1">
+                        <CompUnplacedPanel
+                          onSelect={(comp) => {
+                            setCompCreateAt(null);
+                            setSelectedComp(comp);
+                            setShowCustomLayersMenu(false);
+                          }}
+                          selectedId={selectedComp?.id ?? null}
+                          refreshToken={compUnplacedRefreshToken}
+                        />
+                      </div>
                       {layerState.comp_database?.isVisible && (
-                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500">
-                          Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.
+                        <div className="mt-2 pl-11 pr-1 text-xs text-gray-500 space-y-1.5">
+                          <div>Right-click the map → <span className="font-medium">Add Comp Here</span> to create a comp.</div>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showPendingComps}
+                              onChange={(e) => setShowPendingComps(e.target.checked)}
+                            />
+                            Show pending NNN listings
+                            <span className="text-gray-400">(hollow pins ·{' '}
+                              <Link to="/listings/review" className="underline">review</Link>)
+                            </span>
+                          </label>
                         </div>
                       )}
                     </div>
+)}
 
-                    {/* Cached Demographics system layer — pins for prior ESRI enrichment
+{/* Cached Demographics system layer — pins for prior ESRI enrichment
                         lookups. Click a pin to re-open the slideout without a new ESRI call. */}
-                    <div className="p-2 border-b border-gray-200">
+{canAccess('can_view_layer_cached_demographics') && (
+<div className="p-2 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <button
@@ -3343,26 +3603,34 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                         </div>
                       )}
                     </div>
+)}
 
-                    <div className="p-2 border-b border-gray-100">
+<div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
-                        <a
-                          href="/admin/layers"
-                          className="text-xs text-blue-600 hover:underline"
-                          onClick={() => setShowCustomLayersMenu(false)}
-                        >
-                          Manage
-                        </a>
+                        {canManageLayers && (
+                          <a
+                            href="/admin/layers"
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={() => setShowCustomLayersMenu(false)}
+                          >
+                            Manage
+                          </a>
+                        )}
                       </div>
                     </div>
                     <div className="max-h-64 overflow-y-auto">
                       {customLayers.length === 0 ? (
                         <div className="p-4 text-center text-sm text-gray-500">
-                          No custom layers yet.{' '}
-                          <a href="/admin/layers" className="text-blue-600 hover:underline">
-                            Create one
-                          </a>
+                          No custom layers yet.
+                          {canManageLayers && (
+                            <>
+                              {' '}
+                              <a href="/admin/layers" className="text-blue-600 hover:underline">
+                                Create one
+                              </a>
+                            </>
+                          )}
                         </div>
                       ) : (
                         customLayers.map(layer => (
@@ -3472,6 +3740,16 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                                 🗑️
                               </button>
                             </div>
+                            {/* Shapes list with inline rename */}
+                            <CustomLayerShapeList
+                              shapes={layer.shapes ?? []}
+                              onRenamed={() => {
+                                refreshCustomLayers();
+                                setCustomLayerRefreshTrigger(prev => prev + 1);
+                                showToast('Shape renamed', { type: 'success' });
+                              }}
+                              onError={(msg) => showToast(`Failed to rename shape: ${msg}`, { type: 'error' })}
+                            />
                             {/* Merge button - show when layer has multiple shapes */}
                             {layer.shapes && layer.shapes.length > 1 && (
                               <button
@@ -3570,7 +3848,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* When searching, show ONLY search results; otherwise show normal layer */}
             <PropertyLayer
               map={mapInstance}
-              isVisible={propertySearchResults.length > 0 ? true : (layerState.properties?.isVisible || false)}
+              isVisible={propertySearchResults.length > 0 ? true : (canAccess('can_view_layer_properties') && (layerState.properties?.isVisible || false))}
               loadingConfig={propertyLoadingConfig}
               customProperties={propertySearchResults.length > 0 ? propertySearchResults : undefined}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
@@ -3583,7 +3861,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
                 setLayerLoading('properties', false);
               }}
               onPinClick={(property) => handlePinClick(property, 'property')}
-              onCreateSiteSubmit={(property) => {
+              onCreateSiteSubmit={!canSeeAnySiteSubmits ? undefined : (property) => {
                 // Set property coordinates and ID, then open site submit modal
                 const coords = property.verified_latitude && property.verified_longitude
                   ? { lat: property.verified_latitude, lng: property.verified_longitude }
@@ -3597,7 +3875,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Site Submit Layer - Connected to Layer Manager */}
             <SiteSubmitLayer
               map={mapInstance}
-              isVisible={layerState.site_submits?.isVisible || false}
+              isVisible={canSeeAnySiteSubmits && (layerState.site_submits?.isVisible || false)}
               loadingConfig={siteSubmitLoadingConfig}
               onSiteSubmitsLoaded={(count) => {
                 setLayerCount('site_submits', count);
@@ -3619,7 +3897,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Restaurant Layer - Connected to Layer Manager */}
             <RestaurantLayer
               map={mapInstance}
-              isVisible={layerState.restaurants?.isVisible || false}
+              isVisible={canAccess('can_view_layer_restaurants') && (layerState.restaurants?.isVisible || false)}
               selectedStoreNo={selectedPinType === 'restaurant' && selectedPinData ? selectedPinData.store_no : null}
               verifyingStoreNo={verifyingRestaurantStoreNo}
               onLocationVerified={canVerifyRestaurantLocations ? handleRestaurantLocationVerified : undefined}
@@ -3637,10 +3915,34 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               }}
             />
 
+            {/* Search area for an UNPLACED project: the approximate area around
+                its road/intersection geocode, falling back to the municipality
+                outline only when nothing finer resolves.
+                Mounted beside the layer, not inside it, because an unplaced
+                record is by design absent from that layer — the whole reason it
+                had no anchor on the map. Also owns the orientation fitBounds, so
+                the viewport change and the thing it frames arrive together. */}
+            <MunicipalProjectOrientationOverlay
+              map={mapInstance}
+              project={selectedMunicipalProject}
+            />
+
+            {/* Truck Stops — everyone can view; verify/remove internal-only */}
+            <TruckStopLayer
+              map={mapInstance}
+              isVisible={layerState.truck_stops?.isVisible || false}
+            />
+
+            {/* Interstate exit badges — public, no permission gate */}
+            <InterstateExitLayer
+              map={mapInstance}
+              isVisible={layerState.interstate_exits?.isVisible || false}
+            />
+
             {/* Municipal Projects Layer — imported development tracking from cities */}
             <MunicipalProjectLayer
               map={mapInstance}
-              isVisible={layerState.municipal_projects?.isVisible || false}
+              isVisible={canAccess('can_view_layer_municipal_projects') && (layerState.municipal_projects?.isVisible || false)}
               selectedProjectId={selectedMunicipalProject?.id ?? null}
               verifyingProjectId={verifyingMunicipalProjectId}
               hidePolygonForProjectId={drawingMunicipalProjectId}
@@ -3670,6 +3972,25 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               }}
             />
 
+            {/* Recently Built layer — same component, Recently Completed only, teal pins */}
+            <MunicipalProjectLayer
+              variant="recent"
+              map={mapInstance}
+              isVisible={canAccess('can_view_layer_municipal_projects') && (layerState.municipal_recent?.isVisible || false)}
+              selectedProjectId={selectedMunicipalProject?.id ?? null}
+              hidePolygonForProjectId={drawingMunicipalProjectId}
+              onPinClick={(project) => setSelectedMunicipalProject(project)}
+              onPinRightClick={(project, x, y) =>
+                setMunicipalProjectContextMenu({ isVisible: true, x, y, project })
+              }
+            />
+
+            {/* Established (pre-2020) — parcel subdivisions built before 2020, grey outlines */}
+            <EstablishedSubdivisionLayer
+              map={mapInstance}
+              isVisible={canAccess('can_view_layer_municipal_projects') && (layerState.established_subdivisions?.isVisible || false)}
+            />
+
             {/* Starbucks Layer — confidential, permission-gated */}
             <StarbucksLayer
               map={mapInstance}
@@ -3697,7 +4018,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Merchant Brands Layer — branded retail/restaurant/service locations via merchant_location cache */}
             <MerchantLayer
               map={mapInstance}
-              isVisible={layerState.merchants?.isVisible || false}
+              isVisible={canAccess('can_view_layer_merchants') && (layerState.merchants?.isVisible || false)}
               selectedBrandIds={merchantSelectedBrandIds}
               showAllInViewport={merchantShowAllInViewport}
               verifyingLocationId={verifyingMerchantLocationId}
@@ -3717,7 +4038,8 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Comp Database — comparable leases / sales / OMs tied to locations */}
             <CompDatabaseLayer
               map={mapInstance}
-              isVisible={layerState.comp_database?.isVisible || false}
+              isVisible={canAccess('can_view_layer_comp_database') && (layerState.comp_database?.isVisible || false)}
+              showPending={showPendingComps}
               selectedCompId={selectedComp?.id ?? null}
               verifyingCompId={verifyingCompId}
               onPinClick={(comp) => { setCompCreateAt(null); setSelectedComp(comp); }}
@@ -3752,6 +4074,12 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               onRightClick={handleLicensedStoreRightClick}
             />
 
+            {/* 7-Eleven / Speedway stores — RLS-gated (user_has_seven_eleven_access) */}
+            <SevenElevenLayer
+              map={mapInstance}
+              isVisible={hasSevenElevenAccess && (layerState.seven_eleven_stores?.isVisible || false)}
+            />
+
             {/* Starbucks Target Areas (polygons) — same permission gate as Starbucks Stores */}
             <StarbucksTargetAreaLayer
               map={mapInstance}
@@ -3765,7 +4093,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
             {/* Traffic Count Layer - StreetLight SATC Integration */}
             <TrafficCountLayer
               map={mapInstance}
-              isVisible={layerState.traffic_counts?.isVisible || false}
+              isVisible={canAccess('can_view_traffic_data') && (layerState.traffic_counts?.isVisible || false)}
             />
 
             {closedBusinessResults.length > 0 && (
@@ -3942,7 +4270,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
             <CachedDemographicsLayer
               map={mapInstance}
-              isVisible={layerState.cached_demographics?.isVisible || false}
+              isVisible={canAccess('can_view_layer_cached_demographics') && (layerState.cached_demographics?.isVisible || false)}
               // While the demographics slideout is open at a point, hide every
               // other cached dot so only the open point's dot remains — the map
               // stays focused on what the user is studying. Cleared on close.
@@ -3967,7 +4295,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
               property={propertyContextMenu.property}
               onVerifyLocation={handleVerifyLocation}
               onDeleteProperty={handleDeleteProperty}
-              onCreateSiteSubmit={handleCreateSiteSubmitFromContextMenu}
+              onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitFromContextMenu : undefined}
               onClose={handlePropertyContextMenuClose}
             />
 
@@ -4018,7 +4346,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
 
             {/* Site Submit Legend - Show when site submit layer is visible */}
             {/* Hidden when Street View is active or in presentation mode */}
-            {layerState.site_submits?.isVisible && !isStreetViewActive && !presentationMode && (
+            {canSeeAnySiteSubmits && layerState.site_submits?.isVisible && !isStreetViewActive && !presentationMode && (
               <SiteSubmitLegend
                 visibleStages={visibleStages}
                 onStageToggle={handleStageToggle}
@@ -4229,7 +4557,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           onDeleteProperty={handleDeleteProperty}
           onDeleteSiteSubmit={handleDeleteSiteSubmit}
           onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-          onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+          onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
           submitsRefreshTrigger={submitsRefreshTrigger}
           initialTab={pinDetailsInitialTab}
         />
@@ -4327,7 +4655,9 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           createAt={compCreateAt}
           topOffset={showPropertySearch ? 45 : 0}
           onClose={() => { setSelectedComp(null); setCompCreateAt(null); }}
-          onSaved={() => refreshLayer('comp_database')}
+          onSaved={() => { refreshLayer('comp_database'); setCompUnplacedRefreshToken((n) => n + 1); }}
+          onStartDroppingPin={startCompPinDrop}
+          isDroppingPin={!!selectedComp && pinDropCompId === selectedComp.id}
         />
       )}
 
@@ -4404,6 +4734,38 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
           if (compContextMenu.comp) setVerifyingCompId(compContextMenu.comp.id);
         }}
       />
+
+      {/* Unmapped comp pin-drop banner */}
+      {pinDropCompId && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2.5 rounded-lg shadow-xl"
+          style={{ backgroundColor: '#FFFFFF', border: '2px solid #002147' }}
+        >
+          <span className="text-sm font-semibold" style={{ color: '#002147' }}>Placing comp</span>
+          <span className="text-xs" style={{ color: '#4A6B94' }}>
+            {compPinDropPoint
+              ? `${compPinDropPoint.lat.toFixed(5)}, ${compPinDropPoint.lng.toFixed(5)} — drag or click again to adjust`
+              : 'Click the map where it is'}
+          </span>
+          <button
+            type="button"
+            onClick={saveCompPin}
+            disabled={!compPinDropPoint || placingCompPin}
+            className="px-2.5 py-1 text-xs rounded text-white font-semibold disabled:opacity-40"
+            style={{ backgroundColor: '#002147' }}
+          >
+            {placingCompPin ? 'Placing…' : 'Place pin here'}
+          </button>
+          <button
+            type="button"
+            onClick={cancelCompPinDrop}
+            className="px-2 py-1 text-xs rounded border"
+            style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Comp verify-location banner */}
       {verifyingCompId && (
@@ -4492,7 +4854,7 @@ const MappingPageContent: React.FC<MappingPageProps> = ({
         onEditContact={handleEditContact}
         onDeleteProperty={handleDeleteProperty}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-        onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+        onCreateSiteSubmit={canSeeAnySiteSubmits ? handleCreateSiteSubmitForProperty : undefined}
         submitsRefreshTrigger={submitsRefreshTrigger}
       />
 

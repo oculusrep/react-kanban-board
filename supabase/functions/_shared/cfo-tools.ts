@@ -203,6 +203,7 @@ export async function getPaymentsForecast(
       )
     `)
     .eq('is_active', true)
+    .is('written_off_at', null) // written-off payments won't be collected
     .or('payment_received.eq.false,payment_received.is.null');
 
   if (error) throw new Error(`Failed to fetch payments: ${error.message}`);
@@ -1222,6 +1223,7 @@ export async function getMikePersonalForecast(
         payment_amount,
         payment_date_estimated,
         payment_received,
+        written_off_at,
         deal_id,
         deal:deal_id (
           id,
@@ -1269,6 +1271,9 @@ export async function getMikePersonalForecast(
 
     // Skip already received payments for future forecast
     if (payment.payment_received === true) continue;
+
+    // Skip written-off payments (won't be collected)
+    if (payment.written_off_at) continue;
 
     const estimatedDate = payment.payment_date_estimated as string;
     if (!estimatedDate) continue;
@@ -1931,6 +1936,7 @@ export async function getPipelineForecastWithEstimates(
       payment_received
     `)
     .eq('is_active', true)
+    .is('written_off_at', null) // written-off payments won't be collected
     .or('payment_received.eq.false,payment_received.is.null');
 
   if (paymentError) throw new Error(`Failed to fetch payments: ${paymentError.message}`);
@@ -2557,6 +2563,7 @@ export async function getPaymentsPushedToNextYear(
       )
     `)
     .eq('is_active', true)
+    .is('written_off_at', null) // written-off payments won't be collected
     .or('payment_received.eq.false,payment_received.is.null')
     .gte('payment_date_estimated', `${nextYear}-01-01`);
 

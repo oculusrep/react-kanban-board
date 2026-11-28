@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import * as turf from '@turf/turf';
-import type { Feature, Polygon } from 'geojson';
 import { supabase } from '../../../lib/supabaseClient';
 
 // Screenshot-ready modal: total housing units by stage for municipal projects
@@ -47,16 +45,13 @@ const CATCHMENTS: Array<{ label: string; key: CatchmentKey }> = [
   { label: '10min', key: '10min' },
 ];
 
-interface ProjectRow {
-  id: string;
-  effective_stage_name: string | null;
-  total_housing_units: number | null;
-  geometry_geojson: Polygon | null;
-  centroid_lat: number | null;
-  centroid_lng: number | null;
-}
-
 type UnitsByStageByCatchment = Record<string, Partial<Record<CatchmentKey, number>>>;
+
+/** What public.site_pipeline_matrix returns per band; both membership variants, labelled. */
+type PipelineMatrixBands = Array<{
+  band: CatchmentKey;
+  phases: Record<string, { units_centroid: number; units_intersects: number }>;
+}>;
 
 function stageLabelFor(rawStage: string | null): string | null {
   if (!rawStage) return null;
@@ -65,83 +60,6 @@ function stageLabelFor(rawStage: string | null): string | null {
     if (row.matches.includes(lower)) return row.label;
   }
   return null;
-}
-
-function buildCatchmentFeatures(
-  coordinates: { lat: number; lng: number },
-  isochrones: Record<string, { type: 'Polygon'; coordinates: number[][][] }>,
-): Partial<Record<CatchmentKey, Feature<Polygon>>> {
-  const center: [number, number] = [coordinates.lng, coordinates.lat];
-  const out: Partial<Record<CatchmentKey, Feature<Polygon>>> = {};
-
-  out['1mi'] = turf.circle(center, 1, { units: 'miles', steps: 64 }) as Feature<Polygon>;
-  out['3mi'] = turf.circle(center, 3, { units: 'miles', steps: 64 }) as Feature<Polygon>;
-
-  const iso5 = isochrones['5min_drive'];
-  if (iso5) out['5min'] = turf.polygon(iso5.coordinates) as Feature<Polygon>;
-  const iso10 = isochrones['10min_drive'];
-  if (iso10) out['10min'] = turf.polygon(iso10.coordinates) as Feature<Polygon>;
-
-  return out;
-}
-
-function computeUnitsByStage(
-  projects: ProjectRow[],
-  catchments: Partial<Record<CatchmentKey, Feature<Polygon>>>,
-): UnitsByStageByCatchment {
-  const out: UnitsByStageByCatchment = {};
-  for (const row of STAGE_ROWS) out[row.label] = {};
-
-  for (const p of projects) {
-    const stageLabel = stageLabelFor(p.effective_stage_name);
-    if (!stageLabel) continue;
-    if (!p.geometry_geojson || !p.total_housing_units) continue;
-
-    let projectFeature: Feature<Polygon>;
-    try {
-      projectFeature = turf.polygon(p.geometry_geojson.coordinates) as Feature<Polygon>;
-    } catch {
-      continue;
-    }
-
-    for (const key of Object.keys(catchments) as CatchmentKey[]) {
-      const catch_ = catchments[key];
-      if (!catch_) continue;
-      if (turf.booleanIntersects(projectFeature, catch_)) {
-        out[stageLabel][key] = (out[stageLabel][key] ?? 0) + p.total_housing_units;
-      }
-    }
-  }
-
-  return out;
-}
-
-// Pin variant: place each project by its map-pin point (centroid) rather than its
-// drawn boundary. Same cumulative-catchment behavior as computeUnitsByStage.
-function computeUnitsByStagePins(
-  projects: ProjectRow[],
-  catchments: Partial<Record<CatchmentKey, Feature<Polygon>>>,
-): UnitsByStageByCatchment {
-  const out: UnitsByStageByCatchment = {};
-  for (const row of STAGE_ROWS) out[row.label] = {};
-
-  for (const p of projects) {
-    const stageLabel = stageLabelFor(p.effective_stage_name);
-    if (!stageLabel) continue;
-    if (p.centroid_lat == null || p.centroid_lng == null || !p.total_housing_units) continue;
-
-    const pinPoint = turf.point([p.centroid_lng, p.centroid_lat]);
-
-    for (const key of Object.keys(catchments) as CatchmentKey[]) {
-      const catch_ = catchments[key];
-      if (!catch_) continue;
-      if (turf.booleanPointInPolygon(pinPoint, catch_)) {
-        out[stageLabel][key] = (out[stageLabel][key] ?? 0) + p.total_housing_units;
-      }
-    }
-  }
-
-  return out;
 }
 
 const formatNumber = (n: number | null | undefined) =>
@@ -154,54 +72,57 @@ const MunicipalUnitsScreenshotModal: React.FC<Props> = ({
   isochrones,
   mode = 'polygon',
 }) => {
-  const [projects, setProjects] = useState<ProjectRow[] | null>(null);
+  const [matrix, setMatrix] = useState<PipelineMatrixBands | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // ONE count, shared with site research: public.site_pipeline_matrix (20260927085437). The counting
+  // used to live here in turf and separately in the edge function, and the two drifted — site
+  // research reported 860 units for Macon where this modal showed 2,478.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !coordinates) return;
     let cancelled = false;
     setIsLoading(true);
     setLoadError(null);
     (async () => {
-      let query = supabase
-        .from('municipal_project_v')
-        .select(
-          'id, effective_stage_name, total_housing_units, geometry_geojson, centroid_lat, centroid_lng',
-        )
-        .gt('total_housing_units', 0);
-      // Polygon mode needs a drawn boundary; pin mode needs a placed point.
-      query =
-        mode === 'pin'
-          ? query.not('centroid_lat', 'is', null).not('centroid_lng', 'is', null)
-          : query.not('geometry_geojson', 'is', null);
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc('site_pipeline_matrix', {
+        p_latitude: coordinates.lat,
+        p_longitude: coordinates.lng,
+        p_households: {},
+        p_site_submit_id: null,
+        p_isochrones: Object.keys(isochrones ?? {}).length ? isochrones : null,
+      });
       if (cancelled) return;
       if (error) {
-        console.error('[MunicipalUnitsScreenshot] fetch failed:', error);
+        console.error('[MunicipalUnitsScreenshot] site_pipeline_matrix failed:', error);
         setLoadError(error.message);
         setIsLoading(false);
         return;
       }
-      setProjects((data ?? []) as ProjectRow[]);
+      setMatrix((data as { bands: PipelineMatrixBands }).bands ?? null);
       setIsLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [isOpen, mode]);
+  }, [isOpen, coordinates, isochrones]);
 
-  const catchmentFeatures = useMemo(() => {
-    if (!coordinates) return {};
-    return buildCatchmentFeatures(coordinates, isochrones);
-  }, [coordinates, isochrones]);
-
+  // 'polygon' reads the boundary-intersects count, 'pin' the centroid count — same numbers the
+  // function hands site research, just the variant this modal is showing.
   const totals = useMemo(() => {
-    if (!projects) return null;
-    return mode === 'pin'
-      ? computeUnitsByStagePins(projects, catchmentFeatures)
-      : computeUnitsByStage(projects, catchmentFeatures);
-  }, [projects, catchmentFeatures, mode]);
+    if (!matrix) return null;
+    const out: UnitsByStageByCatchment = {};
+    for (const row of STAGE_ROWS) out[row.label] = {};
+    for (const band of matrix) {
+      for (const [phase, cell] of Object.entries(band.phases ?? {})) {
+        const label = stageLabelFor(phase);
+        if (!label) continue;
+        const units = mode === 'pin' ? cell.units_centroid : cell.units_intersects;
+        if (units) out[label][band.band] = (out[label][band.band] ?? 0) + units;
+      }
+    }
+    return out;
+  }, [matrix, mode]);
 
   if (!isOpen) return null;
 

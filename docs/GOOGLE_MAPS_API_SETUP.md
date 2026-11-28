@@ -28,14 +28,16 @@ rotation, reconcile: GCP key value == Vercel env == local `.env`, then redeploy.
 
 ## Tour routing depends on the Directions API
 
-The tour map (`/tours/:id/map`, `TourMapPage`) uses `google.maps.DirectionsService` for:
-- the road-following **route polyline**,
-- per-leg **drive times** (the arrival/finish schedule), and
-- the per-day **Optimize** button (`optimizeWaypoints`).
+The tour map (`/tours/:id/map`, `TourMapPage`, calls via `src/lib/tourRouteService.ts`) uses:
+- `DirectionsService` — the road-following **route polyline**, per-leg **drive times**, and
+  **Optimize** for days with an end address (`optimizeWaypoints`);
+- `DistanceMatrixService` — **Optimize** for one-way days (drive-time matrix) and
+  **traffic-aware** leg times when a day's date + start time is in the future (billed as
+  Distance Matrix *Advanced*).
 
-If **Directions API** is not on the Maps key's allow-list, all three silently degrade:
-the route falls back to straight geodesic lines, the schedule shows **"Drive n/a"**, and
-**Optimize hard-fails** with `DIRECTIONS_ROUTE: REQUEST_DENIED`. Fix: add **Directions API**
+If **Directions API** is not on the Maps key's allow-list, the map shows a per-day warning
+"Google couldn't build the driving route (REQUEST_DENIED)" and no drive times; Optimize
+fails with the same status. Fix: add **Directions API**
 to the `…DKpxHQ` key's API restrictions → Save → wait ~2–5 min for propagation. No redeploy
 needed (the key value is unchanged).
 

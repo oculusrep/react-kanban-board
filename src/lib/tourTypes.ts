@@ -1,6 +1,9 @@
-// Tour feature types (Phase 1)
-// Hand-written until `npm run schema` regenerates database-schema.ts against the
-// applied tour migration (20260725170000_tour_schema.sql). Keep in sync with that migration.
+import type { ApproachPoint, ApproachSource, StopKind } from './tourRouting';
+
+// Tour feature types. Hand-written; keep in sync with the tour migrations
+// (20260725170000_tour_schema, 20260726120000_tour_scheduling,
+// 20260726160000_tour_day_endpoints, 20261028165400_tour_hardening,
+// 20261028180635_tour_approach_waypoints, 20261028195957_tour_stop_actual_departure).
 
 export interface TourStopCategory {
   id: string;
@@ -43,30 +46,65 @@ export interface Tour {
 export interface TourStop {
   id: string;
   tour_id: string;
-  site_submit_id: string;
+  stop_kind: StopKind; // site_submit | atlas_store | licensed_store | custom
+  site_submit_id: string | null; // set only for site_submit stops
   tour_day_id: string | null; // null = unscheduled
   position: number; // order within its day (or the unscheduled bucket)
   category_id: string | null;
   stop_duration_minutes: number | null; // null = use category default
+  display_label: string | null; // null = auto name (see stopDisplayName)
+  approach_waypoints_override: ApproachPoint[] | null; // null = site default; [] = none on this tour
+  actual_departure_at: string | null; // live day: when the tour left this stop (UTC ISO)
   notes: string | null;
+  // Store / custom stops: snapshot of the store (or the custom stop's own details).
+  store_number: string | null;
+  stop_name: string | null;
+  address: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  market: string | null; // site submits: null = automatic (tour_stop_markets), text = override
+  projected_opening: string | null;
+  status_override: string | null; // null = automatic (stage mapping / kind default)
   created_at: string;
   updated_at: string;
 }
 
 // A tour_stop joined to the site submit it points at (for list/map rendering).
 export interface TourStopWithSiteSubmit extends TourStop {
-  site_submit: {
+  site_submit: (StopCoordFields & {
     id: string;
     site_submit_name: string | null;
     submit_stage_id: string | null;
     property_id: string | null;
-  } | null;
+    approach_waypoints: ApproachPoint[] | null; // site default approach
+    submit_stage?: { name: string | null } | null;
+    property: StopProperty | null;
+  }) | null;
   category: TourStopCategory | null;
+}
+
+export interface StopProperty {
+  property_name: string | null;
+  address: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  verified_latitude: number | null;
+  verified_longitude: number | null;
+}
+
+interface StopCoordFields {
+  verified_latitude: number | null;
+  verified_longitude: number | null;
+  sf_property_latitude: number | null;
+  sf_property_longitude: number | null;
 }
 
 // A tour with its ordered stop count (for the list page).
 export interface TourWithStopCount extends Tour {
   stop_count: number;
+  client_name?: string | null; // set when listed across clients
 }
 
 // A stop flattened with its resolved map coordinate + effective duration (for the map).
@@ -74,11 +112,30 @@ export interface TourStopGeo {
   id: string;
   tour_day_id: string | null;
   position: number;
-  site_submit_id: string;
+  stop_kind: StopKind;
+  store_number: string | null;
+  store_type: string | null; // Atlas/licensed store type (icon)
+  site_submit_id: string | null;
   site_submit_name: string | null;
+  display_name: string; // display_label → city · street → property name
+  display_subtext: string | null; // full site submit name
   category_id: string | null;
   category_name: string | null;
   effective_duration_minutes: number;
   lat: number | null;
   lng: number | null;
+  approach: ApproachPoint[]; // effective approach (override → site default → none)
+  approach_source: ApproachSource;
+  approach_override: ApproachPoint[] | null; // raw tour_stop override
+  site_has_approach: boolean; // site_submit default is set
+  actual_departure_at: string | null; // live day departure stamp
+  notes: string | null;
+  address: string | null; // street, city
+  city: string | null;
+  market: string | null; // resolved (override → target area → nearest Atlas store)
+  market_override: string | null; // tour_stop.market as stored
+  status: string; // effective: status_override → stage mapping / kind default (tourStopStatus.ts)
+  status_auto: string; // what a cleared override falls back to
+  status_override: string | null;
+  projected_opening: string | null;
 }

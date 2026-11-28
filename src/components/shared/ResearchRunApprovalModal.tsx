@@ -4,6 +4,11 @@ import { geocodingService } from '../../services/geocodingService';
 import { classifyGeocode, unplacedLabel, type UnplacedReason } from '../../services/placementPrecision';
 import { autoPlaceFromParcels, type AutoPlaceOutcome } from '../../services/parcelFabric';
 import { usePermissions } from '../../hooks/usePermissions';
+import { ResearchSignalPanel, type ResearchSignal } from './ResearchSignalPanel';
+import { ParcelAdapterNotice } from './ParcelAdapterNotice';
+import { RecentUnitSuggestions } from './RecentUnitSuggestions';
+import { ResearchSummaryHeader } from './ResearchSummaryHeader';
+import { SweepAgentReports } from './SweepAgentReports';
 
 interface ResearchRunApprovalModalProps {
   // Exactly one of researchRunId | sweepId. sweepId opens the UNIFIED approval:
@@ -23,8 +28,10 @@ interface ResearchRunApprovalModalProps {
 // One gap chunk (a 6-month window whose Deep run didn't land) to be re-fired.
 interface SweepGap {
   chunk_index: number;
-  window_start: string;
-  window_end: string;
+  // NULL for the evergreen (undated) chunk.
+  window_start: string | null;
+  window_end: string | null;
+  kind?: 'window' | 'evergreen';
 }
 // Authoritative gap classification from get_sweep_gaps (keyed off RUN state, not
 // chunk state — so chunks whose run succeeded after a premature timeout are NOT
@@ -49,6 +56,13 @@ interface RunRow {
   state: string;
   needs_review: string | null;
   alt_avenues: string | null;
+  research_mode: string | null;
+  // Quick-mode Deep-run recommendation (null on Deep runs).
+  signal_strength: ResearchSignal['signal_strength'];
+  signal_rationale: string | null;
+  density_estimate: ResearchSignal['density_estimate'];
+  permit_volume: ResearchSignal['permit_volume'];
+  leads_not_pursued: ResearchSignal['leads_not_pursued'];
 }
 interface ChecklistRow {
   boundary_municipality_id: string;
@@ -105,6 +119,44 @@ interface StagingRow {
   notes: string | null;
   muni_name: string | null;
   muni_kind: string | null;
+  // Per-row unit-count review flag, set by a DB trigger when the count is
+  // missing (NULL), 0, exactly 25 (the threshold — historically always a
+  // placeholder) or described in the notes as a placeholder. Advisory: it never
+  // blocks approval, but the reviewer must see it — a fabricated count reads as
+  // a real one once committed. Carried onto the committed row.
+  units_needs_review: boolean;
+  units_review_reason: string | null;
+  // 'estimated' = filled by the post-run unit estimator (Gemini web search or
+  // acreage × zoning density); the math / sources are in notes.
+  units_confidence: 'approved' | 'reported' | 'estimated' | null;
+  // Non-null forces the row into Leads whatever its count (e.g. out of radius).
+  lead_reason: string | null;
+  // Set by research_auto_dedupe_by_name when copies of this project (same
+  // name + municipality, staged or committed) carry DIFFERENT counts: a
+  // snapshot of every counted copy, shown side by side. Nothing auto-resolved.
+  count_conflict: CountConflictMember[] | null;
+  // Post-run parcel fetch: low-trust source label on a drawn boundary, and the
+  // fetch outcome (resolved / partial / none_resolved / no_adapter /
+  // snapshot_mismatch / no_stated_acres / error).
+  geometry_source_vintage?: string | null;
+  parcel_fetch_status?: string | null;
+  has_boundary?: boolean;
+  // Locate step: a pin found after the run (estimated until confirmed).
+  location_confidence?: string | null;
+  located_address?: string | null;
+  // Recently built pass (discovery_source 'gemini_recent'): year completed/opened.
+  year_completed?: number | null;
+}
+interface CountConflictMember {
+  kind: 'staged' | 'committed';
+  id: string;
+  project_name: string | null;
+  phase_label: string | null;
+  units: number | null;
+  units_confidence: string | null;
+  address: string | null;
+  source: string | null;
+  notes: string | null;
 }
 // A committed municipal_project whose centroid is near a staged candidate —
 // the soft "possible duplicate" signal (see find_nearby_municipal_projects RPC).
@@ -131,6 +183,16 @@ interface CommittedProject {
 // Supabase RPC errors are PostgrestError objects (not Error instances). Rendering
 // them via `String(e)` yields "[object Object]" and hides the real reason —
 // e.g. a duplicate-key constraint violation the reviewer needs to see.
+// A LEAD is a record that doesn't belong in the approval queue: no usable unit
+// count (the DB flagged it — null, 0, or a placeholder — or the count is null /
+// 0), or a lead_reason set on it (e.g. outside the search radius). Classified on
+// the STAGED values so a row doesn't jump sections while the reviewer types.
+// Leads start unselected: the queue's default commit is records with a count.
+function stagedAsLead(r: StagingRow): boolean {
+  return r.units_needs_review || r.lead_reason != null
+    || !(r.total_housing_units != null && r.total_housing_units > 0);
+}
+
 function toErrorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (typeof e === 'object' && e !== null) {
@@ -307,10 +369,14 @@ const DISCOVERY_SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: 'activity_pdf',  label: 'Permit activity PDF' },
   { value: 'builder_site',  label: 'Builder / developer site' },
   { value: 'econ_dev',      label: 'Econ dev / open records' },
+  { value: 'gemini_recent', label: 'Recently built pass (Gemini)' },
+  { value: 'parcel_layer',  label: 'County parcel layer (subdivision)' },
   { value: 'other',         label: 'Other' },
 ];
 
-const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url' | 'select'; full?: boolean; options?: { value: string; label: string }[] }[] = [
+// `more: true` fields sit behind the per-card "Show all" toggle. Display only —
+// they're still loaded, editable and committed exactly as before.
+const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number' | 'date' | 'url' | 'select'; full?: boolean; more?: boolean; options?: { value: string; label: string }[] }[] = [
   { key: 'project_name',            label: 'Project name',     type: 'text', full: true },
   { key: 'address',                 label: 'Address (geocoded)', type: 'text', full: true },
   // Two distinct projects with the same name + address commit as ONE record
@@ -318,16 +384,53 @@ const EDITABLE_FIELDS: { key: keyof Edits; label: string; type: 'text' | 'number
   { key: 'phase_label',             label: 'Phase label (tells apart projects at one address)', type: 'text', full: true },
   // Location-precision fields the agent captures from sources; reviewer reads these
   // when manually placing the pin / drawing the polygon. Neither feeds geocoding.
-  { key: 'location_description',    label: 'Location description (manual-pin hint)', type: 'text', full: true },
-  { key: 'parcel_boundary_notes',   label: 'Parcel / boundary notes (polygon hint)', type: 'text', full: true },
+  { key: 'location_description',    label: 'Pin hint',         type: 'text', full: true },
+  { key: 'parcel_boundary_notes',   label: 'Polygon hint',     type: 'text', full: true },
   { key: 'total_housing_units',     label: 'Total units',      type: 'number' },
   { key: 'builder_developer',       label: 'Builder',          type: 'text' },
   { key: 'permit_url',              label: 'Permit URL',       type: 'url', full: true },
-  { key: 'permit_application_date', label: 'Permit app. date', type: 'date' },
   { key: 'source',                  label: 'Source (full citation)', type: 'text', full: true },
-  { key: 'discovery_source',        label: 'Discovery source (which phase found it)', type: 'select', options: DISCOVERY_SOURCE_OPTIONS },
   { key: 'notes',                   label: 'Notes',            type: 'text', full: true },
+  { key: 'permit_application_date', label: 'Permit app. date', type: 'date', more: true },
+  { key: 'discovery_source',        label: 'Discovery source (which phase found it)', type: 'select', options: DISCOVERY_SOURCE_OPTIONS, more: true },
 ];
+
+// Read-only staged fields the card never needed by default. Fetched per row the
+// first time its "Show all" opens, so the list load (incl. get_sweep_staging)
+// stays unchanged.
+interface StagingExtra {
+  municipality_name: string | null;
+  status_name: string | null;
+  zoning: string | null;
+  zoning_approval_date: string | null;
+  single_family_lots: number | null;
+  townhouse_units: number | null;
+  duplex_units: number | null;
+  apt_units: number | null;
+  cottage_units: number | null;
+  units_basis: string | null;
+  is_amendment: boolean | null;
+  amends_case_number: string | null;
+  prior_total: number | null;
+  parcel_numbers: string[] | null;
+}
+
+// What auto_resolve_research_duplicates did to this review's rows (read back via
+// get_research_auto_resolutions). Copies of one pending project are merged
+// (fullest value per field, sources combined, units NOT added); staged copies of
+// a committed project are rejected; near-misses against a committed project are
+// flagged with the reason and left for the reviewer.
+interface AutoResolutions {
+  merged: {
+    keep_id: string; keep_name: string | null; keep_run_id: string; keep_state: string; units: number | null;
+    folded: { id: string; name: string | null; run_id: string; units: number | null; address: string | null }[] | null;
+  }[];
+  rejected: { id: string; name: string | null; committed_id: string; committed_name: string | null }[];
+  flagged: { id: string; committed_id: string; committed_name: string | null; note: string | null }[];
+}
+const NO_AUTO: AutoResolutions = { merged: [], rejected: [], flagged: [] };
+
+
 
 export default function ResearchRunApprovalModal({
   researchRunId,
@@ -342,6 +445,10 @@ export default function ResearchRunApprovalModal({
   const [run, setRun] = useState<RunRow | null>(null);
   const [sweepState, setSweepState] = useState<string | null>(null);
   const [gapInfo, setGapInfo] = useState<SweepGapInfo | null>(null);
+  // Sweep mode: rows checkpointed by a chunk whose agent is still running. They
+  // are held back from the review list — the DB refuses review actions on an
+  // in-flight run (municipal_project_staging_00_in_flight_guard).
+  const [inFlightHeld, setInFlightHeld] = useState(0);
   const [rerunConfirm, setRerunConfirm] = useState(false);
   const [rerunning, setRerunning] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
@@ -386,8 +493,131 @@ export default function ResearchRunApprovalModal({
   // reviewer expands the ones they want to edit. Bulk buckets (clean / decided)
   // collapse so the screen leads with the decisions that actually need judgment.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  // Per-card "Show all" (default collapsed) + the lazily fetched extra fields.
+  const [showAllRows, setShowAllRows] = useState<Set<string>>(new Set());
+  const [extraById, setExtraById] = useState<Record<string, StagingExtra | 'loading' | { error: string }>>({});
   const [showClean, setShowClean] = useState(false);
+  // "Leads — no unit count found": collapsed by default so the main list is the
+  // mappable records. Still fully approvable from there.
+  const [showLeads, setShowLeads] = useState(false);
+  // Post-run unit estimator spend (Gemini grounded search), summed over the
+  // run(s) on screen. Upper bound: every call is charged the grounding fee.
+  const [estimateCost, setEstimateCost] = useState<{
+    calls: number; cents: number;
+    // The research agent's own usage, as reported on submit_research_report.
+    // null = no run on screen reported it (not measured, NOT zero).
+    agentIn: number | null; agentOut: number | null; agentCents: number | null; agentRuns: number; runs: number;
+  } | null>(null);
+  const stagingRunKey = useMemo(
+    () => [...new Set(staging.map((r) => r.research_run_id))].sort().join(','),
+    [staging],
+  );
+  useEffect(() => {
+    if (!stagingRunKey) { setEstimateCost(null); return; }
+    let cancelled = false;
+    supabase
+      .from('research_run')
+      .select('unit_estimate_calls, unit_estimate_cost_cents, input_tokens, output_tokens, estimated_cost_cents')
+      .in('id', stagingRunKey.split(','))
+      .then(({ data, error: e }) => {
+        if (cancelled || e || !data) return;
+        const sumOrNull = (k: string) => {
+          const vals = data.map((r: any) => r[k]).filter((v: unknown) => v != null);
+          return vals.length ? vals.reduce((n: number, v: unknown) => n + Number(v), 0) : null;
+        };
+        setEstimateCost({
+          calls: data.reduce((n, r: any) => n + (r.unit_estimate_calls ?? 0), 0),
+          cents: data.reduce((n, r: any) => n + Number(r.unit_estimate_cost_cents ?? 0), 0),
+          agentIn: sumOrNull('input_tokens'),
+          agentOut: sumOrNull('output_tokens'),
+          agentCents: sumOrNull('estimated_cost_cents'),
+          agentRuns: data.filter((r: any) => r.input_tokens != null || r.output_tokens != null || r.estimated_cost_cents != null).length,
+          runs: data.length,
+        });
+      });
+    return () => { cancelled = true; };
+  }, [stagingRunKey]);
+
+  // "Fill missing units & locations": rerun the post-run steps (dedupe → parcel
+  // layer → cited documents → Gemini units → acres × density → Gemini locate →
+  // dedupe → parcel fetch → lead triage) on the runs on screen, via research-fill-units. Preview
+  // first (count + estimated cost), then confirm; runs one research_run per
+  // call so no single call outlives the edge-function wall clock.
+  const [fillOpen, setFillOpen] = useState(false);
+  const [fillIncludeRejected, setFillIncludeRejected] = useState(false);
+  const [fillPreview, setFillPreview] = useState<{
+    records: number; pending_no_count: number; rejected_no_count: number; locate_records: number;
+    est_cost_cents: number; avg_call_cents: number; runs_in_flight_skipped: number;
+  } | null>(null);
+  const [fillBusy, setFillBusy] = useState<string | null>(null);
+  const [fillResult, setFillResult] = useState<{
+    gemini: number; density: number; parcel: number; document: number; triaged: number; deduped: number; leads: number;
+    restored: number; put_back: number; errors: number; cost_cents: number;
+    pins_placed: number; hints_improved: number; parcel_ids_found: number; moved_out_of_radius: number;
+    locate_cost_cents: number; failures: string[];
+  } | null>(null);
+
+  const fillRunIds = useMemo(() => (stagingRunKey ? stagingRunKey.split(',') : []), [stagingRunKey]);
+
+  // Summary header inputs. The refresh key changes whenever a staged row's
+  // decision-relevant state does (approve / reject / merge / count edits /
+  // conflict resolution), so the header recomputes live.
+  const summaryRunIds = useMemo(
+    () => (isSweep ? fillRunIds : (researchRunId ? [researchRunId] : [])),
+    [isSweep, fillRunIds, researchRunId],
+  );
+  const summaryRefreshKey = useMemo(
+    () => staging.map((r) => `${r.id}:${r.approval_state}:${r.total_housing_units ?? ''}:${r.count_conflict ? r.count_conflict.length : 0}:${r.lead_reason ? 1 : 0}`).join('|'),
+    [staging],
+  );
+  // Single-run Needs review: collapsed to 3 lines by default.
+  const [needsReviewOpen, setNeedsReviewOpen] = useState(false);
+
+  const loadFillPreview = async (includeRejected: boolean) => {
+    setFillPreview(null);
+    setFillBusy('Counting…');
+    try {
+      const { data, error: e } = await supabase.functions.invoke('research-fill-units', {
+        body: { mode: 'preview', run_ids: fillRunIds, include_rejected: includeRejected },
+      });
+      if (e) throw e;
+      setFillPreview(data);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setFillBusy(null);
+    }
+  };
+
+  const runFill = async () => {
+    const total = { gemini: 0, density: 0, parcel: 0, document: 0, triaged: 0, deduped: 0, leads: 0, restored: 0, put_back: 0, errors: 0, cost_cents: 0,
+      pins_placed: 0, hints_improved: 0, parcel_ids_found: 0, moved_out_of_radius: 0, locate_cost_cents: 0, failures: [] as string[] };
+    for (let i = 0; i < fillRunIds.length; i++) {
+      setFillBusy(`Filling run ${i + 1} of ${fillRunIds.length}…`);
+      const { data, error: e } = await supabase.functions.invoke('research-fill-units', {
+        body: { mode: 'run', research_run_id: fillRunIds[i], include_rejected: fillIncludeRejected },
+      });
+      const d = (data ?? {}) as any;
+      if (e || d.failure || d.error) {
+        // In-flight runs are skipped, not failures.
+        if (d.error !== 'run_in_flight_or_missing') total.failures.push(d.failure ?? d.detail ?? d.error ?? toErrorMessage(e));
+      }
+      for (const k of ['gemini', 'density', 'parcel', 'document', 'triaged', 'deduped', 'leads', 'restored', 'put_back', 'errors', 'cost_cents',
+        'pins_placed', 'hints_improved', 'parcel_ids_found', 'moved_out_of_radius', 'locate_cost_cents'] as const) {
+        total[k] += Number(d[k] ?? 0);
+      }
+    }
+    setFillBusy(null);
+    setFillPreview(null);
+    setFillResult(total);
+    setReloadKey((k) => k + 1);
+  };
   const [showDecided, setShowDecided] = useState(false);
+  const [autoRes, setAutoRes] = useState<AutoResolutions>(NO_AUTO);
+  const [autoResError, setAutoResError] = useState<string | null>(null);
+  const [showAutoRes, setShowAutoRes] = useState(true);
+  // Bumped after an auto-resolution undo: reloads the review from the server.
+  const [reloadKey, setReloadKey] = useState(0);
   // Step 1 state: stagingId -> group key (or REJECT_KEY). Keyed by ROW, so an
   // assignment survives the cluster re-forming after a partial resolution.
   const [groupByRow, setGroupByRow] = useState<Record<string, string>>({});
@@ -404,6 +634,19 @@ export default function ResearchRunApprovalModal({
       setLoading(true);
       setError(null);
       try {
+        // Resolve obvious duplicates first, so the rows below already reflect it.
+        // The read-back (scoped to this review's runs) happens once rows are known.
+        const { error: resolveErr } = await supabase.rpc('auto_resolve_research_duplicates', { p_dry_run: false });
+        if (cancelled) return;
+        setAutoResError(resolveErr && !/forbidden/i.test(resolveErr.message) ? resolveErr.message : null);
+        const readAuto = async (runIds: string[]) => {
+          if (runIds.length === 0) return NO_AUTO;
+          const { data, error: rdErr } = await supabase.rpc('get_research_auto_resolutions', { p_run_ids: runIds });
+          if (rdErr) { setAutoResError((prev) => prev ?? rdErr.message); return NO_AUTO; }
+          const d = (data ?? {}) as Partial<AutoResolutions>;
+          return { merged: d.merged ?? [], rejected: d.rejected ?? [], flagged: d.flagged ?? [] };
+        };
+
         if (isSweep) {
           // ---- unified sweep mode: all staged rows across the sweep's runs ----
           const [{ data: sweepRow, error: swErr }, { data: stagingRows, error: stErr }, { data: gaps }, { data: chunkChecklist }] = await Promise.all([
@@ -418,7 +661,7 @@ export default function ResearchRunApprovalModal({
             // 1000 anyway so a wide sweep can't silently truncate the list.
             supabase
               .from('research_checklist_item')
-              .select('boundary_municipality_id, priority, research_run!inner(id, sweep_chunk_index, sweep_id), boundary_municipality(name, kind)')
+              .select('boundary_municipality_id, priority, research_run!inner(id, sweep_chunk_index, sweep_id, state), boundary_municipality(name, kind)')
               .eq('research_run.sweep_id', sweepId!)
               .order('priority')
               .range(0, 4999),
@@ -432,9 +675,11 @@ export default function ResearchRunApprovalModal({
           setChecklist([]);
           // Group the chunk runs' checklist rows by run, in chunk order.
           const byRun = new Map<string, { chunkIndex: number | null; rows: { boundary_municipality_id: string; muni_name: string; muni_kind: string }[] }>();
+          const inFlightRunIds = new Set<string>();
           for (const r of (chunkChecklist ?? []) as any[]) {
             const rr = r.research_run;
             if (!rr?.id) continue;
+            if (rr.state === 'pending' || rr.state === 'running') inFlightRunIds.add(rr.id);
             if (!byRun.has(rr.id)) byRun.set(rr.id, { chunkIndex: rr.sweep_chunk_index ?? null, rows: [] });
             byRun.get(rr.id)!.rows.push({
               boundary_municipality_id: r.boundary_municipality_id,
@@ -457,7 +702,10 @@ export default function ResearchRunApprovalModal({
               .sort((a, b) => a.first - b.first)
               .map(({ summary, chunks }) => ({ summary, chunks })),
           );
-          const stagingNorm: StagingRow[] = ((stagingRows ?? []) as any[]).map((r) => ({
+          const allSweepRows = (stagingRows ?? []) as any[];
+          const reviewableRows = allSweepRows.filter((r) => !inFlightRunIds.has(r.research_run_id));
+          setInFlightHeld(allSweepRows.length - reviewableRows.length);
+          const stagingNorm: StagingRow[] = reviewableRows.map((r) => ({
             id: r.id,
             research_run_id: r.research_run_id,
             sweep_chunk_index: r.sweep_chunk_index,
@@ -486,16 +734,33 @@ export default function ResearchRunApprovalModal({
             notes: r.notes,
             muni_name: r.muni_name,
             muni_kind: r.muni_kind,
+            units_needs_review: !!r.units_needs_review,
+            units_review_reason: r.units_review_reason ?? null,
+            units_confidence: r.units_confidence ?? null,
+            lead_reason: r.lead_reason ?? null,
+            count_conflict: r.count_conflict ?? null,
+            geometry_source_vintage: r.geometry_source_vintage ?? null,
+            parcel_fetch_status: r.parcel_fetch_status ?? null,
+            has_boundary: !!r.has_boundary,
+            location_confidence: r.location_confidence ?? null,
+            located_address: r.located_address ?? null,
+            year_completed: r.year_completed ?? null,
           }));
+          const ar = await readAuto([...new Set(allSweepRows.map((r) => r.research_run_id as string))]);
+          if (cancelled) return;
+          setAutoRes(ar);
+          // A possible copy of a committed project starts UNselected: committing it
+          // by default is how the map gets a second pin for one project.
+          const flaggedIds = new Set(ar.flagged.map((f) => f.id));
           setStaging(stagingNorm);
-          setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id).map((s) => s.id)));
+          setSelected(new Set(stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id) && !stagedAsLead(s)).map((s) => s.id)));
           return;
         }
 
         // ---- single-run mode (unchanged) ----
         const { data: runRow, error: runErr } = await supabase
           .from('research_run')
-          .select('id, triggered_at, radius_miles, state, needs_review, alt_avenues')
+          .select('id, triggered_at, radius_miles, state, needs_review, alt_avenues, research_mode, signal_strength, signal_rationale, density_estimate, permit_volume, leads_not_pursued')
           .eq('id', researchRunId!)
           .single();
         if (runErr) throw runErr;
@@ -515,6 +780,8 @@ export default function ResearchRunApprovalModal({
               permit_application_date, source, discovery_source, discovery_source_raw,
               reject_reason, duplicate_of_staging_id, notes,
               not_duplicate_of_ids, merged_into_staging_id, merge_snapshot,
+              units_needs_review, units_review_reason, units_confidence, lead_reason, count_conflict,
+              geometry_source_vintage, parcel_fetch_status, geometry_source, location_confidence, located_address, year_completed,
               boundary_municipality(name, kind)
             `)
             .eq('research_run_id', researchRunId!)
@@ -527,6 +794,7 @@ export default function ResearchRunApprovalModal({
         setRun(runRow as RunRow);
         setNeedsReview(runRow?.needs_review ?? '');
         setChunkMunis([]);
+        setInFlightHeld(0);
         setChecklist((checklistRows ?? []).map((r: any) => ({
           boundary_municipality_id: r.boundary_municipality_id,
           priority: r.priority,
@@ -537,6 +805,7 @@ export default function ResearchRunApprovalModal({
         })));
         const stagingNorm: StagingRow[] = (stagingRows ?? []).map(({ merge_snapshot, ...r }: any) => ({
           ...r,
+          has_boundary: r.geometry_source != null,
           phase_label: r.phase_label ?? '',
           not_duplicate_of_ids: r.not_duplicate_of_ids ?? [],
           merged_into_staging_id: r.merged_into_staging_id ?? null,
@@ -548,10 +817,15 @@ export default function ResearchRunApprovalModal({
           duplicate_of_project_name: null,
           duplicate_of_chunk_index: null,
         }));
+        const ar = await readAuto([researchRunId!]);
+        if (cancelled) return;
+        setAutoRes(ar);
+        const flaggedIds = new Set(ar.flagged.map((f) => f.id));
         setStaging(stagingNorm);
-        // Default: select all pending rows that don't match an existing record.
+        // Default: select all pending rows that don't match an existing record
+        // (and aren't flagged as a possible copy of one).
         const defaultSelected = new Set(
-          stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id).map((s) => s.id),
+          stagingNorm.filter((s) => s.approval_state === 'pending' && !s.matched_existing_id && !flaggedIds.has(s.id) && !stagedAsLead(s)).map((s) => s.id),
         );
         setSelected(defaultSelected);
       } catch (e) {
@@ -562,7 +836,7 @@ export default function ResearchRunApprovalModal({
     }
     load();
     return () => { cancelled = true; };
-  }, [researchRunId, sweepId, isSweep]);
+  }, [researchRunId, sweepId, isSweep, reloadKey]);
 
   // ---- soft dedupe: flag staged rows sitting near an already-committed project ----
   // The hard match (matched_existing_id) covers exact name/address + permit_url.
@@ -859,8 +1133,22 @@ export default function ResearchRunApprovalModal({
 
   const pendingCount   = staging.filter((s) => s.approval_state === 'pending').length;
   const approvedCount  = staging.filter((s) => s.approval_state === 'approved').length;
+  // Recommendation-panel headline. Merged rows are already summed into their
+  // survivor and rejected rows aren't candidates, so both are left out.
+  const stagedTotals = useMemo(() => {
+    const live = staging.filter((s) => s.approval_state !== 'merged' && s.approval_state !== 'rejected');
+    return {
+      records: live.length,
+      units: live.reduce((sum, s) => sum + (s.total_housing_units ?? 0), 0),
+      noCount: live.filter((s) => s.total_housing_units == null).length,
+    };
+  }, [staging]);
   const rejectedCount  = staging.filter((s) => s.approval_state === 'rejected').length;
   const mergedCount    = staging.filter((s) => s.approval_state === 'merged').length;
+
+  // Auto-resolution lookups for badges and triage.
+  const autoFlagById = useMemo(() => new Map(autoRes.flagged.map((f) => [f.id, f])), [autoRes]);
+  const autoMergeByKeep = useMemo(() => new Map(autoRes.merged.map((m) => [m.keep_id, m])), [autoRes]);
 
   // Per-row dedupe flags — drives which triage bucket a row lands in and which
   // comparison panels render. matched = hard match; possible = near a committed
@@ -877,16 +1165,47 @@ export default function ResearchRunApprovalModal({
   const isFlagged = (r: StagingRow) => {
     const f = rowFlags(r);
     // Low-precision rows count as "needs attention": the dup check couldn't run,
-    // so they must not be quietly filed under "clean & ready".
-    return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id));
+    // so they must not be quietly filed under "clean & ready". Same for a row
+    // whose unit count is missing or a placeholder — it must not read as clean.
+    return f.matched || f.possible || f.inSweep || (!f.matched && lowPrecisionGeo.has(r.id))
+      || (!f.matched && r.units_needs_review) || autoFlagById.has(r.id)
+      || (r.count_conflict != null && r.count_conflict.length > 1);
+  };
+
+  // The unit-count flag this row will carry onto the committed record, or null.
+  // Mirrors approve_research_staging_rows: an override of NULL / 0 falls back to
+  // the staged count (COALESCE), so only a typed positive count that differs from
+  // the staged one replaces the staged flag — and a positive count clears it.
+  const unitsFlagOnCommit = (r: StagingRow): string | null => {
+    const e = edits[r.id]?.total_housing_units;
+    const typed = e !== undefined ? (Number(e) || null) : null;
+    if (typed != null && typed > 0 && typed !== r.total_housing_units) return null;
+    return r.units_needs_review ? (r.units_review_reason || 'Unit count needs review') : null;
+  };
+
+  // A LEAD is a record with no usable unit count: the DB flagged it
+  // (units_needs_review — null, 0, or a placeholder) or the count is null / 0.
+  // Classified on the STAGED values so a row doesn't jump sections while the
+  // reviewer types a count into it.
+  const isLead = stagedAsLead;
+  // What it will commit as: a lead whose reviewer typed a positive count commits
+  // as a project (mirrors unitsFlagOnCommit / approve_research_staging_rows).
+  const isLeadOnCommit = (r: StagingRow) => {
+    const e = edits[r.id]?.total_housing_units;
+    const typed = e !== undefined ? (Number(e) || null) : null;
+    if (typed != null && typed > 0 && typed !== r.total_housing_units) return false;
+    return isLead(r);
   };
 
   // Triage: split every row into the section it belongs to. In-sweep cluster
   // members are rendered inside their cluster card (see `clusters`), so they're
   // excluded here. Everything else: flagged pending -> needs attention; clean
-  // pending -> ready; approved/rejected -> decided.
+  // pending -> ready; approved/rejected -> decided. Pending LEADS (no unit
+  // count) go to their own section whatever else is flagged on them — their
+  // conflict badges and panels still render on the lead card.
   const triage = useMemo(() => {
     const needsAttention: StagingRow[] = [];
+    const leads: StagingRow[] = [];
     const clean: StagingRow[] = [];
     const approved: StagingRow[] = [];
     const rejected: StagingRow[] = [];
@@ -900,17 +1219,19 @@ export default function ResearchRunApprovalModal({
       if (r.approval_state === 'merged') { merged.push(r); continue; }
       // Members of a location or name cluster render in their cluster card.
       if (clusterMemberIds.has(r.id) || nameClusterMemberIds.has(r.id)) continue;
+      if (isLead(r)) { leads.push(r); continue; }
       (isFlagged(r) ? needsAttention : clean).push(r);
     }
     return {
       needsAttention: needsAttention.sort(byName),
+      leads: leads.sort(byName),
       clean: clean.sort(byName),
       approved: approved.sort(byName),
       rejected: rejected.sort(byName),
       merged: merged.sort(byName),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staging, clusterMemberIds, nameClusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo]);
+  }, [staging, clusterMemberIds, nameClusterMemberIds, possibleDupes, inSweepDupes, lowPrecisionGeo, autoFlagById]);
 
   // ---- handlers ----
   const setEdit = (id: string, key: keyof Edits, value: string) => {
@@ -1212,11 +1533,26 @@ export default function ResearchRunApprovalModal({
       }));
       setSelected((prev) => { const n = new Set(prev); foldIds.forEach((id) => n.delete(id)); n.add(keepId); return n; });
       clearMergeFieldEdits([keepId, ...foldIds]);
+      void refreshUnitsFlag(keepId);
       setShowClean(true);
       if ((res.runs_closed ?? []).length > 0) onReviewed?.();
     } catch (e) {
       setError(toErrorMessage(e));
     }
+  };
+
+  // Merge/unmerge rewrite the keeper's unit count server-side, and the DB
+  // trigger recomputes its unit-count flag. Re-read it rather than guess.
+  const refreshUnitsFlag = async (id: string) => {
+    const { data } = await supabase
+      .from('municipal_project_staging')
+      .select('units_needs_review, units_review_reason')
+      .eq('id', id)
+      .maybeSingle();
+    if (!data) return;
+    setStaging((prev) => prev.map((r) => (r.id === id
+      ? { ...r, units_needs_review: !!data.units_needs_review, units_review_reason: data.units_review_reason ?? null }
+      : r)));
   };
 
   // Undo a merge (only while the surviving row is still pending).
@@ -1246,11 +1582,32 @@ export default function ResearchRunApprovalModal({
       }));
       setSelected((prev) => { const n = new Set(prev); restored.forEach((id) => n.add(id)); return n; });
       clearMergeFieldEdits([keepId, ...restored]);
+      void refreshUnitsFlag(keepId);
       if ((res.runs_reopened ?? []).length > 0) {
         setRun((prev) => (prev ? { ...prev, state: 'awaiting_review' } : prev));
       }
     } catch (e) {
       setError(toErrorMessage(e));
+    }
+  };
+
+  // Undo an automatic resolution. Both go through the ordinary undo RPCs, which
+  // also mark the rows so the resolver won't redo it; then reload from the server
+  // (the merge may have pulled in rows from runs outside this review).
+  const [undoingAuto, setUndoingAuto] = useState<string | null>(null);
+  const handleUndoAuto = async (kind: 'merge' | 'reject', id: string) => {
+    setError(null);
+    setUndoingAuto(id);
+    try {
+      const { error: rpcErr } = kind === 'merge'
+        ? await supabase.rpc('unmerge_research_staging_rows', { p_keep_id: id })
+        : await supabase.rpc('unreject_research_staging_row', { p_staging_id: id });
+      if (rpcErr) throw rpcErr;
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setUndoingAuto(null);
     }
   };
 
@@ -1286,6 +1643,26 @@ export default function ResearchRunApprovalModal({
       });
       if (ids.length === 0) {
         throw new Error('Nothing to approve — select at least one pending row.');
+      }
+
+      // Flag, don't block: a real development with an unknown count belongs in
+      // the pipeline. But the reviewer must see which rows commit without a
+      // sourced count before they do.
+      const unitFlagged = ids
+        .map((id) => staging.find((s) => s.id === id))
+        .filter((r): r is StagingRow => !!r && !r.matched_existing_id)
+        .map((r) => ({ name: r.project_name ?? '(unnamed)', reason: unitsFlagOnCommit(r) }))
+        .filter((x): x is { name: string; reason: string } => x.reason != null);
+      if (unitFlagged.length > 0) {
+        const list = unitFlagged.slice(0, 12).map((x) => `• ${x.name} — ${x.reason}`).join('\n');
+        const more = unitFlagged.length > 12 ? `\n…and ${unitFlagged.length - 12} more` : '';
+        const ok = window.confirm(
+          `${unitFlagged.length} of the ${ids.length} selected row${ids.length === 1 ? '' : 's'} ha${unitFlagged.length === 1 ? 's' : 've'} no sourced unit count:\n\n`
+          + `${list}${more}\n\n`
+          + 'They will commit flagged for review (visible on the project card). To clear a flag, cancel and enter the count in the row.\n\n'
+          + 'Approve anyway?',
+        );
+        if (!ok) return;
       }
 
       // Optionally save needs_review if user edited it
@@ -1449,8 +1826,25 @@ export default function ResearchRunApprovalModal({
       setRerunning(false);
     }
   };
-  const isReadOnlyRun = !canApprove || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
+  // A run still pending/running has only checkpointed rows: the agent may still
+  // replace them, and the DB refuses review actions until its final submit.
+  const isInFlightRun = !isSweep && (run?.state === 'pending' || run?.state === 'running');
+  const isReadOnlyRun = !canApprove || isInFlightRun || (!isSweep && (run?.state === 'approved' || run?.state === 'archived'));
   const cleanSelectable = triage.clean.filter((r) => !r.matched_existing_id).map((r) => r.id);
+  const leadIds = triage.leads.map((r) => r.id);
+  const leadsSelected = leadIds.filter((id) => selected.has(id)).length;
+  // Footer split: what the selection will commit as.
+  const commitSplit = (() => {
+    let projects = 0, leadsN = 0;
+    for (const id of selected) {
+      const r = stagingById.get(id);
+      if (!r) continue;
+      if (isLeadOnCommit(r)) leadsN++; else projects++;
+    }
+    return { projects, leads: leadsN };
+  })();
+  const commitLabel = `${commitSplit.projects} project${commitSplit.projects === 1 ? '' : 's'}`
+    + (commitSplit.leads > 0 ? ` + ${commitSplit.leads} lead${commitSplit.leads === 1 ? '' : 's'}` : '');
   // Single-run header line: the frozen checklist municipalities, in trigger order.
   const runMuniSummary = useMemo(() => muniSummary(checklist), [checklist]);
 
@@ -1462,12 +1856,40 @@ export default function ResearchRunApprovalModal({
       return n;
     });
 
+  const toggleShowAll = async (id: string) => {
+    const opening = !showAllRows.has(id);
+    setShowAllRows((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+    if (!opening || (extraById[id] && extraById[id] !== 'loading' && !('error' in (extraById[id] as object)))) return;
+    setExtraById((prev) => ({ ...prev, [id]: 'loading' }));
+    const { data, error: exErr } = await supabase
+      .from('municipal_project_staging')
+      .select(`zoning, zoning_approval_date, single_family_lots, townhouse_units, duplex_units,
+               apt_units, cottage_units, units_basis, is_amendment, amends_case_number, prior_total,
+               parcel_numbers, municipality(name), project_stage(name)`)
+      .eq('id', id)
+      .maybeSingle();
+    setExtraById((prev) => ({
+      ...prev,
+      [id]: exErr || !data
+        ? { error: exErr ? toErrorMessage(exErr) : 'Row not found' }
+        : {
+            ...(data as any),
+            municipality_name: (data as any).municipality?.name ?? null,
+            status_name: (data as any).project_stage?.name ?? null,
+          },
+    }));
+  };
+
   // One-line identity for the compact summary.
   const rowSummaryLine = (r: StagingRow) =>
     [
       r.muni_name,
       (edits[r.id]?.address ?? r.address) || 'no address',
-      r.total_housing_units != null ? `${r.total_housing_units} units` : null,
+      r.total_housing_units != null ? `${r.total_housing_units} units` : 'no unit count',
       r.sweep_chunk_index != null ? `chunk ${r.sweep_chunk_index}` : null,
     ].filter(Boolean).join(' · ');
 
@@ -1499,6 +1921,79 @@ export default function ResearchRunApprovalModal({
             ⚠ DUP ACROSS RUNS{r.duplicate_of_chunk_index != null ? ` · chunk ${r.duplicate_of_chunk_index}` : ''}
           </span>
         )}
+        {r.approval_state === 'pending' && r.count_conflict && r.count_conflict.length > 1 && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                title="Other copies of this project (same name and municipality) carry a different unit count. Not auto-resolved — compare below.">
+            ≠ COUNT CONFLICT · {r.count_conflict.map((m) => m.units ?? '—').join(' vs ')}
+          </span>
+        )}
+        {r.has_boundary && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={r.geometry_source_vintage
+                  ? { borderColor: '#A27B5C', color: '#A27B5C' }
+                  : { borderColor: '#8FA9C8', color: '#4A6B94' }}
+                title={r.geometry_source_vintage
+                  ? `Boundary drawn from the ${r.geometry_source_vintage}. Verify against current plats; details in Notes.`
+                  : 'Boundary fetched from the county parcel map (dashed until reviewed).'}>
+            🗺 BOUNDARY{r.geometry_source_vintage ? ` · ${r.geometry_source_vintage.toUpperCase()}` : ''}
+          </span>
+        )}
+        {r.parcel_fetch_status === 'snapshot_mismatch' && r.approval_state === 'pending' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                title="The snapshot's acreage was more than 15% off the stated acreage, so no boundary was saved. Likely re-platted since 2022.">
+            SNAPSHOT MISMATCH
+          </span>
+        )}
+        {r.discovery_source === 'gemini_recent' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#0F766E', color: '#0F766E', backgroundColor: '#F0FDFA' }}
+                title="Found by the recently built pass (Gemini web search): completed since April 2020 (2020 Census), with completion evidence. Commits as Recently Completed; shown on its own map layer, not the pipeline.">
+            🏘 RECENTLY BUILT{r.year_completed ? ` · ${r.year_completed}` : ''}
+          </span>
+        )}
+        {r.discovery_source === 'parcel_layer' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#0F766E', color: '#0F766E', backgroundColor: '#F0FDFA' }}
+                title="Found by the parcel subdivisions pass: a subdivision in the county parcel layer (units = parcel count, boundary = union of its parcels); year from a Gemini web search. Sources are in Notes.">
+            🧱 PARCEL LAYER{r.year_completed ? ` · built out ${r.year_completed}` : ''}
+          </span>
+        )}
+        {r.location_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
+          <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title={`Pin placed by the locate step (Gemini web search, then a precise geocode)${r.located_address ? `: ${r.located_address}` : ''}. Sources are in Notes. It commits tagged EST. LOCATION until you confirm it on the project card.`}>
+            EST. LOCATION
+          </span>
+        )}
+        {r.units_confidence === 'estimated' && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (
+          <span className="px-1.5 py-0.5 rounded-full border border-dashed text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title="Unit count was ESTIMATED after the run (a proposed count or zoning cap from a cited document, a parcel-layer count, Gemini web search, or acreage × zoning density). The source or math is in Notes. It commits tagged units_confidence = estimated.">
+            EST. UNITS
+          </span>
+        )}
+        {r.lead_reason && r.approval_state === 'pending' && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C' }} title={r.lead_reason}>
+            LEAD: {r.lead_reason.length > 40 ? `${r.lead_reason.slice(0, 40)}…` : r.lead_reason}
+          </span>
+        )}
+        {r.units_needs_review && r.approval_state !== 'rejected' && r.approval_state !== 'merged' && (() => {
+          const cleared = r.approval_state === 'pending' && unitsFlagOnCommit(r) == null;
+          return (
+            <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                  style={cleared
+                    ? { borderColor: '#8FA9C8', color: '#4A6B94' }
+                    : { borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                  title={cleared
+                    ? `Flag clears on commit — you entered a unit count. (Was: ${r.units_review_reason ?? 'unit count needs review'})`
+                    : `${r.units_review_reason ?? 'Unit count needs review'}. Approving is allowed — a real development with an unknown count still belongs in the pipeline — but it commits flagged. Enter a sourced count in the row to clear it.`}>
+              {cleared ? '✓ UNITS ENTERED' : '⚠ CHECK UNITS'}
+            </span>
+          );
+        })()}
         {r.approval_state === 'approved' && (
           <span className="px-1.5 py-0.5 rounded-full text-xs" style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>APPROVED</span>
         )}
@@ -1512,13 +2007,26 @@ export default function ResearchRunApprovalModal({
             KEPT SEPARATE
           </span>
         )}
-        {r.is_merge_keeper && (
+        {r.approval_state === 'pending' && autoFlagById.has(r.id) && (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}
+                title={`${autoFlagById.get(r.id)!.note ?? ''} Left unselected so it isn't committed by default; select it if it's a different project.`}>
+            ⚠ MAY DUPLICATE “{autoFlagById.get(r.id)!.committed_name ?? 'a committed record'}”
+          </span>
+        )}
+        {r.is_merge_keeper && (autoMergeByKeep.has(r.id) ? (
+          <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
+                title="The same project was staged more than once. Merged automatically: fullest value kept per field, sources combined, units NOT added. Undo is in the Auto-resolved list.">
+            AUTO-MERGED · {1 + (autoMergeByKeep.get(r.id)!.folded?.length ?? 0)} COPIES
+          </span>
+        ) : (
           <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap"
                 style={{ borderColor: '#4A6B94', color: '#4A6B94' }}
                 title="Other staged rows were merged into this one — units summed, their sources are in the notes">
             MERGED · {1 + staging.filter((s) => s.merged_into_staging_id === r.id).length} RECORDS
           </span>
-        )}
+        ))}
         {r.approval_state === 'merged' && (
           <span className="px-1.5 py-0.5 rounded-full border text-xs whitespace-nowrap" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}>
             MERGED INTO “{(r.merged_into_staging_id && stagingById.get(r.merged_into_staging_id)?.project_name) || 'another record'}”
@@ -1631,43 +2139,92 @@ export default function ResearchRunApprovalModal({
       const v = (r as any)[key];
       return v == null ? '' : String(v);
     };
+    const renderField = (f: (typeof EDITABLE_FIELDS)[number]) => (
+        <div key={f.key} className={f.full ? 'col-span-2' : ''}>
+          <label className="block text-xs mb-0.5" style={{ color: '#4A6B94' }}>{f.label}</label>
+          {f.type === 'select' ? (
+            <select
+              value={value(f.key)}
+              disabled={!isPending || isReadOnlyRun}
+              onChange={(e) => setEdit(r.id, f.key, e.target.value)}
+              className="w-full px-2 py-1 text-sm border rounded bg-white"
+              style={{ borderColor: '#8FA9C8', color: '#002147' }}
+            >
+              {(f.options ?? []).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+              value={value(f.key)}
+              disabled={!isPending || isReadOnlyRun}
+              onChange={(e) => setEdit(r.id, f.key, e.target.value)}
+              className="w-full px-2 py-1 text-sm border rounded"
+              style={{ borderColor: '#8FA9C8', color: '#002147' }}
+            />
+          )}
+          {/* Explains an otherwise mysterious "Other": the agent reported a
+              value outside our taxonomy and the server coerced it. Showing the
+              original lets the reviewer reclassify it deliberately. */}
+          {f.key === 'discovery_source' && r.discovery_source_raw && (
+            <div className="text-xs mt-0.5" style={{ color: '#A27B5C' }}>
+              Agent reported: “{r.discovery_source_raw}” — not in our list, filed as Other.
+            </div>
+          )}
+        </div>
+    );
+    const showAll = showAllRows.has(r.id);
+    const extra = extraById[r.id];
+    const muni = (e: StagingExtra) =>
+      [r.muni_name, e.municipality_name && e.municipality_name !== r.muni_name ? `committed as ${e.municipality_name}` : null]
+        .filter(Boolean).join(' · ') || null;
+    const unitBreakdown = (e: StagingExtra) =>
+      ([['SF lots', e.single_family_lots], ['Townhomes', e.townhouse_units], ['Duplex', e.duplex_units],
+        ['Apartments', e.apt_units], ['Cottage', e.cottage_units]] as const)
+        .filter(([, v]) => v != null).map(([k, v]) => `${k} ${v}`).join(' · ') || null;
+    const readOnly = (e: StagingExtra): [string, string | null][] => [
+      ['Municipality', muni(e)],
+      ['Status', e.status_name],
+      ['Zoning', e.zoning],
+      ['Zoning approval date', e.zoning_approval_date],
+      ['Unit breakdown', unitBreakdown(e)],
+      ['Units basis', e.units_basis],
+      ['Amendment', e.is_amendment ? `yes${e.amends_case_number ? ` — amends ${e.amends_case_number}` : ''}${e.prior_total != null ? ` (prior total ${e.prior_total})` : ''}` : null],
+      ['Parcel numbers', e.parcel_numbers?.length ? e.parcel_numbers.join(', ') : null],
+    ];
     return (
-      <div className="grid grid-cols-2 gap-2 mt-2">
-        {EDITABLE_FIELDS.map((f) => (
-          <div key={f.key} className={f.full ? 'col-span-2' : ''}>
-            <label className="block text-xs mb-0.5" style={{ color: '#4A6B94' }}>{f.label}</label>
-            {f.type === 'select' ? (
-              <select
-                value={value(f.key)}
-                disabled={!isPending || isReadOnlyRun}
-                onChange={(e) => setEdit(r.id, f.key, e.target.value)}
-                className="w-full px-2 py-1 text-sm border rounded bg-white"
-                style={{ borderColor: '#8FA9C8', color: '#002147' }}
-              >
-                {(f.options ?? []).map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-                value={value(f.key)}
-                disabled={!isPending || isReadOnlyRun}
-                onChange={(e) => setEdit(r.id, f.key, e.target.value)}
-                className="w-full px-2 py-1 text-sm border rounded"
-                style={{ borderColor: '#8FA9C8', color: '#002147' }}
-              />
-            )}
-            {/* Explains an otherwise mysterious "Other": the agent reported a
-                value outside our taxonomy and the server coerced it. Showing the
-                original lets the reviewer reclassify it deliberately. */}
-            {f.key === 'discovery_source' && r.discovery_source_raw && (
-              <div className="text-xs mt-0.5" style={{ color: '#A27B5C' }}>
-                Agent reported: “{r.discovery_source_raw}” — not in our list, filed as Other.
-              </div>
-            )}
+      <div className="mt-2">
+        <div className="grid grid-cols-2 gap-2">
+          {EDITABLE_FIELDS.filter((f) => !f.more).map(renderField)}
+        </div>
+        <button type="button" onClick={() => toggleShowAll(r.id)}
+                className="mt-2 text-xs underline" style={{ color: '#4A6B94' }}>
+          {showAll ? 'Hide extra fields' : 'Show all fields'}
+        </button>
+        {showAll && (
+          <div className="mt-1 pt-2 border-t" style={{ borderColor: '#E2E8F0' }}>
+            <div className="grid grid-cols-2 gap-2">
+              {EDITABLE_FIELDS.filter((f) => f.more).map(renderField)}
+            </div>
+            <div className="mt-2 text-xs">
+              {extra === 'loading' || extra === undefined ? (
+                <span style={{ color: '#8FA9C8' }}>Loading…</span>
+              ) : 'error' in extra ? (
+                <span style={{ color: '#A27B5C' }}>Couldn’t load the remaining fields: {extra.error}</span>
+              ) : (
+                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5">
+                  {readOnly(extra).map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt style={{ color: '#4A6B94' }}>{k}</dt>
+                      <dd style={{ color: v ? '#002147' : '#8FA9C8' }}>{v ?? '—'}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
           </div>
-        ))}
+        )}
       </div>
     );
   };
@@ -1727,8 +2284,17 @@ export default function ResearchRunApprovalModal({
             Rejected: {r.reject_reason}
           </div>
         )}
+        {/* Unit-count flag, spelled out on the row: a missing or placeholder count
+            looks like any other number once committed. */}
+        {(r.approval_state === 'pending' || r.approval_state === 'approved') && r.units_needs_review
+          && !(r.approval_state === 'pending' && unitsFlagOnCommit(r) == null) && (
+          <div className="pl-6 text-xs mt-0.5" style={{ color: '#A27B5C' }}>
+            Units: {r.units_review_reason ?? 'needs review'}
+            {r.approval_state === 'pending' && ' — enter a sourced count to clear, or approve and it commits flagged.'}
+          </div>
+        )}
         {/* Conflicting record(s) always visible — that's the point of the row. */}
-        <div className="pl-6">{conflictPanels(r)}</div>
+        <div className="pl-6">{conflictPanels(r)}{countConflictPanel(r)}</div>
         {isExpanded && (<div className="pl-6">{fieldEditor(r)}</div>)}
       </div>
     );
@@ -2019,6 +2585,92 @@ export default function ResearchRunApprovalModal({
   };
 
   // Collapsible section shell for the bulk buckets (clean / decided).
+  // A lead: name, municipality, source and notes — enough to judge whether it's
+  // worth chasing. Conflict badges stay visible. Clicking the name opens the
+  // full editor (e.g. to type a count found by hand).
+  // Side-by-side compare for a count conflict: every counted copy, with its
+  // count, confidence, source and notes. Reviewer decides (reject one, or Keep
+  // both with a phase label).
+  const countConflictPanel = (r: StagingRow) => {
+    if (r.approval_state !== 'pending' || !r.count_conflict || r.count_conflict.length < 2) return null;
+    return (
+      <div className="mt-1 rounded border p-2" style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
+        <div className="text-xs font-semibold mb-1" style={{ color: '#A27B5C' }}>
+          Same project, different unit counts — compare and keep the right one
+        </div>
+        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(r.count_conflict.length, 3)}, minmax(0, 1fr))` }}>
+          {r.count_conflict.map((m) => (
+            <div key={m.id} className="rounded border p-1.5 text-xs bg-white min-w-0"
+                 style={{ borderColor: m.id === r.id ? '#002147' : '#8FA9C8', borderWidth: m.id === r.id ? 2 : 1 }}>
+              <div className="font-semibold" style={{ color: '#002147' }}>
+                {m.units ?? '—'} units
+                <span className="font-normal" style={{ color: '#4A6B94' }}>
+                  {' '}· {m.kind === 'committed' ? 'committed' : (m.units_confidence ?? 'reported')}
+                  {m.id === r.id ? ' · this row' : ''}
+                </span>
+              </div>
+              <div className="truncate" style={{ color: '#002147' }} title={m.project_name ?? ''}>
+                {m.project_name}{m.phase_label ? ` — ${m.phase_label}` : ''}
+              </div>
+              {m.address && <div className="truncate" style={{ color: '#4A6B94' }} title={m.address}>{m.address}</div>}
+              {m.source && (
+                <div className="mt-0.5 select-text break-words" style={{ color: '#4A6B94' }}>
+                  <span style={{ color: '#8FA9C8' }}>Source: </span>{m.source}
+                </div>
+              )}
+              {m.notes && (
+                <details className="mt-0.5">
+                  <summary className="cursor-pointer" style={{ color: '#8FA9C8' }}>Notes</summary>
+                  <div className="select-text whitespace-pre-wrap break-words" style={{ color: '#002147' }}>{m.notes}</div>
+                </details>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const leadCard = (r: StagingRow) => {
+    const isPending = r.approval_state === 'pending';
+    const isExpanded = expandedRows.has(r.id);
+    return (
+      <div key={r.id} className="px-3 py-1.5" style={{ backgroundColor: '#FFFFFF' }}>
+        <div className="flex items-start gap-2">
+          {isPending && !isReadOnlyRun && (
+            <input type="checkbox" className="mt-1" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)}
+                   title="Include in Approve & Commit" />
+          )}
+          <div className="flex-1 min-w-0">
+            <button type="button" onClick={() => toggleExpand(r.id)} className="text-left">
+              <span className="text-xs mr-1" style={{ color: '#8FA9C8' }}>{isExpanded ? '▾' : '▸'}</span>
+              <span className="text-sm font-medium" style={{ color: '#002147' }}>{r.project_name ?? '(unnamed)'}</span>
+              {r.muni_name && <span className="text-xs" style={{ color: '#4A6B94' }}> · {r.muni_name}</span>}
+            </button>
+            <span className="inline-flex flex-wrap gap-1.5 ml-1.5 align-middle">{rowBadges(r)}</span>
+            {r.source && (
+              <div className="text-xs mt-0.5 select-text" style={{ color: '#4A6B94' }}>
+                <span style={{ color: '#8FA9C8' }}>Source: </span>{r.source}
+              </div>
+            )}
+            {r.notes && (
+              <div className="text-xs mt-0.5 select-text whitespace-pre-wrap" style={{ color: '#002147' }}>
+                <span style={{ color: '#8FA9C8' }}>Notes: </span>{r.notes}
+              </div>
+            )}
+          </div>
+          {isPending && !isReadOnlyRun && (
+            <button type="button" onClick={() => handleReject(r.id)}
+                    className="text-xs px-2 py-1 rounded border self-start" style={{ borderColor: '#A27B5C', color: '#A27B5C' }}
+                    title="Reject this row (kept for audit; reversible with Undo)">Reject</button>
+          )}
+        </div>
+        <div className="pl-6">{conflictPanels(r)}{countConflictPanel(r)}</div>
+        {isExpanded && (<div className="pl-6">{fieldEditor(r)}</div>)}
+      </div>
+    );
+  };
+
   const sectionShell = (title: string, open: boolean, onToggle: () => void, right: ReactNode, body: ReactNode) => (
     <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
       <div className="px-3 py-2 flex items-center justify-between" style={{ backgroundColor: '#F8FAFC' }}>
@@ -2068,8 +2720,25 @@ export default function ResearchRunApprovalModal({
                 {gapInfo!.healable_count} chunk{gapInfo!.healable_count === 1 ? '' : 's'} finished after the timeout — their records are already included below and won't be re-run.
               </p>
             )}
+            {/* Counties with parcel-ID records but no parcel adapter (never blocks). */}
+            {fillRunIds.length > 0 && (
+              <div className="mt-2">
+                <ParcelAdapterNotice runIds={fillRunIds}
+                                     runRef={isSweep ? `sweep ${sweepId}` : `run ${researchRunId}`} />
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            {canApprove && fillRunIds.length > 0 && !fillOpen && (
+              <button
+                onClick={() => { setFillOpen(true); setFillResult(null); loadFillPreview(fillIncludeRejected); }}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium border"
+                style={{ borderColor: '#4A6B94', color: '#4A6B94', backgroundColor: '#FFFFFF' }}
+                title="Rerun only the post-run steps on this run/sweep: dedupe → unit count (parcel layer → cited documents → Gemini web search → acres × density) → Gemini locate → dedupe → parcel fetch → lead triage. No new research run."
+              >
+                Fill missing units &amp; locations
+              </button>
+            )}
             {canRerunGaps && !rerunConfirm && (
               <button
                 onClick={() => setRerunConfirm(true)}
@@ -2091,6 +2760,81 @@ export default function ResearchRunApprovalModal({
           </div>
         </div>
 
+        {/* Fill missing units & locations: preview → confirm → result */}
+        {fillOpen && (
+          <div className="px-5 py-3 border-b" style={{ borderColor: '#8FA9C8', backgroundColor: '#F8FAFC' }}>
+            {!fillResult ? (
+              <>
+                <div className="text-sm font-medium" style={{ color: '#002147' }}>Fill missing units &amp; locations</div>
+                <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
+                  Dedupe → unit count (county parcel layer → cited documents → Gemini web search → acres × zoning density) → Gemini locate (records with no precise pin) → dedupe → parcel fetch → lead triage (rejects leads still without a count that are out of radius, recently built, or listing-only).
+                  Anything still without a count stays a lead. Records that already have an estimated count, or were already located, are skipped.
+                  Committed records are never touched.
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-xs" style={{ color: '#002147' }}>
+                  <input type="checkbox" checked={fillIncludeRejected} disabled={!!fillBusy}
+                         onChange={(e) => { setFillIncludeRejected(e.target.checked); loadFillPreview(e.target.checked); }} />
+                  Include records rejected for no count
+                  <span style={{ color: '#8FA9C8' }}>
+                    (no reason, or the reason mentions no count / duplicate review; restored to pending first, and put back with the original reason if still no count)
+                  </span>
+                </label>
+                <div className="text-sm mt-2" style={{ color: '#002147' }}>
+                  {fillBusy && !fillPreview ? fillBusy : fillPreview ? (
+                    <>
+                      {fillPreview.records} record{fillPreview.records === 1 ? '' : 's'} without a count
+                      {fillIncludeRejected ? ` (${fillPreview.pending_no_count} pending/leads + ${fillPreview.rejected_no_count} rejected)` : ''}
+                      {' '}· up to {fillPreview.locate_records ?? 0} to locate
+                      {' '}· est. Gemini cost up to ${(fillPreview.est_cost_cents / 100).toFixed(2)}
+                      <span className="text-xs" style={{ color: '#8FA9C8' }}>
+                        {' '}(~{fillPreview.avg_call_cents.toFixed(1)}¢/record; the first dedupe may remove some before Gemini)
+                        {fillPreview.runs_in_flight_skipped > 0 ? ` · ${fillPreview.runs_in_flight_skipped} in-flight run(s) skipped` : ''}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button onClick={runFill} disabled={!!fillBusy || !fillPreview || fillPreview.records + (fillPreview.locate_records ?? 0) === 0}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium"
+                          style={{ backgroundColor: fillBusy || !fillPreview || fillPreview.records + (fillPreview.locate_records ?? 0) === 0 ? '#8FA9C8' : '#002147', color: '#FFFFFF' }}>
+                    {fillBusy && fillPreview ? fillBusy
+                      : fillPreview ? `Confirm — process ${fillPreview.records + (fillPreview.locate_records ?? 0)} (up to $${(fillPreview.est_cost_cents / 100).toFixed(2)})` : 'Confirm'}
+                  </button>
+                  <button onClick={() => setFillOpen(false)} disabled={!!fillBusy}
+                          className="px-3 py-1.5 rounded-lg text-sm border"
+                          style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-medium" style={{ color: '#002147' }}>
+                  Fill missing units &amp; locations — done · actual cost ${((fillResult.cost_cents + fillResult.locate_cost_cents) / 100).toFixed(2)}
+                  {' '}(units ${(fillResult.cost_cents / 100).toFixed(2)} · locate ${(fillResult.locate_cost_cents / 100).toFixed(2)})
+                </div>
+                <div className="text-xs mt-1" style={{ color: '#4A6B94' }}>
+                  {fillResult.parcel} from the parcel layer · {fillResult.document} from cited documents · {fillResult.gemini} from Gemini search · {fillResult.density} from acres × density · {fillResult.deduped} deduped · {fillResult.triaged} leads auto-rejected · {fillResult.leads} still leads
+                  {fillResult.restored > 0 && ` · ${fillResult.restored} rejected restored, ${fillResult.put_back} put back (still no count)`}
+                  {fillResult.errors > 0 && ` · ${fillResult.errors} Gemini error(s)`}
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: '#4A6B94' }}>
+                  📍 {fillResult.pins_placed} pin{fillResult.pins_placed === 1 ? '' : 's'} placed (EST. LOCATION) · {fillResult.hints_improved} pin hint{fillResult.hints_improved === 1 ? '' : 's'} improved
+                  {' '}· {fillResult.parcel_ids_found} with new parcel IDs · {fillResult.moved_out_of_radius} moved to leads (outside the radius)
+                </div>
+                {fillResult.failures.length > 0 && (
+                  <div className="text-xs mt-1" style={{ color: '#A27B5C' }}>Failed: {fillResult.failures.join(' | ')}</div>
+                )}
+                <button onClick={() => { setFillOpen(false); setFillResult(null); }}
+                        className="mt-2 px-3 py-1.5 rounded-lg text-sm border"
+                        style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                  Close
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Re-run gaps confirmation */}
         {canRerunGaps && rerunConfirm && (
           <div className="px-5 py-3 border-b" style={{ borderColor: '#A27B5C', backgroundColor: '#FFF7F0' }}>
@@ -2101,7 +2845,9 @@ export default function ResearchRunApprovalModal({
               {gapInfo!.gaps.map((g, i) => (
                 <span key={g.chunk_index}>
                   {i > 0 && '· '}
-                  {fmtWindow(g.window_start)}–{fmtWindow(g.window_end)}
+                  {g.kind === 'evergreen' || !g.window_start || !g.window_end
+                    ? 'undated sources'
+                    : `${fmtWindow(g.window_start)}–${fmtWindow(g.window_end)}`}
                 </span>
               ))}
             </div>
@@ -2132,6 +2878,52 @@ export default function ResearchRunApprovalModal({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {loading && <div className="text-sm" style={{ color: '#8FA9C8' }}>Loading…</div>}
+          {!loading && summaryRunIds.length > 0 && (
+            <ResearchSummaryHeader runIds={summaryRunIds} refreshKey={summaryRefreshKey} />
+          )}
+          {!loading && summaryRunIds.length > 0 && (
+            <RecentUnitSuggestions runIds={summaryRunIds} canApprove={canApprove} />
+          )}
+          {/* Agent reports (sweep, read-only) / Needs review (single run). The
+              agent's end-of-run coverage report sits at the top of needs_review. */}
+          {!loading && isSweep && sweepId && <SweepAgentReports sweepId={sweepId} />}
+          {!loading && run && (
+            <div className="rounded-md border px-3 py-2" style={{ borderColor: '#8FA9C8' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold" style={{ color: '#002147' }}>Needs review</span>
+                {(needsReview.split('\n').length > 3 || needsReview.length > 300 || needsReviewOpen) && (
+                  <button type="button" onClick={() => setNeedsReviewOpen((v) => !v)}
+                          className="text-xs underline" style={{ color: '#4A6B94' }}>
+                    {needsReviewOpen ? 'Collapse' : 'Show all'}
+                  </button>
+                )}
+              </div>
+              {needsReviewOpen ? (
+                <textarea
+                  rows={Math.min(Math.max(needsReview.split('\n').length + 1, 4), 24)}
+                  value={needsReview}
+                  disabled={isReadOnlyRun}
+                  onChange={(e) => setNeedsReview(e.target.value)}
+                  className="mt-1 w-full px-2 py-1 text-sm border rounded"
+                  style={{ borderColor: '#8FA9C8', color: '#002147' }}
+                  placeholder="Anything the agent flagged for human review."
+                />
+              ) : (
+                <button type="button" onClick={() => setNeedsReviewOpen(true)} className="mt-1 w-full text-left"
+                        title="Show the full text">
+                  <div className="text-sm whitespace-pre-wrap select-text"
+                       style={{ color: needsReview.trim() ? '#002147' : '#8FA9C8', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {needsReview.trim() || 'Nothing flagged.'}
+                  </div>
+                </button>
+              )}
+              {run.alt_avenues && (
+                <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
+                  Agent alt avenues: {run.alt_avenues}
+                </p>
+              )}
+            </div>
+          )}
           {error && (
             <div className="rounded-md p-3 text-sm border"
                  style={{ borderColor: '#A27B5C', color: '#A27B5C', backgroundColor: '#FFF7F0' }}>
@@ -2208,9 +3000,23 @@ export default function ResearchRunApprovalModal({
               View-only — you don't have the <code>can_approve_market_research</code> permission. Ask an admin to grant it if you need to approve or reject findings here.
             </div>
           )}
+          {!loading && isInFlightRun && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#4A6B94', color: '#002147', backgroundColor: '#E8F1FF' }}>
+              Agent still running — {staging.length} record{staging.length === 1 ? '' : 's'} saved so far. These are checkpoints the agent may still replace; review opens when it sends its final report.
+            </div>
+          )}
+          {!loading && isSweep && inFlightHeld > 0 && (
+            <div className="rounded-md p-3 text-sm border"
+                 style={{ borderColor: '#4A6B94', color: '#002147', backgroundColor: '#E8F1FF' }}>
+              {inFlightHeld} record{inFlightHeld === 1 ? '' : 's'} from the chunk still running {inFlightHeld === 1 ? 'is' : 'are'} held back — {inFlightHeld === 1 ? 'it appears' : 'they appear'} here for review once that chunk's agent finishes.
+            </div>
+          )}
 
           {!loading && (run || isSweep) && (
             <>
+              {/* Quick runs: the Deep-run recommendation, next to the records it's about */}
+              {!isSweep && run?.research_mode === 'quick' && <ResearchSignalPanel signal={run} totals={stagedTotals} />}
               {/* Checklist (collapsible) — single-run only */}
               {!isSweep && (
               <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
@@ -2244,6 +3050,7 @@ export default function ResearchRunApprovalModal({
                   {nameClusters.length > 0 && <span>· <b style={{ color: '#A27B5C' }}>{nameClusters.length}</b> name dup{nameClusters.length === 1 ? '' : 's'}</span>}
                   {triage.needsAttention.length > 0 && <span>· {triage.needsAttention.length} need a look</span>}
                   {triage.clean.length > 0 && <span>· {triage.clean.length} clean</span>}
+                  {triage.leads.length > 0 && <span>· {triage.leads.length} lead{triage.leads.length === 1 ? '' : 's'} (no unit count)</span>}
                   <span>· <b style={{ color: '#002147' }}>{selected.size}</b> selected to commit</span>
                   {checkingDupes && <span style={{ color: '#8FA9C8' }}>· checking for duplicates…</span>}
                   {!isReadOnlyRun && (
@@ -2259,6 +3066,80 @@ export default function ResearchRunApprovalModal({
               {staging.length === 0 && (
                 <div className="text-sm italic" style={{ color: '#8FA9C8' }}>
                   No staged records {isSweep ? 'in this sweep yet.' : 'on this run.'}
+                </div>
+              )}
+
+              {/* 0. Auto-resolved duplicates — what the resolver did, each with Undo */}
+              {autoResError && (
+                <div className="text-xs" style={{ color: '#A27B5C' }}>
+                  Couldn’t auto-resolve duplicates ({autoResError}). Nothing was changed; resolve them by hand below.
+                </div>
+              )}
+              {(autoRes.merged.length + autoRes.rejected.length) > 0 && (
+                <div className="border rounded-md" style={{ borderColor: '#8FA9C8' }}>
+                  <button type="button" onClick={() => setShowAutoRes((v) => !v)}
+                          className="w-full text-left px-3 py-2 text-sm font-semibold flex justify-between items-center"
+                          style={{ color: '#002147', backgroundColor: '#F8FAFC' }}>
+                    <span>
+                      ✓ Auto-resolved duplicates ({autoRes.merged.length + autoRes.rejected.length})
+                      <span className="font-normal" style={{ color: '#4A6B94' }}>
+                        {autoRes.merged.length > 0 && ` · ${autoRes.merged.length} merged`}
+                        {autoRes.rejected.length > 0 && ` · ${autoRes.rejected.length} already on the map, rejected`}
+                      </span>
+                    </span>
+                    <span style={{ color: '#4A6B94' }}>{showAutoRes ? '▲' : '▼'}</span>
+                  </button>
+                  {showAutoRes && (
+                    <div className="px-3 pb-2 space-y-1.5">
+                      <div className="text-xs" style={{ color: '#8FA9C8' }}>
+                        Only exact matches are resolved here: same name and phase in the same place, or the same case number,
+                        with no conflicting unit count or address. Undo puts the rows back for you to decide, and they won’t
+                        be auto-resolved again.
+                      </div>
+                      {autoRes.merged.map((m) => (
+                        <div key={m.keep_id} className="flex items-start justify-between gap-2 text-sm">
+                          <div className="min-w-0">
+                            <span style={{ color: '#002147' }}>
+                              Merged {1 + (m.folded?.length ?? 0)} copies of <b>{m.keep_name ?? '(unnamed)'}</b>
+                            </span>
+                            <span style={{ color: '#4A6B94' }}> · {m.units != null ? `${m.units.toLocaleString()} units` : 'no unit count'} (not added up)</span>
+                            {!stagingById.has(m.keep_id) && (
+                              <span style={{ color: '#8FA9C8' }}> · kept record is in another run’s review</span>
+                            )}
+                            <div className="text-xs" style={{ color: '#8FA9C8' }}>
+                              Folded in: {(m.folded ?? []).map((f) => `${f.name ?? '(unnamed)'}${f.units != null ? ` [${f.units}]` : ''}${f.address ? ` — ${f.address}` : ''}`).join('; ')}
+                            </div>
+                          </div>
+                          {canApprove && m.keep_state === 'pending' ? (
+                            <button type="button" disabled={undoingAuto === m.keep_id}
+                                    onClick={() => handleUndoAuto('merge', m.keep_id)}
+                                    className="text-xs px-2 py-0.5 rounded border shrink-0"
+                                    style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                              {undoingAuto === m.keep_id ? 'Undoing…' : 'Undo merge'}
+                            </button>
+                          ) : (
+                            <span className="text-xs shrink-0" style={{ color: '#8FA9C8' }}>{m.keep_state === 'pending' ? '' : 'committed'}</span>
+                          )}
+                        </div>
+                      ))}
+                      {autoRes.rejected.map((x) => (
+                        <div key={x.id} className="flex items-start justify-between gap-2 text-sm">
+                          <div className="min-w-0" style={{ color: '#002147' }}>
+                            Rejected <b>{x.name ?? '(unnamed)'}</b>
+                            <span style={{ color: '#4A6B94' }}> · duplicates committed record “{x.committed_name ?? 'unnamed'}”</span>
+                          </div>
+                          {canApprove && (
+                            <button type="button" disabled={undoingAuto === x.id}
+                                    onClick={() => handleUndoAuto('reject', x.id)}
+                                    className="text-xs px-2 py-0.5 rounded border shrink-0"
+                                    style={{ borderColor: '#8FA9C8', color: '#4A6B94', backgroundColor: '#FFFFFF' }}>
+                              {undoingAuto === x.id ? 'Undoing…' : 'Undo reject'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2323,6 +3204,52 @@ export default function ResearchRunApprovalModal({
                 triage.clean.map((r) => rowCard(r)),
               )}
 
+              {/* 3b. Leads — no unit count (collapsed by default). Below the mappable
+                  records so a Deep run's list reads as what gets mapped. */}
+              {estimateCost && (estimateCost.calls > 0 || estimateCost.runs > 0) && (
+                <div className="text-xs px-1 flex flex-wrap gap-x-3" style={{ color: '#4A6B94' }}>
+                  <span title="The research agent's own model usage, as it reported on submit. Runs that didn't report it are not counted: a blank means not measured, not zero.">
+                    Research agent:{' '}
+                    {estimateCost.agentRuns === 0
+                      ? 'usage not reported'
+                      : <>
+                          {estimateCost.agentIn != null && `${(estimateCost.agentIn / 1000).toFixed(0)}k in`}
+                          {estimateCost.agentOut != null && ` / ${(estimateCost.agentOut / 1000).toFixed(0)}k out tokens`}
+                          {estimateCost.agentCents != null && ` · $${(estimateCost.agentCents / 100).toFixed(2)}`}
+                          {estimateCost.agentRuns < estimateCost.runs && ` (${estimateCost.agentRuns} of ${estimateCost.runs} runs reported)`}
+                        </>}
+                  </span>
+                  {estimateCost.calls > 0 && (
+                    <span title="Post-run unit estimator: Gemini 2.5 Flash with Google Search grounding, run on every record that came in without a unit count. Cost is an upper bound: grounding is free for the first 1,500 prompts/day.">
+                      Unit estimates: {estimateCost.calls} Gemini call{estimateCost.calls === 1 ? '' : 's'} · ${(estimateCost.cents / 100).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              )}
+              {triage.leads.length > 0 && sectionShell(
+                `Leads — no unit count / out of scope (${triage.leads.length})`
+                  + (!isReadOnlyRun ? ` · ${leadsSelected} selected` : ''),
+                showLeads,
+                () => setShowLeads((v) => !v),
+                !isReadOnlyRun ? (
+                  <span className="flex gap-1.5">
+                    <button type="button"
+                            onClick={() => setSelected((prev) => { const n = new Set(prev); triage.leads.filter((r) => !r.matched_existing_id).forEach((r) => n.add(r.id)); return n; })}
+                            className="text-xs px-2 py-1 rounded border" style={{ borderColor: '#002147', color: '#002147' }}
+                            title="Select every lead (except ones matching a committed record) for Approve & Commit">
+                      Select all
+                    </button>
+                    <button type="button"
+                            onClick={() => setSelected((prev) => { const n = new Set(prev); leadIds.forEach((id) => n.delete(id)); return n; })}
+                            className="text-xs px-2 py-1 rounded border" style={{ borderColor: '#8FA9C8', color: '#4A6B94' }}
+                            title="Leave every lead out of this commit">
+                      Deselect all
+                    </button>
+                  </span>
+                ) : null,
+                triage.leads.map((r) => leadCard(r)),
+              )}
+
               {/* 4. Decided (approved + rejected, collapsed by default) */}
               {(triage.approved.length + triage.rejected.length + triage.merged.length) > 0 && sectionShell(
                 `Decided — ${triage.approved.length} approved · ${triage.rejected.length} rejected${triage.merged.length > 0 ? ` · ${triage.merged.length} merged` : ''}`,
@@ -2332,26 +3259,7 @@ export default function ResearchRunApprovalModal({
                 [...triage.approved, ...triage.merged, ...triage.rejected].map((r) => rowCard(r)),
               )}
 
-              {/* Needs review — single-run only */}
-              {run && (
-              <div>
-                <label className="block text-sm font-semibold mb-1" style={{ color: '#002147' }}>Needs review</label>
-                <textarea
-                  rows={3}
-                  value={needsReview}
-                  disabled={isReadOnlyRun}
-                  onChange={(e) => setNeedsReview(e.target.value)}
-                  className="w-full px-2 py-1 text-sm border rounded"
-                  style={{ borderColor: '#8FA9C8', color: '#002147' }}
-                  placeholder="Anything the agent flagged for human review."
-                />
-                {run.alt_avenues && (
-                  <p className="text-xs mt-1" style={{ color: '#4A6B94' }}>
-                    Agent alt avenues: {run.alt_avenues}
-                  </p>
-                )}
-              </div>
-              )}
+              {/* Needs review moved to the top of the body (under the summary header). */}
             </>
           )}
         </div>
@@ -2391,7 +3299,7 @@ export default function ResearchRunApprovalModal({
                 opacity: selected.size === 0 || submitting ? 0.7 : 1,
               }}
             >
-              {submitting ? 'Approving…' : `Approve & Commit (${selected.size})`}
+              {submitting ? 'Approving…' : `Approve & Commit (${commitLabel})`}
             </button>
           ) : null}
         </div>

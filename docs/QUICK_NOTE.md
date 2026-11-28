@@ -29,6 +29,7 @@ RLS: select/insert/update/delete all require `user_id = auth.uid()`. Verified by
 
 ## Code
 - `src/components/quickNote/QuickNoteLauncher.tsx` — FAB, panel, shortcut, route → deal context
+- `src/hooks/useDraggableFab.ts` — drag, clamp, click-vs-drag and position persistence for the launcher; shared with the Intel button
 - `src/components/quickNote/useQuickNotes.ts` — fetch / add / toggle / reorder
 - Mounted in `ProtectedLayout` in `src/App.tsx`
 

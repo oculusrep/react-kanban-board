@@ -3,8 +3,8 @@
  *
  *   prepare      (code)  Step 1 school results → EDGE check → fill list → school_fill, or straight to deep_pass
  *   school_fill  (model) record_school_fill + web_search (15) → on end_turn: deep_pass
- *   deep_pass    (model) record_employer, geocode_address, OVIS tools + web_search (20) → on end_turn: exports
- *   exports      (code)  schools.csv + employers.csv to Dropbox → finalize the report message
+ *   deep_pass    (model) record_employer/_coffee_competitor/_generator, OVIS tools + web_search → exports
+ *   exports      (code)  schools/employers/competitors/generators/pipeline .csv → finalize the report
  *
  * Every phase change goes through advance_thread_run_phase (lease-checked, commits the
  * iteration). Model phases reuse runModelIteration, so retries, cost and the search budget
@@ -12,15 +12,22 @@
  */
 
 import {
-  type AcceptedFill, buildEmployersCsv, buildFillList, buildSchoolsCsv, csvBytes, DEEP_PASS_CLIENT_TOOLS,
-  DEEP_PASS_PROMPT_KEY, DEEP_PASS_SEARCH_BUDGET, deepPassOpening, type EdgeLocation, extractStep1Schools,
-  FILL_SEARCH_BUDGET, type FillItem, MIN_EMPLOYER_HEADCOUNT, MIN_SCHOOL_ENROLLMENT,
-  type RecordedEmployer, recordEmployer, SCHOOL_FILL_CLIENT_TOOLS,
-  SCHOOL_FILL_PROMPT_KEY, type SchoolRecord, schoolFillOpening, validateSchoolFill,
+  type AcceptedFill, type AtlasCoffeeRow, buildCompetitorsCsv, buildEmployersCsv, buildFillList,
+  buildSchoolsCsv, csvBytes, DEEP_PASS_CLIENT_TOOLS, DEEP_PASS_PROMPT_KEY, DEEP_PASS_SEARCH_BUDGET,
+  deepPassOpening, type EdgeLocation, extractStep1Schools, FILL_SEARCH_BUDGET, type FillItem,
+  type RecordedCompetitor, recordCoffeeCompetitor, type RecordedEmployer, recordEmployer,
+  SCHOOL_FILL_CLIENT_TOOLS, SCHOOL_FILL_PROMPT_KEY, type SchoolRecord, schoolFillOpening, validateSchoolFill,
 } from './deep-pass.ts';
+import {
+  buildGeneratorsCsv, fetchDriveBands, type MerchantGenerator, merchantGenerators,
+  type RecordedGenerator, recordGenerator,
+} from './generators.ts';
+import { buildMunicipalityKmls, kmlFooter, type MunicipalityKml } from './municipal-kml.ts';
+import { HIGHER_ED_CAVEAT } from './higher-ed.ts';
 import { type ClaimedRun, type IterationDeps, type IterationOutcome, PermanentError, runModelIteration } from './iteration.ts';
 import { isPermanentApiError, MODEL } from './model.ts';
 import { dataQualityFor } from './snapshot.ts';
+import { buildPipelineCsv, fetchPipelineMatrix, householdsByBand } from './pipeline.ts';
 
 export interface DeepPassDb {
   advancePhase(a: {
@@ -39,9 +46,20 @@ export interface DeepPassDb {
 
 export interface DeepPassDeps extends Omit<IterationDeps, 'clientTools' | 'webSearchTool' | 'onEndTurn'> {
   dp: DeepPassDb;
+  /** Service client, for the shared pipeline SQL function at export time. */
+  // deno-lint-ignore no-explicit-any
+  rpc: { rpc: (fn: string, args?: Record<string, unknown>) => any };
   webSearchTool: Record<string, unknown>;
   edgePrivate: (ppins: string[]) => Promise<Map<string, EdgeLocation>>;
+  /** Starbucks within 5 mi from the Atlas tables, for competitors.csv. */
+  atlasCoffee: (site: { latitude: number; longitude: number }) => Promise<AtlasCoffeeRow[]>;
   recordEmployer?: typeof recordEmployer;
+  recordCoffeeCompetitor?: typeof recordCoffeeCompetitor;
+  recordGenerator?: typeof recordGenerator;
+  /** Grocery, big box, home improvement, drug, fitness and destination retail from OVIS data — no searches. */
+  merchantGenerators?: (site: { latitude: number; longitude: number }) => Promise<MerchantGenerator[]>;
+  /** One KML per municipality within 10 mi, each carrying that municipality's whole project set. */
+  municipalityKmls?: (site: { latitude: number; longitude: number }) => Promise<MunicipalityKml[]>;
   /** Upload the CSVs to the site submit's Dropbox folder; returns where they landed. */
   exportFiles: (siteSubmitId: string, files: Array<{ name: string; bytes: Uint8Array }>) => Promise<Array<{ name: string; path: string; size: number }>>;
 }
@@ -111,7 +129,11 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
       firstPassReport: await deps.dp.firstPassReport(run.thread_id),
     });
     return advance('deep_pass', [{ role: 'user', content: opening }], DEEP_PASS_PROMPT_KEY, DEEP_PASS_SEARCH_BUDGET,
-      { ...extra, school_fill_summary: fillSummary, school_fills_accepted: accepted.length });
+      {
+        ...extra, school_fill_summary: fillSummary, school_fills_accepted: accepted.length,
+        // Searches already spent when the deep pass began, and its own ceiling: the report states both.
+        deep_pass_search_base: run.web_search_requests, deep_pass_search_ceiling: DEEP_PASS_SEARCH_BUDGET,
+      });
   };
 
   switch (run.pass_phase) {
@@ -145,7 +167,8 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           return await openDeepPass(schools, fillList, 'No school needed a web fill: every in-band school has NCES enrollment (or is planned) and an NCES-confirmed physical address.', patch);
         }
         return await advance('school_fill', [{ role: 'user', content: schoolFillOpening(fillList) }],
-          SCHOOL_FILL_PROMPT_KEY, FILL_SEARCH_BUDGET, patch);
+          SCHOOL_FILL_PROMPT_KEY, FILL_SEARCH_BUDGET,
+          { ...patch, school_fill_search_base: run.web_search_requests, school_fill_search_ceiling: FILL_SEARCH_BUDGET });
       });
 
     case 'school_fill': {
@@ -165,12 +188,17 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
 
     case 'deep_pass': {
       const record = deps.recordEmployer ?? recordEmployer;
+      const recordCompetitor = deps.recordCoffeeCompetitor ?? recordCoffeeCompetitor;
+      const schoolsOnFile = (state.schools ?? []) as SchoolRecord[];
       return await runModelIteration(run, owner, {
         ...deps,
         clientTools: DEEP_PASS_CLIENT_TOOLS,
         webSearchTool: deps.webSearchTool,
         execute: async (name, input, r) => {
-          if (name === 'record_employer') return await record(input, siteOf(r));
+          // schoolsOnFile: a school recorded as an employer keeps its NCES distance, never a second one.
+          if (name === 'record_employer') return await record(input, siteOf(r), undefined, schoolsOnFile);
+          if (name === 'record_coffee_competitor') return await recordCompetitor(input, siteOf(r));
+          if (name === 'record_generator') return await (deps.recordGenerator ?? recordGenerator)(input, siteOf(r));
           if (name === 'query_nearby_schools') throw new Error('query_nearby_schools is not available in the deep pass; the school bands are already computed');
           return await deps.execute(name, input, r);
         },
@@ -188,22 +216,70 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
           .map((o) => (o as { accepted?: AcceptedFill | null }).accepted).filter((a): a is AcceptedFill => !!a);
         const employers = (await deps.dp.committedToolOutputs(run.id, 'record_employer'))
           .map((o) => (o as { recorded?: RecordedEmployer | null }).recorded).filter((e): e is RecordedEmployer => !!e);
-        const schoolsCsv = buildSchoolsCsv((state.schools ?? []) as SchoolRecord[], fills);
+        const competitors = (await deps.dp.committedToolOutputs(run.id, 'record_coffee_competitor'))
+          .map((o) => (o as { recorded?: RecordedCompetitor | null }).recorded).filter((c): c is RecordedCompetitor => !!c);
+        const generators = (await deps.dp.committedToolOutputs(run.id, 'record_generator'))
+          .map((o) => (o as { recorded?: RecordedGenerator | null }).recorded).filter((g): g is RecordedGenerator => !!g);
+        const site = siteOf(run);
+        // Atlas coffee is code-sourced: competitors.csv never depends on the model having called a tool.
+        const atlas = site ? await deps.atlasCoffee(site) : [];
+        // Same for the retail half of generators.csv — OVIS data, zero searches.
+        const merchants = site ? await (deps.merchantGenerators ?? ((s) => merchantGenerators(deps.rpc, s)))(site) : [];
+        // One pipeline count, from the shared SQL function — never re-counted here.
+        const pipeline = site
+          ? await fetchPipelineMatrix(deps.rpc, site, householdsByBand((run.pinned_context as { demographics?: unknown } | null)?.demographics), run.site_submit_id)
+          : null;
+        const pipelineCsv = pipeline ? buildPipelineCsv(pipeline) : null;
+        // Higher ed arrives inside the Step 1 school records, from the same query_nearby_schools
+        // result the band totals come from. One source: the file cannot disagree with the prose.
+        const schoolRecords = (state.schools ?? []) as SchoolRecord[];
+        const ipedsCount = schoolRecords.filter((s) => s.higher_ed).length;
+        const schoolsCsv = buildSchoolsCsv(schoolRecords, fills);
         const employersCsv = buildEmployersCsv(employers);
+        const competitorsCsv = buildCompetitorsCsv(atlas, competitors);
+        // One isochrone for the whole export: the same cached pull pipeline.csv counted against.
+        const bandPoints = [
+          ...merchants.map((m, i) => ({ id: `m${i}`, lat: m.latitude, lng: m.longitude })),
+          ...generators.flatMap((g, i) => g.latitude !== null && g.longitude !== null ? [{ id: `g${i}`, lat: g.latitude, lng: g.longitude }] : []),
+        ];
+        let driveBands = new Map<string, string>();
+        if (site && bandPoints.length) {
+          try { driveBands = (await fetchDriveBands(deps.rpc, site, bandPoints)).bands; }
+          catch (e) { log(`${tag} drive bands unavailable: ${e instanceof Error ? e.message : String(e)}`); }
+        }
+        const bandAt = (lat: number, lng: number) => {
+          const p = bandPoints.find((b) => b.lat === lat && b.lng === lng);
+          return p ? driveBands.get(p.id) ?? null : null;
+        };
+        const generatorsCsv = buildGeneratorsCsv(merchants, generators, bandAt);
+        // KML is code-sourced like Atlas coffee: it never depends on the model asking for it.
+        let kmls: MunicipalityKml[] = [];
+        if (site) {
+          try { kmls = await (deps.municipalityKmls ?? ((s) => buildMunicipalityKmls(deps.rpc as never, s)))(site); }
+          catch (e) { log(`${tag} municipality KML unavailable: ${e instanceof Error ? e.message : String(e)}`); }
+        }
 
         let exportsState: Record<string, unknown>;
         try {
           const uploaded = await deps.exportFiles(run.site_submit_id, [
             { name: 'schools.csv', bytes: csvBytes(schoolsCsv.csv) },
             { name: 'employers.csv', bytes: csvBytes(employersCsv.csv) },
+            { name: 'competitors.csv', bytes: csvBytes(competitorsCsv.csv) },
+            { name: 'generators.csv', bytes: csvBytes(generatorsCsv.csv) },
+            ...kmls.map((k) => ({ name: k.filename, bytes: new TextEncoder().encode(k.kml) })),
+            ...(pipelineCsv ? [{ name: 'pipeline.csv', bytes: csvBytes(pipelineCsv.csv) }] : []),
           ]);
           exportsState = {
             status: 'uploaded',
-            files: uploaded.map((u) => ({
-              ...u,
-              ...(u.name === 'schools.csv' ? schoolsCsv.filtered : employersCsv.filtered),
-              rows: u.name === 'schools.csv' ? schoolsCsv.rows.length : employersCsv.rows.length,
-            })),
+            files: uploaded.map((u) => {
+              const built = u.name === 'schools.csv' ? schoolsCsv
+                : u.name === 'employers.csv' ? employersCsv
+                : u.name === 'competitors.csv' ? competitorsCsv
+                : u.name === 'generators.csv' ? { rows: generatorsCsv.rows, filtered: { kept: generatorsCsv.rows.length, flagged: generatorsCsv.flagged } }
+                : u.name.endsWith('.kml') ? { rows: [], filtered: { kept: 0, flagged: 0 } }
+                : { rows: pipelineCsv?.rows ?? [], filtered: { kept: pipelineCsv?.rows.length ?? 0, flagged: pipelineCsv?.flagged ?? 0 } };
+              return { ...u, ...built.filtered, rows: built.rows.length };
+            }),
           };
         } catch (e) {
           // Retry the upload first; on the last attempt deliver the report anyway rather than lose it.
@@ -212,21 +288,31 @@ export async function runDeepPassIteration(run: ClaimedRun, owner: string, deps:
         }
         await deps.dp.patchState(run.id, owner, { exports: exportsState });
 
-        const files = (exportsState.files ?? []) as Array<{ name: string; path: string; rows: number; below_threshold: number; unknown_size_kept: number }>;
-        const size = (f: { name: string }) => (f.name === 'schools.csv' ? `under ${MIN_SCHOOL_ENROLLMENT} enrolled` : `under ${MIN_EMPLOYER_HEADCOUNT} staff`);
+        const files = (exportsState.files ?? []) as Array<{ name: string; path: string; rows: number; flagged: number }>;
+        // Searches actually spent per phase against that phase's ceiling.
+        const n = (v: unknown) => (typeof v === 'number' ? v : null);
+        const deepBase = n(state.deep_pass_search_base), deepCeiling = n(state.deep_pass_search_ceiling);
+        const fillBase = n(state.school_fill_search_base), fillCeiling = n(state.school_fill_search_ceiling);
+        const searchLine = deepCeiling === null
+          ? ''
+          : ` Web searches: ${Math.max(0, run.web_search_requests - (deepBase ?? 0))} of ${deepCeiling} in the deep pass` +
+            (fillCeiling !== null ? `, ${Math.max(0, (deepBase ?? 0) - (fillBase ?? 0))} of ${fillCeiling} in the school fill` : '') + '.';
         const footer = exportsState.status === 'uploaded'
-          ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.map((f) =>
-              `${f.name} (${f.rows} rows` +
-              (f.below_threshold ? `; ${f.below_threshold} excluded as ${size(f)}` : '') +
-              (f.unknown_size_kept ? `; ${f.unknown_size_kept} kept with size unknown` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. File filters do not change the banded totals above.`
-          : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.`;
+          ? `\n\n---\n**Exports** (site submit Dropbox folder): ${files.filter((f) => !f.name.endsWith('.kml')).map((f) =>
+              `${f.name} (${f.rows} rows` + (f.flagged ? `; ${f.flagged} flagged CHECK` : '') + ')').join(', ')} — ${files[0]?.path.replace(/\/[^/]+$/, '') ?? ''}. Nothing is filtered out of an export; the banded totals above are unchanged by it.` +
+            (ipedsCount
+              ? ` schools.csv includes ${ipedsCount} higher-education row${ipedsCount === 1 ? '' : 's'}, from the same banded query_nearby_schools result as the totals above; their headcount is never added to a K-12 total. ${HIGHER_ED_CAVEAT}`
+              : ` No higher-education rows: the first pass's school bands predate IPEDS, or no institution reports a UNITID in these bands. ${HIGHER_ED_CAVEAT}`) +
+            ` generators.csv carries the researched generators only — the ${generatorsCsv.retailResearchedNotExported} retail locations were researched and are in the narrative, not the file (they are already in Sites USA).` +
+            kmlFooter(kmls) + searchLine
+          : `\n\n---\n**Exports failed:** the CSVs could not be written to Dropbox (${String(exportsState.error).slice(0, 300)}). The report above is complete.${searchLine}`;
 
         const result = await deps.db.finalize({
           runId: run.id, owner, iteration: run.iteration, attempt: run.attempt, convo: run.convo,
           content: report + footer, model: MODEL, parsed: false,
           archetypePrimary: null, archetypeSecondary: null, storyCarriers: null,
         });
-        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length}(-${schoolsCsv.filtered.below_threshold}) employers=${employersCsv.rows.length}(-${employersCsv.filtered.below_threshold}) finalize=${result.status}`);
+        log(`${tag} exports=${exportsState.status} schools=${schoolsCsv.rows.length} employers=${employersCsv.rows.length} competitors=${competitorsCsv.rows.length} generators=${generatorsCsv.rows.length} pipeline=${pipelineCsv?.rows.length ?? 0} finalize=${result.status}`);
         return result.status;
       });
 

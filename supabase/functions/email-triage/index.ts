@@ -18,6 +18,7 @@ import {
   isTokenExpired,
   GmailConnection,
 } from '../_shared/gmail.ts';
+import { authorizeCaller } from '../_shared/caller-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -117,6 +118,11 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Caller authorization — see _shared/caller-auth.ts. Three callers: pg_cron (X-Cron-Secret), gmail-sync (service-role bearer), and
+  // the internal /admin/email-review page. Its response echoes email subjects.
+  const caller = await authorizeCaller(req, { allowService: true, allowInternalUser: true }, corsHeaders);
+  if (caller instanceof Response) return caller;
+
   const startTime = Date.now();
   const results: TriageResult[] = [];
 
@@ -125,6 +131,28 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // SCOPE: triage is the owner's desk, not every connected mailbox. gmail-sync
+    // ingests every active gmail_connection (shared `emails` store, per-mailbox
+    // `email_visibility` rows), and until 2026-11-05 this classifier took whatever
+    // was oldest — which spent ~37M tokens on 10,108 messages only ever visible to
+    // asantos@, and could never produce a label, because label-inbox only writes to
+    // the owner's mailbox. Mail visible to the owner (alone or shared) is in scope;
+    // mail visible only to someone else is not.
+    const triageMailbox = Deno.env.get('TRIAGE_MAILBOX') ?? 'mike@oculusrep.com';
+    const { data: ownerConn, error: ownerErr } = await supabase
+      .from('gmail_connection')
+      .select('id, google_email')
+      .eq('google_email', triageMailbox)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (ownerErr) {
+      throw new Error(`Failed to resolve triage mailbox ${triageMailbox}: ${ownerErr.message}`);
+    }
+    if (!ownerConn) {
+      // Fail loudly: an unresolved mailbox must not silently widen to every inbox.
+      throw new Error(`No active gmail_connection for triage mailbox ${triageMailbox}`);
+    }
 
     // Fetch unprocessed emails
     const { data: emails, error: fetchError } = await supabase
@@ -143,11 +171,12 @@ serve(async (req) => {
         direction,
         received_at,
         classification_attempts,
-        email_visibility (
+        email_visibility!inner (
           user_id,
           gmail_connection_id
         )
       `)
+      .eq('email_visibility.gmail_connection_id', ownerConn.id)
       .eq('ai_processed', false)
       // Failed rows wait out their backoff; abandoned rows are not auto-retried.
       .neq('classification_status', 'abandoned')
@@ -166,7 +195,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing ${emails.length} unprocessed emails with AI agent`);
+    console.log(`Processing ${emails.length} unprocessed emails with AI agent (mailbox ${ownerConn.google_email})`);
 
     // Get the Email activity type ID for creating activities
     const { data: emailActivityType } = await supabase

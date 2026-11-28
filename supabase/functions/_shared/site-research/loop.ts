@@ -122,6 +122,18 @@ export function hasPendingServerToolUse(content: Block[] | undefined): boolean {
   return content.some((b) => b.type === 'server_tool_use' && !answered.has(String(b.id)));
 }
 
+/**
+ * Said to the model on a locked request. Locked means the run's search budget is spent but web_search
+ * must stay declared (its container is still needed), with tool_choice none so nothing new can start.
+ * Without this the model can sit there wanting a search it cannot make and end the turn with thinking
+ * and no prose — which is how run a6e0aa0e failed on 2026-09-26.
+ */
+export const SEARCH_BUDGET_SPENT_NOTE =
+  'YOUR WEB SEARCH BUDGET FOR THIS RUN IS SPENT. No further search or tool call can be made — they are ' +
+  'disabled for this request. Do not wait for one and do not ask for one. Write your final answer now, ' +
+  'in full, from the tool results and searches already in this conversation. Where something could not ' +
+  'be determined with what you have, say so plainly in the report rather than leaving it out.';
+
 export type SearchPlan =
   | { mode: 'search'; maxUses: number }
   | { mode: 'drop' }
@@ -149,6 +161,12 @@ export function buildRequestParams(
   containerId: string | null = null,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = { ...baseParams, messages: convo };
+  if (plan.mode === 'lock') {
+    // Appended, never replacing: the versioned prompt and the frozen snapshot stay exactly as they are.
+    const system = Array.isArray(baseParams.system) ? [...(baseParams.system as unknown[])] : [];
+    system.push({ type: 'text', text: SEARCH_BUDGET_SPENT_NOTE });
+    params.system = system;
+  }
   const tools: Array<Record<string, unknown>> = [];
   // The container may only ride along when the code-execution-backed tool is actually declared.
   const codeExecutionToolDeclared = !!webSearchTool && plan.mode !== 'drop';
@@ -218,6 +236,28 @@ export async function requestOnce(opts: {
  * A clear message for an API rejection about the code-execution container, or null when the
  * error is not about the container. Used so a run fails with an explanation, not a raw 400.
  */
+/**
+ * Strip citation/quoting markup the model sometimes emits around web-search quotes. The 2026-09-16
+ * Macon report shipped three fragments like `<cite index="0-0">103-bed ... hospital</parameter>` —
+ * opening and closing tags that do not even match — and the opener arrived as `(cite ...>`, not `<cite
+ * ...>`. The quoted text, its numbers, the source name and any URL are content and are kept: only the
+ * markup goes, so a web-sourced quote never loses its attribution.
+ */
+export function sanitizeModelText(text: string): string {
+  return text
+    // Remove the markup AND the whitespace it sat in, so a quote that was split across its own
+    // lines rejoins the sentence instead of leaving a mid-sentence break. Paragraph breaks that
+    // had no markup in them are untouched.
+    .replace(/[ \t]*\n?[ \t]*<\/?(?:cite|parameter|antml:[a-z_:-]+)\b[^>]*>[ \t]*\n?[ \t]*/gi, ' ')
+    .replace(/[ \t]*\n?[ \t]*\(\s*\/?(?:cite|parameter)\b[^)>]*>[ \t]*\n?[ \t]*/gi, ' ')
+    .replace(/[\uE000-\uF8FF]/g, '')
+    .replace(/[ \t]+([,;.])/g, '$1')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function containerErrorMessage(e: unknown, containerId: string | null | undefined): string | null {
   const status = (e as { status?: number })?.status;
   const msg = String((e as { message?: string })?.message ?? e);

@@ -45,6 +45,7 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
         `)
         .eq('is_active', true)
         .eq('payment_received', false)
+        .is('written_off_at', null) // written-off payments won't be collected
         .not('payment_date_estimated', 'is', null)
         .order('payment_date_estimated', { ascending: true });
 

@@ -39,6 +39,7 @@ export interface StarbucksLicensedStoreLayerProps {
   verifyingStoreNumber?: string | null;
   onLocationVerified?: (storeNumber: string, lat: number, lng: number) => void;
   onRightClick?: (store: StarbucksLicensedStore, x: number, y: number) => void;
+  allowAddToTour?: boolean;
 }
 
 // Map store_type → logo filename. Files live under public/Images/ (served as /Images/...).
@@ -77,6 +78,7 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
   verifyingStoreNumber = null,
   onLocationVerified,
   onRightClick,
+  allowAddToTour = true,
 }) => {
   const [stores, setStores] = useState<StarbucksLicensedStore[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
@@ -137,6 +139,7 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
             <StarbucksLicensedStorePopup
               store={store}
               onClose={() => this.onRemove()}
+              allowAddToTour={allowAddToTour}
             />
           );
           this.getPanes()?.floatPane.appendChild(this.containerDiv);
@@ -163,7 +166,7 @@ const StarbucksLicensedStoreLayer: React.FC<StarbucksLicensedStoreLayerProps> = 
       }
       return new PopupOverlay(position);
     },
-    []
+    [allowAddToTour]
   );
 
   const fetchStores = useCallback(async (forceRefresh = false) => {

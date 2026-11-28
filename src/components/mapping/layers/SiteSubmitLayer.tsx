@@ -64,6 +64,8 @@ export type SiteSubmitLoadingMode = 'static-100' | 'static-500' | 'static-all' |
 export interface SiteSubmitLoadingConfig {
   mode: SiteSubmitLoadingMode;
   clientId?: string | null; // For client filtering
+  clientIds?: string[] | null; // Multi-client filter (account family); takes precedence over clientId
+  realEstateManagerId?: string | null; // client-filtered mode only: REM contact id, '__unassigned', or null = all
   visibleStages?: Set<string>; // For stage filtering
   clusterConfig?: {
     minimumClusterSize: number;
@@ -297,9 +299,14 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           break;
 
         case 'client-filtered':
-          if (loadingConfig.clientId) {
-            console.log(`🔍 Filtering by client: ${loadingConfig.clientId}`);
-            query = query.eq('client_id', loadingConfig.clientId);
+          const filterClientIds = loadingConfig.clientIds?.length
+            ? loadingConfig.clientIds
+            : loadingConfig.clientId ? [loadingConfig.clientId] : [];
+          if (filterClientIds.length > 0) {
+            console.log(`🔍 Filtering by client(s): ${filterClientIds.join(', ')}`);
+            query = query.in('client_id', filterClientIds);
+            if (loadingConfig.realEstateManagerId === '__unassigned') query = query.is('real_estate_manager_id', null);
+            else if (loadingConfig.realEstateManagerId) query = query.eq('real_estate_manager_id', loadingConfig.realEstateManagerId);
           } else {
             // No client selected - return empty results instead of all site submits
             console.log('🚫 No client selected, skipping site submit fetch (will return 0 results)');

@@ -7,6 +7,7 @@
  */
 
 import { useNavigate } from 'react-router-dom';
+import { CashPositionCard } from '../components/cashflow/CashPositionCard';
 import {
   TrendingUp,
   BookOpen,
@@ -68,10 +69,10 @@ export default function FinanceHubPage() {
       borderColor: 'border-purple-200',
     },
     {
-      title: 'Cash Flow Forecast',
-      description: 'Project future cash flow based on expected payments, invoices, and budgeted expenses.',
+      title: 'Profit Forecast',
+      description: 'Monthly house net vs budgeted operating expenses for the year. For cash in the bank, see Cash Position above.',
       icon: <LineChart className="h-8 w-8" />,
-      path: '/admin/budget/forecast',
+      path: '/admin/budget/forecast?tab=profit',
       color: 'text-cyan-600',
       bgColor: 'bg-cyan-50',
       borderColor: 'border-cyan-200',
@@ -208,6 +209,11 @@ export default function FinanceHubPage() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Cash Position — first thing on the page */}
+        <div className="mb-10">
+          <CashPositionCard />
+        </div>
+
         {/* AI Assistants Section */}
         <div className="mb-10">
           <div className="flex items-center gap-2 mb-4">

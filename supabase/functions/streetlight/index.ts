@@ -623,6 +623,9 @@ async function handleMetrics(
   }));
 
   let logId: string | null = null;
+  // Cache/log write failures are returned to the caller rather than only logged —
+  // a silent failure here is how the shared cache stopped filling for a month.
+  const writeErrors: string[] = [];
 
   if (!apiError && metricRows.length > 0) {
     // Insert usage log
@@ -631,7 +634,10 @@ async function handleMetrics(
       .insert(usageLogRow)
       .select('id')
       .single();
-    if (logError) console.error('[StreetLight] Usage log error:', logError.message);
+    if (logError) {
+      console.error('[StreetLight] Usage log error:', logError.message);
+      writeErrors.push(`usage_log: ${logError.message}`);
+    }
     logId = logRow?.id ?? null;
 
     // Ensure all segment IDs exist in streetlight_segment (FK requirement)
@@ -642,13 +648,20 @@ async function handleMetrics(
       updated_at: new Date().toISOString(),
       cached_at: new Date().toISOString(),
     }));
-    await supabase.from('streetlight_segment').upsert(segmentStubs, { onConflict: 'id', ignoreDuplicates: true });
+    const { error: stubError } = await supabase.from('streetlight_segment').upsert(segmentStubs, { onConflict: 'id', ignoreDuplicates: true });
+    if (stubError) {
+      console.error('[StreetLight] Segment stub upsert error:', stubError.message);
+      writeErrors.push(`segment: ${stubError.message}`);
+    }
 
     // Upsert metrics cache — this is the permanent cache
     const { error: metricsError } = await supabase
       .from('streetlight_segment_metrics')
       .upsert(metricRows, { onConflict: 'segment_id,year_month,day_type,day_part' });
-    if (metricsError) console.error('[StreetLight] Metrics upsert error:', metricsError.message);
+    if (metricsError) {
+      console.error('[StreetLight] Metrics upsert error:', metricsError.message);
+      writeErrors.push(`metrics: ${metricsError.message}`);
+    }
   } else {
     // Log the failed attempt
     const { data: logRow } = await supabase
@@ -669,6 +682,7 @@ async function handleMetrics(
     segment_count: finalCount,
     free_retry_count: previouslyBilledSet.size,
     year: resolvedYear,
+    ...(writeErrors.length > 0 ? { cache_write_errors: writeErrors } : {}),
     metrics: apiMetrics.map(m => ({ segment_id: m.segment_id, aadt: m.trips_volume })),
   };
 }
@@ -697,8 +711,8 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase client with user's JWT
-    const supabase = createClient(
+    // User-JWT client: used ONLY to identify the caller and check they're internal.
+    const userClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
@@ -706,7 +720,24 @@ serve(async (req) => {
       }
     );
 
-    const user = await requireAuth(req, supabase);
+    const user = await requireAuth(req, userClient);
+
+    const { data: isInternal, error: internalError } = await userClient.rpc('is_internal_user');
+    if (internalError || isInternal !== true) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'StreetLight traffic data is available to internal users only' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Service client for all cache/usage reads and writes. The streetlight_* tables
+    // have SELECT-only RLS policies (20260928150000), so writes made with the user's
+    // JWT are silently rejected — which is what stopped the shared AADT cache from
+    // filling after 2026-09-28. Writing as service_role keeps the cache shared across
+    // users without giving browser clients write access to paid-data/spend tables.
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY not configured');
+    const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', serviceKey);
 
     const body = await req.json() as StreetLightRequest;
     const { action, bounds, segment_ids } = body;

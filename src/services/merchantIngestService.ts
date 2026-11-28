@@ -10,6 +10,13 @@
 import { Loader } from '@googlemaps/js-api-loader';
 import { supabase } from '../lib/supabaseClient';
 import { PlacesSearchResult } from './googlePlacesSearchService';
+// The guards live in ONE place; ingest, map render and site research all import them.
+import {
+  isAncillarySubListing, nameMatchesBrand,
+} from '../../supabase/functions/_shared/merchant-brand-guards';
+
+// Re-exported so existing importers of this module keep working.
+export { isAncillarySubListing, nameMatchesBrand };
 
 export interface MerchantBrandRow {
   id: string;
@@ -21,98 +28,6 @@ export interface MerchantBrandRow {
   /** Comma-separated ancillary tokens (in addition to defaults) that mark a
    *  Places result as a sub-listing to filter out. See isAncillarySubListing. */
   places_name_exclude?: string | null;
-}
-
-// KEEP IN SYNC with DEFAULT_ANCILLARY_TOKENS in MerchantLayer.tsx.
-const DEFAULT_ANCILLARY_TOKENS = [
-  'ATM',
-  'Pharmacy',
-  'Fuel Center',
-  'Fuel Kiosk',
-  'Fueling Center',
-  'Deli',
-  'Bakery',
-  'Floral',
-  'Money Services',
-  'Advisors',
-  'Clicklist',
-  'Garden Center',
-  'Pro Services',
-  'Pro Center',
-  'Pro Desk',
-  'Tool Rental',
-  'Auto Center',
-  'Vision Center',
-  'Optical Center',
-  'Photo Lab',
-];
-
-function tokensToRegex(tokens: string[]): RegExp {
-  const escaped = tokens
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  if (escaped.length === 0) return /$^/;
-  return new RegExp(`\\b(?:${escaped.join('|')})\\b`, 'i');
-}
-
-const DEFAULT_ANCILLARY_REGEX = tokensToRegex(DEFAULT_ANCILLARY_TOKENS);
-
-/**
- * True if a Places result looks like an ancillary sub-listing at the same
- * storefront (Kroger Pharmacy, Wells Fargo ATM, Lowe's Garden Center, etc.).
- * KEEP IN SYNC with isAncillarySubListing() in MerchantLayer.tsx.
- */
-export function isAncillarySubListing(
-  placesName: string | null | undefined,
-  brand: Pick<MerchantBrandRow, 'places_name_exclude'>,
-): boolean {
-  if (!placesName) return false;
-  if (DEFAULT_ANCILLARY_REGEX.test(placesName)) return true;
-  const custom = brand.places_name_exclude?.trim();
-  if (!custom) return false;
-  const customTokens = custom.split(',').map((s) => s.trim()).filter(Boolean);
-  if (customTokens.length === 0) return false;
-  return tokensToRegex(customTokens).test(placesName);
-}
-
-/** Alphanumeric-only, lowercased. Mirrors the render-time helper in MerchantLayer. */
-function normalizeForMatch(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-/**
- * Does a Places-returned display name look like it belongs to this brand?
- *
- * Google Places Text Search is overly permissive — searching "24 Hour Fitness"
- * returns Anytime Fitness, YMCAs, and dance studios. This guard blocks non-
- * matching results at insert time so the cache doesn't fill with false hits.
- *
- * Matches against brand.places_display_name if set (the admin's override for
- * brands whose Places name differs from brand.name, e.g. "Truist Bank" -> "Truist")
- * else against brand.name. Also accepts a "brand-minus-last-word" stem so that
- * common type suffixes like Bank/Wireless/Store/Donuts don't force a manual
- * override for every such brand.
- *
- * KEEP IN SYNC with nameMatchesBrand() in MerchantLayer.tsx.
- */
-export function nameMatchesBrand(
-  placesName: string | null | undefined,
-  brand: Pick<MerchantBrandRow, 'name' | 'places_display_name'>,
-): boolean {
-  if (!placesName) return false;
-  const expected = brand.places_display_name?.trim() || brand.name;
-  if (!expected) return false;
-  const nPlaces = normalizeForMatch(placesName);
-  const nFull = normalizeForMatch(expected);
-  if (nFull.length >= 3 && nPlaces.includes(nFull)) return true;
-  const parts = expected.trim().split(/\s+/);
-  if (parts.length > 1) {
-    const stem = parts.slice(0, -1).join('');
-    const nStem = normalizeForMatch(stem);
-    if (nStem.length >= 4 && nPlaces.includes(nStem)) return true;
-  }
-  return false;
 }
 
 export interface IngestBrandResult {

@@ -20,6 +20,8 @@ interface ForecastingSettings {
   default_closing_deadline_days: number;
   velocity_min_deals_for_historical: number;
   behind_schedule_threshold_days: number;
+  /** Minimum cash to keep in the bank; the Finance hub card turns red when the 45-day low dips below it. */
+  cash_cushion_usd: number;
 }
 
 const DEFAULT_SETTINGS: ForecastingSettings = {
@@ -29,6 +31,7 @@ const DEFAULT_SETTINGS: ForecastingSettings = {
   default_closing_deadline_days: 30,
   velocity_min_deals_for_historical: 5,
   behind_schedule_threshold_days: 7,
+  cash_cushion_usd: 0,
 };
 
 export default function FinanceSettingsPage() {
@@ -100,7 +103,8 @@ export default function FinanceSettingsPage() {
 
   const handleSettingChange = (key: keyof ForecastingSettings, value: string) => {
     const numValue = parseInt(value, 10);
-    if (isNaN(numValue) || numValue < 1) return;
+    const min = key === 'cash_cushion_usd' ? 0 : 1;
+    if (isNaN(numValue) || numValue < min) return;
 
     setSettings(prev => {
       const updated = { ...prev, [key]: numValue };
@@ -316,6 +320,26 @@ export default function FinanceSettingsPage() {
             <p className="mt-1 text-xs text-gray-500">
               Number of closed deals required before using client's historical average
             </p>
+          </div>
+        </div>
+
+        {/* Cash Cushion Section */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Cash Cushion</h2>
+          <p className="text-sm text-gray-500 mb-6">
+            Minimum cash you want in the bank. The Cash Position card on the Finance hub turns red when the
+            45-day low point falls below this.
+          </p>
+          <div className="max-w-xs">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Cash cushion ($)</label>
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              value={settings.cash_cushion_usd}
+              onChange={(e) => handleSettingChange('cash_cushion_usd', e.target.value)}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+            />
           </div>
         </div>
 

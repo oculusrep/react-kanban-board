@@ -91,6 +91,7 @@ export interface RolePermissions {
 
   // Map Features
   can_verify_restaurant_locations?: boolean;
+  can_manage_map_layers?: boolean;
 
   // Client Portal
   can_access_client_portal?: boolean;
@@ -106,6 +107,7 @@ export interface RolePermissions {
   can_access_cfo_dashboard?: boolean;
   can_access_finance_hub?: boolean;
   can_access_municipal_import?: boolean;
+  can_view_market_research?: boolean;
   can_run_market_research?: boolean;
   can_approve_market_research?: boolean;
 
@@ -118,6 +120,27 @@ export interface RolePermissions {
   can_view_starbucks_layer?: boolean;
   can_view_site_analysis?: boolean;
   can_edit_starbucks_target_area?: boolean;
+
+  // Site Story (site research thread on Starbucks site submits)
+  can_view_site_story?: boolean;
+  can_run_site_story?: boolean;
+
+  // Broker Lite page access (opt-in; other roles are unaffected)
+  can_view_master_pipeline?: boolean;
+  can_view_tasks?: boolean;
+  can_view_tours?: boolean;
+  can_view_assignments?: boolean;
+  can_view_site_submits?: boolean;
+
+  // Map layers (enforced for broker_lite; other roles are unaffected)
+  can_view_layer_properties?: boolean;
+  can_view_layer_restaurants?: boolean;
+  can_view_layer_municipal_projects?: boolean;
+  can_view_layer_cached_demographics?: boolean;
+  can_view_layer_merchants?: boolean;
+  can_view_layer_comp_database?: boolean;
+  can_view_7eleven_layer?: boolean;
+  can_view_all_custom_layers?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -143,7 +166,10 @@ export type PermissionCategory =
   | 'integrations'
   | 'map_features'
   | 'traffic_data'
-  | 'starbucks_layer';
+  | 'starbucks_layer'
+  | 'site_story'
+  | 'broker_lite_pages'
+  | 'map_layers';
 
 /**
  * Standard permission definitions with descriptions
@@ -554,6 +580,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'map_features',
     defaultValue: false,
   },
+  {
+    key: 'can_manage_map_layers',
+    label: 'Manage Custom Layers',
+    description: 'Open the Manage Layers page (/admin/layers) to create, edit, delete and share custom map layers',
+    category: 'map_features',
+    defaultValue: false,
+  },
 
   // Client Portal
   {
@@ -636,9 +669,16 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     defaultValue: false,
   },
   {
+    key: 'can_view_market_research',
+    label: 'View Market Research',
+    description: 'See the Market research runs section on Starbucks site submits and open staged findings (read-only)',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
     key: 'can_run_market_research',
     label: 'Run Market Research',
-    description: 'Trigger market research runs on Starbucks site_submits (spends OpenClaw tokens) and cancel hung runs',
+    description: 'Trigger market research runs on Starbucks site_submits (spends OpenClaw tokens) and cancel hung runs. Implies View Market Research',
     category: 'system_admin',
     defaultValue: false,
   },
@@ -695,11 +735,123 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'starbucks_layer',
     defaultValue: false,
   },
+
+  // Site Story
+  {
+    key: 'can_view_site_story',
+    label: 'View Site Story',
+    description: 'See the Site Story section on Starbucks site submits and read existing stories, briefs and records',
+    category: 'site_story',
+    defaultValue: false,
+  },
+  {
+    key: 'can_run_site_story',
+    label: 'Run Site Story',
+    description: 'Start site stories, run the deep pass, write briefs and ask follow-ups (spends AI tokens). Implies View Site Story',
+    category: 'site_story',
+    defaultValue: false,
+  },
+
+  // Broker Lite pages and map layers
+  {
+    key: 'can_view_master_pipeline',
+    label: 'Master Pipeline',
+    description: 'See the Master Pipeline',
+    category: 'broker_lite_pages',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_tasks',
+    label: 'Tasks',
+    description: 'See Tasks and the Task Queue',
+    category: 'broker_lite_pages',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_tours',
+    label: 'Tours',
+    description: 'See Tours',
+    category: 'broker_lite_pages',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_assignments',
+    label: 'Assignments',
+    description: 'See Assignments, including search results',
+    category: 'broker_lite_pages',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_site_submits',
+    label: 'All Site Submits',
+    description: 'See every broker\'s site submits. When off, only their own, those on their accounts and those on their deals are visible',
+    category: 'broker_lite_pages',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_layer_properties',
+    label: 'Properties',
+    description: 'All Properties map layer',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_layer_restaurants',
+    label: 'Restaurant Sales',
+    description: 'Restaurant Sales map layer',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_layer_municipal_projects',
+    label: 'Municipal Projects',
+    description: 'Municipal Projects map layer',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_layer_cached_demographics',
+    label: 'Cached Demographics',
+    description: 'Cached Demographics map layer',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_layer_merchants',
+    label: 'Merchants',
+    description: 'Merchants map layer',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_layer_comp_database',
+    label: 'Comp Database',
+    description: 'Comp Database map layer',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_7eleven_layer',
+    label: '7-Eleven / Speedway',
+    description: '7-Eleven and Speedway store locations. Brokers on the 7-Eleven client see it without this flag',
+    category: 'map_layers',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_all_custom_layers',
+    label: 'All Custom Layers',
+    description: 'See every custom layer, not only the user\'s own and those shared with them',
+    category: 'map_layers',
+    defaultValue: false,
+  },
 ];
 
 /**
  * Category display names and descriptions
  */
+/** Categories shown in the Map Layer matrix instead of the main one. */
+export const LAYER_PERMISSION_CATEGORIES: PermissionCategory[] = ['map_layers', 'starbucks_layer', 'traffic_data'];
+
 export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; description: string }> = {
   user_management: {
     label: 'User Management',
@@ -760,6 +912,18 @@ export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; 
   starbucks_layer: {
     label: 'Starbucks Layer',
     description: 'Confidential Starbucks store data — grant only to authorized users',
+  },
+  site_story: {
+    label: 'Site Story',
+    description: 'Site research thread on Starbucks site submits — archetype call, deep pass, brief',
+  },
+  broker_lite_pages: {
+    label: 'Broker Lite Page Access',
+    description: 'Turns pages on for Broker Lite users; no effect on other roles',
+  },
+  map_layers: {
+    label: 'Map Layers',
+    description: 'Controls which fixed map layers Broker Lite users see; no effect on other roles',
   },
 };
 

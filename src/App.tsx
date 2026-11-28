@@ -6,10 +6,13 @@ import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PullToRefresh } from "./components/PullToRefresh";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { QuickNoteLauncher } from "./components/quickNote/QuickNoteLauncher";
+import { KnowledgeCaptureLauncher } from "./components/knowledgeCapture/KnowledgeCaptureLauncher";
 import AdminRoute from "./components/AdminRoute";
+import { BrokerLiteRoute, SiteSubmitDetailRoute } from "./components/BrokerLiteRoute";
 import CoachRoute from "./components/CoachRoute";
 import GmailRoute from "./components/GmailRoute";
 import MunicipalRoute from "./components/MunicipalRoute";
+import MapLayersRoute from "./components/MapLayersRoute";
 import PortalRoute from "./components/PortalRoute";
 import CoachNavbar from "./components/CoachNavbar";
 import PortalLayout from "./components/portal/PortalLayout";
@@ -29,6 +32,7 @@ import AssignmentDetailsPage from "./pages/AssignmentDetailsPage";
 import NewPropertyPage from "./components/property/NewPropertyPage";
 import Navbar from "./components/Navbar";
 import StarbucksDealBoardPage from "./pages/StarbucksDealBoardPage";
+import TriagePage from './pages/TriagePage';
 import SearchTestPage from "./components/SearchTestPage";
 import SearchDebugPage from "./components/SearchDebugPage";
 import NotesDebugPage from "./pages/NotesDebugPage";
@@ -55,6 +59,7 @@ import CalendarSettingsPage from "./pages/CalendarSettingsPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserManagementPage from "./pages/UserManagementPage";
+import PackageSlideSettingsPage from "./pages/PackageSlideSettingsPage";
 import KPIDashboardPage from "./pages/KPIDashboardPage";
 import RobReportPage from "./pages/RobReportPage";
 import RobReport2025Page from "./pages/RobReport2025Page";
@@ -68,6 +73,7 @@ import QuickBooksCustomerMappingPage from "./pages/QuickBooksCustomerMappingPage
 import GmailSettingsPage from "./pages/GmailSettingsPage";
 import SuggestedContactsPage from "./pages/SuggestedContactsPage";
 import AgentRulesPage from "./pages/AgentRulesPage";
+import LabelRulesPage from "./pages/LabelRulesPage";
 import EmailClassificationReviewPage from "./pages/EmailClassificationReviewPage";
 import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
@@ -78,6 +84,7 @@ import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import BudgetSetupPage from "./pages/BudgetSetupPage";
 import BudgetManagePage from "./pages/BudgetManagePage";
 import CashFlowForecastPage from "./pages/CashFlowForecastPage";
+import CashPlannerSummaryPage from "./pages/CashPlannerSummaryPage";
 import BrokerForecastDashboard from "./pages/BrokerForecastDashboard";
 import CFODashboardPage from "./pages/CFODashboardPage";
 import BookkeeperPage from "./pages/BookkeeperPage";
@@ -92,10 +99,15 @@ import ArtyDrawReportPage from "./pages/ArtyDrawReportPage";
 import MikeIsOwedReportPage from "./pages/MikeIsOwedReportPage";
 import UnpaidReferralFeesReportPage from "./pages/UnpaidReferralFeesReportPage";
 import StarbucksTargetAreasReportPage from "./pages/StarbucksTargetAreasReportPage";
+import StarbucksPipelineReportPage from "./pages/StarbucksPipelineReportPage";
+import PackagesDashboardPage from "./pages/PackagesDashboardPage";
+import TaskQueuePage from "./pages/TaskQueuePage";
 import TypographyTestPage from "./pages/TypographyTestPage";
 import VelocityAnalyticsPage from "./pages/VelocityAnalyticsPage";
 import HistoricalVelocityPage from "./pages/HistoricalVelocityPage";
 import ProspectingScorecardPage from "./pages/ProspectingScorecardPage";
+import ListingReviewPage from "./pages/ListingReviewPage";
+import OAuthConsentPage from "./pages/OAuthConsentPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -110,6 +122,8 @@ function ProtectedLayout() {
     <ProtectedRoute>
       {!isEmbedded && <NavbarComponent />}
       {!isEmbedded && <QuickNoteLauncher />}
+      {/* Knowledge Capture gates itself to internal users (coach shares this layout). */}
+      {!isEmbedded && <KnowledgeCaptureLauncher />}
     </ProtectedRoute>
   );
 }
@@ -123,8 +137,13 @@ function RoleBasedRedirect() {
     return <Navigate to="/coach-dashboard" replace />;
   }
 
-  // All other users go to master pipeline
-  return <Navigate to="/master-pipeline" replace />;
+  // The VA (Noree) lands on her task queue (decision 2026-10-12, item 7)
+  if (userRole === 'va') {
+    return <Navigate to="/tasks/queue" replace />;
+  }
+
+  // All other users land on the map
+  return <Navigate to="/mapping" replace />;
 }
 
 function App() {
@@ -156,26 +175,31 @@ function App() {
           {/* Coach-only route */}
           <Route path="coach-dashboard" element={<CoachDashboardPage />} />
           {/* All routes below are blocked for coach users */}
-          <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
-          <Route path="starbucks-board" element={<CoachRoute><StarbucksDealBoardPage /></CoachRoute>} />
-          <Route path="tasks" element={<CoachRoute><TasksDashboardPage /></CoachRoute>} />
-          <Route path="tasks/all" element={<CoachRoute><TasksPage /></CoachRoute>} />
+          <Route path="master-pipeline" element={<CoachRoute><BrokerLiteRoute permission="can_view_master_pipeline"><KanbanBoard /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="starbucks-board" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><StarbucksDealBoardPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="triage" element={<CoachRoute><TriagePage /></CoachRoute>} />
+          <Route path="tasks" element={<CoachRoute><BrokerLiteRoute permission="can_view_tasks"><TasksDashboardPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tasks/all" element={<CoachRoute><BrokerLiteRoute permission="can_view_tasks"><TasksPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tasks/queue" element={<CoachRoute><BrokerLiteRoute permission="can_view_tasks"><TaskQueuePage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="listings/review" element={<CoachRoute><ListingReviewPage /></CoachRoute>} />
+          {/* OAuth 2.1 consent (Supabase Auth OAuth server → OVIS MCP connector). Login form shows in place when signed out. */}
+          <Route path="oauth/consent" element={<CoachRoute><OAuthConsentPage /></CoachRoute>} />
           <Route path="settings/time-blocks" element={<CoachRoute><BlockTemplateSettingsPage /></CoachRoute>} />
           <Route path="settings/calendars" element={<CoachRoute><CalendarSettingsPage /></CoachRoute>} />
           <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />
           <Route path="deal/new" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
-          <Route path="tours" element={<CoachRoute><ToursListPage /></CoachRoute>} />
-          <Route path="tours/:tourId" element={<CoachRoute><TourDetailPage /></CoachRoute>} />
-          <Route path="tours/:tourId/map" element={<CoachRoute><TourMapPage /></CoachRoute>} />
-          <Route path="assignment/new" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
-          <Route path="assignment/:assignmentId" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
+          <Route path="tours" element={<CoachRoute><BrokerLiteRoute permission="can_view_tours"><ToursListPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tours/:tourId" element={<CoachRoute><BrokerLiteRoute permission="can_view_tours"><TourDetailPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="tours/:tourId/map" element={<CoachRoute><BrokerLiteRoute permission="can_view_tours"><TourMapPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="assignment/new" element={<CoachRoute><BrokerLiteRoute permission="can_view_assignments"><AssignmentDetailsPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="assignment/:assignmentId" element={<CoachRoute><BrokerLiteRoute permission="can_view_assignments"><AssignmentDetailsPage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="property/new" element={<CoachRoute><NewPropertyPage /></CoachRoute>} />
           <Route path="property/:propertyId" element={<CoachRoute><PropertyDetailsPage /></CoachRoute>} />
           <Route path="advanced-property-search" element={<CoachRoute><AdvancedPropertySearchPage /></CoachRoute>} />
           <Route path="contact/:contactId" element={<CoachRoute><ContactDetailsPage /></CoachRoute>} />
           <Route path="client/:clientId" element={<CoachRoute><ClientDetailsPage /></CoachRoute>} />
-          <Route path="site-submit/:siteSubmitId" element={<CoachRoute><SiteSubmitDetailsPage /></CoachRoute>} />
+          <Route path="site-submit/:siteSubmitId" element={<CoachRoute><SiteSubmitDetailRoute><SiteSubmitDetailsPage /></SiteSubmitDetailRoute></CoachRoute>} />
           <Route path="search-test" element={<CoachRoute><SearchTestPage /></CoachRoute>} />
           <Route path="search-debug" element={<CoachRoute><SearchDebugPage /></CoachRoute>} />
           <Route path="notes-debug" element={<CoachRoute><NotesDebugPage /></CoachRoute>} />
@@ -188,8 +212,8 @@ function App() {
           <Route path="reports/deal-compare" element={<CoachRoute><DealCompareReportPage /></CoachRoute>} />
           <Route path="reports/deal-compare-salesforce" element={<CoachRoute><DealCompareToSalesforceReportPage /></CoachRoute>} />
           <Route path="reports/property-data-quality" element={<CoachRoute><PropertyDataQualityReportPage /></CoachRoute>} />
-          <Route path="reports/assignments" element={<CoachRoute><AssignmentsReportPage /></CoachRoute>} />
-          <Route path="reports/site-submit-dashboard" element={<CoachRoute><SiteSubmitDashboardPage /></CoachRoute>} />
+          <Route path="reports/assignments" element={<CoachRoute><BrokerLiteRoute permission="can_view_assignments"><AssignmentsReportPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="reports/site-submit-dashboard" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><SiteSubmitDashboardPage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
           <Route path="reports/rob-report" element={<CoachRoute><RobReportPage /></CoachRoute>} />
           <Route path="reports/rob-report-2025" element={<CoachRoute><RobReport2025Page /></CoachRoute>} />
@@ -200,18 +224,22 @@ function App() {
           <Route path="reports/mike-is-owed" element={<CoachRoute><MikeIsOwedReportPage /></CoachRoute>} />
           <Route path="reports/unpaid-referral-fees" element={<CoachRoute><UnpaidReferralFeesReportPage /></CoachRoute>} />
           <Route path="reports/starbucks-target-areas" element={<CoachRoute><StarbucksTargetAreasReportPage /></CoachRoute>} />
+          <Route path="reports/starbucks-pipeline" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><StarbucksPipelineReportPage /></BrokerLiteRoute></CoachRoute>} />
+          <Route path="reports/starbucks-packages" element={<CoachRoute><BrokerLiteRoute permission="can_view_site_submits"><PackagesDashboardPage /></BrokerLiteRoute></CoachRoute>} />
           <Route path="reports/velocity-analytics" element={<CoachRoute><VelocityAnalyticsPage /></CoachRoute>} />
           <Route path="reports/historical-velocity" element={<CoachRoute><HistoricalVelocityPage /></CoachRoute>} />
           <Route path="reports/prospecting-scorecard" element={<CoachRoute><ProspectingScorecardPage /></CoachRoute>} />
           <Route path="prospecting" element={<Navigate to="/hunter" replace />} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+          <Route path="admin/package-slides" element={<AdminRoute><PackageSlideSettingsPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/quickbooks/customers" element={<AdminRoute><QuickBooksCustomerMappingPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
           <Route path="admin/budget/setup" element={<AdminRoute><BudgetSetupPage /></AdminRoute>} />
           <Route path="admin/budget/manage" element={<AdminRoute><BudgetManagePage /></AdminRoute>} />
           <Route path="admin/budget/forecast" element={<AdminRoute><CashFlowForecastPage /></AdminRoute>} />
+          <Route path="admin/budget/planner" element={<AdminRoute><CashPlannerSummaryPage /></AdminRoute>} />
           <Route path="admin/broker-forecast" element={<AdminRoute><BrokerForecastDashboard /></AdminRoute>} />
           <Route path="admin/cfo" element={<AdminRoute><CFODashboardPage /></AdminRoute>} />
           <Route path="admin/bookkeeper" element={<AdminRoute><BookkeeperPage /></AdminRoute>} />
@@ -220,11 +248,12 @@ function App() {
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/portal-email-settings" element={<AdminRoute><PortalEmailSettingsPage /></AdminRoute>} />
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />
-          <Route path="admin/layers" element={<AdminRoute><LayerManagementPage /></AdminRoute>} />
+          <Route path="admin/layers" element={<MapLayersRoute><LayerManagementPage /></MapLayersRoute>} />
           <Route path="admin/merchants" element={<AdminRoute><MerchantAdminPage /></AdminRoute>} />
           <Route path="admin/municipal-import" element={<MunicipalRoute><MunicipalImportPage /></MunicipalRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
+          <Route path="admin/label-rules" element={<GmailRoute><LabelRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />
           <Route path="admin/flagged-emails" element={<GmailRoute><FlaggedEmailQueuePage /></GmailRoute>} />
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />

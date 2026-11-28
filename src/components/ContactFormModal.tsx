@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import { useAuth } from '../contexts/AuthContext';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
+import { applySignature, PasteSignatureBox, type SignatureValues } from './contact/PasteSignatureBox';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -17,6 +18,25 @@ interface ContactFormModalProps {
   propertyId?: string;
   rightOffset?: number; // Offset from right edge in pixels
   showBackdrop?: boolean; // Whether to show the backdrop (default true)
+  /**
+   * Create mode only: fields to start the form with, e.g. a name lifted from
+   * somewhere else in the UI. Ignored when contactId is set (that loads the
+   * existing contact instead).
+   */
+  initialValues?: Partial<
+    Pick<FormData, 'first_name' | 'last_name' | 'email' | 'phone' | 'mobile_phone' | 'company' | 'title'>
+  >;
+  /**
+   * Stacking override. The default (60) sits above normal page content but BELOW
+   * the ~10000 overlay band used by map slideouts and the Intel panel, so a
+   * caller in that band must pass its own value.
+   */
+  zIndex?: number;
+  /**
+   * Optional line under the header saying where a prefill came from (Intel's
+   * "Look up in my email" shows the source email's sender and date here).
+   */
+  notice?: React.ReactNode;
 }
 
 interface FormData {
@@ -52,7 +72,10 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   contactId,
   propertyId,
   rightOffset = 0,
-  showBackdrop = true
+  showBackdrop = true,
+  initialValues,
+  zIndex = 60,
+  notice,
 }) => {
   const { user } = useAuth();
   const [formData, setFormData] = useState<FormData>({
@@ -165,6 +188,16 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     }
   }, [isOpen, contactId]);
 
+  // Prefill on open, create mode only. Runs after the close-reset below has
+  // cleared the form, and never fights the contactId load above (which owns the
+  // form in edit mode).
+  useEffect(() => {
+    if (!isOpen || contactId || !initialValues) return;
+    setFormData((prev) => ({ ...prev, ...initialValues }));
+    // Intentionally keyed on isOpen only: re-applying mid-edit would overwrite
+    // what the user has typed.
+  }, [isOpen, contactId]);
+
   // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
@@ -195,6 +228,19 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
       setErrors({});
     }
   }, [isOpen]);
+
+  // "Paste signature": create overwrites the fields it found; edit fills only
+  // empty ones (existing data is never overwritten). Returns what it did for the note.
+  const fillFromSignature = (values: SignatureValues) => {
+    const { next, filled, skipped } = applySignature(formData, values, contactId ? 'edit' : 'create');
+    setFormData(next);
+    setErrors((prev) => {
+      const cleared = { ...prev };
+      for (const key of Object.keys(values)) delete cleared[key];
+      return cleared;
+    });
+    return { filled, skipped };
+  };
 
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -289,15 +335,16 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     <>
       {/* Backdrop - Only show if showBackdrop is true */}
       {showBackdrop && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={onClose} />
+        <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex }} onClick={onClose} />
       )}
 
       {/* Modal */}
       <div
-        className={`fixed left-0 lg:left-auto w-full lg:w-[450px] bg-white shadow-xl transform transition-transform duration-300 z-[60] ${
+        className={`fixed left-0 lg:left-auto w-full lg:w-[450px] bg-white shadow-xl transform transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         } flex flex-col`}
         style={{
+          zIndex,
           right: `${rightOffset}px`,
           top: '64px', // Align with navbar height
           bottom: 0, // Extend to bottom of viewport
@@ -319,6 +366,15 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
           </button>
         </div>
 
+        {notice && (
+          <div
+            className="px-3 py-2 text-xs"
+            style={{ color: '#002147', backgroundColor: '#F8FAFC', borderBottom: '1px solid #8FA9C8' }}
+          >
+            {notice}
+          </div>
+        )}
+
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {loading ? (
@@ -327,6 +383,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
             </div>
           ) : (
             <>
+              <PasteSignatureBox onFill={fillFromSignature} />
+
               {/* Basic Information Section */}
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">

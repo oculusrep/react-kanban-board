@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useMapLayers } from '../../hooks/useMapLayers';
-import { MapLayer, MapLayerClientShare } from '../../services/mapLayerService';
+import { MapLayer, MapLayerClientShare, MapLayerUserShare } from '../../services/mapLayerService';
 import { mapLayerService } from '../../services/mapLayerService';
+import { INTERNAL_ROLES } from '../../utils/internalRoles';
 
 interface Client {
   id: string;
@@ -28,6 +29,55 @@ export default function ShareLayerModal({ isOpen, layer, onClose, onSuccess }: S
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [teammates, setTeammates] = useState<{ id: string; name: string | null }[]>([]);
+  const [userShares, setUserShares] = useState<MapLayerUserShare[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || !layer) return;
+    supabase
+      .from('user')
+      .select('id, name')
+      .in('ovis_role', INTERNAL_ROLES)
+      .eq('active', true)
+      .order('name')
+      .then(({ data }) => setTeammates(data || []));
+    mapLayerService.getUserShares(layer.id).then(setUserShares).catch((err) => {
+      console.error('Error fetching teammate shares:', err);
+    });
+  }, [isOpen, layer]);
+
+  const refreshUserShares = async () => setUserShares(await mapLayerService.getUserShares(layer.id));
+
+  const handleShareToUser = async () => {
+    if (!selectedUserId) return;
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await mapLayerService.shareToUser(layer.id, selectedUserId);
+      setSelectedUserId('');
+      await refreshUserShares();
+    } catch (err) {
+      console.error('Error sharing with teammate:', err);
+      setError('Could not share this layer. Only its creator can share it.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUnshareFromUser = async (share: MapLayerUserShare) => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await mapLayerService.unshareFromUser(share.id);
+      await refreshUserShares();
+    } catch (err) {
+      console.error('Error removing teammate share:', err);
+      setError('Could not remove this share.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Fetch clients
   useEffect(() => {
@@ -138,7 +188,7 @@ export default function ShareLayerModal({ isOpen, layer, onClose, onSuccess }: S
         <div className="px-6 py-4 border-b">
           <h2 className="text-xl font-semibold text-gray-900">Share Layer</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Share "{layer.name}" with client accounts
+            Share "{layer.name}" with teammates or client accounts
           </p>
         </div>
 
@@ -148,6 +198,46 @@ export default function ShareLayerModal({ isOpen, layer, onClose, onSuccess }: S
               {error}
             </div>
           )}
+
+          {/* Teammate Share Section */}
+          <div className="space-y-3 pb-4 border-b">
+            <h3 className="text-sm font-medium text-gray-700">Share with a teammate</h3>
+            <div className="flex space-x-2">
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select a teammate...</option>
+                {teammates
+                  .filter(t => !userShares.some(s => s.user_id === t.id))
+                  .map(t => (
+                    <option key={t.id} value={t.id}>{t.name || 'Unnamed user'}</option>
+                  ))}
+              </select>
+              <button
+                onClick={handleShareToUser}
+                disabled={!selectedUserId || isSubmitting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                Share
+              </button>
+            </div>
+            {userShares.map(share => (
+              <div key={share.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
+                <span className="text-sm text-gray-900">
+                  {teammates.find(t => t.id === share.user_id)?.name || 'Unknown user'}
+                </span>
+                <button
+                  onClick={() => handleUnshareFromUser(share)}
+                  disabled={isSubmitting}
+                  className="text-red-600 hover:text-red-800 text-sm"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
 
           {/* Add Share Section */}
           <div className="space-y-4">

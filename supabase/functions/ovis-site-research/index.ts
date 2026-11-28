@@ -26,7 +26,20 @@
  *      (school fill → deep pass → CSV exports). Requires a completed Step 1 run on the thread,
  *      because the deep pass reads its persisted school results.
  *
- * The gate (Starbucks account family + can_run_market_research) is re-checked here on
+ *   5. { action: 'start_brief', thread_id }          -> { thread_id, run_id }
+ *      Writes the under-200-word brief from the FINISHED record onto research_thread.brief_text.
+ *      No tools, no search: re-runnable against a stored record without repeating the research.
+ *
+ *   6. { action: 'ask_record', thread_id, question } -> { thread_id, run_id, seq }
+ *      Answers a question from the stored record, citing the section. No tools, no search.
+ *
+ *   7. { action: 'generators_slide', site_submit_id } -> application/vnd.openxmlformats-officedocument.presentationml.presentation
+ *      One 16:9 "Generators" slide from the site's LATEST completed deep pass: a picture placeholder for
+ *      the Sites USA map, a totals box, and one callout per schools/employers/generators.csv row,
+ *      rebuilt with the same builders the exports used (pins match the files). No model call, no spend.
+ *      Design: docs/GENERATORS_SLIDE.md.
+ *
+ * The gate (Starbucks account family + can_run_site_story) is re-checked here on
  * every call. The UI gate is a convenience, not a control.
  */
 
@@ -37,6 +50,11 @@ import { kickWorker } from '../_shared/site-research/kick.ts';
 import { STEP1_SEARCH_BUDGET } from '../_shared/site-research/tools.ts';
 import { DEEP_PASS_PROMPT_KEY, DEEP_PASS_USER_MESSAGE } from '../_shared/site-research/deep-pass.ts';
 import { buildDemographics, dataQualityFor } from '../_shared/site-research/snapshot.ts';
+import {
+  BRIEF_PROMPT_KEY, briefOpening, RECORD_QA_PROMPT_KEY, type RecordForBrief, recordQaOpening,
+} from '../_shared/site-research/brief.ts';
+import { supabaseDeepPassDb } from '../_shared/site-research/deep-pass-worker.ts';
+import { buildGeneratorsSlide, rebuildExportRows, slideFilename } from '../_shared/site-research/generators-slide.ts';
 
 // Gates research to the Starbucks account family: the Starbucks client itself OR any
 // client whose parent_id is Starbucks (child accounts like "Starbucks - JW (Coastal GA)").
@@ -214,12 +232,12 @@ serve(async (req: Request) => {
 
   // Permission gate via the SQL helper. Called on anonClient so auth.uid() resolves.
   const { data: hasAccess, error: permErr } = await anonClient.rpc(
-    'user_has_market_research_run_access',
+    'user_has_site_story_run_access',
   );
   if (permErr) return jsonResponse({ error: 'permission_check_failed', detail: permErr.message }, 500);
   if (!hasAccess) {
     return jsonResponse(
-      { error: 'forbidden', detail: 'can_run_market_research permission required' },
+      { error: 'forbidden', detail: 'can_run_site_story permission required' },
       403,
     );
   }
@@ -231,6 +249,9 @@ serve(async (req: Request) => {
     if (action === 'send_turn') return await sendTurn(service, body, userId);
     if (action === 'retry_run') return await retryRun(service, body, userId);
     if (action === 'start_deep_pass') return await startDeepPass(service, body, userId);
+    if (action === 'start_brief') return await startBrief(service, body, userId);
+    if (action === 'ask_record') return await askRecord(service, body, userId);
+    if (action === 'generators_slide') return await generatorsSlide(service, body);
     return jsonResponse({ error: 'unknown_action', detail: String(action ?? '') }, 400);
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500;
@@ -590,4 +611,162 @@ async function startDeepPass(service: SupabaseClient, body: Record<string, unkno
   }
   const kicked = await kick(service, runId as string);
   return jsonResponse({ thread_id: thread.id, run_id: runId, seq: nextSeq, state: 'queued', kicked }, 202);
+}
+
+// ---------------------------------------------------------------------------
+// Actions: start_brief / ask_record — both read the finished record, neither researches
+// ---------------------------------------------------------------------------
+async function activeTemplateId(service: SupabaseClient, key: string): Promise<string> {
+  const { data, error } = await service
+    .from('prompt_template').select('id')
+    .eq('key', key).eq('is_active', true).is('client_id', null)
+    .order('version', { ascending: false }).limit(1);
+  if (error) throw new Error(`prompt_template lookup failed: ${error.message}`);
+  const id = (data as Array<{ id: string }> | null)?.[0]?.id;
+  if (!id) throw new Error(`no active prompt_template for key '${key}'`);
+  return id;
+}
+
+/** The finished record: the newest completed deep pass message, plus the first pass report. */
+async function loadRecord(service: SupabaseClient, thread: ThreadRecord): Promise<RecordForBrief | null> {
+  const { data: t, error: tErr } = await service
+    .from('research_thread')
+    .select('archetype_primary, archetype_secondary, story_carriers, site_submit:site_submit_id ( site_submit_name )')
+    .eq('id', thread.id).maybeSingle();
+  if (tErr) throw new Error(`thread lookup failed: ${tErr.message}`);
+
+  const { data: runs, error: rErr } = await service
+    .from('research_thread_run').select('target_seq, finished_at')
+    .eq('thread_id', thread.id).eq('kind', 'deep_pass').eq('state', 'complete')
+    .order('finished_at', { ascending: false }).limit(1);
+  if (rErr) throw new Error(`deep pass lookup failed: ${rErr.message}`);
+  const targetSeq = (runs as Array<{ target_seq: number }> | null)?.[0]?.target_seq;
+  if (targetSeq === undefined) return null;
+
+  const { data: msgs, error: mErr } = await service
+    .from('research_thread_message').select('seq, content, created_at')
+    .eq('thread_id', thread.id).in('seq', [0, targetSeq]);
+  if (mErr) throw new Error(`message lookup failed: ${mErr.message}`);
+  const rows = (msgs ?? []) as Array<{ seq: number; content: string; created_at: string }>;
+  const record = rows.find((m) => m.seq === targetSeq);
+  if (!record) return null;
+  const row = t as {
+    archetype_primary: string | null; archetype_secondary: string | null; story_carriers: string[];
+    site_submit: { site_submit_name: string | null } | null;
+  } | null;
+  return {
+    site_submit_name: row?.site_submit?.site_submit_name ?? null,
+    archetype_primary: row?.archetype_primary ?? null,
+    archetype_secondary: row?.archetype_secondary ?? null,
+    story_carriers: row?.story_carriers ?? [],
+    record: record.content,
+    first_pass: rows.find((m) => m.seq === 0)?.content ?? null,
+    record_written_at: record.created_at,
+  };
+}
+
+async function startBrief(service: SupabaseClient, body: Record<string, unknown>, userId: string): Promise<Response> {
+  const loaded = await loadThread(service, body.thread_id);
+  if (loaded instanceof Response) return loaded;
+  const thread = loaded;
+
+  const record = await loadRecord(service, thread);
+  if (!record) {
+    return jsonResponse({ error: 'no_record', detail: 'This thread has no completed deep pass yet, so there is no record to write a brief from.' }, 409);
+  }
+  const { data: runId, error } = await service.rpc('enqueue_brief_run', {
+    p_thread_id: thread.id, p_prompt_template_id: await activeTemplateId(service, BRIEF_PROMPT_KEY),
+    p_convo: [{ role: 'user', content: briefOpening(record) }], p_created_by: userId,
+  });
+  if (error) {
+    if (pgCode(error) === '23505') return jsonResponse({ error: 'run_in_progress', detail: 'A run is already in progress on this thread.' }, 409);
+    throw new Error(`brief enqueue failed: ${error.message}`);
+  }
+  const kicked = await kick(service, runId as string);
+  return jsonResponse({ thread_id: thread.id, run_id: runId, state: 'queued', kicked }, 202);
+}
+
+async function askRecord(service: SupabaseClient, body: Record<string, unknown>, userId: string): Promise<Response> {
+  const question = body.question;
+  if (typeof question !== 'string' || !question.trim()) return jsonResponse({ error: 'question is required' }, 400);
+  const loaded = await loadThread(service, body.thread_id);
+  if (loaded instanceof Response) return loaded;
+  const thread = loaded;
+
+  const record = await loadRecord(service, thread);
+  if (!record) {
+    return jsonResponse({ error: 'no_record', detail: 'This thread has no completed deep pass yet, so there is no record to answer from.' }, 409);
+  }
+  const prior = await loadMessages(service, thread.id);
+  const nextSeq = prior.length === 0 ? 0 : prior[prior.length - 1].seq + 1;
+  const { data: runId, error } = await service.rpc('enqueue_record_qa', {
+    p_thread_id: thread.id, p_expected_seq: nextSeq, p_question: question.trim(),
+    p_prompt_template_id: await activeTemplateId(service, RECORD_QA_PROMPT_KEY),
+    p_convo: [{ role: 'user', content: recordQaOpening(question.trim(), record) }], p_created_by: userId,
+  });
+  if (error) {
+    if (pgCode(error) === '23505') return jsonResponse({ error: 'run_in_progress', detail: 'A run is already in progress on this thread.' }, 409);
+    if (pgCode(error) === '40001') return jsonResponse({ error: 'concurrent_turn', detail: 'This thread changed while you were typing. Reload and resend.' }, 409);
+    throw new Error(`record question enqueue failed: ${error.message}`);
+  }
+  const kicked = await kick(service, runId as string);
+  return jsonResponse({ thread_id: thread.id, run_id: runId, seq: nextSeq, state: 'queued', kicked }, 202);
+}
+
+// ---------------------------------------------------------------------------
+// Generators slide — read-only, no model, no spend
+// ---------------------------------------------------------------------------
+async function generatorsSlide(service: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+  const siteSubmitId = body.site_submit_id;
+  if (typeof siteSubmitId !== 'string' || !siteSubmitId) return jsonResponse({ error: 'site_submit_id is required' }, 400);
+
+  const { data: ss, error: ssErr } = await service
+    .from('site_submit')
+    .select('id, site_submit_name, client_id, property:property_id (property_name, address, city, state, zip)')
+    .eq('id', siteSubmitId).maybeSingle();
+  if (ssErr) throw new Error(`site submit lookup failed: ${ssErr.message}`);
+  if (!ss) return jsonResponse({ error: 'site_submit_not_found' }, 404);
+  const site = ss as unknown as {
+    site_submit_name: string | null; client_id: string | null;
+    property: { property_name: string | null; address: string | null; city: string | null; state: string | null; zip: string | null } | null;
+  };
+  await assertStarbucksFamily(service, site.client_id);
+
+  // The latest completed deep pass on ANY thread of this site.
+  const { data: threads, error: tErr } = await service.from('research_thread').select('id').eq('site_submit_id', siteSubmitId);
+  if (tErr) throw new Error(`thread lookup failed: ${tErr.message}`);
+  const threadIds = ((threads ?? []) as Array<{ id: string }>).map((t) => t.id);
+  const { data: runs, error: rErr } = threadIds.length
+    ? await service.from('research_thread_run').select('id, phase_state, finished_at')
+      .in('thread_id', threadIds).eq('kind', 'deep_pass').eq('state', 'complete')
+      .order('finished_at', { ascending: false }).limit(1)
+    : { data: [], error: null };
+  if (rErr) throw new Error(`deep pass lookup failed: ${rErr.message}`);
+  const run = (runs as Array<{ id: string; phase_state: Record<string, unknown> | null; finished_at: string }> | null)?.[0];
+  if (!run) {
+    return jsonResponse({ error: 'no_deep_pass', detail: 'This site has no completed deep pass yet, so there are no rows to put on the slide.' }, 409);
+  }
+
+  const rows = await rebuildExportRows(run, supabaseDeepPassDb(service as never).committedToolOutputs);
+  const p = site.property;
+  const siteName = site.site_submit_name ?? p?.property_name ?? 'Site';
+  // Header mirrors the template: "City, ST" over the street (the template shows cross streets; OVIS
+  // has no cross-street field, so it is the property address, editable on the slide).
+  const cityState = [p?.city, p?.state].filter(Boolean).join(', ');
+  const street = p?.address ?? '';
+  const slide = await buildGeneratorsSlide({ siteName, cityState, street, rows });
+  const filename = slideFilename(siteName);
+  console.log(`[site-research] generators_slide site=${siteSubmitId} run=${run.id} callouts=${slide.callouts} offSlide=${slide.offSlide} merged=${slide.mergedGenerators.length}`);
+  return new Response(new Blob([slide.pptx as BlobPart]), {
+    status: 200,
+    headers: {
+      ...CORS,
+      'Access-Control-Expose-Headers': 'Content-Disposition, X-Slide-Callouts, X-Slide-Off-Slide, X-Deep-Pass-Run',
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'Content-Disposition': `attachment; filename="${filename.replace(/[^\x20-\x7e]/g, '_')}"`,
+      'X-Slide-Callouts': String(slide.callouts),
+      'X-Slide-Off-Slide': String(slide.offSlide),
+      'X-Deep-Pass-Run': run.id,
+    },
+  });
 }

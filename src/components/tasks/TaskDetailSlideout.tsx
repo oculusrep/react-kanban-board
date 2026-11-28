@@ -8,10 +8,11 @@ import {
   updateTask,
 } from '../../hooks/useTasks';
 import { supabase } from '../../lib/supabaseClient';
-import { TaskWithRelations } from '../../types/task';
+import { TaskWithRelations, taskStatusLabel } from '../../types/task';
 import { localDateString } from '../../types/taskBlock';
 import CategoryDropdown from './CategoryDropdown';
 import TaskLinksEditor from './TaskLinksEditor';
+import DescriptionLinks from './DescriptionLinks';
 
 // Composable task detail slideout per docs/OVIS_OVERLAY_UX.md.
 // Opens from anywhere — TasksPage row click, OpenTasksPanel "Open" link,
@@ -333,7 +334,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                   : { backgroundColor: COLORS.slate + '33', color: COLORS.steel }
               }
             >
-              {task?.status ?? '—'}
+              {taskStatusLabel(task?.status)}
             </span>
             {/* Status-change action sits in the header (not next to Save) so
                 an accidental click while saving edits won't complete a task. */}
@@ -429,6 +430,7 @@ export const TaskDetailSlideout: React.FC<TaskDetailSlideoutProps> = ({
                   className="mt-1 w-full px-3 py-2 text-sm rounded border resize-y"
                   style={{ borderColor: COLORS.slate, color: COLORS.midnight }}
                 />
+                <DescriptionLinks text={description} />
               </div>
 
               {/* Two-column row: category / owner */}

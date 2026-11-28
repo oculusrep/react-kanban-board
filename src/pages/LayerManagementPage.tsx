@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import CreateLayerModal from '../components/modals/CreateLayerModal';
 import EditLayerModal from '../components/modals/EditLayerModal';
 import ShareLayerModal from '../components/modals/ShareLayerModal';
+import AddPointsModal from '../components/modals/AddPointsModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 // Type for tracking places count per layer
@@ -24,6 +25,7 @@ export default function LayerManagementPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showAddPointsModal, setShowAddPointsModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedLayer, setSelectedLayer] = useState<MapLayer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,6 +108,11 @@ export default function LayerManagementPage() {
   const handleEdit = (layer: MapLayer) => {
     setSelectedLayer(layer);
     setShowEditModal(true);
+  };
+
+  const handleAddPoints = (layer: MapLayer) => {
+    setSelectedLayer(layer);
+    setShowAddPointsModal(true);
   };
 
   const handleShare = (layer: MapLayer) => {
@@ -324,6 +331,12 @@ export default function LayerManagementPage() {
                           Edit
                         </button>
                         <button
+                          onClick={() => handleAddPoints(layer)}
+                          className="text-green-700 hover:text-green-900 text-sm font-medium"
+                        >
+                          Add points
+                        </button>
+                        <button
                           onClick={() => handleShare(layer)}
                           className="text-purple-600 hover:text-purple-900 text-sm font-medium"
                         >
@@ -394,6 +407,21 @@ export default function LayerManagementPage() {
               }}
               onSuccess={() => {
                 setShowEditModal(false);
+                setSelectedLayer(null);
+                fetchLayers();
+              }}
+            />
+
+            <AddPointsModal
+              isOpen={showAddPointsModal}
+              layerId={selectedLayer.id}
+              layerName={selectedLayer.name}
+              onClose={() => {
+                setShowAddPointsModal(false);
+                setSelectedLayer(null);
+              }}
+              onSuccess={() => {
+                setShowAddPointsModal(false);
                 setSelectedLayer(null);
                 fetchLayers();
               }}

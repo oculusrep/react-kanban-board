@@ -10,10 +10,13 @@ const COLOR_LEASE = '#002147';  // midnight    — has lease comp(s), no sale
 const COLOR_EMPTY = '#8FA9C8';  // light slate — location only, no comps yet
 const COLOR_AVAILABLE = '#F59E0B'; // amber    — available / being marketed
 const COLOR_OM_RING = '#A27B5C'; // terracotta — has an Operating Memorandum
+const COLOR_PENDING = '#A27B5C'; // terracotta outline, hollow — NNN intake comp awaiting review
 
 export interface CompDatabaseLayerProps {
   map: google.maps.Map | null;
   isVisible: boolean;
+  /** Also draw comps the NNN listing intake created that await review (hollow pins). Rejected comps are never drawn. */
+  showPending?: boolean;
   onPinClick?: (comp: CompPropertyWithCounts) => void;
   onPinRightClick?: (comp: CompPropertyWithCounts, screenX: number, screenY: number) => void;
   onLocationVerified?: (compId: string, lat: number, lng: number) => void;
@@ -30,8 +33,9 @@ function pinColor(c: CompPropertyWithCounts): string {
 
 function createCompIcon(c: CompPropertyWithCounts, selected: boolean): google.maps.Icon {
   const size = selected ? 30 : 22;
-  const fill = pinColor(c);
-  const stroke = selected ? '#FFD54A' : '#FFFFFF';
+  const pending = c.review_status === 'pending_review';
+  const fill = pending ? '#FFFFFF' : pinColor(c);
+  const stroke = selected ? '#FFD54A' : pending ? COLOR_PENDING : '#FFFFFF';
   const omRing = c.om_count > 0
     ? `<circle cx="12" cy="12" r="11" fill="none" stroke="${COLOR_OM_RING}" stroke-width="1.5" stroke-dasharray="3 2"/>`
     : '';
@@ -64,6 +68,7 @@ function availTooltip(a: any): string {
 const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
   map,
   isVisible,
+  showPending = false,
   onPinClick,
   onPinRightClick,
   onLocationVerified,
@@ -90,6 +95,7 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
         const { data, error } = await supabase
           .from('comp_property')
           .select('*, lease_comp(count), sale_comp(count), operating_memorandum(count), comp_availability(as_of_date, asking_purchase_price, asking_ground_lease_price, asking_rent_psf, asking_nnn_psf, asking_annual_rent)')
+          .neq('review_status', 'rejected')
           .range(offset, offset + PAGE_SIZE - 1);
         if (error) throw error;
         const rows = (data || []).map((r: any) => {
@@ -109,7 +115,6 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
         offset += PAGE_SIZE;
       }
       setComps(all);
-      setLayerCount('comp_database', all.length);
     } catch (err) {
       console.error('CompDatabaseLayer fetch error:', err);
     } finally {
@@ -137,16 +142,19 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
 
     if (!comps.length) {
       setMarkers([]);
+      if (isVisible) setLayerCount('comp_database', 0); // keep the last count while hidden, as before
       return;
     }
 
     const newMarkers: google.maps.Marker[] = [];
-    comps.forEach((comp) => {
+    const shown = comps.filter((c) => showPending || c.review_status !== 'pending_review');
+    if (isVisible) setLayerCount('comp_database', shown.length);
+    shown.forEach((comp) => {
       const coords = compCoords(comp);
       if (!coords) return;
       const selected = selectedCompId === comp.id;
       const isVerifying = verifyingCompId === comp.id;
-      const baseTitle = comp.name || comp.address || 'Comp';
+      const baseTitle = (comp.review_status === 'pending_review' ? '[Pending review] ' : '') + (comp.name || comp.address || 'Comp');
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         title: comp.askTooltip ? `${baseTitle}\nAsking: ${comp.askTooltip}` : baseTitle,
@@ -179,7 +187,7 @@ const CompDatabaseLayer: React.FC<CompDatabaseLayerProps> = ({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comps, selectedCompId, verifyingCompId, map]);
+  }, [comps, selectedCompId, verifyingCompId, map, showPending]);
 
   // Visibility toggle without refetch.
   useEffect(() => {

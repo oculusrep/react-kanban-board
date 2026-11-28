@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { mapLayerService, MapLayer } from '../../../services/mapLayerService';
+import { useBrokerLiteAccess } from '../../../hooks/useBrokerLiteAccess';
 import {
   loadLayerVisibility,
   saveLayerVisibility,
@@ -21,17 +22,42 @@ export interface LayerConfig {
   requiresPermission?: string; // Permission key — layer hidden from panel if user lacks it
 }
 
-export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom' | 'traffic_count' | 'starbucks' | 'municipal_project' | 'cached_demographics' | 'merchants' | 'comp_database' | 'seven_eleven' | 'interstate_exit' | 'truck_stop';
 
 export type CachedDemographicsTimeRange = '7d' | '30d' | 'all';
 export type CachedDemographicsScope = 'mine' | 'all';
 export type CachedDemographicsMode = 'rings' | 'polygon';
+
+// Cached Demographics filter persistence. Default is everyone's lookups,
+// all time — the layer exists so the team can reuse each other's runs.
+const CACHED_DEMOS_SCOPE_KEY = 'ovis.cachedDemographics.scope';
+const CACHED_DEMOS_RANGE_KEY = 'ovis.cachedDemographics.timeRange';
+
+function loadStoredChoice<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const v = window.localStorage.getItem(key);
+    return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStoredChoice(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // storage unavailable (private window, blocked site data) — non-fatal
+  }
+}
 
 // Which piece of data the Municipal Projects pins should render as an on-map
 // label. 'total_units' = raw number (e.g. "80"). 'units_label' = the same
 // computed string shown in the slideout / KML export (e.g. "+80 RC"). Session
 // state only — resets on refresh.
 export type MunicipalProjectsLabelMode = 'none' | 'total_units' | 'units_label';
+// 'polygon' colors each pin by whether its project has a polygon yet, so the
+// ones still needing one stand out. 'stage' is the original stage-color fill.
+export type MunicipalProjectsPinColorMode = 'polygon' | 'stage';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -108,6 +134,10 @@ export interface LayerManagerContextType {
   // On-map label rendered next to each Municipal Projects pin. Session-only.
   municipalProjectsLabelMode: MunicipalProjectsLabelMode;
   setMunicipalProjectsLabelMode: (m: MunicipalProjectsLabelMode) => void;
+
+  // What drives the pin fill color. Session-only.
+  municipalProjectsPinColorMode: MunicipalProjectsPinColorMode;
+  setMunicipalProjectsPinColorMode: (m: MunicipalProjectsPinColorMode) => void;
 
   // Label typography (session-only). fontSize in pixels; fill = text color;
   // line = the halo/stroke color that outlines the text so it stays readable
@@ -223,11 +253,64 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     requiresPermission: 'can_view_starbucks_layer',
   },
   {
+    // Gated by useSevenElevenAccess() (permission OR 7-Eleven client broker),
+    // not requiresPermission — a single permission key can't express the OR.
+    id: 'seven_eleven_stores',
+    name: '7-Eleven / Speedway',
+    type: 'seven_eleven',
+    icon: '⛽',
+    description: '7-Eleven and Speedway store locations (Georgia)',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
+    // Everyone can view; verify/remove are internal-only RPCs.
+    id: 'truck_stops',
+    name: 'Truck Stops',
+    type: 'truck_stop',
+    icon: '🚛',
+    description: "Pilot, Flying J, Love's, TA / Petro, QuikTrip truck stops, Buc-ee's (Georgia)",
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
+    // Public road data (OpenStreetMap) — no permission gate.
+    id: 'interstate_exits',
+    name: 'Interstate Exits',
+    type: 'interstate_exit',
+    icon: '🛣️',
+    description: 'Exit-number badges on I-85 and I-20 (Georgia). © OpenStreetMap contributors',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
     id: 'municipal_projects',
     name: 'Municipal Projects',
     type: 'municipal_project',
     icon: '🏗️',
     description: 'Development projects imported from municipality CSVs',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
+    // Same records, split by stage: Recently Completed only (built since 2020),
+    // in teal, so "built" and "coming" can be shown separately.
+    id: 'municipal_recent',
+    name: 'Recently Built (since 2020)',
+    type: 'municipal_project',
+    icon: '🏘️',
+    description: 'Municipal projects with status Recently Completed — built since 2020, separate from the pipeline',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
+    // Parcel subdivisions pass: neighborhoods built out before 2020. Reference
+    // only (established_subdivision), never in a pipeline / growth total.
+    id: 'established_subdivisions',
+    name: 'Established (pre-2020)',
+    type: 'municipal_project',
+    icon: '🏡',
+    description: 'Subdivisions built out before 2020 (county parcel layer + Gemini). Not in pipeline totals',
     defaultVisible: false,
     isSystemLayer: true,
   },
@@ -257,8 +340,7 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     description: 'Comparable leases, sales and Operating Memorandums tied to locations',
     defaultVisible: false,
     isSystemLayer: true,
-  },
-];
+  },];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
 
@@ -275,6 +357,7 @@ interface LayerManagerProviderProps {
 }
 
 export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ children }) => {
+  const { filterCustomLayers } = useBrokerLiteAccess();
   const [layers] = useState<LayerConfig[]>(DEFAULT_LAYERS);
   const [layerState, setLayerState] = useState<LayerState>({});
   const [isPanelOpen, setIsPanelOpen] = useState(true); // Default open for development
@@ -297,6 +380,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const [municipalProjectsShowPolygons, setMunicipalProjectsShowPolygons] = useState<boolean>(true);
   const [municipalProjectsLabelMode, setMunicipalProjectsLabelMode] =
     useState<MunicipalProjectsLabelMode>('none');
+  const [municipalProjectsPinColorMode, setMunicipalProjectsPinColorMode] =
+    useState<MunicipalProjectsPinColorMode>('polygon');
   const [municipalProjectsLabelFontSize, setMunicipalProjectsLabelFontSize] =
     useState<number>(11);
   const [municipalProjectsLabelFillColor, setMunicipalProjectsLabelFillColor] =
@@ -305,9 +390,17 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     useState<string>('#FFFFFF'); // white halo — high contrast on any basemap
 
   const [cachedDemographicsTimeRange, setCachedDemographicsTimeRange] =
-    useState<CachedDemographicsTimeRange>('30d');
+    useState<CachedDemographicsTimeRange>(() =>
+      loadStoredChoice(CACHED_DEMOS_RANGE_KEY, ['7d', '30d', 'all'] as const, 'all'));
   const [cachedDemographicsScope, setCachedDemographicsScope] =
-    useState<CachedDemographicsScope>('mine');
+    useState<CachedDemographicsScope>(() =>
+      loadStoredChoice(CACHED_DEMOS_SCOPE_KEY, ['mine', 'all'] as const, 'all'));
+  useEffect(() => {
+    saveStoredChoice(CACHED_DEMOS_RANGE_KEY, cachedDemographicsTimeRange);
+  }, [cachedDemographicsTimeRange]);
+  useEffect(() => {
+    saveStoredChoice(CACHED_DEMOS_SCOPE_KEY, cachedDemographicsScope);
+  }, [cachedDemographicsScope]);
   const [cachedDemographicsModes, setCachedDemographicsModes] = useState<
     Set<CachedDemographicsMode>
   >(new Set(['rings', 'polygon']));
@@ -375,7 +468,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const fetchCustomLayers = useCallback(async () => {
     setCustomLayersLoading(true);
     try {
-      const layers = await mapLayerService.getLayers({ includeShapes: true });
+      const layers = await filterCustomLayers(await mapLayerService.getLayers({ includeShapes: true }));
       console.log('🗺️ Fetched custom layers:', layers.map(l => ({ name: l.name, shapes: l.shapes?.length })));
       setCustomLayers(layers);
       // Initialize visibility for each layer, restoring the user's last saved
@@ -395,7 +488,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     } finally {
       setCustomLayersLoading(false);
     }
-  }, []);
+  }, [filterCustomLayers]);
 
   // Fetch custom layers on mount
   useEffect(() => {
@@ -537,6 +630,8 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setMunicipalProjectsShowPolygons,
     municipalProjectsLabelMode,
     setMunicipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
+    setMunicipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     setMunicipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
@@ -581,6 +676,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
     municipalProjectsLabelLineColor,

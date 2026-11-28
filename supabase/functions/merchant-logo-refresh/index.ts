@@ -35,6 +35,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { authorizeCaller } from '../_shared/caller-auth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -115,6 +116,12 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  // No caller check until 2026-11-05 -- see docs/EMAIL_INGESTION_OUTAGE_2026-11-05.md.
+  // Internal users are allowed: the admin Brands tab re-verifies a brand after a
+  // domain edit (?brandIds=...).
+  const caller = await authorizeCaller(req, { allowService: true, allowInternalUser: true }, corsHeaders)
+  if (caller instanceof Response) return caller
 
   const startedAt = Date.now()
   const url = new URL(req.url)

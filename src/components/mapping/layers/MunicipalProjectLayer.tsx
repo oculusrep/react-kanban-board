@@ -44,13 +44,25 @@ export interface MunicipalProjectMapRow {
   // absent from the map rather than pinned to a county centroid.
   is_unplaced?: boolean;
   unplaced_reason?: string | null;
+  // Where a PLACED record's pin came from. Null exactly when unplaced. Read by
+  // the precision badge so a placed record reports provenance rather than a
+  // precision tier it no longer needs.
+  centroid_source?: 'address_geocode' | 'polygon' | 'manual_pin' | 'research_locate' | null;
+  // 'estimated' = pin placed by the research locate step, not yet confirmed.
+  location_confidence?: 'estimated' | 'confirmed' | null;
   // Polygon provenance + the acreage cross-check.
   geometry_source?: 'hand_drawn' | 'parcel_fetch' | 'parcel_fetch_adjusted' | null;
   geometry_source_parcels?: string[] | null;
   geometry_stated_acres?: number | null;
   geometry_computed_acres?: number | null;
   geometry_area_variance_pct?: number | null;
+  // Set when the boundary came from a low-trust source, e.g. '2022 third-party snapshot'.
+  geometry_source_vintage?: string | null;
   geometry_needs_review?: boolean;
+  // Unit count needs a human look: no count, 0, or a placeholder that was
+  // removed. Set by a DB trigger / the approval carry-over; advisory only.
+  units_needs_review?: boolean;
+  units_review_reason?: string | null;
   // A fetched boundary nobody has looked at yet — drawn dashed until reviewed.
   geometry_unreviewed?: boolean;
   // Amendment: this record CHANGES an existing approval rather than describing a
@@ -101,21 +113,47 @@ interface Props {
   // While the user is editing a polygon, hide this project's baked polygon so
   // the terra-draw editable polygon is the only one on the map.
   hidePolygonForProjectId?: string | null;
+  // 'pipeline' (default): everything except Recently Completed — what's coming.
+  // 'recent': only Recently Completed — built since 2020 — in its own color,
+  // on its own layer toggle ('municipal_recent').
+  variant?: 'pipeline' | 'recent';
 }
+
+export const RECENTLY_COMPLETED_STAGE = 'Recently Completed';
+// Teal: distinct from every stage color and from the navy agent pins.
+export const RECENT_PIN_COLOR = '#0F766E';
 
 const DEFAULT_STAGE_COLOR = '#8FA9C8'; // brand slate
 // Agent-generated projects (source_research_run_id set) render in brand midnight
 // so reviewers can spot new agent-created pins at a glance regardless of stage.
 const AGENT_PIN_COLOR = '#002147';
+// Pin colors in 'polygon' color mode. Terracotta (brand warning) = still needs
+// a polygon drawn; steel blue = polygon exists.
+export const PIN_NEEDS_POLYGON_COLOR = '#A27B5C';
+export const PIN_HAS_POLYGON_COLOR = '#4A6B94';
 
 // Rounded-square "badge" pin with a small house glyph + a triangular stem at the
 // bottom that anchors the visual point on the map. Intentionally different from
 // the property teardrop and the restaurant circle so users can distinguish at a
 // glance. Stage color fills the badge.
-function pinSvg(color: string, selected: boolean): string {
+function pinSvg(color: string, selected: boolean, estimated = false): string {
   const stroke = selected ? '#002147' : '#FFFFFF';
   const strokeWidth = selected ? 2.5 : 1.5;
   const scale = selected ? 1.1 : 1;
+  // EST. LOCATION: same badge, washed out with a dashed outline and a "?" corner
+  // tag, so an unconfirmed pin never reads like a surveyed one.
+  if (estimated) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${30 * scale}" height="${36 * scale}" viewBox="0 0 30 36">
+    <ellipse cx="15" cy="34.5" rx="4" ry="1.2" fill="rgba(0,0,0,0.2)"/>
+    <path d="M15 33 L11.5 28 L18.5 28 Z" fill="${color}" fill-opacity="0.55" stroke="${selected ? '#002147' : color}" stroke-width="1.5" stroke-linejoin="round"/>
+    <rect x="2" y="2" width="26" height="26" rx="5" ry="5"
+      fill="${color}" fill-opacity="0.55" stroke="${selected ? '#002147' : '#002147'}" stroke-width="${selected ? 2.5 : 1.5}" stroke-dasharray="3 2"/>
+    <path d="M15 8 L7.5 14.5 L9 14.5 L9 21.5 L13 21.5 L13 17 L17 17 L17 21.5 L21 21.5 L21 14.5 L22.5 14.5 Z"
+      fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="25" cy="5" r="4.5" fill="#FFFFFF" stroke="#002147" stroke-width="1"/>
+    <text x="25" y="7.6" font-size="7" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="#002147">?</text>
+  </svg>`;
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${30 * scale}" height="${36 * scale}" viewBox="0 0 30 36">
     <!-- soft shadow under the stem -->
     <ellipse cx="15" cy="34.5" rx="4" ry="1.2" fill="rgba(0,0,0,0.25)"/>
@@ -159,8 +197,8 @@ function polygonPathsFromGeoJson(
   return null;
 }
 
-function makeIcon(color: string, selected: boolean): google.maps.Icon {
-  const svg = pinSvg(color, selected);
+function makeIcon(color: string, selected: boolean, estimated = false): google.maps.Icon {
+  const svg = pinSvg(color, selected, estimated);
   const scale = selected ? 1.1 : 1;
   return {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
@@ -266,7 +304,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   onProjectsLoaded,
   selectedProjectId,
   hidePolygonForProjectId,
+  variant = 'pipeline',
 }) => {
+  const layerId = variant === 'recent' ? 'municipal_recent' : 'municipal_projects';
+  const isRecentVariant = variant === 'recent';
   const {
     setLayerCount,
     setLayerLoading,
@@ -278,6 +319,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
     municipalProjectsLabelLineColor,
@@ -303,8 +345,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   }, [map]);
 
   const fetchRows = useCallback(async () => {
-    setLayerLoading('municipal_projects', true);
-    setLayerError('municipal_projects', false);
+    setLayerLoading(layerId, true);
+    setLayerError(layerId, false);
     try {
       const { data, error } = await supabase
         .from('municipal_project_v')
@@ -329,16 +371,18 @@ const MunicipalProjectLayer: React.FC<Props> = ({
           : null;
       }
 
-      setRows(typed);
-      setLayerCount('municipal_projects', typed.length);
-      onProjectsLoaded?.(typed.length);
+      // Pipeline vs recently built: split on the effective stage.
+      const mine = typed.filter((r) => (r.effective_stage_name === RECENTLY_COMPLETED_STAGE) === isRecentVariant);
+      setRows(mine);
+      setLayerCount(layerId, mine.length);
+      onProjectsLoaded?.(mine.length);
     } catch (e) {
       console.error('MunicipalProjectLayer fetch failed:', e);
-      setLayerError('municipal_projects', true);
+      setLayerError(layerId, true);
     } finally {
-      setLayerLoading('municipal_projects', false);
+      setLayerLoading(layerId, false);
     }
-  }, [setLayerCount, setLayerLoading, setLayerError, onProjectsLoaded]);
+  }, [setLayerCount, setLayerLoading, setLayerError, onProjectsLoaded, layerId, isRecentVariant]);
 
   // Fetch when layer becomes visible (or on initial mount if visible by default).
   useEffect(() => {
@@ -347,7 +391,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
   }, [isVisible, rows.length, fetchRows]);
 
   // Refetch when LayerManager bumps the refresh trigger (e.g. after a status override save).
-  const mpRefreshTrigger = refreshTrigger['municipal_projects'] ?? 0;
+  // Both layers refresh on either trigger: a status change moves a record between them.
+  const mpRefreshTrigger = (refreshTrigger['municipal_projects'] ?? 0) + (refreshTrigger['municipal_recent'] ?? 0);
   useEffect(() => {
     if (mpRefreshTrigger === 0) return;
     void fetchRows();
@@ -394,7 +439,8 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       const lat = row.centroid_lat;
       const lng = row.centroid_lng;
       if (lat == null || lng == null) continue;
-      const stageHidden = municipalProjectsHiddenStageIds.has(row.effective_stage_id ?? null);
+      // The stage filter belongs to the pipeline layer; the recent layer is one stage.
+      const stageHidden = !isRecentVariant && municipalProjectsHiddenStageIds.has(row.effective_stage_id ?? null);
       const muniHidden = municipalProjectsHiddenMunicipalityIds.has(row.municipality_id);
       let unitsHidden = false;
       if (unitsFilterActive) {
@@ -413,8 +459,14 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       // Pin color: agent rows override to navy so they're spot-able at a glance.
       // Polygon color: always use the stage color chain so agent polygons blend in
       // with manually-entered ones (the navy signal on the pin is enough).
-      const stageColor = row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
-      const pinColor = row.source_research_run_id ? AGENT_PIN_COLOR : stageColor;
+      const stageColor = isRecentVariant
+        ? RECENT_PIN_COLOR
+        : row.effective_stage_color || row.municipality_display_color || DEFAULT_STAGE_COLOR;
+      const pinColor =
+        municipalProjectsPinColorMode === 'polygon'
+          ? (polygonPathsFromGeoJson(row.geometry_geojson) ? PIN_HAS_POLYGON_COLOR : PIN_NEEDS_POLYGON_COLOR)
+          : isRecentVariant ? RECENT_PIN_COLOR
+          : row.source_research_run_id ? AGENT_PIN_COLOR : stageColor;
       const polyColor = stageColor;
       // Stroke color precedence: global override (user pref) > per-stage line_color > fill color.
       const polyStrokeColor =
@@ -428,8 +480,10 @@ const MunicipalProjectLayer: React.FC<Props> = ({
       if (!marker) {
         marker = new google.maps.Marker({
           position: { lat, lng },
-          icon: makeIcon(pinColor, isSelected || isBeingVerified),
-          title: row.project_name || row.address,
+          icon: makeIcon(pinColor, isSelected || isBeingVerified, row.location_confidence === 'estimated'),
+          title: row.location_confidence === 'estimated'
+            ? `${row.project_name || row.address} (EST. LOCATION — not confirmed)`
+            : row.project_name || row.address,
           map: showPin ? map : null,
           draggable: isBeingVerified,
           zIndex: isSelected || isBeingVerified ? 1000 : undefined,
@@ -447,7 +501,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
         existing.set(row.id, marker);
       } else {
         marker.setPosition({ lat, lng });
-        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified));
+        marker.setIcon(makeIcon(pinColor, isSelected || isBeingVerified, row.location_confidence === 'estimated'));
         marker.setMap(showPin ? map : null);
         marker.setDraggable(isBeingVerified);
         marker.setZIndex(isSelected || isBeingVerified ? 1000 : undefined);
@@ -627,6 +681,7 @@ const MunicipalProjectLayer: React.FC<Props> = ({
     municipalProjectsShowPins,
     municipalProjectsShowPolygons,
     municipalProjectsLabelMode,
+    municipalProjectsPinColorMode,
     municipalProjectsLabelFontSize,
     municipalProjectsLabelFillColor,
     municipalProjectsLabelLineColor,
