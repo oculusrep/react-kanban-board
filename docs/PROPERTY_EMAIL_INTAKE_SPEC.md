@@ -1,11 +1,11 @@
 # Property Email Intake — Spec
 
-Status: **Phase 1 live 2026-11-19.** Backlog done, `property-email-filter-tick` cron on (`1-59/5`). Branch `claude/nifty-brahmagupta-a4ubb9`. Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
+Status: **Phase 1 live 2026-11-19.** Backlog done, `property-email-filter-tick` cron on (`1-59/5`). Merged to main 2026-11-28 (8a99f4ab). Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
 Scope of all phases: Mike's mailbox (`mike@oculusrep.com`) only.
 
 | Phase | What | Status |
 |---|---|---|
-| 1 | OVIS/Property state filter: keep GA/SC (or undeterminable) listings, move out-of-state listings aside, return non-listings to routing | Built, not deployed |
+| 1 | OVIS/Property state filter: keep GA/SC (or undeterminable) listings, move out-of-state listings aside, return non-listings to routing | Live 2026-11-19 (merged to main 2026-11-28) |
 | 2 | Ingest + dedupe + geocode backfill of the 1,428 un-geocoded properties | Placeholder |
 | 3 | Client criteria matching | Placeholder, blocked |
 
