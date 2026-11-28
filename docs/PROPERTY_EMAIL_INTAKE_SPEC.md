@@ -1,11 +1,11 @@
 # Property Email Intake — Spec
 
-Status: **Phase 1 specced, not built.** Branch `feature/property-email-intake`.
+Status: **Phase 1 live 2026-11-19.** Backlog done, `property-email-filter-tick` cron on (`1-59/5`). Branch `claude/nifty-brahmagupta-a4ubb9`. Owner confirmed GA + SC stay. See [Phase 1 build notes](#phase-1-build-notes-2026-11-19) for the deploy order.
 Scope of all phases: Mike's mailbox (`mike@oculusrep.com`) only.
 
 | Phase | What | Status |
 |---|---|---|
-| 1 | OVIS/Property state filter: keep GA/SC (or undeterminable) listings, move out-of-state listings aside, return non-listings to routing | This document |
+| 1 | OVIS/Property state filter: keep GA/SC (or undeterminable) listings, move out-of-state listings aside, return non-listings to routing | Built, not deployed |
 | 2 | Ingest + dedupe + geocode backfill of the 1,428 un-geocoded properties | Placeholder |
 | 3 | Client criteria matching | Placeholder, blocked |
 
@@ -347,11 +347,85 @@ These are deliberate and called out so they can be reversed:
 4. **Verification check 2 reads every OOS message, not a sample**, because the full set is cheap.
 5. **Added `owner_restored` as a decision value**, to make undo stick.
 
+
+### Phase 1 build notes (2026-11-19)
+
+**What was built**
+
+| Piece | Where |
+|---|---|
+| A table | `supabase/migrations/20261119160948_property_email_filter.sql` |
+| B function | `supabase/functions/property-email-filter/` (`index.ts`; pure logic in `classify.ts`, tests in `classify_test.ts`) |
+| C Gmail helpers | `_shared/gmail.ts`: `getMessageLabelIds`, `fetchGmailAttachment` (`modifyMessageLabels` already existed) |
+| D `decide()` | moved to `_shared/labelDecide.ts`, gains `property_filter`; `label-inbox` loads filter rows in the inbox, unknown-id and archived-window passes |
+| E watcher | `label-watcher` credits an INBOX removal to `ovis` when it matches `property_email_filter.archived_at` (or `email_auto_archive.archived_at`) within the window |
+| F cron | `supabase/migrations/20261119160949_property_email_filter_cron.sql` |
+
+Open questions kept at their defaults: Q1 model stays `claude-haiku-4-5`, Q2 tombstones are listings, Q3–Q7 as listed.
+
+**Deviations, beyond 1.16**
+
+1. **Undo scan on `not_listing` counts only an owner `OVIS/Property` add**, not an INBOX add. `OVIS/Junk` is now auto-archived (see EMAIL_TRIAGE_STATUS 2026-11-19 amendment), so a not-listing re-routed to Junk and pulled back into the inbox by the owner is a Junk rescue, not "this is Property".
+2. **Model output errors are final, API errors are not.** A refusal, truncation or unparseable reply is stored as `unknown` with `downgrade_reason = 'model_output:…'` (safe: it stays in Property, and is not re-billed every tick). A thrown API error writes no row, so the message is retried; a run stops after 3.
+3. **ZIP scan ignores numbers followed by a unit** (`30,000 SF`, `29500 VPD`). Otherwise almost every listing's square footage would block `out_of_state`. Still conservative-only.
+4. **Restore actions** run at most 500 rows per call; re-invoke `restore_all` until `restored` is 0.
+
+**Deploy order (do not reorder)**
+
+1. Apply `20261119160656_email_auto_archive.sql` and `20261119160948_property_email_filter.sql` (psql, `--single-transaction`, record in `schema_migrations`).
+2. Deploy `label-watcher`, then `label-inbox`. `label-inbox` now fails the run if `property_email_filter` is missing, which is why the table goes first.
+3. Deploy `property-email-filter`. It needs `ANTHROPIC_API_KEY_TRIAGE` (already set for `extract-commitments`).
+4. Smoke test: `{ "max": 3 }` once, then check the rows and the three messages in Gmail.
+5. Backlog: `{ "mode": "backlog" }`, re-invoked until `remaining` is 0 (~856 messages, ~35 per call).
+6. Apply `20261119160949_property_email_filter_cron.sql` last.
+7. Run section 1.13 verification.
+
+**Deploy log (2026-11-19, from a cloud session via the Supabase Management API — psql cannot reach the DB from there).**
+Applied + recorded in `schema_migrations`: `20261119160656_email_auto_archive`, `20261119160948_property_email_filter`
+(round-tripped in a rolled-back transaction first; anon has no access, authenticated read-only). Deployed `label-watcher`,
+`label-inbox`, `property-email-filter`. Verified live: first `label-inbox` tick archived 6 (5 Reading, 1 Junk), labels kept,
+labeler health stayed healthy, and `label-watcher` attributed all 6 INBOX removals `ovis` / `ovis_write`.
+Filter smoke test `{max:3}`: plumbing fine, 0 rows written, all 3 calls refused with the API usage-limit 400. Backlog: 1,166.
+`extract-commitments` uses the same key and is affected too. **Not applied:** `20261119160949_property_email_filter_cron`.
+
+**Backlog result (2026-11-19).** 1,171 decided: in_state 299, unknown 209, out_of_state 511, not_listing 152.
+6 sync failures, all `gone` (message deleted from Gmail; not retried). Check 3: 0 out_of_state rows with GA/SC in
+`states_found`, 0 whose subject/body names Georgia or South Carolina. Live after: 514 `OVIS/Property`, 506 `OVIS/Property-OOS`.
+Model spend on stored rows ≈ $2.60 (2.18M in / 90k out, Haiku 4.5), plus the incident below. The owner chose to let
+"site wanted" tenant requirements route as not_listing. Spend-limit block was lifted by the owner the same day.
+Cron migration applied and recorded. Checks 2, 4 and 6 (Gmail end-state sweep, 2-tick re-label check, human spot check)
+are still open.
+
+**Incident, 2026-11-19 backlog.** After two good batches (111 rows), 11 backlog calls re-classified the same ~70
+already-decided messages each (~800 paid model calls, ~$2–3, nothing written: `ON CONFLICT DO NOTHING`). Cause: the
+"already decided?" lookup put 200 RFC Message-IDs (~70 chars each) in one `IN()`; from inside the edge runtime that
+~16KB URL fails to send, and the error was not checked, so every message looked new. Fixed: 50 ids per `IN()` (also in
+`label-inbox`'s filter lookup), the lookup error now fails the run, a per-message existence check runs right before the
+model call, and a conflict with no row written is reported as an error instead of counted as classified.
+Lesson for this codebase: chunk `.in()` on long text keys at 50, and never drop the `error` from a read that gates spend.
+
+**Not verified before deploy.** No database access or deploy from the build container: migrations were not round-trip tested, and the edge functions were type-checked only against stubbed remote modules. `classify.ts` tests pass.
+
 ---
 
 ## Phase 2 — Ingest + dedupe + geocode backfill
 
 _Placeholder._ Covers ingesting in-state listings into OVIS, dedupe against `property`, and the geocode backfill of the 1,428 properties without coordinates.
+
+**What Phase 1 leaves for it (2026-11-19).** Ingest does not need to read Gmail labels; it reads the database,
+which records the same thing and more:
+
+- **Selection:** `property_email_filter.decision IN ('in_state','unknown','owner_restored')` — the mail the
+  `OVIS/Property` label holds. Hand-tagged Property mail with no filter row is found through `email_label` /
+  `gmail_label_event` (owner `added OVIS/Property`).
+- **Already extracted per email:** `properties[]` (address, city, state, confidence), `evidence`, `states_found`.
+  Phase 1 extracted for a state call only, so price, SF, rent and broker are not there: ingest re-reads the email.
+- **Email content is in OVIS:** `emails.body_text` / `body_html`, PDFs via `fetchGmailAttachment()`. Ingest does
+  not depend on the message still being in the inbox (OOS and Junk are archived; labels stay).
+- **Sink:** the existing listing pipeline (`upsert_listing` → comp database, NNN Listings review queue,
+  [NNN_LISTING_INTAKE_SPEC_v2.md](NNN_LISTING_INTAKE_SPEC_v2.md)), which already normalises addresses, dedupes
+  and geocodes. A backlog run passes `create_va_task: false` so it does not create a task per listing.
+- **`unknown` rows** have no confirmed state: ingest them to the review queue flagged, or skip until reviewed.
 
 ## Phase 3 — Client criteria matching
 

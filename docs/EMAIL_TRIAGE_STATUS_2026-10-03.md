@@ -32,6 +32,19 @@ dispositions measured, 854 were `INBOX` removals and 11 were label removals — 
 habit is *tag and archive*, so archiving is the gesture that means "done". OVIS taking it
 over would destroy the only disposition signal there is.
 
+**AMENDED 2026-11-19 (owner): Reading and Junk auto-archive.** `label-inbox` now
+removes `INBOX` from inbox mail carrying `OVIS/Reading` or `OVIS/Junk`, *after* it is
+labelled; the label stays. It matches the label Gmail shows, so hand-tagged Reading
+is archived too. Each message is archived **once** (`email_auto_archive`); if the
+owner moves it back to the inbox, it stays. `label-watcher` attributes those INBOX
+removals to `ovis` (matched on `email_auto_archive.archived_at`), so they never count
+as the owner's `handled` gesture. Every other label still stays in the inbox.
+Kill switch: `"auto_archive": false` in the `label-inbox` request body.
+Known trade-off: Junk's model demotions are unaudited, so a mis-Junked message now
+leaves the inbox unseen. Check `OVIS/Junk` in Gmail for misses.
+Out-of-state `OVIS/Property` mail (not GA/SC) is archived by `property-email-filter` —
+built 2026-11-19, not yet deployed; see [PROPERTY_EMAIL_INTAKE_SPEC.md](PROPERTY_EMAIL_INTAKE_SPEC.md).
+
 ## Running right now
 
 | cron | job | schedule |

@@ -82,6 +82,11 @@ verify_jwt = false
 [functions.label-inbox]
 verify_jwt = false
 
+# property-email-filter: pg_cron (publishable key + X-Cron-Secret), same as
+# label-inbox. _shared/caller-auth.ts is the real authorization check.
+[functions.property-email-filter]
+verify_jwt = false
+
 # portal-invite-precheck: called from the pre-login invite page, so the caller is
 # logged out by definition and sends no Authorization header. Authorization is
 # the invite token, resolved server-side with the service key.
